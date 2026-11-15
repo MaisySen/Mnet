@@ -4,7 +4,31 @@ Every shipped build, newest first. Runbook format: number, time, commit,
 what changed. Test counts: full suite green at every tag
 (`go test ./...`: bind, control, daemon, dns, stun, mobile all ok).
 
+## 0.5.2 - 2026-11-15
+
+Commit: 0d3639b. Android: stable view ids (R.id.server_url, network_name,
+auth_key, device_name, exit_node, connect_button) so Firebase Test Lab
+robo scripts can drive a real join; the server field now defaults to the
+hosted control plane (https://mnet-control.onrender.com). Play store
+graphics in store-assets/. Full Go suite green; release APK (versionCode
+7) and AAB rebuilt.
+
+Firebase Test Lab (project mnet-testlab, robo + seeded robo script):
+- Pixel 9, API 34, matrix-1zjis8j9p8pi4: PASSED, 3m29s, 9 of 9 script
+  actions. The script filled the join form, accepted the VPN consent
+  dialog, and the device registered with the LIVE control plane: node
+  "robo-test-device" approved in network roboproof, mesh IP 100.64.0.1,
+  at 06:19:13 UTC (admin state record kept with the run evidence). The
+  one-time auth key was deleted right after the run. Open check: the
+  crawl wandered after the script, so no screenshot caught the "up"
+  state; next run ends the script with a screenshot + terminate.
+
 ## 0.5.1 - 2026-11-15
+
+Firebase Test Lab robo (release APK, matrix-1hOudyo5gvsiv): PASSED 2/2.
+Pixel 9 API 34 (1m7s) and Pixel 5 API 30 (1m14s), 10 actions, 3 screens
+each: install, launch, UI render, and the connect flow reaches the
+Android VPN consent dialog on both.
 
 Commit: see tag v0.5.1. Self-healing rejoin: a node the control plane
 forgot (server state wipe, admin delete) re-registers itself with its
