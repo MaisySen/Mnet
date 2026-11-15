@@ -68,21 +68,28 @@ func (s *Server) Update(m *netmap.Map) {
 func (s *Server) Serve() error {
 	mux := dns.NewServeMux()
 	mux.HandleFunc(".", s.handle)
-	s.udp = &dns.Server{Addr: s.addr + ":53", Net: "udp", Handler: mux}
-	s.tcp = &dns.Server{Addr: s.addr + ":53", Net: "tcp", Handler: mux}
+	udp := &dns.Server{Addr: s.addr + ":53", Net: "udp", Handler: mux}
+	tcp := &dns.Server{Addr: s.addr + ":53", Net: "tcp", Handler: mux}
+	s.mu.Lock()
+	s.udp = udp
+	s.tcp = tcp
+	s.mu.Unlock()
 	errc := make(chan error, 2)
-	go func() { errc <- s.udp.ListenAndServe() }()
-	go func() { errc <- s.tcp.ListenAndServe() }()
+	go func() { errc <- udp.ListenAndServe() }()
+	go func() { errc <- tcp.ListenAndServe() }()
 	return <-errc
 }
 
 // Close stops both listeners.
 func (s *Server) Close() {
-	if s.udp != nil {
-		s.udp.Shutdown()
+	s.mu.Lock()
+	udp, tcp := s.udp, s.tcp
+	s.mu.Unlock()
+	if udp != nil {
+		udp.Shutdown()
 	}
-	if s.tcp != nil {
-		s.tcp.Shutdown()
+	if tcp != nil {
+		tcp.Shutdown()
 	}
 }
 
