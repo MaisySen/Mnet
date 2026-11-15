@@ -15,41 +15,29 @@ other platform, wrapped in a NetworkExtension packet tunnel.
   Go engine through the `MobilePacketFlow` protocol (`StartFlow`).
 - `build-go.sh`: builds `Mnet.xcframework` with gomobile.
 
+## Status
+
+Source integration only. No signed Mnet iOS release, TestFlight delivery or physical-device VPN/session test is established. The shared Go tests do not replace NetworkExtension entitlement, signing, consent and on-device validation. The XcodeGen spec still has an older marketing version; align it with a selected release before distribution. See [project status](../docs/STATUS.md).
+
 ## Build
 
 On a Mac with Xcode installed:
 
 ```sh
-go install golang.org/x/mobile/cmd/gomobile@latest
-go install golang.org/x/mobile/cmd/gobind@latest
+# Use the x/mobile revision pinned in the project module, not an unreviewed latest.
+go install golang.org/x/mobile/cmd/gomobile
+go install golang.org/x/mobile/cmd/gobind
 gomobile init
 sh ios/build-go.sh
 ```
 
-Then create an Xcode project with:
-
-- App target `au.fintex.mnet`, embedding `Mnet.xcframework`.
-- App extension target `au.fintex.mnet.tunnel` (Network Extension,
-  Packet Tunnel), embedding `Mnet.xcframework`.
-- No app group: the extension keeps node state in its own container, so
-  nothing needs the Account Holder to register a group (individual Apple
-  account; see the Fintex runbook apple.md).
-- Entitlements: Packet Tunnel (`com.apple.developer.networking.networkextension`
-  with `packet-tunnel-provider`) on the extension.
+The repository includes `ios/project.yml` for XcodeGen. Inspect and generate the project on macOS, then validate target paths, embedding and signing in Xcode. The intended targets are app `au.fintex.mnet` and packet-tunnel extension `au.fintex.mnet.tunnel`, embedding the generated framework. The extension needs the packet-tunnel NetworkExtension entitlement. State is kept in the extension container; shared app-group behavior is not established by this guide.
 
 ## Remaining Apple steps
 
-The Fintex runbook (apple.md) has the proven path: register the bundle
-IDs with the App Store Connect API, sign on a GitHub Actions macOS
-runner with xcodebuild -allowProvisioningUpdates and the Admin API key,
-upload to TestFlight. The app record itself is created by the main Tab's
-Admin Apple ID (the API cannot create apps). What is still needed:
+- Build the xcframework with the macOS/Xcode toolchain and verify the generated project and current marketing/build versions.
+- Verify the selected developer team's bundle IDs, entitlement/provisioning access and signing. Account or paid-plan changes require separate authorization; this guide does not authorize them.
+- Produce and validate a signed test build before any upload. No successful TestFlight result is claimed here.
+- Test real device VPN creation, join, DNS, session viewing, reconnect, backgrounding and cleanup. Hosting through ReplayKit is not implemented.
 
-1. macOS + Xcode: `gomobile bind -target ios` needs the Xcode toolchain;
-   the cross compile cannot run on Linux.
-2. A paid Apple Developer account for the NetworkExtension entitlement
-   and for signing/distribution (TestFlight or App Store).
-3. On-device testing.
-
-The Go engine itself is platform-neutral and already runs the iOS code
-path (`StartFlow` over a `PacketFlow`) in the shared test suite.
+Shared Go `PacketFlow` tests exercise the bridge in isolation, not Apple's production NetworkExtension lifecycle.

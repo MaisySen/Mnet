@@ -215,6 +215,23 @@ print(json.dumps(k))
             for x in 'ab':
                 print('path diagnostics ' + x + ': ' + json.dumps(local_api(states[x]).get('peers', [])), flush=True)
             raise
+        identities = {x: {k: json.loads((states[x] / 'state.json').read_text()).get(k)
+                          for k in ['node_id', 'public_key', 'ipv4']} for x in 'ab'}
+        for cycle in range(2):
+            for x in 'ab':
+                local_api(states[x], 'down', {})
+                links = json.loads(run('ip', '-n', spaces[x], '-j', 'link', 'show'))
+                if any(link['ifname'] == 'mnet0' for link in links):
+                    raise RuntimeError('kernel TUN survived lifecycle Down')
+                local_api(states[x], 'up', {})  # saved credentials, no new enrollment key
+                wait_for(lambda: local_api(states[x])['status'] == 'up', 'saved-state kernel restart')
+                if local_api(states[x])['ipv4'] != ips[x]:
+                    raise RuntimeError('mesh address changed after saved-state restart')
+                identity = json.loads((states[x] / 'state.json').read_text())
+                if any(identity.get(k) != v for k, v in identities[x].items()):
+                    raise RuntimeError('saved node identity changed after restart')
+            wait_for(both_direct, 'direct paths after saved-state restart', timeout=40)
+            print(f'PASS kernel Down/Up cycle {cycle + 1}: same identity/IP and direct path', flush=True)
         # With the control/relay process dead, transfers cannot silently
         # succeed by falling back to the shared control-plane WebSocket.
         control.terminate()

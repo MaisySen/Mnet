@@ -9,8 +9,10 @@ Native CI is a narrower claim than a physical desktop/phone test. Always name th
 - Private state tests exercise actual file replacement, link rejection and cleanup. Windows tests read the actual security descriptor, require a protected DACL, and reject grants outside the file owner, LocalSystem and local administrators. This is ACL inspection, not an impersonated second-user penetration test.
 - Daemon tests exercise state round trips and WireGuard IPC using an in-memory TUN. Local-expiry regressions cover self/peer deadlines, renewal, stale-map refresh, and repeated Up/Down while later control polls are blocked. They do not create an OS VPN interface.
 - Windows CI also installs a real SCM service in an offline fixture, checks authenticated local API startup, clean stop/restart, forced-process crash recovery and removal. The script refuses to replace an existing service. This does not create a Wintun interface or test VPN reconnection.
-- Linux kernel CI creates two real TUN interfaces in isolated network namespaces, checks assigned addresses and mesh ping, transfers 3 x 4MiB OS TCP payloads normally and 3 x 4MiB under 1% loss plus 20ms delay with sender ACK and receiver hash, then checks interface and mesh-route removal. This is a controlled runner fixture, not physical hardware, the public internet, arbitrary-loss or long-session proof.
+- Linux kernel CI creates two real TUN interfaces in isolated network namespaces, checks assigned addresses and mesh ping, transfers 3 x 4MiB OS TCP payloads normally and 3 x 4MiB under 1% loss plus 20ms delay with sender ACK and receiver hash, asserts direct UDP endpoints, stops the control/relay process before transfers, requires actual nonzero drop counters, then checks interface and mesh-route removal. This is a controlled runner fixture, not physical hardware, the public internet, arbitrary-loss or long-session proof.
 - Session tests exercise a native loopback TCP connection, screen/input/chat framing and a verified 3MiB file. They also test queued startup and repeated stream cleanup. They do not cross an actual VPN interface or a lossy public network.
+
+Evidence for the combined direct-path check: [c4a1bcd, all five jobs](https://github.com/MaisySen/Mnet/actions/runs/43760903768). Newer source is distinct from published artifacts; see [STATUS](STATUS.md).
 
 ## Private state behavior
 

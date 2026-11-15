@@ -1,10 +1,33 @@
 # Releases
 
-Every shipped build, newest first. Runbook format: number, time, commit,
-what changed. Test counts: full suite green at every tag
-(`go test ./...`: bind, control, daemon, dns, stun, mobile all ok).
+Test releases and engineering history. Historical entries record what was claimed at the time, not a current readiness guarantee. Older builds have known security/reliability gaps. Use [STATUS](STATUS.md) for source versus shipped/deployed state.
 
-## Unreleased (0.7.1 draft)
+## Unreleased after v0.8.2-test.1
+
+- Local enforcement of received self/peer expiry timestamps, independent of blocked control polls. WireGuard IPC, renewal/stale-map protection and repeated lifecycle regressions pass on Linux and native Windows/macOS. This cannot learn an unseen offline admin revocation.
+- Direct-path fixes: healthy relay handshakes no longer suppress bounded direct retry; the node's own overlay IP is not advertised as an underlay candidate.
+- Native Windows SCM install/start/stop/restart/crash recovery/remove passes on a disposable runner with an offline fixture. Wintun remains unverified.
+- Linux kernel namespace fixture passes actual TUN/address/ping, direct UDP verification, then OS TCP transfers with the control/relay process stopped: 3 x 4MiB normal and 3 x 4MiB with 1% loss/20ms delay, receiver hash and sender ACK. Actual drops and Down interface/mesh-route removal checked. [Exact c4a1bcd CI](https://github.com/MaisySen/Mnet/actions/runs/43760903768).
+- Documentation reorganized around status, operational limits and evidence. Exit/subnet OS routing is not declared working; the desktop exit-selection guard and route ownership need follow-up.
+- These source changes are not in the v0.8.2 artifacts or the last verified hosted deployment.
+
+## v0.8.2-test.1 - 2026-11-16
+
+Source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11, Android 0.8.2/code 14. [Release and 16 assets](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1), [exact-source CI](https://github.com/MaisySen/Mnet/actions/runs/43756253912).
+
+- Bounded relay queue drain wait and writer-side reauthorization; WireGuard counter parsing corrected against actual IPC.
+- Proof isolation/diagnostics and sender ACK plus receiver hash required. Small attributed proof-only classic-SACK adapter; no production gVisor fork or timer-root-cause claim.
+- Native Windows protected-DACL state/token protection, linked-path rejection and synced private replacement. Native Windows/macOS state/local-API/loopback-session checks passed.
+- Android AAR regenerated before APK/AAB, existing upload certificate retained; upload hashes and anonymous APK/checksum download bytes verified at publication. Source/native/Android-arm64 vulnerability scans and known-secret artifact scan passed at build time, not a security certification.
+- Same test service last verified at this source at 07:12 AEDT. Test-only; no important files, physical-platform or long-session guarantee.
+
+## v0.8.1-test.1 and v0.8.0-test.1 - superseded test builds
+
+[0.8.1](https://github.com/MaisySen/Mnet/releases/tag/v0.8.1-test.1) and [0.8.0](https://github.com/MaisySen/Mnet/releases/tag/v0.8.0-test.1) precede the consolidated 0.8.2 relay/storage updates. Their published warnings remain relevant to those versions. Do not use GitHub's older non-prerelease "latest" badge as the recommended test download.
+
+## Development history through v0.8.2 (historical notes)
+
+The following chronological engineering notes were previously grouped under a stale "0.7.1 draft" heading. They are preserved as history, not an unreleased inventory. Version-specific statements such as "newer than 0.8.0" or "Windows compile-only" describe that earlier checkpoint; the versioned entries above and STATUS supersede them.
 
 Live proofs and the fixes they exposed.
 

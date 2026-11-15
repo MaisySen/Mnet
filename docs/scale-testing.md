@@ -11,7 +11,7 @@ profiles measure map construction, authenticated loopback HTTP map
 responses with two benchmark workers, and persisted endpoint updates.
 Registration, TLS, WAN latency, relay throughput, filesystem durability,
 multi-process behavior and real-client fleet operation are not measured.
-The JSON store's writes use temporary-file replacement but do not fsync.
+At this original baseline, JSON store writes used temporary-file replacement without file sync. Current code syncs the temporary file; the later persistence section records the rerun.
 
 Environment: Linux amd64, Intel Xeon Platinum 8375C @ 2.90GHz,
 GOMAXPROCS=2. Each benchmark ran three times, at least 500ms per sample.
@@ -46,13 +46,13 @@ This is not evidence of 1,000 active VPN clients or a 10,000-device deployment.
 
 ## What it tells us
 
-The current single-process JSON store is not a proven large-fleet design.
-Maps scan the node table under one lock; endpoint updates rewrite the whole
+The single-process JSON store is not a proven large-fleet design.
+At this baseline, maps scanned the node table under one lock; endpoint updates rewrite the whole
 store under that lock. At 10,000 nodes these are material CPU, allocation
 and write bottlenecks even before WAN traffic and client fanout.
 
-Before a production capacity target is agreed, add a sustained mixed-load
-harness with connection churn, registration, endpoint updates, map fanout,
+Before a production capacity target is agreed, extend the short mixed-load
+harness below with connection churn, registration, endpoint updates, map fanout,
 relay traffic, resource sampling and latency percentiles. Then evaluate
 per-network indexes/cached immutable maps, durable indexed storage and
 backpressure. Re-run against representative hardware and independent

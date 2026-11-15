@@ -1,69 +1,41 @@
 # Mnet architecture
 
-Mnet has three moving parts and one rule: no third party ever sees plaintext.
+Development design. [STATUS](STATUS.md) separates implementation, test evidence, published builds and open work.
 
-## The rule
+## Control plane: `mnet-control`
 
-Traffic between nodes is WireGuard encrypted end to end. The control plane
-sees keys, addresses and endpoints, never packet contents. The relay
-forwards ciphertext it cannot read.
+One process stores networks, identities and policies in a JSON file. Changes use private temporary-file replacement and file sync, with rollback on persistence failure. This is not distributed durable storage or a proven large-fleet design.
 
-## Control plane (mnet-control)
+- `/api/*`: enrollment, credential-authenticated rejoin, approval polling, map polling, endpoint reports and relay WebSocket.
+- `/admin/api/*`: password-session administration of networks, nodes, keys, ACLs, metrics and audit.
+- `/admin`: embedded dashboard.
+- OIDC: configured issuer and explicit subject/verified-email admission policy, signed-token checks and nonce binding. Tests use a local signed provider; live-issuer certification is not claimed.
 
-One binary, one JSON state file, no database to run.
+Maps contain approved, non-expired peers permitted by the current pair/route policy. Long polls carry changes; local clients cannot learn unseen server policy changes while disconnected. Newer source also enforces known map expiry timestamps locally.
 
-* **Node API** (`/api/*`): join (auth key or admin approval), map long
-  polling, endpoint reporting, relay WebSocket.
-* **Admin API** (`/admin/api/*`): networks, approvals, auth keys, node
-  removal, behind a session cookie from the admin password.
-* **Dashboard** (`/admin`): a single page app served from the binary.
-* **Relay hub**: one WebSocket per node; frames are
-  `[32 byte key][wireguard packet]`, destination key toward the server,
-  source key toward the client.
+## Node: `mnetd` and `mnet`
 
-A network map is the full list of approved peers with their keys,
-addresses and endpoints. Nodes long poll; any change wakes them at once.
+The daemon owns the WireGuard device, endpoint discovery, path state and map application. The CLI calls a capability-protected local API on a Unix socket or Windows loopback TCP. Private state holds both the WireGuard identity and the control-plane credential, so file permissions/DACLs are a security boundary.
 
-## Node (mnetd + mnet)
+The custom WireGuard bind supports ordinary UDP endpoints and `relay:<pubkey>`. STUN uses the same UDP socket. Discovery reports suitable IPv4 underlay addresses, excluding the node's own overlay address. Bounded periodic direct retries must continue even when a relay handshake is healthy. The direct-path Linux regression stops the control/relay process before transfers to prevent fallback from hiding a failed direct path.
 
-* `mnetd` runs the engine; `mnet` drives it over a local API (unix socket,
-  TCP loopback on Windows).
-* **bind** is the WireGuard socket: UDP plus relay in one conn.Bind. Peers
-  carry a normal UDP endpoint or `relay:<pubkey>`. WireGuard roaming moves
-  a peer to any path that starts working, direct or relayed.
-* **Endpoint discovery** runs STUN from the WireGuard socket itself. The
-  NAT mapping discovered is the mapping WireGuard uses. LAN addresses are
-  reported too, for same network peers.
-* **Path selection** rotates a peer's candidate endpoints while handshakes
-  fail, falls back to the relay, and retries direct every 90 seconds.
-  Persistent keepalives keep NAT pinholes open.
-* **Magic DNS** answers `<node>.<network>.mnet` (and `<node>.mnet` when
-  unambiguous) from the live map on the node's own mesh address, and
-  forwards everything else upstream.
+The relay scopes connections and packet destinations by network, revalidates current pair authorization and keeps bounded queues. Each frame contains a 32-byte key plus an encrypted WireGuard datagram. Relay encryption does not hide node/traffic metadata from its operator.
 
-## Sessions (remote desktop over the mesh)
+Magic DNS serves map-derived `.mnet` A records on the node's mesh address and forwards other queries upstream. Host resolver configuration is still required. Addresses use `100.64.0.0/10`, which may conflict with another VPN or carrier network.
 
-On top of the mesh sits the session layer (docs/session-layer.md): one
-TCP connection between two mesh IPs on port 5909, carrying typed
-streams (screen, input, chat, file) with priority classes. The mesh
-already provides NAT traversal, authentication and WireGuard
-encryption end to end, so sessions add no second crypto stack and no
-new trust surface: the host's consent (prompt or allowlist) gates each
-session. Linux desktops host via X11 capture and XTEST injection
-(`mnetd -session-host`); Android hosts via MediaProjection and an
-accessibility service; viewers exist on the CLI (`mnet session`) and
-in the app.
+## Sessions
 
-## Addressing
+Desktop/mobile sessions use ordinary OS TCP between mesh IPs, normally port 5909. The [session protocol](session-layer.md) multiplexes screen, input, chat and files. Host authorization binds a claimed node name to the connection's mesh source IP and applies host acceptance/allowlist policy.
 
-Nodes get addresses from 100.64.0.0/10 (CGNAT space), allocated by the
-control plane, stable per device key pair.
+There is no second session encryption layer; confidentiality depends on WireGuard and endpoint trust. Session parsing, file reception, capture and input introduce their own attack surfaces and need independent review. The relay may carry encrypted session traffic.
 
-## Trust boundaries
+`internal/proofnet` is a small attributed userspace adapter used only by diagnostic proofs. Its classic-SACK setting is not a change to desktop/mobile OS TCP. See [reliability](session-reliability.md).
 
-* Node identity is its WireGuard key pair, generated on device. The private
-  key never leaves the device.
-* A node token (issued at join) authenticates map, endpoint and relay
-  calls. Approval gates everything a new node can do.
-* The admin password protects the dashboard. Keep the control plane behind
-  HTTPS in production (see docs/operations.md).
+## Trust and operational boundaries
+
+- The control plane knows device public keys, credentials, addresses, endpoints, approval and topology. Its operator is trusted for mesh admission and peer-key maps.
+- A relay cannot decrypt WireGuard payloads, but can observe metadata or disrupt traffic.
+- Local administrators/SYSTEM and the private state owner remain trusted. A compromised endpoint can see its own plaintext.
+- HTTPS termination must sit in front of the plain HTTP control listener for non-loopback deployment.
+- Pair-level ACLs are not per-application-port rules. Known expiry is different from discovering an offline admin revocation.
+- Exit/subnet routing is incomplete; map/allowed-IP fields do not establish complete OS route setup or ownership-safe cleanup. See [operations](operations.md#exit-nodes-and-subnet-routes).

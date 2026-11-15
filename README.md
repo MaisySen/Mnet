@@ -1,231 +1,88 @@
 # Mnet
 
-Your devices, one private mesh.
+A development mesh VPN and remote-session project. Devices use WireGuard-encrypted direct UDP or an encrypted relay, with a self-hosted control plane for enrollment, approval, maps and access policies.
 
-Mnet is a mesh VPN. Every device gets a stable `100.64.x.x` address, traffic
-moves WireGuard encrypted, direct peer to peer when NAT allows it and through
-an encrypted relay when it does not. You run the control plane, so no third
-party ever sees your topology, and the relay only ever sees ciphertext.
+**Test builds only. Do not use Mnet for sensitive traffic or important file transfers yet.** It is not complete, independently audited, or a demonstrated replacement for Tailscale or a production remote-desktop service.
 
-## Pieces
+## Start here
 
-| Binary | What it is |
+- [Documentation index](docs/README.md): guides, design, evidence and history.
+- [Project status](docs/STATUS.md): source versus published builds, verified checks and open work.
+- [Latest published test build](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1): update the CLI and daemon together.
+- [Operations](docs/operations.md): configuration, credentials, enrollment and security limits.
+
+## Components
+
+| Component | Purpose |
 | --- | --- |
-| `mnet-control` | The control plane: node registry, approvals, auth keys, network maps, admin dashboard and the packet relay in one binary. |
-| `mnetd` | The node daemon. Owns the WireGuard device, finds endpoints, picks direct or relayed paths, serves Magic DNS. |
-| `mnet` | The command line that drives `mnetd`. |
+| `mnet-control` | Node registry, approvals, enrollment keys, maps, OIDC, admin dashboard and encrypted-packet relay. |
+| `mnetd` | WireGuard device, endpoint discovery, direct/relay selection, Magic DNS and optional session host. |
+| `mnet` | Local authenticated daemon controls and session CLI. |
+| `mobile`, `android`, `ios` | Shared Go engine, Android app and iOS source integration. Platform readiness differs. |
 
-## Quick start
+The control-plane operator sees device identities, addresses, endpoints and topology. A hosting operator can also observe that metadata. The relay sees encrypted WireGuard packets and traffic metadata, not their plaintext. Sessions may use the relay too. A compromised endpoint or control plane is outside a promise of absolute privacy.
 
-Run the control plane anywhere with a public address:
+## Build and try locally
 
-```bash
-MNET_ADMIN_PASSWORD= ./mnet-control --listen :8080 --base-url https://control.example.com
-# prints a generated admin password if you do not set one
+Use the Go version pinned in [go.mod](go.mod), currently Go 1.26.11. Linux needs `iproute2` and access to `/dev/net/tun`; macOS needs a supported utun interface; Windows needs `wintun.dll` beside the daemon. Interface setup requires root or the appropriate administrative capabilities. Native build/CI does not imply every platform's VPN setup has passed.
+
+```sh
+go build -o mnet-control ./cmd/mnet-control
+go build -o mnetd ./cmd/mnetd
+go build -o mnet ./cmd/mnet
+
+# Loopback-only test control plane. A password is generated if unset.
+./mnet-control -listen 127.0.0.1:8080 -base-url http://127.0.0.1:8080
 ```
 
-Open `https://control.example.com/admin`, sign in, create a network
-(for example `home`), then either make an auth key or leave joins to approval.
+Open the dashboard at `http://127.0.0.1:8080/admin`, create a test network, then start a daemon on the same machine:
 
-On each device, as root (Linux, macOS) or Administrator (Windows):
-
-```bash
-./mnetd &                      # the daemon
-./mnet up --server https://control.example.com --network home --auth-key mnet_...
-# or without a key: the CLI prints an approval link for the dashboard
-./mnet status                  # peers, paths, handshakes
-./mnet ping other-laptop       # ICMP through the mesh
+```sh
+sudo ./mnetd -state /var/lib/mnet-test
+# In another elevated terminal:
+sudo ./mnet --state /var/lib/mnet-test up --server http://127.0.0.1:8080 --network home
+sudo ./mnet --state /var/lib/mnet-test status
 ```
 
-Magic DNS listens on the node's own mesh address: `other-laptop.home.mnet`
-resolves from any node that points DNS at its mesh IP.
+Approve the pending device in the dashboard. For multiple machines, use a reachable control-plane URL behind HTTPS, not loopback; see [operations](docs/operations.md). Enrollment keys are secrets. Do not copy them into documentation or service commands. Use a dedicated private state directory consistently for both CLI and daemon.
 
-## How it works
+Addresses come from `100.64.0.0/10`. This range can conflict with an existing VPN or carrier network; check your environment. Magic DNS listens on the node's mesh IP and requires client resolver configuration.
 
-* **Keys and identity.** Each node generates its own WireGuard key pair at
-  first run. The private key never leaves the device. Joining sends only the
-  public key.
-* **Addresses.** The control plane hands out addresses from 100.64.0.0/10,
-  the CGNAT carrier range, so mesh addresses never clash with LANs.
-* **Maps.** Nodes long poll `/api/map`. Any change (join, approval, endpoint
-  update, removal) wakes every node in that network at once.
-* **NAT traversal.** The daemon runs STUN from the WireGuard socket itself,
-  so the mapping it discovers is the one WireGuard uses, and reports it plus
-  LAN addresses to the control plane. Peers rotate through each other's
-  candidate endpoints until a handshake lands; WireGuard roaming keeps any
-  path that starts working.
-* **Relay.** When no direct path completes a handshake, the peer's endpoint
-  becomes `relay:<pubkey>` and packets travel a WebSocket on the control
-  server. Packets stay WireGuard encrypted; the relay forwards blind.
-* **Magic DNS.** A tiny resolver on each node answers `A` records for
-  `<node>.<network>.mnet` from the live map and forwards the rest upstream.
+## Remote sessions
 
-## Build
+Start one daemon with hosting enabled, rather than a second daemon sharing its state:
 
-Requires Go 1.26+.
-
-```bash
-go build ./cmd/mnet-control ./cmd/mnetd ./cmd/mnet
+```sh
+sudo ./mnetd -state /var/lib/mnet-test -session-host -session-auto-accept -session-allow laptop,phone
+# After joining the host and viewer to the mesh:
+./mnet --state /path/to/viewer-state session connect host-name
+./mnet --state /path/to/viewer-state session send host-name ./test-file.zip
 ```
 
-Cross compile the clients:
+The headless host requires explicit auto-accept; the optional allowlist narrows verified peers. Viewer identity is checked against its source mesh address. The CLI is a terminal viewer, not a full native desktop app. See [session protocol and policies](docs/session-layer.md) and [reliability evidence](docs/session-reliability.md). Physical capture/input and mobile tests remain incomplete.
 
-```bash
-GOOS=windows GOARCH=amd64 go build -o mnetd-windows-amd64.exe ./cmd/mnetd
-GOOS=darwin  GOARCH=arm64 go build -o mnetd-darwin-arm64  ./cmd/mnetd
-GOOS=linux   GOARCH=amd64 go build -o mnetd-linux-amd64   ./cmd/mnetd
-```
+## Routing, authorization and expiry
 
-Windows needs `wintun.dll` (from wintun.net) next to `mnetd.exe`.
-Linux and macOS need root or `CAP_NET_ADMIN` for the TUN device.
+Enrollment, approval, OIDC admission policy, network maps and pair-level ACLs are implemented. ACLs are not application-port rules. Known expiry timestamps are enforced locally in newer source; unseen offline admin revocations cannot be learned until reconnection. See [status](docs/STATUS.md) for what is actually shipped.
 
-## Layout
-
-```
-cmd/
-  mnet-control/   control plane
-  mnetd/          node daemon
-  mnet/           CLI
-internal/
-  control/        node API, admin API, dashboard, JSON store
-  relay/          WebSocket relay hub and wire protocol
-  controlclient/  daemon side of the control API
-  bind/           WireGuard UDP + relay socket, STUN interception
-  daemon/         engine: maps, path selection, endpoint discovery
-  dns/            Magic DNS resolver
-  ifacectl/       address and route setup per OS
-  stun/           minimal RFC 5389 client
-  netmap/         shared types
-```
-
-## Status
-
-Version 0.5.0. Full Tailscale-parity core: join, approve, SSO/OIDC login,
-direct and relayed traffic, Magic DNS, Android app, iOS sources, exit
-nodes, subnet routes, network ACL policies and 180 day key expiry.
-
-Mnet is provided by Fintex Australia Pty Ltd (ABN 60 688 406 108), New South
-Wales, Australia. Contact: contact@fintex.au.
-
-## Known issues
-
-- The end-to-end mesh test (`go test ./internal/daemon -run TestMeshEndToEnd`) exercises two
-  in-process WireGuard devices over a real control server, direct UDP, and the relay hub.
-- The relay forwards frames as opaque datagrams and cannot read WireGuard payloads; privacy
-  depends on WireGuard end-to-end encryption, not on relay trust.
-- Windows clients need `wintun.dll` beside `mnetd.exe` (see below).
-
-## Exit nodes and subnet routes
-
-Any node can offer to carry traffic for the rest of the mesh:
-
-    # on the machine that should be the exit node / subnet router
-    mnet up --advertise-exit-node
-    mnet up --advertise-routes 10.9.0.0/24,192.168.50.0/24
-
-    # on a device that wants to use them
-    mnet up --exit-node gateway
-
-The serving node turns on kernel forwarding and masquerading automatically
-(Linux; see docs/operations.md for macOS and Windows). The client selects
-an exit node by peer name or mesh IP; its default route moves into the
-tunnel (split /1 routes, so the underlay default stays as a fallback) while
-host routes keep the tunnel endpoint and the control plane reachable.
-Advertised subnets become WireGuard allowed IPs on every peer, so traffic
-for 10.9.0.0/24 flows to the router node and out its LAN. Deselecting the
-exit node or rejoining without the flags cleanly removes the routes again.
-
-## SSO login (OIDC)
-
-Point mnet-control at any OpenID Connect provider and joins switch from
-manual approval to SSO:
-
-    mnet-control -oidc-issuer https://accounts.google.com \
-      -oidc-client-id ... -oidc-client-secret ...
-
-Register <public base>/oidc/callback as the redirect URL with the
-provider. A node that joins without an auth key then gets a login URL;
-the user's browser round trip verifies an RS256 ID token against the
-issuer JWKS, approves the node, and records the user's email on it (the
-dashboard shows it in the User column). Auth keys still bypass SSO for
-headless machines.
-
-## Key expiry
-
-Node keys expire 180 days after the first join. An expired node is
-refused by the control plane until it rejoins, which renews the key for
-another 180 days. The admin dashboard shows each node's expiry and has
-an Expire key button to revoke a device immediately.
-
-## ACL policies
-
-Each network has an access policy, edited in the admin dashboard or through
-GET/PUT /admin/api/acl. Rules are JSON:
-
-    [{"src": "laptop", "dst": "server"},
-     {"src": "*", "dst": "10.9.0.0/24"},
-     {"src": "phone", "dst": "0.0.0.0/0", "comment": "phone may use exit nodes"}]
-
-No policy means allow all. With at least one rule the default is deny:
-src is a node name or *, dst is a node name, *, an advertised subnet CIDR,
-or 0.0.0.0/0 for exit-node internet access. The control plane enforces
-the policy while building each node's map: unreachable peers disappear,
-routes the node may not use are stripped, and exit offers are hidden
-without internet access. Changes push to every node over the long-poll
-map feed within seconds.
-
-## Remote desktop sessions
-
-Mnet doubles as a remote desktop: screen capture, input injection, chat
-and file transfer ride typed streams over the encrypted mesh, so no
-third party ever relays your screen. Full detail in
-docs/session-layer.md.
-
-On the host (Linux desktop; Android can host with a consent tap):
-
-```bash
-./mnetd &                                   # already running for the mesh
-./mnetd -session-host -session-auto-accept  # or approve each viewer
-```
-
-Hosts verify every viewer's claimed node name against the network
-map (the connection's source mesh IP must match), so a peer cannot
-impersonate another node. Restrict who may connect with
-`-session-allow laptop,phone`; every accept, refusal and session end
-is recorded in `<state>/sessions.jsonl`.
-
-From the viewer:
-
-```bash
-./mnet session connect other-laptop         # terminal viewer
-./mnet session send other-laptop ./file.zip # push a file
-```
-
-Android hosts stream with MediaProjection and inject gestures through
-an accessibility service; Android and iOS both work as viewers. Frames
-stream as dirty-tile deltas with periodic keyframes; on Linux,
-MNET_TEXT_MODE picks how typed text reaches the host (keysym remap or
-clipboard paste).
-
-## Mobile
-
-- **Android**: `android/` holds a complete app (VpnService, join form, live
-  status, `au.fintex.mnet`). `android/build.sh` produces a signed
-  `android/out/mnet.apk` without Gradle; the gomobile core is
-  `mobile/mnet.aar`. Install with `adb install android/out/mnet.apk`.
-- **iOS**: `ios/` holds the SwiftUI app and the NetworkExtension packet
-  tunnel provider, plus `ios/build-go.sh`. The xcframework build and
-  signing need macOS, Xcode and an Apple Developer account; details and
-  the exact remaining steps are in `ios/README.md`.
-
-Both apps share the Go node engine through the `mobile` package:
-`Prepare` joins and returns the assigned mesh address, the OS builds the
-tunnel interface, then `Start` (Android fd) or `StartFlow` (iOS
-PacketFlow) brings the mesh up on it.
+Exit-node and subnet-route fields and WireGuard allowed-IP configuration exist, but complete OS routing, safe route ownership and teardown are not verified. A desktop exit-selection guard is currently inverted and skips the intended setup. Do not rely on exit-node internet routing or subnet routing; the Linux kernel tests currently cover mesh addresses only. [Operations](docs/operations.md#exit-nodes-and-subnet-routes) tracks the limits.
 
 ## Validation
 
-- Full unit and end-to-end suite: `go test ./...`
-- Public smoke test: `scripts/public-validation.sh` deploys mnet-control
-  behind a public tunnel, joins two real daemons over the public URL and
-  exchanges encrypted traffic both directions.
+```sh
+sh scripts/local-gates.sh           # uncached race tests, builds, vet, scans and mesh stress
+sh scripts/session-validation.sh    # isolated X11 userspace proof, not a physical desktop
+```
+
+Native Windows/macOS CI covers private state, local API, expiry and loopback sessions. Windows also has a disposable SCM lifecycle check. Linux CI uses actual kernel TUN interfaces and OS TCP with controlled loss, including a direct-path check with the control/relay process stopped. [Native validation](docs/native-platform-validation.md) defines exactly what these checks prove and what remains untested. [Scale measurements](docs/scale-testing.md) are synthetic engineering measurements, not supported fleet capacity.
+
+## Repository layout
+
+- `cmd/`: control server, daemon and CLI.
+- `internal/`: engine, WireGuard transport, control, relay, DNS, local API, private storage and sessions.
+- `internal/proofnet/`: attributed proof-only userspace network adapter, not the desktop/mobile OS TCP stack.
+- `mobile/`, `android/`, `ios/`: mobile bindings and platform sources.
+- `scripts/`: build and disposable validation fixtures.
+- `docs/`: maintained guides, status, measurement evidence and historical release notes.
+
+Mnet is provided by Fintex Australia Pty Ltd (ABN 60 688 406 108), New South Wales, Australia. Contact: contact@fintex.au.

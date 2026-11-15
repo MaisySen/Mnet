@@ -34,7 +34,13 @@ The proxy reads only the WireGuard message type and packet size for injection. P
 - Fresh repeated mesh tests pass after that prevention change. Single-datagram loss also recovers in the tested profile.
 - The pinned userspace proof stack with default RACK can exceed the 30-second final-ACK deadline after a short loss burst. The same adapter with classic SACK passed repeated 20ms and 50ms profiles. `MNET_PROOF_RACK=1` preserves the failing comparison. `MNET_LOSS_MS=1..1000` varies the loss window.
 - The proof now uses a small attributed `internal/proofnet` bridge and the exported TCPRecovery setting, not a dependency fork. This configuration applies only to the diagnostic proof. Desktop and mobile sessions use OS TCP on their VPN interfaces. No production OS-TCP failure or fix is established by this experiment.
-- Preventing an avoidable local relay overflow and changing proof-stack recovery do not establish correct recovery under every loss profile. There is limited margin under the 30-second ACK deadline in these artificial burst profiles; physical-device and OS TCP checks remain outstanding.
+- Preventing an avoidable local relay overflow and changing proof-stack recovery do not establish correct recovery under every loss profile. There is limited margin under the 30-second ACK deadline in these artificial burst profiles; physical-device, broader OS TCP profiles and long sessions remain outstanding. The bounded Linux kernel/OS TCP evidence below is separate.
 - Temporary dependency-timer experiments did not pass repeated verification and were not retained. There is no maintained dependency patch or proven timer-root-cause claim.
 
 Keep burst-loss recovery open until a repeatable baseline failure, an explained change, repeated passing fault tests and independent CI support closing it. Passing ordinary reruns is not a diagnosis.
+
+## Linux kernel and OS TCP evidence
+
+The disposable `scripts/kernel-vpn-validation.py` CI fixture uses real kernel TUNs and ordinary OS TCP, not the proof-only gVisor adapter. It checks both peers' direct UDP endpoints, then stops the control/relay process before transferring 3 x 4MiB normally and 3 x 4MiB with 1% netem loss plus 20ms delay. Receiver SHA256, sender ACK, nonzero actual drop counters, and Down interface/mesh-route removal are required. [c4a1bcd CI](https://github.com/MaisySen/Mnet/actions/runs/43760903768) passed and observed 132 dropped underlay packets.
+
+That stronger test initially failed before direct path selection. A bounded direct retry was suppressed by healthy relay handshakes; own-overlay-address discovery also offered an unusable underlay candidate. Both source fixes were needed before this fixture passed. This does not establish arbitrary NAT traversal, exit routing, Windows/macOS VPN operation or production soak reliability.

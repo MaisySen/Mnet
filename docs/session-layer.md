@@ -5,27 +5,16 @@ that already exists. This is the layer TeamViewer's product adds on top
 of its networking: screen, input, chat and file transfer as typed
 streams over one connection.
 
-## What the mesh already gives us
+## Readiness and security boundary
 
-The TeamViewer teardown mapped their shape onto ours:
+Implementation is not physical-platform certification. [STATUS](STATUS.md), [native validation](native-platform-validation.md) and [reliability](session-reliability.md) define the checks and remaining gaps.
 
-- Both-sides-outbound NAT traversal: done (STUN endpoint discovery,
-  DERP-style relay fallback).
-- End-to-end encryption: done (WireGuard between every peer pair).
-  TeamViewer needed a second TLS layer inside sessions because their
-  routers see session traffic. Our relay only ever sees WireGuard
-  ciphertext, so the session layer runs over the mesh WITHOUT a second
-  crypto stack: one cipher suite, no negotiation, no downgrade surface.
-  The 2014-style "legacy encryption request" anti-pattern is designed
-  out, not patched out.
-- Identity and authorization: control plane node records, key expiry
-  and per-network ACL policies already decide which pairs may talk.
+WireGuard encrypts the mesh path, including relay traffic. The session protocol adds no second encryption layer. That does not remove its parser, consent, file and capture/input attack surfaces; independent review remains open. Pair-level ACLs and source-IP/name binding authorize the connection, not arbitrary application-port policy.
 
 ## Design
 
 One TCP connection per session, dialed to the host's mesh IP on port
-5909. Typed streams are multiplexed over it with priority classes, the
-same early design decision TeamViewer made (their StreamType enum).
+5909. Typed streams are multiplexed over it with priority classes, with bounded queues and weighted scheduling.
 
 Priorities (0 is most urgent):
 
@@ -36,8 +25,7 @@ Priorities (0 is most urgent):
 | 2 | Chat, clipboard, capability messages |
 | 3 | File transfer bulk data |
 
-The writer drains higher classes first so a big file pull never makes
-the pointer lag.
+Weighted scheduling favors higher classes while giving bulk traffic progress. This is not a latency guarantee under every network or workload.
 
 ## Streams
 
@@ -49,8 +37,7 @@ the pointer lag.
 | 3 | chat | both | UTF-8 text |
 | 4+ | file | both | offer, accept, chunks, acks |
 
-More stream kinds (audio, shell, port forwarding) slot in as new IDs
-without protocol changes.
+Audio, shell and port forwarding are not implemented session capabilities. Adding them requires protocol, authorization and compatibility review.
 
 ## Wire format
 
@@ -71,12 +58,9 @@ warm and measure latency.
 
 ## Screen v1
 
-JPEG frames (quality ~70), capped at 1280 px on the long edge, 5 to 10
-fps depending on change. v1 sends full frames when anything changed;
-dirty-rect deltas are a compatible later optimization (frame message
-carries a rect list, so viewers can handle both from day one).
+JPEG frames and 64x64 changed-tile deltas with periodic keyframes are implemented. Backend capture size, frame rate and quality vary; the desktop host typically requests 8fps and can adjust supported capture quality with observed RTT. Deltas are composited onto a previous frame. These are implementation choices, not measured physical-platform frame-rate guarantees.
 
-Host capture: Android MediaProjection; Linux X11 shared memory.
+Capture backends include Android MediaProjection and Linux X11/Wayland paths. X11 proof runs under Xvfb; real GNOME portal/PipeWire and physical mobile capture remain open.
 
 ## Input v1
 
@@ -90,20 +74,18 @@ UTF-8 text, one DATA message per line.
 
 ## File v1
 
-Offer (name, size, sha256), accept with resume offset, 256 KiB chunks,
-final ack with the digest. Priority class 3.
+Offer (name, size, sha256), acceptance, 256KiB chunks and final digest ACK. Priority class 3. Receiver acceptance starts from offset zero; resumable transfers are not implemented.
 
 ## Security model
 
 The mesh authenticates and encrypts the path; the host decides consent:
-an accept prompt (app) or an allowlist (headless daemon). Every session
-writes one audit line on both sides with peer name and duration. No
+an accept prompt/app policy or explicit auto-accept on the headless daemon, optionally narrowed by an allowlist. The desktop host records accept/refuse/end in its state-directory audit log. A symmetric audit on every viewer/platform is not guaranteed. No
 passwords on top of the mesh.
 
 ## Pieces
 
 - internal/session: framing, mux, stream types, handshake, host and
-  viewer logic, file transfer (done, race-tested)
+  viewer logic, file transfer (implemented with race-tested local regressions)
 - mnetd -session-host -session-auto-accept: desktop host on Linux.
   X11 sessions capture with XGetImage and inject with XTEST. Wayland
   sessions capture with grim on wlroots compositors, or through the
@@ -113,11 +95,11 @@ passwords on top of the mesh.
   portal path. Input injects with ydotool (evdev level, compositor
   agnostic) on every Wayland backend.
 - mnet session connect / mnet session send: terminal viewer with
-  chat, frame saving, file push (done)
+  chat, frame saving, file push (implemented; see platform validation)
 - Android: HostSessionService (MediaProjection capture, consent
   dialog or auto-accept), MnetAccessibilityService (gesture
   injection while hosting), ViewerActivity (frames, touch input,
-  chat) (done; key text injection intentionally out of v1)
+  chat) (source implemented; key text injection intentionally out of v1, physical validation pending)
 - iOS: viewer only; hosting needs ReplayKit and is parked with the
   Apple account work
 

@@ -1,4 +1,6 @@
-# Running Mnet in production
+# Operating Mnet test builds
+
+Development only. These setup examples are not production certification. Check [STATUS](STATUS.md) for the source/release/deployment split and [native validation](native-platform-validation.md) before relying on a platform.
 
 ## Control plane
 
@@ -63,15 +65,13 @@ or leave the key off and approve the device from the dashboard link the
 CLI prints.
 
 macOS: run mnetd with sudo or a LaunchDaemon. Windows: run mnetd.exe as
-Administrator with wintun.dll next to it. Service mode is implemented but
-still needs live verification on a real Windows machine. Use an explicit
+Administrator with wintun.dll next to it. Basic SCM install/start/stop/restart/crash recovery/removal passes on a disposable native runner; actual Wintun/VPN service operation and physical-host verification remain open. Use an explicit
 absolute state path consistently, initialize/join it in an elevated console,
 then install with `mnetd.exe -state C:\MnetState -service install` and start
 with `sc.exe start mnetd`. Never include an auth key in the install command.
 Removal: `mnetd.exe -service remove`. Keep the binary and its parent directory
 writable only by administrators; LocalSystem executes it at boot. Choose a
-state directory whose Windows ACL grants access only to administrators and
-SYSTEM. Automatic restart recovery is requested at installation. The SCM
+dedicated state directory. Current code establishes a protected DACL for its owner, administrators and SYSTEM; do not use a directory owned by another account. Automatic restart recovery is requested at installation. The SCM
 Running status means the local API is bound, not that the mesh has joined.
 
 ## Sizing
@@ -81,17 +81,15 @@ node is one WebSocket. Relay capacity has not yet been measured; see
 docs/scale-testing.md for the narrower local control-plane measurements.
 Direct traffic never touches the control plane.
 
-## Public deployment (validated 2026-11-15)
+## Public deployment (historical smoke test, 2026-11-15)
 
 mnet-control is one static binary with one state file. On any public host:
 
-    mnet-control -listen :443 \
+    mnet-control -listen 127.0.0.1:8080 \
         -base-url https://control.example.com \
         -data /var/lib/mnet/control.json
 
-Put it behind any TLS-terminating reverse proxy (Caddy, nginx) or give it
-a public port; the node API, admin dashboard, and WebSocket relay share
-the one listener. Set the admin password with MNET_ADMIN_PASSWORD or
+Put it behind a TLS-terminating reverse proxy (Caddy, nginx). The binary does not itself implement TLS; exposing its plain HTTP listener publicly is not a secure HTTPS setup. The node API, admin dashboard, and WebSocket relay share the one listener. Set the admin password with MNET_ADMIN_PASSWORD or
 -admin-password, then create networks and auth keys in the dashboard at
 https://control.example.com/admin.
 
@@ -137,43 +135,30 @@ way.
 
 ## Exit nodes and subnet routes
 
-A node serving as an exit node or subnet router runs:
+Status: incomplete. Do not rely on exit-node internet routing or subnet routing yet.
 
-    mnetd -up -advertise-exit-node
-    mnetd -up -advertise-routes 10.9.0.0/24
+The CLI and maps carry `--advertise-exit-node`, `--advertise-routes` and `--exit-node`. WireGuard allowed-IP tests cover advertised CIDRs and selected exit defaults. Those are crypto-routing configuration tests, not complete OS routing evidence.
 
-Linux serving setup is automatic: the daemon writes
-/proc/sys/net/ipv4/ip_forward and adds a POSTROUTING MASQUERADE rule for
-100.64.0.0/10 with iptables. Keep both on a dedicated node with a systemd
-unit; netfilter-persistent is not needed because the daemon reasserts the
-rule on every up.
+Current limitations from source review:
 
-macOS: the daemon sets net.inet.ip.forwarding=1, but masquerading needs a
-pf anchor you add once by hand: `nat on en0 from 100.64.0.0/10 to any -> (en0)`
-in /etc/pf.conf, then `pfctl -f /etc/pf.conf -e`.
+- `applyExitNode` skips `ManagedIface=true`, the desktop setting, although its intended behavior is to skip mobile-managed interfaces. This guard needs correction with real route regressions.
+- Selected subnet CIDRs are not installed as owned OS routes by the current interface setup. An allowed IP alone does not route an OS packet into the tunnel.
+- Linux serving enables IPv4 forwarding and a broad mesh-source MASQUERADE rule; ownership-safe restoration/removal on Down is not implemented. macOS sets forwarding before reporting that a manual pf anchor is needed. Windows reports manual ICS setup.
+- Existing helpers can replace host/default-split routes without recording prior ownership. Safe rollback, control/relay reachability, endpoint changes, selected-peer removal and existing-route preservation need tests before enabling these paths as supported behavior.
+- Mobile VPN APIs own their interface routes, but end-to-end exit/subnet operation on physical mobile devices has not been verified.
 
-Windows: enable Internet Connection Sharing for the Mnet interface; the
-daemon reports this until native forwarding support lands.
-
-Clients pick the exit node with `mnet up --exit-node NAME`. The client
-pins host routes for the tunnel endpoint and the control server through
-the underlay gateway, then installs 0.0.0.0/1 + 128.0.0.0/1 via mnet0.
-The underlay default route stays in place, so `mnet down` restores
-ordinary routing without cleanup. Mobile clients skip OS route changes:
-the Android VpnService and iOS NetworkExtension builders own the route
-table, and the allowed IPs already steer traffic into the tunnel.
+The passing Linux kernel fixture covers mesh addresses and mesh-route removal only. It does not close any exit/subnet limitations above. Do not apply manual forwarding/firewall changes to a primary machine based on the old routing claims.
 
 ## Android
 
 android/build.sh builds android/out/mnet.apk without Gradle: gomobile
 for the Go core (all four ABIs), then aapt2 + javac + d8 + zipalign +
 apksigner directly. It needs ANDROID_HOME and ANDROID_NDK_HOME set,
-JDK 17, and gomobile + gobind in PATH. The debug signing key is
-android/debug.keystore (regenerate for real distribution).
+JDK 17, and gomobile + gobind in PATH. Regenerate the AAR explicitly for the source revision before both APK and AAB builds; the scripts reuse an existing AAR. Set MNET_RELEASE_KEYSTORE and MNET_RELEASE_PASS_FILE for the existing upload identity. Without release configuration, a per-checkout debug key is used. Never commit signing secrets.
 
 ## iOS
 
-See ios/README.md: sources and the gomobile build script are complete;
+See [ios/README.md](../ios/README.md): source integration and the gomobile build script are present;
 the xcframework build, signing and on-device testing need macOS, Xcode
 and an Apple Developer account.
 
@@ -319,7 +304,6 @@ Malformed or oversized up requests fail before starting work.
 Unix sockets still use owner-only permissions. Windows uses loopback TCP
 plus the capability, so the state directory must have an administrator/
 SYSTEM-only Windows ACL as described above; Unix mode bits do not set a
-Windows ACL. This needs real-machine Windows verification. Existing CLI
+Windows ACL. Native tests inspect the actual protected DACL; separate-user and physical-host checks remain open. Existing CLI
 and daemon binaries must be updated together for capability authentication.
-Do not put the token in browser pages, command arguments or logs. This
-follow-up is newer than the 0.8.0-test.1 artifacts.
+Do not put the token in browser pages, command arguments or logs. Capability authentication and Windows DACL protection are included in v0.8.2-test.1. Later local-expiry/direct-discovery fixes are source-only until a newer release.
