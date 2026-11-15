@@ -77,6 +77,15 @@ Live proofs and the fixes they exposed.
 - mnet session log prints the node's hosted-session audit from
   <state>/sessions.jsonl: accept/refuse/end, viewer, mesh IP,
   duration, recording path.
+- Windows service mode: mnetd -service install registers the daemon
+  with the Service Control Manager (autostart, LocalSystem so it can
+  manage the tunnel interface, joins from saved state on every boot),
+  -service remove takes it back out, and an unflagged service session
+  is detected and routed the same way. Service lifecycle events land
+  in the Windows event log. The console path is unchanged: one boot
+  path now serves the terminal and the SCM handler. CI cross-compiles
+  the Windows and Darwin daemons on every push so the service code
+  cannot rot; live verification on a Windows machine is pending.
 - CI: GitHub Actions build, vet, race-enabled tests, the secrets
   gate, and the live session proof on every push and PR.
 

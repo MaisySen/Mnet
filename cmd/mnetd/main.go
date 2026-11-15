@@ -1,5 +1,7 @@
 // mnetd is the Mnet node daemon. Run it as root (Linux, macOS) or
 // Administrator (Windows), then drive it with the mnet CLI.
+// On Windows it also installs and runs as a service: see
+// service_windows.go.
 package main
 
 import (
@@ -24,6 +26,34 @@ func defaultStateDir() string {
 	return "/var/lib/mnet"
 }
 
+// options carries the parsed flags so the same boot path serves the
+// console and the Windows service handler.
+type options struct {
+	stateDir string
+	ifname   string
+	verbose  bool
+	up       bool
+	fakeTun  bool
+	selfTest string
+	server   string
+	network  string
+	name     string
+	authKey  string
+
+	advExit   bool
+	advRoutes string
+	useExit   string
+
+	sessHost  bool
+	sessAuto  bool
+	sessAllow string
+	sessRec   string
+	sessProof bool
+	proofDir  string
+
+	serviceAction string
+}
+
 func main() {
 	var (
 		stateDir  = flag.String("state", defaultStateDir(), "state directory")
@@ -46,51 +76,94 @@ func main() {
 		sessRec   = flag.String("session-record", "", "record hosted sessions as MJPEG videos in this directory")
 		sessProof = flag.Bool("session-proof", false, "validation rigs: run a full two-node session over the mesh on userspace tunnels and exit")
 		proofDir  = flag.String("proof-dir", "/tmp/mnet-session-proof", "artifact directory for -session-proof")
+		service   = flag.String("service", "", "Windows service control: install, remove, run")
 	)
 	flag.Parse()
 	if *showVer {
 		log.Printf("mnetd %s", version.Version)
 		return
 	}
-	if *sessProof {
-		if err := runSessionProof(*server, *network, *authKey, *proofDir, *verbose); err != nil {
-			log.Fatalf("mnetd session-proof: %v", err)
+	o := options{
+		stateDir:      *stateDir,
+		ifname:        *ifname,
+		verbose:       *verbose,
+		up:            *up,
+		fakeTun:       *fakeTun,
+		selfTest:      *selfTest,
+		server:        *server,
+		network:       *network,
+		name:          *name,
+		authKey:       *authKey,
+		advExit:       *advExit,
+		advRoutes:     *advRoutes,
+		useExit:       *useExit,
+		sessHost:      *sessHost,
+		sessAuto:      *sessAuto,
+		sessAllow:     *sessAllow,
+		sessRec:       *sessRec,
+		sessProof:     *sessProof,
+		proofDir:      *proofDir,
+		serviceAction: *service,
+	}
+	if err := dispatch(o); err != nil {
+		log.Fatalf("mnetd: %v", err)
+	}
+}
+
+// dispatch routes the run: explicit service control, an implicit
+// Windows service session, or the console daemon.
+func dispatch(o options) error {
+	if o.serviceAction != "" {
+		return runServiceAction(o)
+	}
+	if isServiceSession() {
+		return runAsService(o)
+	}
+	return runDaemon(o, nil)
+}
+
+// runDaemon boots the daemon and blocks until SIGINT/SIGTERM or, when
+// stop is non-nil (the Windows service manager), until stop closes.
+func runDaemon(o options, stop <-chan struct{}) error {
+	if o.sessProof {
+		if err := runSessionProof(o.server, o.network, o.authKey, o.proofDir, o.verbose); err != nil {
+			return err
 		}
-		return
+		return nil
 	}
 
 	var d *daemon.Daemon
 	var err error
 	var got chan []byte
 	var ct *tuntest.ChannelTUN
-	if *fakeTun {
-		d, ct, got, err = selfTestDaemon(*stateDir, *verbose)
+	if o.fakeTun {
+		d, ct, got, err = selfTestDaemon(o.stateDir, o.verbose)
 	} else {
-		d, err = daemon.New(daemon.Config{StateDir: *stateDir, IfName: *ifname, Verbose: *verbose, ManagedIface: true})
+		d, err = daemon.New(daemon.Config{StateDir: o.stateDir, IfName: o.ifname, Verbose: o.verbose, ManagedIface: true})
 	}
 	if err != nil {
-		log.Fatalf("mnetd: %v", err)
+		return err
 	}
 
-	if *selfTest != "" {
-		if err := runSelfTest(d, ct, got, *server, *network, *name, *authKey, *selfTest); err != nil {
-			log.Fatalf("mnetd self-test: %v", err)
+	if o.selfTest != "" {
+		if err := runSelfTest(d, ct, got, o.server, o.network, o.name, o.authKey, o.selfTest); err != nil {
+			return err
 		}
-		return
+		return nil
 	}
 
-	if *advExit || *advRoutes != "" || *useExit != "" {
+	if o.advExit || o.advRoutes != "" || o.useExit != "" {
 		var routes []string
-		if *advRoutes != "" {
-			routes = strings.Split(*advRoutes, ",")
+		if o.advRoutes != "" {
+			routes = strings.Split(o.advRoutes, ",")
 		}
-		if err := d.SetRouting(*advExit, routes, *useExit); err != nil {
+		if err := d.SetRouting(o.advExit, routes, o.useExit); err != nil {
 			log.Printf("mnetd: routing: %v", err)
 		}
 	}
-	if *up {
+	if o.up {
 		go func() {
-			if err := d.Up(*server, *network, *name, *authKey); err != nil {
+			if err := d.Up(o.server, o.network, o.name, o.authKey); err != nil {
 				log.Printf("mnetd: up: %v", err)
 			}
 		}()
@@ -98,23 +171,31 @@ func main() {
 
 	go func() {
 		if err := d.ServeLocalAPI(); err != nil {
-			log.Fatalf("mnetd: local api: %v", err)
+			log.Printf("mnetd: local api: %v", err)
 		}
 	}()
-	if *sessHost {
+	if o.sessHost {
 		allow := map[string]bool{}
-		for _, n := range strings.Split(*sessAllow, ",") {
+		for _, n := range strings.Split(o.sessAllow, ",") {
 			if n = strings.TrimSpace(n); n != "" {
 				allow[n] = true
 			}
 		}
-		go runSessionHost(d, *stateDir, *sessAuto, allow, *sessRec)
+		go runSessionHost(d, o.stateDir, o.sessAuto, allow, o.sessRec)
 	}
-	log.Printf("mnetd %s ready (state: %s)", version.Version, *stateDir)
+	log.Printf("mnetd %s ready (state: %s)", version.Version, o.stateDir)
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	<-sig
+	if stop != nil {
+		select {
+		case <-sig:
+		case <-stop:
+		}
+	} else {
+		<-sig
+	}
 	log.Printf("mnetd: shutting down")
 	d.Down()
+	return nil
 }
