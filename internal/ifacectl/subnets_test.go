@@ -41,7 +41,7 @@ func TestSubnetOwnerAddsWithdrawsAndCloses(t *testing.T) {
 	if err := r.Close(); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"-4 route add 10.9.0.0/24 dev mnet0 proto 186 metric 1234567", "-4 route del 10.9.0.0/24 dev mnet0 proto 186 metric 1234567", "-4 route add 10.10.0.0/24 dev mnet0 proto 186 metric 1234567", "-4 route del 10.10.0.0/24 dev mnet0 proto 186 metric 1234567"}
+	want := []string{"-4 route add 10.9.0.0/24 dev mnet0 proto 242 metric 1234567", "-4 route del 10.9.0.0/24 dev mnet0 proto 242 metric 1234567", "-4 route add 10.10.0.0/24 dev mnet0 proto 242 metric 1234567", "-4 route del 10.10.0.0/24 dev mnet0 proto 242 metric 1234567"}
 	if !slices.Equal(*changes, want) {
 		t.Fatalf("%v", *changes)
 	}
@@ -82,7 +82,7 @@ func TestSubnetOwnerDoesNotDeleteReplacement(t *testing.T) {
 		if slices.Contains(args, "-j") {
 			return json.Marshal([]routeEntry{{Dst: "10.9.0.0/24", Dev: "eth0", Metric: 55, Protocol: "static"}})
 		}
-		if !slices.Contains(args, r.metric) || !slices.Contains(args, "186") {
+		if !slices.Contains(args, r.metric) || !slices.Contains(args, "242") {
 			t.Fatal("unscoped delete")
 		}
 		return nil, fmt.Errorf("owned route gone")

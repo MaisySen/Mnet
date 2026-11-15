@@ -39,7 +39,7 @@ func NewSubnetRoutes(iface string) *SubnetRoutes {
 }
 
 func (r *SubnetRoutes) change(action, prefix string) error {
-	out, err := r.command("-4", "route", action, prefix, "dev", r.iface, "proto", "186", "metric", r.metric)
+	out, err := r.command("-4", "route", action, prefix, "dev", r.iface, "proto", "242", "metric", r.metric)
 	if err != nil {
 		return fmt.Errorf("subnet route %s %s: %w: %s", action, prefix, err, out)
 	}
@@ -101,7 +101,7 @@ func (r *SubnetRoutes) Sync(prefixes []string) error {
 			delete(r.owned, prefix)
 		}
 	}
-	raw, err := r.command("-4", "-j", "route", "show", "table", "main")
+	raw, err := r.command("-N", "-4", "-j", "route", "show", "table", "main")
 	if err != nil {
 		return fmt.Errorf("inspect subnet routes: %w: %s", err, raw)
 	}
@@ -155,7 +155,7 @@ func (r *SubnetRoutes) Sync(prefixes []string) error {
 }
 
 func (r *SubnetRoutes) ownedPresent(prefix string) (bool, error) {
-	raw, err := r.command("-4", "-j", "route", "show", "table", "main", "exact", prefix)
+	raw, err := r.command("-N", "-4", "-j", "route", "show", "table", "main", "exact", prefix)
 	if err != nil {
 		return false, err
 	}
@@ -165,7 +165,7 @@ func (r *SubnetRoutes) ownedPresent(prefix string) (bool, error) {
 	}
 	metric, _ := strconv.ParseUint(r.metric, 10, 32)
 	for _, entry := range entries {
-		if entry.Dev == r.iface && entry.Metric == uint32(metric) && fmt.Sprint(entry.Protocol) == "186" {
+		if entry.Dev == r.iface && entry.Metric == uint32(metric) && fmt.Sprint(entry.Protocol) == "242" {
 			return true, nil
 		}
 	}

@@ -200,9 +200,14 @@ print(json.dumps(k))
             raise RuntimeError('kernel mesh ping failed')
         print('PASS actual kernel TUN addresses/routes and encrypted mesh ping', flush=True)
         def subnet_ready():
-            routes = json.loads(run('ip', '-n', spaces['a'], '-j', 'route', 'show', 'exact', '10.9.0.0/24'))
-            return any(r.get('dev') == 'mnet0' and str(r.get('protocol')) == '186' for r in routes)
-        wait_for(subnet_ready, 'owned advertised subnet OS route')
+            routes = json.loads(run('ip', '-n', spaces['a'], '-N', '-j', 'route', 'show', 'exact', '10.9.0.0/24'))
+            return any(r.get('dev') == 'mnet0' and str(r.get('protocol')) == '242' for r in routes)
+        try:
+            wait_for(subnet_ready, 'owned advertised subnet OS route')
+        except RuntimeError:
+            print('subnet route diagnostics: ' + run('ip', '-n', spaces['a'], '-N', '-j', 'route', 'show'), flush=True)
+            print('subnet daemon error: ' + str(local_api(states['a']).get('last_error')), flush=True)
+            raise
         run(*ns('a', 'ping', '-c', '2', '-W', '2', '10.9.0.1'))
         print('PASS advertised subnet has owned OS route and reaches peer loopback over VPN', flush=True)
         # Keep emitting application packets while the selector probes. An
@@ -233,7 +238,7 @@ print(json.dumps(k))
                 if any(link['ifname'] == 'mnet0' for link in links):
                     raise RuntimeError('kernel TUN survived lifecycle Down')
                 if x == 'a':
-                    routes = json.loads(run('ip', '-n', spaces[x], '-j', 'route', 'show'))
+                    routes = json.loads(run('ip', '-n', spaces[x], '-N', '-j', 'route', 'show'))
                     if any(r.get('dst') == '10.9.0.0/24' for r in routes):
                         raise RuntimeError('owned subnet route survived Down')
                     if not any(r.get('dst') == '10.8.0.0/24' and r.get('dev') == 'eth0' for r in routes):
@@ -289,10 +294,10 @@ print(json.dumps(k))
             links = json.loads(run('ip', '-n', spaces[x], '-j', 'link', 'show'))
             if any(link['ifname'] == 'mnet0' for link in links):
                 raise RuntimeError('kernel interface survived Down')
-            routes = json.loads(run('ip', '-n', spaces[x], '-j', 'route', 'show'))
+            routes = json.loads(run('ip', '-n', spaces[x], '-N', '-j', 'route', 'show'))
             if any(r.get('dst') in ['100.64.0.0/10', '10.9.0.0/24'] for r in routes):
                 raise RuntimeError('mesh route survived Down')
-        routes = json.loads(run('ip', '-n', spaces['a'], '-j', 'route', 'show'))
+        routes = json.loads(run('ip', '-n', spaces['a'], '-N', '-j', 'route', 'show'))
         if not any(r.get('dst') == '10.8.0.0/24' and r.get('dev') == 'eth0' for r in routes):
             raise RuntimeError('unrelated route removed at final teardown')
         print('PASS Down removes actual TUN/mesh/owned subnet routes and preserves unrelated route', flush=True)
