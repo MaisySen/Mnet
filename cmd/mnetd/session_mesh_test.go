@@ -2,12 +2,21 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
+	"github.com/gorilla/websocket"
+	"golang.zx2c4.com/wireguard/tun"
 	"net"
+	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -43,12 +52,79 @@ func TestMeshFileStress(t *testing.T) {
 	httpServer.Config.Handler = server.Handler()
 	httpServer.Start()
 	defer httpServer.Close()
-	host, err := newProofNode(dir, "host", httpServer.URL, "stress", "stress-host", key.Key, false)
+	baseURL := httpServer.URL
+	lossMode := os.Getenv("MNET_MESH_LOSS")
+	if lossMode != "" {
+		target, _ := url.Parse(httpServer.URL)
+		proxy := httputil.NewSingleHostReverseProxy(target)
+		var largePackets atomic.Int64
+		var dropUntil atomic.Int64
+		lossProxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/relay/ws" {
+				proxy.ServeHTTP(w, r)
+				return
+			}
+			upstream, _, e := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(httpServer.URL, "http")+r.URL.RequestURI(), nil)
+			if e != nil {
+				http.Error(w, "relay unavailable", 502)
+				return
+			}
+			downstream, e := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+			if e != nil {
+				upstream.Close()
+				return
+			}
+			defer downstream.Close()
+			defer upstream.Close()
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				defer downstream.Close()
+				for {
+					mt, b, e := upstream.ReadMessage()
+					if e != nil {
+						return
+					}
+					if downstream.WriteMessage(mt, b) != nil {
+						return
+					}
+				}
+			}()
+			for {
+				mt, b, e := downstream.ReadMessage()
+				if e != nil {
+					break
+				}
+				// One controlled encrypted data-datagram loss, never payload inspection.
+				if mt == websocket.BinaryMessage && len(b) > 1000 && binary.LittleEndian.Uint32(b[32:36]) == 4 && func() bool {
+					n := largePackets.Add(1)
+					if n == 5 {
+						dropUntil.Store(time.Now().Add(20 * time.Millisecond).UnixNano())
+						return true
+					}
+					return lossMode == "burst" && time.Now().UnixNano() < dropUntil.Load()
+				}() {
+					t.Log("injected large WireGuard datagram loss")
+					continue
+				}
+				if upstream.WriteMessage(mt, b) != nil {
+					break
+				}
+			}
+			upstream.Close()
+			wg.Wait()
+		}))
+		defer lossProxy.Close()
+		baseURL = lossProxy.URL
+	}
+
+	host, err := newProofNodeWithTUN(dir, "host", baseURL, "stress", "stress-host", key.Key, false, traceTUN(t, "host"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer host.d.Down()
-	viewer, err := newProofNode(dir, "viewer", httpServer.URL, "stress", "stress-viewer", key.Key, false)
+	viewer, err := newProofNodeWithTUN(dir, "viewer", baseURL, "stress", "stress-viewer", key.Key, false, traceTUN(t, "viewer"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,4 +193,64 @@ func TestMeshFileStress(t *testing.T) {
 			t.Fatalf("transfer %d mismatched: %v", i, err)
 		}
 	}
+}
+
+// Packet metadata only: retain no IP addresses or application bytes.
+type diagnosticTUN struct {
+	tun.Device
+	mu     sync.Mutex
+	events []string
+	name   string
+	next   uint64
+}
+
+func traceTUN(t *testing.T, name string) func(tun.Device) tun.Device {
+	return func(d tun.Device) tun.Device {
+		if os.Getenv("MNET_PACKET_TRACE") != "1" {
+			return d
+		}
+		dt := &diagnosticTUN{Device: d, name: name, events: make([]string, 512)}
+		t.Cleanup(func() {
+			if t.Failed() {
+				dt.mu.Lock()
+				defer dt.mu.Unlock()
+				start := uint64(0)
+				if dt.next > 512 {
+					start = dt.next - 512
+				}
+				for i := start; i < dt.next; i++ {
+					t.Log(dt.events[i%512])
+				}
+			}
+		})
+		return dt
+	}
+}
+func (d *diagnosticTUN) record(direction string, p []byte) {
+	if len(p) < 40 || p[0]>>4 != 4 || p[9] != 6 {
+		return
+	}
+	h := int(p[0]&15) * 4
+	if len(p) < h+20 {
+		return
+	}
+	tcp := p[h:]
+	hdr := int(tcp[12]>>4) * 4
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.events[d.next%512] = fmt.Sprintf("%s %s at=%s seq=%d ack=%d flags=%02x bytes=%d", d.name, direction, time.Now().Format(time.RFC3339Nano), binary.BigEndian.Uint32(tcp[4:8]), binary.BigEndian.Uint32(tcp[8:12]), tcp[13], len(tcp)-hdr)
+	d.next++
+}
+func (d *diagnosticTUN) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
+	n, e := d.Device.Read(bufs, sizes, offset)
+	for i := 0; i < n; i++ {
+		d.record("out", bufs[i][offset:offset+sizes[i]])
+	}
+	return n, e
+}
+func (d *diagnosticTUN) Write(bufs [][]byte, offset int) (int, error) {
+	for _, b := range bufs {
+		d.record("in", b[offset:])
+	}
+	return d.Device.Write(bufs, offset)
 }

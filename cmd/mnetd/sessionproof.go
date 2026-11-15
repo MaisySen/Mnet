@@ -28,6 +28,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.zx2c4.com/wireguard/tun"
 	"golang.zx2c4.com/wireguard/tun/netstack"
 
 	"fintex.au/mnet/internal/daemon"
@@ -45,6 +46,10 @@ type proofNodeT struct {
 // proofNode joins the network, learns the assigned address, then comes
 // up on a userspace netstack tunnel bound to exactly that address.
 func newProofNode(dir, sub, server, network, name, key string, verbose bool) (*proofNodeT, error) {
+	return newProofNodeWithTUN(dir, sub, server, network, name, key, verbose, nil)
+}
+
+func newProofNodeWithTUN(dir, sub, server, network, name, key string, verbose bool, wrap func(tun.Device) tun.Device) (*proofNodeT, error) {
 	d, err := daemon.New(daemon.Config{
 		StateDir:     filepath.Join(dir, sub+"-state"),
 		Verbose:      verbose,
@@ -64,6 +69,9 @@ func newProofNode(dir, sub, server, network, name, key string, verbose bool) (*p
 	dev, tnet, err := netstack.CreateNetTUN([]netip.Addr{ip}, nil, 1420)
 	if err != nil {
 		return nil, fmt.Errorf("%s netstack: %w", name, err)
+	}
+	if wrap != nil {
+		dev = wrap(dev)
 	}
 	if err := d.SetTUN(dev); err != nil {
 		return nil, err
