@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"time"
 
+	"fintex.au/mnet/internal/localapi"
 	"fintex.au/mnet/internal/version"
 )
 
@@ -71,6 +72,11 @@ func (d *Daemon) ServeLocalAPIContext(ctx context.Context, ready chan<- error) e
 			ready <- err
 		}
 	}
+	token, err := localapi.EnsureToken(d.cfg.StateDir)
+	if err != nil {
+		notify(err)
+		return err
+	}
 	network, addr := SocketPath(d.cfg.StateDir)
 	if network == "unix" {
 		os.Remove(addr)
@@ -107,7 +113,10 @@ func (d *Daemon) ServeLocalAPIContext(ctx context.Context, ready chan<- error) e
 			AdvertiseRoutes []string `json:"advertise_routes"`
 			UseExitNode     string   `json:"exit_node"`
 		}
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+			http.Error(w, "invalid request JSON", http.StatusBadRequest)
+			return
+		}
 		go func() {
 			if req.AdvertiseExit || len(req.AdvertiseRoutes) > 0 || req.UseExitNode != "" {
 				if err := d.SetRouting(req.AdvertiseExit, req.AdvertiseRoutes, req.UseExitNode); err != nil {
@@ -131,7 +140,7 @@ func (d *Daemon) ServeLocalAPIContext(ctx context.Context, ready chan<- error) e
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "down"})
 	})
-	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
+	server := &http.Server{Handler: localapi.RequireToken(token, mux), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 	stopped := make(chan struct{})
 	defer close(stopped)
 	go func() {

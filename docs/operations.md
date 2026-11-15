@@ -299,3 +299,21 @@ by the control plane; online updated clients apply a new map, and natural
 expiry is reevaluated during map polling (up to the poll interval). This
 is not per-packet application-port enforcement. Existing ACLs operate at
 peer-pair and advertised-route visibility level.
+
+
+### Local daemon API authentication
+
+The daemon's local control API requires a random capability stored as
+`local-api-token` in its state directory. The CLI reads it from the same
+`--state` directory and supplies it in a request header. Reads are protected
+as well as up/down controls; browser-origin requests are rejected. The CLI
+does not follow API redirects or send this credential to arbitrary hosts.
+Malformed or oversized up requests fail before starting work.
+
+Unix sockets still use owner-only permissions. Windows uses loopback TCP
+plus the capability, so the state directory must have an administrator/
+SYSTEM-only Windows ACL as described above; Unix mode bits do not set a
+Windows ACL. This needs real-machine Windows verification. Existing CLI
+and daemon binaries must be updated together for capability authentication.
+Do not put the token in browser pages, command arguments or logs. This
+follow-up is newer than the 0.8.0-test.1 artifacts.

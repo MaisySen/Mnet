@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"fintex.au/mnet/internal/daemon"
+	"fintex.au/mnet/internal/localapi"
 	"fintex.au/mnet/internal/version"
 )
 
@@ -28,17 +29,11 @@ func defaultStateDir() string {
 
 func client(stateDir string) *http.Client {
 	network, addr := daemon.SocketPath(stateDir)
-	if network == "tcp" {
-		return &http.Client{Timeout: 10 * time.Second}
+	var base http.RoundTripper = http.DefaultTransport
+	if network == "unix" {
+		base = &http.Transport{Dial: func(_, _ string) (net.Conn, error) { return net.Dial("unix", addr) }}
 	}
-	return &http.Client{
-		Timeout: 10 * time.Second,
-		Transport: &http.Transport{
-			Dial: func(_, _ string) (net.Conn, error) {
-				return net.Dial("unix", addr)
-			},
-		},
-	}
+	return &http.Client{Timeout: 10 * time.Second, Transport: localapi.Transport{StateDir: stateDir, Base: base}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
 
 func apiBase() string {
@@ -96,6 +91,7 @@ func main() {
 		b, _ := json.Marshal(upFlags)
 		r, err := hc.Post(apiBase()+"/localapi/up", "application/json", bytes.NewReader(b))
 		must(err)
+		checkResponse(r)
 		r.Body.Close()
 		fmt.Println("starting up - watch `mnet status`")
 		// Give it a beat, then surface an approval link if there is one.
@@ -108,6 +104,7 @@ func main() {
 	case "down":
 		r, err := hc.Post(apiBase()+"/localapi/down", "application/json", nil)
 		must(err)
+		checkResponse(r)
 		r.Body.Close()
 		fmt.Println("down")
 	case "status":
@@ -163,6 +160,7 @@ func status(hc *http.Client) *daemon.Status {
 	r, err := hc.Get(apiBase() + "/localapi/status")
 	must(err)
 	defer r.Body.Close()
+	checkResponse(r)
 	var st daemon.Status
 	must(json.NewDecoder(r.Body).Decode(&st))
 	return &st
@@ -225,4 +223,10 @@ func must(err error) {
 func fatal(msg string) {
 	fmt.Fprintln(os.Stderr, "mnet: "+msg)
 	os.Exit(1)
+}
+
+func checkResponse(r *http.Response) {
+	if r.StatusCode < 200 || r.StatusCode >= 300 {
+		fatal(fmt.Sprintf("daemon request failed: HTTP %d", r.StatusCode))
+	}
 }

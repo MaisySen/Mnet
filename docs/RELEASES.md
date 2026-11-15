@@ -8,6 +8,13 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- Local daemon controls now require a state-directory capability, including
+  status reads; browser-origin requests are rejected. The CLI supplies it
+  only to the local endpoint and refuses redirects. Malformed/oversized
+  controls fail before launch. New CLI/daemon must be updated together;
+  this source follow-up is newer than 0.8.0-test.1 downloads. Windows
+  state-directory ACL and live-machine validation are still required.
+
 - Relay forwarding is network-scoped and rechecks approval, expiry and
   pair-level ACL on every packet; expiration detaches current sockets.
   Expired nodes disappear from new peer maps. Updated daemons now remove
