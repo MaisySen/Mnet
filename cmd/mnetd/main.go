@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"golang.zx2c4.com/wireguard/tun/tuntest"
+
 	"fintex.au/mnet/internal/daemon"
 	"fintex.au/mnet/internal/version"
 )
@@ -28,6 +30,8 @@ func main() {
 		verbose  = flag.Bool("verbose", false, "verbose wireguard logging")
 		showVer  = flag.Bool("version", false, "print version and exit")
 		up       = flag.Bool("up", false, "join immediately using saved state or the flags below")
+		fakeTun  = flag.Bool("fake-tun", false, "validation rigs: in-memory TUN, no root needed")
+		selfTest = flag.String("self-test", "", "validation rigs: ping this peer mesh IP and exit")
 		server   = flag.String("server", "", "control plane URL, needed on first join")
 		network  = flag.String("network", "", "network to join, needed on first join")
 		name     = flag.String("name", "", "node name (default: hostname)")
@@ -39,9 +43,24 @@ func main() {
 		return
 	}
 
-	d, err := daemon.New(daemon.Config{StateDir: *stateDir, IfName: *ifname, Verbose: *verbose})
+	var d *daemon.Daemon
+	var err error
+	var got chan []byte
+	var ct *tuntest.ChannelTUN
+	if *fakeTun {
+		d, ct, got, err = selfTestDaemon(*stateDir, *verbose)
+	} else {
+		d, err = daemon.New(daemon.Config{StateDir: *stateDir, IfName: *ifname, Verbose: *verbose, ManagedIface: true})
+	}
 	if err != nil {
 		log.Fatalf("mnetd: %v", err)
+	}
+
+	if *selfTest != "" {
+		if err := runSelfTest(d, ct, got, *server, *network, *name, *authKey, *selfTest); err != nil {
+			log.Fatalf("mnetd self-test: %v", err)
+		}
+		return
 	}
 
 	if *up {

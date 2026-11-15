@@ -7,3 +7,7 @@ multies-control.json
 mnet-control.json
 *.tmp
 .env
+/mobile/*.aar
+/mobile/*-sources.jar
+/android/out/
+/android/debug.keystore

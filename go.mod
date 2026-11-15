@@ -10,6 +10,7 @@ require (
 )
 
 require (
+	golang.org/x/mobile v0.0.0-20261011034528-197770444867 // indirect
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect

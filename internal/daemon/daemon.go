@@ -33,6 +33,14 @@ type Config struct {
 	StateDir string
 	IfName   string // TUN name, default mnet0
 	Verbose  bool
+
+	// TUN, when set, is used instead of creating one: mobile VPN APIs
+	// hand us an already established tunnel device. The daemon takes
+	// ownership and closes it on Down.
+	TUN tun.Device
+	// ManagedIface says the daemon configures the OS interface itself.
+	// Mobile platforms configure it through their VPN APIs instead.
+	ManagedIface bool
 }
 
 // Daemon is the running node.
@@ -156,11 +164,13 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 		return fmt.Errorf("first map: %w", err)
 	}
 	d.lastMap = m
-	if err := ifacectl.Configure(d.cfg.IfName, m.Self.IPv4, MTU); err != nil {
-		d.stopDevice()
-		d.setDown()
-		cancel()
-		return fmt.Errorf("configure interface: %w (need root or admin?)", err)
+	if d.cfg.ManagedIface {
+		if err := ifacectl.Configure(d.cfg.IfName, m.Self.IPv4, MTU); err != nil {
+			d.stopDevice()
+			d.setDown()
+			cancel()
+			return fmt.Errorf("configure interface: %w (need root or admin?)", err)
+		}
 	}
 	d.applyMap(m)
 
@@ -230,9 +240,13 @@ func (d *Daemon) startDevice() error {
 	if err != nil {
 		return err
 	}
-	t, err := tun.CreateTUN(d.cfg.IfName, MTU)
-	if err != nil {
-		return fmt.Errorf("create tun: %w (need root or admin, and wintun.dll on Windows)", err)
+	t := d.cfg.TUN
+	if t == nil {
+		var err error
+		t, err = tun.CreateTUN(d.cfg.IfName, MTU)
+		if err != nil {
+			return fmt.Errorf("create tun: %w (need root or admin, and wintun.dll on Windows)", err)
+		}
 	}
 	b := bind.New()
 	level := device.LogLevelError

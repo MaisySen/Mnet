@@ -117,3 +117,26 @@ Wales, Australia. Contact: contact@fintex.au.
 - The relay forwards frames as opaque datagrams and cannot read WireGuard payloads; privacy
   depends on WireGuard end-to-end encryption, not on relay trust.
 - Windows clients need `wintun.dll` beside `mnetd.exe` (see below).
+
+## Mobile
+
+- **Android**: `android/` holds a complete app (VpnService, join form, live
+  status, `au.fintex.mnet`). `android/build.sh` produces a signed
+  `android/out/mnet.apk` without Gradle; the gomobile core is
+  `mobile/mnet.aar`. Install with `adb install android/out/mnet.apk`.
+- **iOS**: `ios/` holds the SwiftUI app and the NetworkExtension packet
+  tunnel provider, plus `ios/build-go.sh`. The xcframework build and
+  signing need macOS, Xcode and an Apple Developer account; details and
+  the exact remaining steps are in `ios/README.md`.
+
+Both apps share the Go node engine through the `mobile` package:
+`Prepare` joins and returns the assigned mesh address, the OS builds the
+tunnel interface, then `Start` (Android fd) or `StartFlow` (iOS
+PacketFlow) brings the mesh up on it.
+
+## Validation
+
+- Full unit and end-to-end suite: `go test ./...`
+- Public smoke test: `scripts/public-validation.sh` deploys mnet-control
+  behind a public tunnel, joins two real daemons over the public URL and
+  exchanges encrypted traffic both directions.

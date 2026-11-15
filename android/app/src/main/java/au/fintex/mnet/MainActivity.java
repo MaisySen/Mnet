@@ -1,0 +1,181 @@
+package au.fintex.mnet;
+
+import android.app.Activity;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.net.VpnService;
+import android.os.Bundle;
+import android.view.Gravity;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+// MainActivity collects the join details, asks for VPN consent, and
+// shows live mesh status pushed by MnetVpnService.
+public class MainActivity extends Activity {
+
+    private EditText server, network, authKey, name;
+    private Button toggle;
+    private TextView status;
+    private boolean connected;
+
+    private final BroadcastReceiver statusReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context ctx, Intent intent) {
+            String json = intent.getStringExtra(MnetVpnService.EXTRA_STATUS);
+            if (json != null) {
+                render(json);
+            }
+        }
+    };
+
+    @Override
+    protected void onCreate(Bundle saved) {
+        super.onCreate(saved);
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        int pad = dp(20);
+        root.setPadding(pad, pad, pad, pad);
+
+        TextView title = new TextView(this);
+        title.setText(R.string.app_name);
+        title.setTextSize(28);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setTextColor(Color.rgb(0x0B, 0x3D, 0x91));
+        root.addView(title);
+
+        server = field(root, R.string.server_hint);
+        network = field(root, R.string.network_hint);
+        authKey = field(root, R.string.authkey_hint);
+        name = field(root, R.string.name_hint);
+
+        SharedPreferences prefs = getSharedPreferences("mnet", MODE_PRIVATE);
+        server.setText(prefs.getString("server", ""));
+        network.setText(prefs.getString("network", ""));
+        authKey.setText(prefs.getString("authkey", ""));
+        name.setText(prefs.getString("name", android.os.Build.MODEL));
+
+        toggle = new Button(this);
+        toggle.setText(R.string.connect);
+        toggle.setOnClickListener(v -> onToggle());
+        root.addView(toggle);
+
+        ScrollView scroll = new ScrollView(this);
+        status = new TextView(this);
+        status.setTypeface(Typeface.MONOSPACE);
+        status.setTextSize(12);
+        status.setPadding(0, pad, 0, 0);
+        status.setText("Disconnected. Enter your control server and network, then Connect.");
+        scroll.addView(status);
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+        root.addView(scroll, sp);
+
+        setContentView(root);
+    }
+
+    private EditText field(LinearLayout root, int hint) {
+        EditText e = new EditText(this);
+        e.setHint(hint);
+        e.setSingleLine(true);
+        root.addView(e);
+        return e;
+    }
+
+    private void onToggle() {
+        if (connected) {
+            startService(new Intent(this, MnetVpnService.class).setAction("disconnect"));
+            connected = false;
+            toggle.setText(R.string.connect);
+            return;
+        }
+        SharedPreferences.Editor ed = getSharedPreferences("mnet", MODE_PRIVATE).edit();
+        ed.putString("server", server.getText().toString().trim());
+        ed.putString("network", network.getText().toString().trim());
+        ed.putString("authkey", authKey.getText().toString().trim());
+        ed.putString("name", name.getText().toString().trim());
+        ed.apply();
+
+        Intent consent = VpnService.prepare(this);
+        if (consent != null) {
+            startActivityForResult(consent, 1);
+        } else {
+            onActivityResult(1, RESULT_OK, null);
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        if (req == 1 && res == RESULT_OK) {
+            connected = true;
+            toggle.setText(R.string.disconnect);
+            status.setText("Joining...");
+            startService(new Intent(this, MnetVpnService.class));
+        }
+    }
+
+    private void render(String json) {
+        try {
+            JSONObject st = new JSONObject(json);
+            String state = st.optString("status");
+            StringBuilder sb = new StringBuilder();
+            sb.append("State: ").append(state).append('\n');
+            if (!st.optString("ipv4").isEmpty()) {
+                sb.append("Mesh IP: ").append(st.optString("ipv4")).append('\n');
+            }
+            if (!st.optString("approval_url").isEmpty()) {
+                sb.append("Approve this device:\n").append(st.optString("approval_url")).append('\n');
+            }
+            if (!st.optString("last_error").isEmpty()) {
+                sb.append("Error: ").append(st.optString("last_error")).append('\n');
+            }
+            JSONArray peers = st.optJSONArray("peers");
+            if (peers != null && peers.length() > 0) {
+                sb.append("\nPeers:\n");
+                for (int i = 0; i < peers.length(); i++) {
+                    JSONObject p = peers.getJSONObject(i);
+                    String path = p.optBoolean("relay") ? "relay" : "direct";
+                    sb.append("  ").append(p.optString("name"))
+                            .append("  ").append(p.optString("ipv4"))
+                            .append("  ").append(path)
+                            .append(p.optBoolean("online") ? "" : "  (offline)")
+                            .append('\n');
+                }
+            }
+            status.setText(sb.toString());
+            connected = "up".equals(state) || "joining".equals(state) || "waiting-approval".equals(state);
+            toggle.setText(connected ? R.string.disconnect : R.string.connect);
+        } catch (Exception e) {
+            status.setText(json);
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        IntentFilter f = new IntentFilter(MnetVpnService.ACTION_STATUS);
+        registerReceiver(statusReceiver, f, Context.RECEIVER_NOT_EXPORTED);
+    }
+
+    @Override
+    protected void onPause() {
+        unregisterReceiver(statusReceiver);
+        super.onPause();
+    }
+
+    private int dp(int v) {
+        return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
+    }
+}
