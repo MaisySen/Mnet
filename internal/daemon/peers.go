@@ -144,7 +144,7 @@ func (d *Daemon) mapLoop(ctx context.Context) {
 		if d.lastMap != nil {
 			since = d.lastMap.Version
 		}
-		m, err := d.cc.WaitMap(ctx, since)
+		m, err := d.client().WaitMap(ctx, since)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -181,7 +181,7 @@ func (d *Daemon) endpointLoop(ctx context.Context) {
 }
 
 func (d *Daemon) discoverEndpoints() {
-	if d.bind == nil || d.cc == nil {
+	if d.bind == nil || d.client() == nil {
 		return
 	}
 	port := int(d.bind.Port())
@@ -222,7 +222,7 @@ func (d *Daemon) discoverEndpoints() {
 	for e := range eps {
 		out = append(out, e)
 	}
-	if err := d.cc.ReportEndpoints(context.Background(), out); err != nil {
+	if err := d.client().ReportEndpoints(context.Background(), out); err != nil {
 		d.setErr(fmt.Errorf("report endpoints: %w", err))
 	}
 }
@@ -366,11 +366,11 @@ func (d *Daemon) relayLoop(ctx context.Context) {
 			return
 		default:
 		}
-		if d.dev == nil || d.cc == nil {
+		if d.dev == nil || d.client() == nil {
 			time.Sleep(time.Second)
 			continue
 		}
-		r, err := d.cc.DialRelay(ctx, d.state.PublicKey, d.bind.Inject)
+		r, err := d.client().DialRelay(ctx, d.state.PublicKey, d.bind.Inject)
 		if err != nil {
 			if errors.Is(err, controlclient.ErrUnauthorized) {
 				d.rejoin(ctx)

@@ -98,4 +98,3 @@ func TestDaemonRejoinsAfterNodeDelete(t *testing.T) {
 	}
 	t.Fatal("daemon did not re-join within 30s")
 }
-

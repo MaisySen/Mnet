@@ -50,6 +50,10 @@ type Daemon struct {
 
 	mu     sync.Mutex
 	status string // down, joining, waiting-approval, up
+	// joinMu serializes join and rejoin: the control-plane identity
+	// (node id, token, auth key, control client) swaps as one step,
+	// never concurrently from two loops.
+	joinMu sync.Mutex
 	dev    *device.Device
 	tun    tun.Device
 	bind   *bind.Bind
@@ -235,6 +239,13 @@ func (d *Daemon) postJoin(ctx context.Context, authKey string) (*netmap.JoinResp
 }
 
 func (d *Daemon) join(ctx context.Context, authKey string) error {
+	d.joinMu.Lock()
+	defer d.joinMu.Unlock()
+	return d.joinLocked(ctx, authKey)
+}
+
+// joinLocked joins with joinMu already held (rejoin's path).
+func (d *Daemon) joinLocked(ctx context.Context, authKey string) error {
 	resp, err := d.postJoin(ctx, authKey)
 	if err != nil && authKey != "" && d.state.NodeID != "" {
 		// One-time auth keys are consumed by the first join (Prepare on
@@ -286,9 +297,19 @@ func (d *Daemon) join(ctx context.Context, authKey string) error {
 	}
 }
 
+// client returns the current control-plane client. join swaps it
+// under d.mu, so the loops must read it the same way.
+func (d *Daemon) client() *controlclient.Client {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.cc
+}
+
 // rejoin registers the node again after the control plane forgot it
 // (state wipe on the server, deleted node). Uses the saved auth key.
 func (d *Daemon) rejoin(ctx context.Context) {
+	d.joinMu.Lock()
+	defer d.joinMu.Unlock()
 	if d.state.AuthKey == "" {
 		log.Printf("mnetd: control plane no longer knows this node and no auth key is saved; re-run `mnetd -up -auth-key ...`")
 		time.Sleep(30 * time.Second)
@@ -297,7 +318,7 @@ func (d *Daemon) rejoin(ctx context.Context) {
 	log.Printf("mnetd: control plane no longer knows this node; re-joining")
 	d.state.NodeID = ""
 	d.state.NodeToken = ""
-	if err := d.join(ctx, d.state.AuthKey); err != nil {
+	if err := d.joinLocked(ctx, d.state.AuthKey); err != nil {
 		log.Printf("mnetd: rejoin: %v", err)
 		time.Sleep(10 * time.Second)
 	}
