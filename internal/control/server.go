@@ -65,6 +65,7 @@ func (s *Server) RelayURL() string { return s.relayURL }
 // Handler returns the root HTTP handler.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/", s.handleLanding)
 	mux.HandleFunc("/admin", s.handleDashboardPage)
 	mux.HandleFunc("/join/approve", s.handleApprovePage)

@@ -60,14 +60,27 @@ cd "$ROOT"
 
 "$BT/zipalign" -f 4 "$OUT/mnet-unaligned.apk" "$OUT/mnet-unsigned.apk"
 
-# Debug signing key, generated once per checkout.
-KS="$ROOT/android/debug.keystore"
-if [ ! -f "$KS" ]; then
-    keytool -genkeypair -v -keystore "$KS" -storepass android -keypass android \
-        -alias mnet-debug -keyalg RSA -keysize 2048 -validity 10000 \
-        -dname "CN=Mnet Debug, O=Fintex Australia" >/dev/null 2>&1
+# Signing: release upload key when MNET_RELEASE_KEYSTORE is set, otherwise
+# the per-checkout debug key. The release keystore lives outside the repo
+# (default ~/keystores/mnet-upload.keystore) and its password is read from
+# the file in MNET_RELEASE_PASS_FILE, never hardcoded here.
+if [ -n "$MNET_RELEASE_KEYSTORE" ]; then
+    KS="$MNET_RELEASE_KEYSTORE"
+    ALIAS="${MNET_RELEASE_ALIAS:-mnet-upload}"
+    PASS=$(cat "${MNET_RELEASE_PASS_FILE:?set MNET_RELEASE_PASS_FILE}")
+    PASS_ARG="pass:$PASS"
+else
+    KS="$ROOT/android/debug.keystore"
+    ALIAS="mnet-debug"
+    PASS_ARG="pass:android"
+    if [ ! -f "$KS" ]; then
+        keytool -genkeypair -v -keystore "$KS" -storepass android -keypass android \
+            -alias mnet-debug -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Mnet Debug, O=Fintex Australia" >/dev/null 2>&1
+    fi
 fi
-"$BT/apksigner" sign --ks "$KS" --ks-pass pass:android --key-pass pass:android \
+"$BT/apksigner" sign --ks "$KS" --ks-pass "$PASS_ARG" --key-pass "$PASS_ARG" \
+    --ks-key-alias "$ALIAS" \
     --out "$OUT/mnet.apk" "$OUT/mnet-unsigned.apk"
 "$BT/apksigner" verify --print-certs "$OUT/mnet.apk" | head -2
 

@@ -6,6 +6,12 @@ import (
 	"net/http"
 )
 
+// handleHealthz is the unauthenticated liveness probe for hosting platforms.
+func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	fmt.Fprintln(w, "ok")
+}
+
 func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
