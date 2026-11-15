@@ -30,7 +30,7 @@ public class ViewerActivity extends Activity implements ViewerCallbacks {
     @Override
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
-        String peerIp = getIntent().getStringExtra("peer_ip");
+        peerIp = getIntent().getStringExtra("peer_ip");
         if (peerIp == null) {
             finish();
             return;
@@ -118,6 +118,18 @@ public class ViewerActivity extends Activity implements ViewerCallbacks {
             return true;
         });
 
+        connectWithRetry();
+    }
+
+    // Reconnect state: a dropped session redials with capped backoff
+    // until the user leaves; the host's fresh keyframe restores the
+    // picture without any viewer state.
+    private String peerIp;
+    private final android.os.Handler reconnects = new android.os.Handler(android.os.Looper.getMainLooper());
+    private volatile boolean userClosed;
+    private int retryMs = 1000;
+
+    private void connectWithRetry() {
         new Thread(() -> {
             Node node = MnetVpnService.currentNode();
             if (node == null) {
@@ -126,11 +138,22 @@ public class ViewerActivity extends Activity implements ViewerCallbacks {
             }
             try {
                 viewer = node.connectSession(peerIp, this);
+                retryMs = 1000;
                 appendChat("connected to " + peerIp);
             } catch (Exception e) {
                 appendChat("connect failed: " + e.getMessage());
+                scheduleReconnect();
             }
         }, "session-connect").start();
+    }
+
+    private void scheduleReconnect() {
+        if (userClosed || isFinishing()) {
+            return;
+        }
+        appendChat("reconnecting in " + (retryMs / 1000) + "s...");
+        reconnects.postDelayed(this::connectWithRetry, retryMs);
+        retryMs = Math.min(retryMs * 2, 15000);
     }
 
     @Override
@@ -158,7 +181,11 @@ public class ViewerActivity extends Activity implements ViewerCallbacks {
 
     @Override
     public void onClosed() {
-        appendChat("session ended");
+        if (userClosed) {
+            return;
+        }
+        appendChat("connection lost");
+        scheduleReconnect();
     }
 
     private void appendChat(String s) {
@@ -167,6 +194,8 @@ public class ViewerActivity extends Activity implements ViewerCallbacks {
 
     @Override
     protected void onDestroy() {
+        userClosed = true;
+        reconnects.removeCallbacksAndMessages(null);
         if (viewer != null) {
             try {
                 viewer.close();

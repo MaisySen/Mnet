@@ -51,6 +51,9 @@ Live proofs and the fixes they exposed.
   sides measure the path round trip; hosts with a tuneable capturer
   (the X11 backend) step JPEG quality between 70, 55 and 40 as the
   RTT crosses 120 ms and 250 ms, reviewed every 5 s.
+- Android viewer auto-reconnect: a dropped session redials with
+  capped backoff (1 s to 15 s) until the user leaves, and the host's
+  fresh keyframe restores the picture.
 - CI: GitHub Actions build, vet, race-enabled tests, the secrets
   gate, and the live session proof on every push and PR.
 
