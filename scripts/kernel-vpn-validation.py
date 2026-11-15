@@ -313,7 +313,7 @@ else:
         denied = subprocess.run(ns('a', 'ping', '-c', '1', '-W', '1', '10.9.0.2'), capture_output=True, timeout=3)
         if denied.returncode == 0:
             raise RuntimeError('withdrawn subnet remained reachable')
-        serving_state(False)
+        serving_state(True)
         routes = json.loads(run('ip', '-n', spaces['a'], '-N', '-j', 'route', 'show'))
         if not any(r.get('dst') == '10.8.0.0/24' and r.get('dev') == 'eth0' for r in routes):
             raise RuntimeError('ACL withdrawal removed unrelated route')
