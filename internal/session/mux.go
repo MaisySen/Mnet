@@ -292,9 +292,12 @@ func (m *Mux) RTT() time.Duration { return time.Duration(m.lastRTT.Load()) }
 
 func (m *Mux) Close() error {
 	m.closeMu.Do(func() {
+		// Interrupt any synchronous handshake write before taking wmu.
+		m.conn.Close()
+		m.wmu.Lock()
 		close(m.closed)
 		m.cond.Broadcast()
-		m.conn.Close()
+		m.wmu.Unlock()
 	})
 	return nil
 }
@@ -311,7 +314,12 @@ func (m *Mux) sendJSON(id uint32, typ byte, pri uint8, v any) error {
 // running; during the handshake (before start) frames go straight to
 // the wire under wmu.
 func (m *Mux) send(id uint32, typ byte, pri uint8, payload []byte) error {
-	f := Frame{StreamID: id, Type: typ, Priority: pri, Payload: payload}
+	if len(payload) > maxPayload {
+		return fmt.Errorf("session: payload %d exceeds %d", len(payload), maxPayload)
+	}
+	// send is asynchronous after start. The caller may reuse its buffer
+	// as soon as we return (notably SendFile's chunk buffer).
+	f := Frame{StreamID: id, Type: typ, Priority: pri, Payload: append([]byte(nil), payload...)}
 	select {
 	case <-m.closed:
 		return io.ErrClosedPipe
@@ -319,6 +327,11 @@ func (m *Mux) send(id uint32, typ byte, pri uint8, payload []byte) error {
 	}
 	m.wmu.Lock()
 	defer m.wmu.Unlock()
+	select {
+	case <-m.closed:
+		return io.ErrClosedPipe
+	default:
+	}
 	if !m.started {
 		return writeFrame(m.conn, f)
 	}

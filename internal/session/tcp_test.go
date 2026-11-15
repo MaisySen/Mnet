@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"crypto/rand"
 	"net"
 	"os"
 	"path/filepath"
@@ -76,8 +77,8 @@ func TestSessionOverTCP(t *testing.T) {
 
 	src := filepath.Join(t.TempDir(), "big.bin")
 	content := make([]byte, 3*1024*1024) // 3 MiB: exercises segmentation
-	for i := range content {
-		content[i] = byte(i * 31)
+	if _, err := rand.Read(content); err != nil {
+		t.Fatal(err)
 	}
 	if err := os.WriteFile(src, content, 0o644); err != nil {
 		t.Fatal(err)

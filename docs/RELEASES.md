@@ -8,6 +8,16 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- Queue payload ownership: asynchronous session sends copy caller buffers
+  before returning. A deterministic regression reproduced corruption when
+  SendFile reused its chunk buffer; the TCP test now uses random bytes
+  instead of a repeating pattern that hid this bug. Oversized payloads
+  fail at enqueue time. Mux shutdown wakes its writer under the condition
+  lock and interrupts a blocked handshake before taking that lock.
+- scripts/local-gates.sh fails on the actual command status and retains
+  complete logs. Race tests use explicit -count to bypass cached results.
+  Local gates do not certify live desktop platforms or production scale.
+
 - Android live mesh proof: Firebase Test Lab run (virtual Medium
   Phone, API 36) drove the app to State: up with mesh IP 100.64.0.3
   and a populated peer list against the hosted control plane, on
