@@ -111,9 +111,6 @@ Wales, Australia. Contact: contact@fintex.au.
 
 - The end-to-end mesh test (`go test ./internal/daemon -run TestMeshEndToEnd`) exercises two
   in-process WireGuard devices over a real control server, direct UDP, and the relay hub.
-  It converges in a few seconds on most runs; on a minority of runs a relay leg can take up
-  to the test's 45 s budget and time out. The daemon recovers on its own in real deployments
-  (persistent keepalives plus handshake retries); the in-process test stack is the flaky part.
 - The relay forwards frames as opaque datagrams and cannot read WireGuard payloads; privacy
   depends on WireGuard end-to-end encryption, not on relay trust.
 - Windows clients need `wintun.dll` beside `mnetd.exe` (see below).
