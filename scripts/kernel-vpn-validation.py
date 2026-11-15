@@ -185,7 +185,7 @@ print(json.dumps(k))
         run(*ns('b', sys.executable, '-c', "from pathlib import Path; Path('/proc/sys/net/ipv4/ip_forward').write_text('1')"))
         preserved_nat = ['-t', 'nat', '-A', 'POSTROUTING', '-s', '192.0.2.0/24', '-m', 'comment', '--comment', 'fixture-preserve', '-j', 'RETURN']
         run(*ns('b', 'iptables', *preserved_nat))
-        def serving_state(active):
+        def serving_state(active, expected_forwarding='1'):
             rules = run(*ns('b', 'iptables', '-t', 'nat', '-S', 'POSTROUTING'))
             owned = [line for line in rules.splitlines() if '--comment mnet-' in line]
             if len(owned) != int(active):
@@ -195,7 +195,7 @@ print(json.dumps(k))
             if active and ('-d 10.9.0.0/24' not in owned[0] or '! -o mnet0' not in owned[0]):
                 raise RuntimeError('NAT rule not destination/interface scoped')
             forwarding = run(*ns('b', sys.executable, '-c', "from pathlib import Path; print(Path('/proc/sys/net/ipv4/ip_forward').read_text().strip())")).strip()
-            if forwarding != '1':
+            if forwarding != expected_forwarding:
                 raise RuntimeError('operator forwarding setting was changed')
         serving_state(False)
         run('ip', '-n', spaces['a'], 'route', 'add', '10.8.0.0/24', 'dev', 'eth0')
@@ -204,6 +204,21 @@ print(json.dumps(k))
             state = tmp / x; state.mkdir(mode=0o700); states[x] = state
             start(x, [binary_dir / 'mnetd', '-state', state], x)
             wait_for(lambda: local_api(state), 'local API ' + x)
+            if x == 'b':
+                run(*ns('b', sys.executable, '-c', "from pathlib import Path; Path('/proc/sys/net/ipv4/ip_forward').write_text('0')"))
+                try:
+                    local_api(state, 'up', {'server': 'http://198.18.10.1:8080', 'network': 'kerneltest', 'name': x, 'auth_key': key, 'advertise_routes': ['10.9.0.0/24']})
+                except RuntimeError:
+                    pass
+                else:
+                    raise RuntimeError('serving Up succeeded without operator forwarding prerequisite')
+                if local_api(state)['status'] != 'down':
+                    raise RuntimeError('failed serving setup left daemon running')
+                if any(link['ifname'] == 'mnet0' for link in json.loads(run('ip', '-n', spaces['b'], '-j', 'link', 'show'))):
+                    raise RuntimeError('failed serving setup leaked kernel TUN')
+                serving_state(False, '0')
+                run(*ns('b', sys.executable, '-c', "from pathlib import Path; Path('/proc/sys/net/ipv4/ip_forward').write_text('1')"))
+                print('PASS serving without operator forwarding fails Down with no TUN/NAT leak or sysctl/unrelated NAT mutation', flush=True)
             local_api(state, 'up', {'server': 'http://198.18.10.1:8080', 'network':'kerneltest',
                                    'name': x, 'auth_key': key,
                                    'advertise_routes': ['10.9.0.0/24'] if x == 'b' else []})

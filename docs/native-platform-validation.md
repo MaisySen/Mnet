@@ -38,6 +38,6 @@ Use a dedicated state directory, not a shared document folder or a directory own
 
 No release or passing CI run alone closes this list.
 
-## Separate LAN extension (pending)
+## Separate LAN extension
 
-New source extends the isolated kernel topology with a fourth namespace: a LAN host without a mesh return route. It asserts owned NAT cleanup on Down/Up, unrelated NAT and forwarding preservation, reapproval status, and control-off OS TCP to that LAN host. Local serving ownership/rollback and daemon race tests pass. The independent kernel run for this extension is pending. The fixture explicitly enables forwarding; Mnet does not change shared sysctls.
+New source extends the isolated kernel topology with a fourth namespace: a LAN host without a mesh return route. It asserts owned NAT cleanup on Down/Up, unrelated NAT and forwarding preservation, reapproval status, and control-off OS TCP to that LAN host. Local serving ownership/rollback and daemon race tests pass. All five jobs and three fresh full fixtures passed in [6735500 CI](https://github.com/MaisySen/Mnet/actions/runs/43770289687). Each also passed control-off LAN OS TCP 3 x 4MiB with receiver hash/sender ACK; later mesh loss profiles observed 154/120/114 drops. The fixture explicitly enables forwarding; Mnet does not change shared sysctls. A newer extension first disables forwarding and expects setup failure with no TUN/NAT leak, unchanged sysctl and unrelated NAT, then enables it and retries. This failure-path extension is pending independent CI.

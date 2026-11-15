@@ -4,7 +4,7 @@ Test releases and engineering history. Historical entries record what was claime
 
 ## Unreleased after v0.8.2-test.1
 
-- Source-only subnet serving safety change: replace broad unowned NAT/global-forwarding mutation with unique destination-scoped Linux NAT ownership and an explicit operator-enabled forwarding prerequisite. Setup errors fail Up; unsupported automatic exit/mobile serving is rejected. Local tests pass; separate-LAN/control-off TCP kernel validation is pending. Older broad NAT rules are not adopted or removed.
+- Source-only subnet serving safety change: replace broad unowned NAT/global-forwarding mutation with unique destination-scoped Linux NAT ownership and an explicit operator-enabled forwarding prerequisite. Setup errors fail Up; unsupported automatic exit/mobile serving is rejected. Local tests and three fresh separate-LAN/control-off TCP fixtures passed in [6735500 CI](https://github.com/MaisySen/Mnet/actions/runs/43770289687). A further disabled-forwarding failure-path fixture is pending. Older broad NAT rules are not adopted or removed.
 
 - Bounded Linux RFC1918 subnet-route ownership implementation in progress: tagged add-only routes, conflict refusal, failed-batch rollback and scoped deletion. Unit regressions and actual kernel subnet/route-preservation extension pass in [8fcaf91 CI](https://github.com/MaisySen/Mnet/actions/runs/43764310572). Route-only ACL withdrawal/restoration passed once in [7a72378 CI](https://github.com/MaisySen/Mnet/actions/runs/43765437995); three fresh full-kernel runs passed in [2d23b6a CI](https://github.com/MaisySen/Mnet/actions/runs/43765976816). Admin expiry/reapproval with route teardown and corrected local up status passed three fresh [e6ab28d fixtures](https://github.com/MaisySen/Mnet/actions/runs/43767516777). Invalid additions no longer prevent withdrawal cleanup, and route counts/command duration are bounded. Exit routing remains separate and incomplete.
 
@@ -12,7 +12,7 @@ Test releases and engineering history. Historical entries record what was claime
 - Direct-path fixes: healthy relay handshakes no longer suppress bounded direct retry; the node's own overlay IP is not advertised as an underlay candidate.
 - Native Windows SCM install/start/stop/restart/crash recovery/remove passes on a disposable runner with an offline fixture. Wintun remains unverified.
 - Linux kernel namespace fixture passes actual TUN/address/ping, direct UDP verification, then OS TCP transfers with the control/relay process stopped: 3 x 4MiB normal and 3 x 4MiB with 1% loss/20ms delay, receiver hash and sender ACK. Actual drops and Down interface/mesh-route removal checked. [Exact c4a1bcd CI](https://github.com/MaisySen/Mnet/actions/runs/43760903768).
-- Documentation reorganized around status, operational limits and evidence. Exit/subnet OS routing is not declared working; the desktop exit-selection guard and route ownership need follow-up.
+- Documentation reorganized around status, operational limits and evidence. Exit/subnet OS routing is not declared working; subnet forwarding now has bounded Linux kernel proof; exit routing remains unsupported.
 - These source changes are not in the v0.8.2 artifacts or the last verified hosted deployment.
 
 ## v0.8.2-test.1 - 2026-11-16

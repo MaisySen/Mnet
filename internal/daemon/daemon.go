@@ -134,6 +134,12 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 	d.status = "joining"
 	d.mu.Unlock()
 
+	// Unsupported routing must fail before enrollment or host mutations,
+	// rather than report an apparently connected full-tunnel configuration.
+	if d.state.UseExitNode != "" || d.state.ExitNode || (len(d.state.AdvertiseRoutes) > 0 && (!d.cfg.ManagedIface || runtime.GOOS != "linux")) {
+		d.setDown()
+		return fmt.Errorf("exit routing and non-Linux/mobile subnet serving are not supported; use mesh-only mode or managed Linux private IPv4 subnets")
+	}
 	// A failed teardown remains owned. Never overwrite its retry handle.
 	if d.serving != nil {
 		if err := d.serving.Close(); err != nil {
@@ -240,11 +246,6 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 		}
 	}
 	d.applyMap(m)
-	if d.state.UseExitNode != "" {
-		if err := d.applyExitNode(m); err != nil {
-			log.Printf("mnetd: exit node: %v", err)
-		}
-	}
 
 	// Magic DNS on our own mesh address.
 	if dnsSrv, err := dns.New(m.Self.IPv4); err == nil {
