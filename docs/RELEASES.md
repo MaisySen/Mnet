@@ -54,6 +54,13 @@ Live proofs and the fixes they exposed.
 - Android viewer auto-reconnect: a dropped session redials with
   capped backoff (1 s to 15 s) until the user leaves, and the host's
   fresh keyframe restores the picture.
+- Roaming: on Linux the daemon subscribes to rtnetlink link and
+  address events and re-resolves its endpoints within seconds of a
+  network change (2 s settle debounce), instead of waiting out the
+  45 s discovery tick; other platforms keep the interval.
+- Host-side session recording: mnetd -session-record DIR writes each
+  hosted session as a standalone MJPEG video with 0600 permissions,
+  deltas composited so the file is complete; audit lines name it.
 - CI: GitHub Actions build, vet, race-enabled tests, the secrets
   gate, and the live session proof on every push and PR.
 

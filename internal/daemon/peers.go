@@ -164,11 +164,17 @@ func (d *Daemon) mapLoop(ctx context.Context) {
 
 // endpointLoop discovers and reports our public and local endpoints.
 func (d *Daemon) endpointLoop(ctx context.Context) {
+	changes := watchNetworkChanges(ctx)
 	for {
 		d.discoverEndpoints()
 		select {
 		case <-ctx.Done():
 			return
+		case <-changes:
+			// The machine changed networks: re-resolve now so peers
+			// get the new endpoint within seconds, not on the next
+			// 45 second tick.
+			continue
 		case <-time.After(45 * time.Second):
 		}
 	}
