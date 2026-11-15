@@ -25,13 +25,15 @@ func testEnv(t *testing.T) (*httptest.Server, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, pw, err := control.NewServer(store, relay.NewHub(), "http://placeholder", "test-admin-pw")
+	ts := httptest.NewUnstartedServer(nil)
+	t.Cleanup(ts.Close)
+	srv, pw, err := control.NewServer(store, relay.NewHub(), "http://"+ts.Listener.Addr().String(), "test-admin-pw")
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = pw
-	ts := httptest.NewServer(srv.Handler())
-	t.Cleanup(ts.Close)
+	ts.Config.Handler = srv.Handler()
+	ts.Start()
 	return ts, "test-admin-pw"
 }
 

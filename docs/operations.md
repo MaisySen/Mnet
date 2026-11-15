@@ -21,7 +21,8 @@ After=network.target
 [Service]
 Environment=MNET_ADMIN_PASSWORD=choose-something-long
 ExecStart=/usr/local/bin/mnet-control --listen 127.0.0.1:8080 \
-  --base-url https://control.example.com --data /var/lib/mnet/control.json
+  --base-url https://control.example.com --data /var/lib/mnet/control.json \
+  --trusted-proxies 127.0.0.1/32,::1/128
 Restart=always
 RestartSec=2
 
@@ -112,8 +113,11 @@ URL at the provider. Tested providers: any spec-compliant issuer with
 RS256 ID tokens (Google, Microsoft Entra, Okta, Keycloak). Auth keys
 still bypass SSO, so keep issuing them for servers. The identity from
 the login (email, else subject) lands in the node's User field and the
-dashboard. One caveat: when the control plane sits behind a proxy, pass
-X-Forwarded-Proto so the callback URL is built with https.
+dashboard. Set `-base-url` to the externally reachable HTTP(S) origin.
+Approval links and OIDC callbacks always use that configured origin, never
+request Host or forwarding headers. Paths, queries, fragments and URL
+credentials are rejected in the base URL. Changing a proxy does not change
+the callback URL; update the configured origin and provider registration.
 
 ## STUN and restrictive networks
 

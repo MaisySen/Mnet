@@ -2,6 +2,7 @@ package control
 
 import (
 	"fmt"
+	"html"
 	"net/http"
 	"time"
 )
@@ -26,16 +27,9 @@ func (s *Server) oidcProvider() *OIDCProvider {
 	return s.oidc
 }
 
-func publicURL(r *http.Request, path string) string {
-	scheme := "https"
-	if r.TLS == nil {
-		scheme = "http"
-		if f := r.Header.Get("X-Forwarded-Proto"); f != "" {
-			scheme = f
-		}
-	}
-	return scheme + "://" + r.Host + path
-}
+// publicURL uses the operator-configured origin, never caller-controlled
+// Host or forwarding headers. Join URLs can contain node credentials.
+func (s *Server) publicURL(path string) string { return s.publicBase + path }
 
 // handleOIDCStart kicks off the login: the node must prove its identity
 // with its join token, then the browser goes to the provider.
@@ -59,7 +53,7 @@ func (s *Server) handleOIDCStart(w http.ResponseWriter, r *http.Request) {
 	}
 	s.oidcStates[state] = oidcState{NodeID: node.ID, Exp: time.Now().Add(10 * time.Minute)}
 	s.oidcStatesMu.Unlock()
-	http.Redirect(w, r, p.AuthURL(state, publicURL(r, "/oidc/callback")), http.StatusFound)
+	http.Redirect(w, r, p.AuthURL(state, s.publicURL("/oidc/callback")), http.StatusFound)
 }
 
 // handleOIDCCallback finishes the login: verified identity approves the
@@ -85,7 +79,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusForbidden, "identity provider refused: "+e)
 		return
 	}
-	claims, err := p.Exchange(r.Context(), r.URL.Query().Get("code"), publicURL(r, "/oidc/callback"))
+	claims, err := p.Exchange(r.Context(), r.URL.Query().Get("code"), s.publicURL("/oidc/callback"))
 	if err != nil {
 		writeErr(w, http.StatusForbidden, "login failed: "+err.Error())
 		return
@@ -104,5 +98,5 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 <body style="font-family:system-ui;max-width:36em;margin:4em auto;padding:0 1em">
 <h1>Device connected</h1>
 <p>Signed in as <b>%s</b>. This device is now on the mesh. You can close this tab.</p>
-<footer><small>Mnet is provided by Fintex Australia Pty Ltd (ABN 60 688 406 108), New South Wales, Australia.</small></footer>`, user)
+<footer><small>Mnet is provided by Fintex Australia Pty Ltd (ABN 60 688 406 108), New South Wales, Australia.</small></footer>`, html.EscapeString(user))
 }

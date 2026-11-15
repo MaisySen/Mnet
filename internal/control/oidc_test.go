@@ -27,15 +27,16 @@ import (
 // a signed id_token, and JWKS. evil makes it sign with a key it does
 // not publish, simulating a forged token.
 type fakeOIDC struct {
-	t    *testing.T
-	srv  *httptest.Server
-	key  *rsa.PrivateKey
-	evil bool
+	t     *testing.T
+	srv   *httptest.Server
+	key   *rsa.PrivateKey
+	evil  bool
+	email string
 }
 
 func newFakeOIDC(t *testing.T, evil bool) *fakeOIDC {
 	t.Helper()
-	f := &fakeOIDC{t: t, evil: evil}
+	f := &fakeOIDC{t: t, evil: evil, email: "dev@fintex.au"}
 	k, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
@@ -67,7 +68,7 @@ func newFakeOIDC(t *testing.T, evil bool) *fakeOIDC {
 		payload, _ := json.Marshal(map[string]any{
 			"iss": f.srv.URL, "aud": "mnet-test",
 			"exp": time.Now().Add(time.Hour).Unix(),
-			"sub": "user-1", "email": "dev@fintex.au", "name": "Dev",
+			"sub": "user-1", "email": f.email, "name": "Dev",
 		})
 		sum := sha256.Sum256([]byte(head + "." + b64(payload)))
 		signer := f.key
@@ -100,7 +101,9 @@ func testEnvOIDC(t *testing.T, fake *fakeOIDC) (*httptest.Server, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, _, err := control.NewServer(store, relay.NewHub(), "http://placeholder", "test-admin-pw")
+	ts := httptest.NewUnstartedServer(nil)
+	t.Cleanup(ts.Close)
+	srv, _, err := control.NewServer(store, relay.NewHub(), "http://"+ts.Listener.Addr().String(), "test-admin-pw")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,8 +113,8 @@ func testEnvOIDC(t *testing.T, fake *fakeOIDC) (*httptest.Server, string) {
 		t.Fatal(err)
 	}
 	srv.SetOIDC(p)
-	ts := httptest.NewServer(srv.Handler())
-	t.Cleanup(ts.Close)
+	ts.Config.Handler = srv.Handler()
+	ts.Start()
 	return ts, "test-admin-pw"
 }
 
@@ -211,5 +214,26 @@ func TestOIDCForgedToken(t *testing.T) {
 	headers := map[string]string{"X-Node-ID": jr.NodeID, "X-Node-Token": jr.NodeToken}
 	if code, _ := getMap(t, base, jr, headers); code != 403 {
 		t.Fatalf("node must stay unapproved: %d", code)
+	}
+}
+
+// A signed identity claim is still data, never HTML markup.
+func TestOIDCIdentityIsHTMLEscaped(t *testing.T) {
+	fake := newFakeOIDC(t, false)
+	fake.email = "<script>untrusted()</script>"
+	ts, pw := testEnvOIDC(t, fake)
+	cookie := adminLogin(t, ts.URL, pw)
+	post(t, ts.URL+"/admin/api/networks", map[string]string{"name": "sso"}, map[string]string{"Cookie": cookie.String()})
+	code, body := post(t, ts.URL+"/api/join", netmap.JoinRequest{Network: "sso", Name: "markup", PubKey: fakePubKey(0x44)}, nil)
+	if code != 200 {
+		t.Fatalf("join: %d", code)
+	}
+	var jr netmap.JoinResponse
+	if err := json.Unmarshal(body, &jr); err != nil {
+		t.Fatal(err)
+	}
+	code, page := followLogin(t, jr.ApprovalURL)
+	if code != 200 || strings.Contains(page, "<script>") || !strings.Contains(page, "&lt;script&gt;") {
+		t.Fatalf("identity not escaped: %d %s", code, page)
 	}
 }

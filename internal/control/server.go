@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,7 @@ import (
 type Server struct {
 	store      *Store
 	hub        *relay.Hub
+	publicBase string
 	relayURL   string // public WS URL advertised to clients
 	upgrader   websocket.Upgrader
 	sessions   map[string]time.Time // admin session token -> expiry
@@ -67,6 +69,11 @@ func NewServerWithOptions(store *Store, hub *relay.Hub, publicBase, adminPasswor
 		}
 		trusted = append(trusted, network)
 	}
+	baseURL, err := url.Parse(publicBase)
+	if err != nil || baseURL == nil || (baseURL.Scheme != "http" && baseURL.Scheme != "https") || baseURL.Hostname() == "" || baseURL.ForceQuery || baseURL.User != nil || baseURL.RawQuery != "" || baseURL.Fragment != "" || (baseURL.Path != "" && baseURL.Path != "/") {
+		return nil, "", fmt.Errorf("public base URL must be an absolute http(s) origin without credentials, path, query or fragment")
+	}
+	publicBase = strings.TrimRight(baseURL.String(), "/")
 	generated := ""
 	if adminPassword == "" {
 		b := make([]byte, 12)
@@ -75,9 +82,10 @@ func NewServerWithOptions(store *Store, hub *relay.Hub, publicBase, adminPasswor
 		adminPassword = generated
 	}
 	s := &Server{
-		store:    store,
-		hub:      hub,
-		relayURL: strings.TrimRight(publicBase, "/") + "/api/relay/ws",
+		publicBase: publicBase,
+		store:      store,
+		hub:        hub,
+		relayURL:   strings.TrimRight(publicBase, "/") + "/api/relay/ws",
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(*http.Request) bool { return true },
 		},
@@ -194,9 +202,9 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	if !resp.Approved {
 		if s.oidcProvider() != nil {
 			// SSO login replaces manual approval.
-			resp.ApprovalURL = publicURL(r, "/oidc/start?node_id="+resp.NodeID+"&token="+resp.NodeToken)
+			resp.ApprovalURL = s.publicURL("/oidc/start?node_id=" + resp.NodeID + "&token=" + resp.NodeToken)
 		} else {
-			resp.ApprovalURL = publicURL(r, "/join/approve?node_id="+resp.NodeID)
+			resp.ApprovalURL = s.publicURL("/join/approve?node_id=" + resp.NodeID)
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)

@@ -8,6 +8,11 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- Approval and OIDC callback URLs now use the validated configured base
+  origin, not caller-controlled Host or forwarding-protocol headers.
+  Signed identity strings are HTML-escaped on the success page. Origin
+  spoof and markup regressions cover both paths.
+
 - Control ingress: ignore arbitrary forwarding headers by default; explicit
   trusted-proxy CIDRs enable right-to-left source resolution for both rate
   limits and audit events. Header-spoof bypass is covered by a regression
