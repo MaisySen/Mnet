@@ -261,3 +261,20 @@ Expiration also removes approval on rejoin unless a valid enrollment key
 authorizes renewal. The saved node token preserves identity, not perpetual
 approval. Updated daemons preserve and present their node credentials;
 older clients that relied on public-key-only rejoin must be updated.
+
+
+### State-save failure behavior
+
+Administrative and join changes roll back their changed in-memory entries
+if persistence fails. A failed approval cannot leave live authorization
+behind an error response; failed enrollment does not consume its one-use
+key or retain a new node/address. SSO approval and identity are one save
+and one map-version update. Rollback records only changed entries, not a
+second full copy of the store.
+
+State writes use a private, unpredictable temporary file in the same
+directory, sync and close it before rename, and remove temporary files on
+failure. This avoids following the old predictable `.tmp` path. It is not
+a database transaction across hosts and does not claim directory-entry
+power-loss durability on every filesystem. The entire JSON store is still
+rewritten for each real change; the measured scale limitation remains.

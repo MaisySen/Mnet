@@ -141,3 +141,19 @@ is not uniformly better: the 1,000-node profile's p95 values worsened in
 this repeat. Whole-store persistence still dominates mixed load. These
 short samples cannot establish stable SLOs; retain both sets of raw
 results rather than selecting only favorable numbers.
+
+
+## Persistence rollback and sync check (2026-11-16)
+
+After adding changed-entry rollback and sync-before-rename writes, the
+changing-endpoint harness was rerun locally with two Go workers, three
+iterations per sample and three samples. Raw output:
+`docs/benchmarks/control-persistence-sync-2026-11-16.txt`.
+At 10,000 seeded nodes these short samples take 25.7-26.6ms per change.
+Do not compare that directly as a speedup against older baselines: sample
+length, cache and local storage conditions differ, and three operations is
+not a sustained profile. The point is a smoke check that rollback does not
+copy the whole store in addition to the existing JSON rewrite. Real
+changes still serialize and persist the whole file. Sync latency depends
+on the filesystem and host; this does not establish power-loss durability
+or production throughput.

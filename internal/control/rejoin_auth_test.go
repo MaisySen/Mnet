@@ -90,12 +90,12 @@ func TestExpiredRejoinNeedsFreshEnrollmentAuthorization(t *testing.T) {
 		t.Fatal("fresh enrollment authorization failed")
 	}
 	// A different credential cannot steal identity even with an auth key.
-	before := key.Uses
+	before := st.data.AuthKeys[key.ID].Uses
 	req.NodeToken = "wrong"
 	if _, err = st.Join(req); err != ErrUnauthorized {
 		t.Fatalf("key-only takeover: %v", err)
 	}
-	if key.Uses != before {
+	if st.data.AuthKeys[key.ID].Uses != before {
 		t.Fatal("unauthorized request consumed enrollment key")
 	}
 }

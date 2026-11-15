@@ -80,14 +80,37 @@ func (s *Store) saveLocked() error {
 	if err != nil {
 		return err
 	}
-	tmp := s.path + ".tmp"
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
+	dir := filepath.Dir(s.path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	f, err := os.CreateTemp(dir, ".mnet-state-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
+	defer f.Close()
+	if _, err = f.Write(b); err != nil {
+		return err
+	}
+	if err = f.Sync(); err != nil {
+		return err
+	}
+	if err = f.Close(); err != nil {
 		return err
 	}
 	return os.Rename(tmp, s.path)
+}
+
+// commitLocked makes failed persistence leave the live store unchanged.
+// Rollback closures record only changed entries, not a full-store copy.
+func (s *Store) commitLocked(rollback func()) error {
+	if err := s.saveLocked(); err != nil {
+		rollback()
+		return err
+	}
+	return nil
 }
 
 func newID(prefix string) string {
@@ -170,10 +193,11 @@ func (s *Store) CreateNetwork(name string) (*netmap.Network, error) {
 	}
 	n := &netmap.Network{ID: newID("net"), Name: name, CreatedAt: time.Now().UTC()}
 	s.data.Networks[n.ID] = n
-	if err := s.saveLocked(); err != nil {
+	if err := s.commitLocked(func() { delete(s.data.Networks, n.ID) }); err != nil {
 		return nil, err
 	}
-	return n, nil
+	copy := cloneNetwork(n)
+	return &copy, nil
 }
 
 // Networks lists every network.
@@ -182,7 +206,7 @@ func (s *Store) Networks() []*netmap.Network {
 	defer s.mu.Unlock()
 	out := make([]*netmap.Network, 0, len(s.data.Networks))
 	for _, n := range s.data.Networks {
-		c := *n
+		c := cloneNetwork(n)
 		out = append(out, &c)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -278,6 +302,14 @@ func (s *Store) Join(req netmap.JoinRequest) (*netmap.JoinResponse, error) {
 	if node != nil && (req.NodeID != node.ID || req.NodeToken == "" || subtle.ConstantTimeCompare([]byte(s.data.NodeTokens[node.ID]), []byte(req.NodeToken)) != 1) {
 		return nil, ErrUnauthorized
 	}
+	var previousNode netmap.Node
+	existed := node != nil
+	if existed {
+		previousNode = cloneNode(node)
+	}
+	previousOffset, hadOffset := s.data.NextIP[network.ID]
+	var usedKey *netmap.AuthKey
+	var previousUses int
 	approved := false
 	if req.AuthKey != "" {
 		k := s.findAuthKeyLocked(req.AuthKey)
@@ -290,6 +322,8 @@ func (s *Store) Join(req netmap.JoinRequest) (*netmap.JoinResponse, error) {
 		if !k.Reusable && k.Uses >= 1 {
 			return nil, ErrBadAuthKey
 		}
+		usedKey = k
+		previousUses = k.Uses
 		k.Uses++
 		approved = true
 	}
@@ -319,7 +353,22 @@ func (s *Store) Join(req netmap.JoinRequest) (*netmap.JoinResponse, error) {
 	}
 	node.ExitNode = req.ExitNode
 	node.Routes = cleanRoutes(req.Routes)
-	if err := s.saveLocked(); err != nil {
+	if err := s.commitLocked(func() {
+		if existed {
+			*node = previousNode
+		} else {
+			delete(s.data.Nodes, node.ID)
+			delete(s.data.NodeTokens, node.ID)
+		}
+		if hadOffset {
+			s.data.NextIP[network.ID] = previousOffset
+		} else {
+			delete(s.data.NextIP, network.ID)
+		}
+		if usedKey != nil {
+			usedKey.Uses = previousUses
+		}
+	}); err != nil {
 		return nil, err
 	}
 	s.bumpLocked(network.ID)
@@ -403,9 +452,10 @@ func (s *Store) ExpireNode(nodeID string) error {
 	if n == nil {
 		return ErrNotFound
 	}
+	previous := n.KeyExpiry
 	past := time.Now().UTC().Add(-time.Minute)
 	n.KeyExpiry = &past
-	if err := s.saveLocked(); err != nil {
+	if err := s.commitLocked(func() { n.KeyExpiry = previous }); err != nil {
 		return err
 	}
 	s.bumpLocked(n.NetworkID)
@@ -443,13 +493,13 @@ func (s *Store) SetEndpoints(nodeID string, eps []string) error {
 	previous := append([]string(nil), n.Endpoints...)
 	sort.Strings(previous)
 	previous = slices.Compact(previous)
+	oldSeen, oldEndpoints := n.LastSeen, n.Endpoints
 	n.LastSeen = time.Now().UTC()
 	if slices.Equal(previous, clean) {
 		return nil
 	}
 	n.Endpoints = clean
-
-	if err := s.saveLocked(); err != nil {
+	if err := s.commitLocked(func() { n.LastSeen = oldSeen; n.Endpoints = oldEndpoints }); err != nil {
 		return err
 	}
 	s.bumpLocked(n.NetworkID)
@@ -543,8 +593,9 @@ func (s *Store) SetACL(networkID string, pol *netmap.ACLPolicy) error {
 	if pol != nil {
 		pol = &netmap.ACLPolicy{Rules: append([]netmap.ACLRule(nil), pol.Rules...)}
 	}
+	previous := n.ACL
 	n.ACL = pol
-	if err := s.saveLocked(); err != nil {
+	if err := s.commitLocked(func() { n.ACL = previous }); err != nil {
 		return err
 	}
 	s.bumpLocked(networkID)
@@ -554,28 +605,25 @@ func (s *Store) SetACL(networkID string, pol *netmap.ACLPolicy) error {
 // ApproveNodeAs marks a node approved and records the SSO identity
 // behind the approval.
 func (s *Store) ApproveNodeAs(nodeID, user string) error {
-	if err := s.ApproveNode(nodeID); err != nil {
-		return err
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if n := s.data.Nodes[nodeID]; n != nil {
-		n.User = user
-		return s.saveLocked()
-	}
-	return ErrNotFound
+	return s.approveNode(nodeID, &user)
 }
 
 // ApproveNode marks a pending node approved.
-func (s *Store) ApproveNode(nodeID string) error {
+func (s *Store) ApproveNode(nodeID string) error { return s.approveNode(nodeID, nil) }
+
+func (s *Store) approveNode(nodeID string, user *string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	n := s.data.Nodes[nodeID]
 	if n == nil {
 		return ErrNotFound
 	}
+	oldApproved, oldUser := n.Approved, n.User
 	n.Approved = true
-	if err := s.saveLocked(); err != nil {
+	if user != nil {
+		n.User = *user
+	}
+	if err := s.commitLocked(func() { n.Approved = oldApproved; n.User = oldUser }); err != nil {
 		return err
 	}
 	s.bumpLocked(n.NetworkID)
@@ -590,9 +638,10 @@ func (s *Store) DeleteNode(nodeID string) error {
 	if n == nil {
 		return ErrNotFound
 	}
+	token := s.data.NodeTokens[nodeID]
 	delete(s.data.Nodes, nodeID)
 	delete(s.data.NodeTokens, nodeID)
-	if err := s.saveLocked(); err != nil {
+	if err := s.commitLocked(func() { s.data.Nodes[nodeID] = n; s.data.NodeTokens[nodeID] = token }); err != nil {
 		return err
 	}
 	s.bumpLocked(n.NetworkID)
@@ -619,21 +668,32 @@ func (s *Store) CreateAuthKey(networkID, note string, reusable bool, ttl time.Du
 		k.ExpiresAt = &t
 	}
 	s.data.AuthKeys[k.ID] = k
-	if err := s.saveLocked(); err != nil {
+	if err := s.commitLocked(func() { delete(s.data.AuthKeys, k.ID) }); err != nil {
 		return nil, err
 	}
-	return k, nil
+	copy := cloneAuthKey(k)
+	return &copy, nil
+}
+
+func cloneAuthKey(k *netmap.AuthKey) netmap.AuthKey {
+	copy := *k
+	if k.ExpiresAt != nil {
+		expiry := *k.ExpiresAt
+		copy.ExpiresAt = &expiry
+	}
+	return copy
 }
 
 // DeleteAuthKey removes a key.
 func (s *Store) DeleteAuthKey(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.data.AuthKeys[id] == nil {
+	previous := s.data.AuthKeys[id]
+	if previous == nil {
 		return ErrNotFound
 	}
 	delete(s.data.AuthKeys, id)
-	return s.saveLocked()
+	return s.commitLocked(func() { s.data.AuthKeys[id] = previous })
 }
 
 // Snapshot is the admin view of the world.
@@ -657,7 +717,7 @@ func (s *Store) Snapshot() *Snapshot {
 		snap.Nodes = append(snap.Nodes, &c)
 	}
 	for _, k := range s.data.AuthKeys {
-		c := *k
+		c := cloneAuthKey(k)
 		snap.AuthKeys = append(snap.AuthKeys, &c)
 	}
 	sort.Slice(snap.Networks, func(i, j int) bool { return snap.Networks[i].Name < snap.Networks[j].Name })

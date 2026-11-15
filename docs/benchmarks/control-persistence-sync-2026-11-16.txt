@@ -1,0 +1,15 @@
+goos: linux
+goarch: amd64
+pkg: fintex.au/mnet/internal/control
+cpu: AMD EPYC 9655 96-Core Processor                
+BenchmarkEndpointPersistenceScale/100-2         	       3	    464520 ns/op	  144533 B/op	     535 allocs/op
+BenchmarkEndpointPersistenceScale/100-2         	       3	    649604 ns/op	  144533 B/op	     535 allocs/op
+BenchmarkEndpointPersistenceScale/100-2         	       3	    290207 ns/op	  144533 B/op	     535 allocs/op
+BenchmarkEndpointPersistenceScale/1000-2        	       3	   2359014 ns/op	 1503213 B/op	    5038 allocs/op
+BenchmarkEndpointPersistenceScale/1000-2        	       3	   2458238 ns/op	 1153504 B/op	    5030 allocs/op
+BenchmarkEndpointPersistenceScale/1000-2        	       3	   2221718 ns/op	 1503224 B/op	    5039 allocs/op
+BenchmarkEndpointPersistenceScale/10000-2       	       3	  26468874 ns/op	14233296 B/op	   50046 allocs/op
+BenchmarkEndpointPersistenceScale/10000-2       	       3	  26604180 ns/op	14233370 B/op	   50047 allocs/op
+BenchmarkEndpointPersistenceScale/10000-2       	       3	  25650137 ns/op	17029597 B/op	   50054 allocs/op
+PASS
+ok  	fintex.au/mnet/internal/control	0.436s

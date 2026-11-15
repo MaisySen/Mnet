@@ -8,6 +8,12 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- Persistence failures roll back changed live state and enrollment-key
+  use. Ten operation-level negative fixtures reproduced old partial-state
+  behavior. SSO identity/approval persist together. State saves use private
+  unpredictable temp files, file sync before rename, and failure cleanup;
+  tests cover old predictable-temp symlink safety and rename failures.
+
 - Security: authenticated rejoin now requires the saved node credential;
   the public WireGuard key can no longer recover a known identity token.
   Expired nodes no longer retain approval merely by rejoining. Current
