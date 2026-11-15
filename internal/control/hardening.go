@@ -37,12 +37,14 @@ func securityHeaders(next http.Handler) http.Handler {
 // ipLimiters keeps a token bucket per client IP, expiring buckets
 // idle for an hour so the map does not grow forever.
 type ipLimiters struct {
-	mu      sync.Mutex
-	m       map[string]*ipBucket
-	r       rate.Limit
-	b       int
-	now     func() time.Time
-	onLimit func() // optional, called on every 429
+	mu        sync.Mutex
+	m         map[string]*ipBucket
+	r         rate.Limit
+	b         int
+	now       func() time.Time
+	onLimit   func() // optional, called on every 429
+	address   func(*http.Request) string
+	nextSweep time.Time
 }
 
 type ipBucket struct {
@@ -64,13 +66,21 @@ func (l *ipLimiters) allow(ip string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
-	for ip, bkt := range l.m {
-		if now.Sub(bkt.last) > time.Hour {
-			delete(l.m, ip)
+	if !now.Before(l.nextSweep) {
+		for ip, bkt := range l.m {
+			if now.Sub(bkt.last) > time.Hour {
+				delete(l.m, ip)
+			}
 		}
+		l.nextSweep = now.Add(time.Minute)
 	}
 	bkt, ok := l.m[ip]
 	if !ok {
+		// Fail closed under address churn instead of evicting active buckets
+		// (which would let a caller reset its admission budget).
+		if len(l.m) >= maxIPBuckets {
+			return false
+		}
 		bkt = &ipBucket{lim: rate.NewLimiter(l.r, l.b)}
 		l.m[ip] = bkt
 	}
@@ -81,7 +91,11 @@ func (l *ipLimiters) allow(ip string) bool {
 // limit wraps h with a 429 when the client IP exceeds the bucket.
 func (l *ipLimiters) limit(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !l.allow(clientIP(r)) {
+		address := clientIP
+		if l.address != nil {
+			address = l.address
+		}
+		if !l.allow(address(r)) {
 			if l.onLimit != nil {
 				l.onLimit()
 			}
@@ -93,20 +107,55 @@ func (l *ipLimiters) limit(h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// clientIP prefers the first X-Forwarded-For hop (Render and other
-// proxies set it), falling back to the direct peer.
+// A bounded table and amortized expiry scan keep unique-address floods
+// from growing memory without limit or turning each request into O(n).
+const maxIPBuckets = 10000
+
+// clientIP never trusts a forwarding header without an explicit proxy policy.
 func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if i := strings.Index(xff, ","); i >= 0 {
-			return strings.TrimSpace(xff[:i])
-		}
-		return strings.TrimSpace(xff)
-	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// proxyAddress trusts X-Forwarded-For only from a configured direct peer.
+// Walk right to left, stopping at the first untrusted hop. A forged prefix
+// supplied by that hop is never allowed to choose the limiter/audit address.
+func proxyAddress(r *http.Request, trusted []*net.IPNet) string {
+	direct := clientIP(r)
+	isTrusted := func(ip net.IP) bool {
+		for _, network := range trusted {
+			if network.Contains(ip) {
+				return true
+			}
+		}
+		return false
+	}
+	peer := net.ParseIP(direct)
+	if peer == nil || !isTrusted(peer) {
+		return direct
+	}
+	raw := strings.Join(r.Header.Values("X-Forwarded-For"), ",")
+	if raw == "" || len(raw) > 4096 {
+		return direct
+	}
+	hops := strings.Split(raw, ",")
+	if len(hops) > 32 {
+		return direct
+	}
+	for i := len(hops) - 1; i >= 0; i-- {
+		ip := net.ParseIP(strings.TrimSpace(hops[i]))
+		// Invalid chains fail closed to the directly observed peer.
+		if ip == nil {
+			return direct
+		}
+		if !isTrusted(ip) || i == 0 {
+			return ip.String()
+		}
+	}
+	return direct
 }
 
 // Audit event, one JSON object per line in <store>.audit.jsonl.
@@ -124,7 +173,7 @@ type auditEvent struct {
 func (s *Server) audit(r *http.Request, event, actor, detail string, ok bool) {
 	ev := auditEvent{At: time.Now().UTC(), Event: event, Actor: actor, Detail: detail, OK: ok}
 	if r != nil {
-		ev.IP = clientIP(r)
+		ev.IP = s.clientAddress(r)
 	}
 	b, err := json.Marshal(ev)
 	if err != nil {

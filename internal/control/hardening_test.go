@@ -58,8 +58,8 @@ func TestClientIP(t *testing.T) {
 		t.Fatalf("remote addr: %q", got)
 	}
 	r.Header.Set("X-Forwarded-For", "203.0.113.9, 10.0.0.1")
-	if got := clientIP(r); got != "203.0.113.9" {
-		t.Fatalf("xff first hop: %q", got)
+	if got := clientIP(r); got != "10.0.0.1" {
+		t.Fatalf("untrusted xff accepted: %q", got)
 	}
 }
 

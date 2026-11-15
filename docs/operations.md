@@ -165,3 +165,31 @@ android/debug.keystore (regenerate for real distribution).
 See ios/README.md: sources and the gomobile build script are complete;
 the xcframework build, signing and on-device testing need macOS, Xcode
 and an Apple Developer account.
+
+
+## Reverse proxies and admission limits
+
+By default the control plane uses the TCP peer address for IP rate limits
+and audit events. It ignores `X-Forwarded-For`: a direct caller must not be
+able to choose its bucket or falsify the audit source.
+
+Behind a reverse proxy, set `-trusted-proxies` or `MNET_TRUSTED_PROXIES` to
+an explicit comma-separated list of the proxy's source CIDRs. Configure
+only ranges you control or have verified with the hosting provider, and
+ensure the proxy sanitizes or appends the real caller address. Do not use
+`0.0.0.0/0` or `::/0`. A misconfigured trust list can reintroduce spoofing.
+No proxy ranges are inferred from hosting-provider names.
+
+For trusted direct peers, forwarding chains are read right to left to the
+first untrusted address. Earlier caller-supplied entries cannot choose the
+source. Invalid inspected hops, oversized headers and chains longer than
+32 hops fall back to the TCP peer. IPv4 and IPv6 are supported. Without
+proxy configuration, callers behind a proxy share its rate-limit bucket;
+configure this deliberately before production use. Malformed CIDRs stop
+startup rather than silently widening trust.
+
+Each limiter retains at most 10,000 IP buckets and sweeps hourly-idle
+entries at most once per minute. A full table rejects new addresses until
+capacity expires; it does not evict active callers to reset their budgets.
+These in-process limits are defense in depth, not a distributed DDoS
+service. Use network edge limits for public deployments.

@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"fintex.au/mnet/internal/control"
@@ -24,6 +25,7 @@ func main() {
 		oidcIss  = flag.String("oidc-issuer", os.Getenv("MNET_OIDC_ISSUER"), "OIDC issuer URL for SSO joins (or MNET_OIDC_ISSUER)")
 		oidcID   = flag.String("oidc-client-id", os.Getenv("MNET_OIDC_CLIENT_ID"), "OIDC client id (or MNET_OIDC_CLIENT_ID)")
 		oidcSec  = flag.String("oidc-client-secret", os.Getenv("MNET_OIDC_CLIENT_SECRET"), "OIDC client secret (or MNET_OIDC_CLIENT_SECRET)")
+		proxies  = flag.String("trusted-proxies", os.Getenv("MNET_TRUSTED_PROXIES"), "comma-separated trusted reverse-proxy CIDRs; empty ignores X-Forwarded-For (or MNET_TRUSTED_PROXIES)")
 		showVer  = flag.Bool("version", false, "print version and exit")
 		defNet   = flag.String("default-network", os.Getenv("MNET_DEFAULT_NETWORK"), "create this network when the store starts empty (or MNET_DEFAULT_NETWORK); survives hosts with ephemeral disks")
 	)
@@ -42,7 +44,11 @@ func main() {
 	if publicBase == "" {
 		publicBase = "http://localhost" + *listen
 	}
-	srv, generated, err := control.NewServer(store, hub, publicBase, *password)
+	var proxyCIDRs []string
+	if strings.TrimSpace(*proxies) != "" {
+		proxyCIDRs = strings.Split(*proxies, ",")
+	}
+	srv, generated, err := control.NewServerWithOptions(store, hub, publicBase, *password, control.ServerOptions{TrustedProxyCIDRs: proxyCIDRs})
 	if err != nil {
 		log.Fatalf("server: %v", err)
 	}

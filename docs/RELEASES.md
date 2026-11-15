@@ -8,6 +8,12 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- Control ingress: ignore arbitrary forwarding headers by default; explicit
+  trusted-proxy CIDRs enable right-to-left source resolution for both rate
+  limits and audit events. Header-spoof bypass is covered by a regression
+  that failed before the fix. Bound each IP table and amortize cleanup.
+  Operators behind proxies must configure verified proxy ranges.
+
 - Source gate: replaced shell-specific dash matching and broad directory
   exclusions with a portable tracked-source scanner. High-signal private
   key, provider credential and Mnet-token patterns include docs/tests/

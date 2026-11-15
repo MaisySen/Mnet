@@ -5,7 +5,9 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -34,16 +36,37 @@ type Server struct {
 	adminPassword string
 	ownPassword   bool // true when generated, so we log it once
 
-	loginLim  *ipLimiters // admin login brute-force protection
-	joinLim   *ipLimiters // join flood protection
-	auditPath string      // append-only audit log, <store>.audit.jsonl
-	auditMu   sync.Mutex
-	metrics   *metrics
+	loginLim      *ipLimiters // admin login brute-force protection
+	joinLim       *ipLimiters // join flood protection
+	auditPath     string      // append-only audit log, <store>.audit.jsonl
+	auditMu       sync.Mutex
+	clientAddress func(*http.Request) string
+	metrics       *metrics
 }
 
-// NewServer builds a server. adminPassword may be empty, in which case a
-// random one is generated and returned for the caller to print.
+// ServerOptions configures control-plane request trust.
+type ServerOptions struct {
+	// TrustedProxyCIDRs lists only reverse proxies that sanitize or append
+	// X-Forwarded-For. Empty (the default) trusts no forwarding headers.
+	TrustedProxyCIDRs []string
+}
+
+// NewServer builds a server with no trusted forwarding proxies.
+// An empty adminPassword generates and returns a random one.
 func NewServer(store *Store, hub *relay.Hub, publicBase, adminPassword string) (*Server, string, error) {
+	return NewServerWithOptions(store, hub, publicBase, adminPassword, ServerOptions{})
+}
+
+// NewServerWithOptions validates immutable proxy policy before serving.
+func NewServerWithOptions(store *Store, hub *relay.Hub, publicBase, adminPassword string, opts ServerOptions) (*Server, string, error) {
+	var trusted []*net.IPNet
+	for _, raw := range opts.TrustedProxyCIDRs {
+		_, network, err := net.ParseCIDR(strings.TrimSpace(raw))
+		if err != nil {
+			return nil, "", fmt.Errorf("invalid trusted proxy CIDR %q: %w", raw, err)
+		}
+		trusted = append(trusted, network)
+	}
 	generated := ""
 	if adminPassword == "" {
 		b := make([]byte, 12)
@@ -66,6 +89,9 @@ func NewServer(store *Store, hub *relay.Hub, publicBase, adminPassword string) (
 		auditPath:     store.Path() + ".audit.jsonl",
 		metrics:       &metrics{StartedAt: time.Now().UTC()},
 	}
+	s.clientAddress = func(r *http.Request) string { return proxyAddress(r, trusted) }
+	s.loginLim.address = s.clientAddress
+	s.joinLim.address = s.clientAddress
 	onLimited := func() { s.metrics.bump(&s.metrics.RateLimited) }
 	s.loginLim.onLimit = onLimited
 	s.joinLim.onLimit = onLimited
