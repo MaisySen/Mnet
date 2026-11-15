@@ -85,3 +85,21 @@ jobs:
           go build -o "$env:RUNNER_TEMP/mnetd-scm.exe" ./cmd/mnetd
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./scripts/windows-service-validation.ps1 -BinaryPath "$env:RUNNER_TEMP/mnetd-scm.exe"
+
+  kernel-vpn:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: install kernel fixture dependencies
+        run: sudo apt-get update && sudo apt-get install -y iproute2 iputils-ping
+      - name: build native daemons
+        run: |
+          mkdir -p "$RUNNER_TEMP/mnet-kernel-bin"
+          go build -o "$RUNNER_TEMP/mnet-kernel-bin/mnet-control" ./cmd/mnet-control
+          go build -o "$RUNNER_TEMP/mnet-kernel-bin/mnetd" ./cmd/mnetd
+      - name: actual kernel TUN and OS TCP under loss, then teardown
+        run: sudo env MNET_KERNEL_BIN="$RUNNER_TEMP/mnet-kernel-bin" python3 scripts/kernel-vpn-validation.py

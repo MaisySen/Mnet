@@ -8,6 +8,7 @@ Native CI is a narrower claim than a physical desktop/phone test. Always name th
 - Local API lifecycle and capability tests exercise the runner's local transports.
 - Private state tests exercise actual file replacement, link rejection and cleanup. Windows tests read the actual security descriptor, require a protected DACL, and reject grants outside the file owner, LocalSystem and local administrators. This is ACL inspection, not an impersonated second-user penetration test.
 - Daemon tests exercise state round trips and WireGuard IPC using an in-memory TUN. Local-expiry regressions cover self/peer deadlines, renewal, stale-map refresh, and repeated Up/Down while later control polls are blocked. They do not create an OS VPN interface.
+- Windows CI also installs a real SCM service in an offline fixture, checks authenticated local API startup, clean stop/restart, forced-process crash recovery and removal. The script refuses to replace an existing service. This does not create a Wintun interface or test VPN reconnection.
 - Session tests exercise a native loopback TCP connection, screen/input/chat framing and a verified 3MiB file. They also test queued startup and repeated stream cleanup. They do not cross an actual VPN interface or a lossy public network.
 
 ## Private state behavior
@@ -21,7 +22,7 @@ Use a dedicated state directory, not a shared document folder or a directory own
 ## Still outstanding
 
 - Separate non-admin Windows identity cannot read/change the saved state or use the local API.
-- Real Windows service install/restart/recovery/uninstall and Wintun interface/routing behavior.
+- Real Windows Wintun interface/routing and service VPN reconnection behavior. Basic SCM lifecycle passes on a disposable native runner; physical deployment remains untested.
 - Physical macOS/Windows capture, input consent, sleep/wake and network changes.
 - Real GNOME portal/PipeWire capture and input behavior.
 - Physical Android VPN, transfer, capture and reconnect checks.

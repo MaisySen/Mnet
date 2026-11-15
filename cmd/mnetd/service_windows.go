@@ -21,8 +21,9 @@ import (
 // starts the binary with -service run; a service session with no
 // flags is detected too and routed the same way.
 //
-// Live verification on a real Windows machine is pending; the build
-// is compile-verified for GOOS=windows on every CI run.
+// Native Windows CI exercises install/start/stop/restart/crash recovery/
+// removal with an offline fixture. Wintun and physical-host VPN service
+// validation remain pending.
 
 const (
 	serviceName = "mnetd"
