@@ -247,7 +247,11 @@ print(json.dumps(k))
             print('subnet route diagnostics: ' + run('ip', '-n', spaces['a'], '-N', '-j', 'route', 'show'), flush=True)
             print('subnet daemon error: ' + str(local_api(states['a']).get('last_error')), flush=True)
             raise
-        run(*ns('a', 'ping', '-c', '2', '-W', '2', '10.9.0.2'))
+        # OS route installation does not mean WireGuard/ARP setup has
+        # converged. Require actual LAN reachability within a fixed budget.
+        def lan_reachable():
+            return subprocess.run(ns('a', 'ping', '-c', '1', '-W', '1', '10.9.0.2'), capture_output=True, timeout=3).returncode == 0
+        wait_for(lan_reachable, 'initial LAN reachability after startup', timeout=30)
         serving_state(True)
         print('PASS advertised subnet reaches separate LAN host with scoped NAT; unrelated NAT and operator forwarding preserved', flush=True)
         # Keep emitting application packets while the selector probes. An
@@ -415,7 +419,11 @@ else:
         local_api(states['b'], 'up', {'reset_routing': True})
         def routing_cleared():
             state = json.loads((states['b'] / 'state.json').read_text())
-            return not state.get('advertise_routes') and not state.get('exit_node') and not state.get('use_exit_node')
+            if state.get('advertise_routes') or state.get('exit_node') or state.get('use_exit_node'):
+                return False
+            if any(state.get(k) != v for k, v in identities['b'].items()):
+                raise RuntimeError('explicit routing reset changed saved identity')
+            return True
         wait_for(routing_cleared, 'explicit routing reset persists')
         local_api(states['b'], 'down', {})
         serving_state(False)

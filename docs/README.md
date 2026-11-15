@@ -5,6 +5,7 @@ These documents describe a development project, not a production-readiness guara
 | Document | Owns |
 | --- | --- |
 | [Project status](STATUS.md) | Source, released artifacts, last deployment verification, evidence and open work. |
+| [Product scope](product-scope.md) | Desired account/device/startup experience and current platform gaps. |
 | [Operations](operations.md) | Setup, local state, service operation, authentication, routing limits and recovery. |
 | [Architecture](architecture.md) | Components and trust boundaries. |
 | [Session layer](session-layer.md) | Protocol, host authorization, queue/stream limits and file publication. |

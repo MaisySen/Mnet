@@ -308,6 +308,8 @@ Windows ACL. Native tests inspect the actual protected DACL; separate-user and p
 and daemon binaries must be updated together for capability authentication.
 Do not put the token in browser pages, command arguments or logs. Capability authentication and Windows DACL protection are included in v0.8.2-test.1. Later local-expiry/direct-discovery fixes are source-only until a newer release.
 
+## Routing reset and retry status
+
 A later local regression reproduced stale last_error after a successful retry. New source clears errors when a fresh Up attempt starts, preserving errors raised during that attempt. The stronger kernel retry assertion and native regression passed all five jobs and three fresh [4127209 fixtures](https://github.com/MaisySen/Mnet/actions/runs/43772484156), including 140/186/158 later loss-profile drops.
 
-New source adds `mnet up --reset-routing` (while down) to clear saved serving/exit roles without deleting identity. Ordinary saved-state Up keeps its previous routing configuration. Reset cannot be combined with new routing roles. A local API regression reproduced the missing recovery path before this change; local and kernel checks for the new path are being added, with independent CI pending.
+New source adds `mnet up --reset-routing` (while down) to clear saved serving/exit roles without deleting identity. Ordinary saved-state Up keeps its previous routing configuration. Reset cannot be combined with new routing roles. A local API regression reproduced the missing recovery path before this change; local API tests pass, including 20 race-detector repetitions. The first kernel repetition passed the reset; the second failed an initial one-shot LAN ping before reaching it. A bounded 30-second startup reachability assertion and explicit saved-identity comparison are now pending independent CI. No new three-run passing claim is made.

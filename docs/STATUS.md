@@ -29,6 +29,12 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 - Serving safety: managed Linux RFC1918 IPv4 serving requires operator-enabled forwarding, owns unique destination-scoped NAT rules, and fails Up on setup errors. It never changes shared forwarding settings or adopts/deletes older broad rules. Local ownership/rollback tests pass. The disabled-forwarding failure path passed three fresh [fcbddd1 fixtures](https://github.com/MaisySen/Mnet/actions/runs/43771745649): setup ends Down, with no TUN/NAT leak, unchanged disabled sysctl/unrelated NAT, then successful retry after the fixture enables forwarding. Later loss profiles observed 147/154/110 drops.
 - Exit routing: newer source explicitly rejects selecting or advertising an exit node before enrollment/device changes. The inverted desktop guard and unsafe unowned host/default-route replacement helpers were removed rather than enabled. Rejection regressions and all five jobs passed in [fcbddd1 CI](https://github.com/MaisySen/Mnet/actions/runs/43771745649). Exit internet routing remains unsupported.
 
+### Recovery and status
+
+A later local regression reproduced stale last_error after a successful retry. New source clears errors when a fresh Up attempt starts, preserving errors raised during that attempt. The stronger kernel retry assertion and native regression passed all five jobs and three fresh [4127209 fixtures](https://github.com/MaisySen/Mnet/actions/runs/43772484156), including 140/186/158 later loss-profile drops.
+
+New source adds `mnet up --reset-routing` (while down) to clear saved serving/exit roles without deleting identity. Ordinary saved-state Up keeps its previous routing configuration. Reset cannot be combined with new routing roles. A local API regression reproduced the missing recovery path before this change; local API tests pass, including 20 race-detector repetitions. The first kernel repetition passed the reset; the second failed an initial one-shot LAN ping before reaching it. A bounded 30-second startup reachability assertion and explicit saved-identity comparison are now pending independent CI. No new three-run passing claim is made.
+
 ## Important open work
 
 - Wider subnet compatibility, restrictive host firewall policies, non-Linux/IPv6/public subnet OS routes, owned exit routing and public-internet/production soak. The bounded LAN fixture explicitly enables forwarding and permits forwarded traffic; it is not an arbitrary host compatibility guarantee.
@@ -38,7 +44,3 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 - Store-policy/data-disclosure review before any publication. Store copy is a draft.
 
 See [native validation](native-platform-validation.md), [reliability](session-reliability.md), [operations](operations.md) and [scale measurements](scale-testing.md) for methods and exact limits.
-
-A later local regression reproduced stale last_error after a successful retry. New source clears errors when a fresh Up attempt starts, preserving errors raised during that attempt. The stronger kernel retry assertion and native regression passed all five jobs and three fresh [4127209 fixtures](https://github.com/MaisySen/Mnet/actions/runs/43772484156), including 140/186/158 later loss-profile drops.
-
-New source adds `mnet up --reset-routing` (while down) to clear saved serving/exit roles without deleting identity. Ordinary saved-state Up keeps its previous routing configuration. Reset cannot be combined with new routing roles. A local API regression reproduced the missing recovery path before this change; local and kernel checks for the new path are being added, with independent CI pending.
