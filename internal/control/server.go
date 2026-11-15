@@ -75,6 +75,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/admin/api/nodes/approve", s.adminOnly(s.handleAdminNodeApprove))
 	mux.HandleFunc("/admin/api/nodes/deny", s.adminOnly(s.handleAdminNodeDeny))
 	mux.HandleFunc("/admin/api/nodes/delete", s.adminOnly(s.handleAdminNodeDelete))
+	mux.HandleFunc("/admin/api/acl", s.adminOnly(s.handleAdminACL))
 	return mux
 }
 

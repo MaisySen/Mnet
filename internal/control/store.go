@@ -418,12 +418,48 @@ func (s *Store) Map(nodeID string) (*netmap.Map, error) {
 	}
 	for _, n := range s.data.Nodes {
 		if n.NetworkID == self.NetworkID && n.ID != self.ID && n.Approved {
-			c := *n
-			m.Peers = append(m.Peers, c)
+			if c := filterPeer(network.ACL, self, n); c != nil {
+				m.Peers = append(m.Peers, *c)
+			}
 		}
 	}
 	sort.Slice(m.Peers, func(i, j int) bool { return m.Peers[i].IPv4 < m.Peers[j].IPv4 })
 	return m, nil
+}
+
+// Network returns one network by ID or name, or nil.
+func (s *Store) Network(idOrName string) *netmap.Network {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := s.findNetworkLocked(idOrName)
+	if n == nil {
+		return nil
+	}
+	c := *n
+	return &c
+}
+
+// SetACL validates and stores the network policy; nil clears it back to
+// allow-all. Bumps the map version so long-polling nodes re-filter.
+func (s *Store) SetACL(networkID string, pol *netmap.ACLPolicy) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := s.findNetworkLocked(networkID)
+	if n == nil {
+		return ErrNotFound
+	}
+	if err := s.validateACL(networkID, pol); err != nil {
+		return err
+	}
+	if pol != nil && len(pol.Rules) == 0 {
+		pol = nil
+	}
+	n.ACL = pol
+	if err := s.saveLocked(); err != nil {
+		return err
+	}
+	s.bumpLocked(networkID)
+	return nil
 }
 
 // ApproveNode marks a pending node approved.

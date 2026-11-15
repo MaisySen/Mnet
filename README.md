@@ -100,9 +100,9 @@ internal/
 
 ## Status
 
-Version 0.3.0. The mesh works end to end: join, approve, direct and relayed
-traffic, Magic DNS, Android app, exit nodes and subnet routes. On the list
-next: ACLs, SSO/OIDC login, key expiry.
+Version 0.4.0. The mesh works end to end: join, approve, direct and relayed
+traffic, Magic DNS, Android app, exit nodes, subnet routes and network ACL
+policies. On the list next: SSO/OIDC login, key expiry.
 
 Mnet is provided by Fintex Australia Pty Ltd (ABN 60 688 406 108), New South
 Wales, Australia. Contact: contact@fintex.au.
@@ -134,6 +134,23 @@ host routes keep the tunnel endpoint and the control plane reachable.
 Advertised subnets become WireGuard allowed IPs on every peer, so traffic
 for 10.9.0.0/24 flows to the router node and out its LAN. Deselecting the
 exit node or rejoining without the flags cleanly removes the routes again.
+
+## ACL policies
+
+Each network has an access policy, edited in the admin dashboard or through
+GET/PUT /admin/api/acl. Rules are JSON:
+
+    [{"src": "laptop", "dst": "server"},
+     {"src": "*", "dst": "10.9.0.0/24"},
+     {"src": "phone", "dst": "0.0.0.0/0", "comment": "phone may use exit nodes"}]
+
+No policy means allow all. With at least one rule the default is deny:
+src is a node name or *, dst is a node name, *, an advertised subnet CIDR,
+or 0.0.0.0/0 for exit-node internet access. The control plane enforces
+the policy while building each node's map: unreachable peers disappear,
+routes the node may not use are stripped, and exit offers are hidden
+without internet access. Changes push to every node over the long-poll
+map feed within seconds.
 
 ## Mobile
 

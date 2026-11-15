@@ -149,6 +149,12 @@ footer{padding:1.5rem;color:#9da7b1;font-size:.8rem}
 <button>Create key</button>
 </form>
 </section>
+<section class="card">
+<h2>ACL policy</h2>
+<p class="muted">JSON rules: <code>[{"src":"*","dst":"*"}]</code>. Empty means allow all. With any rule present the default is deny. src is a node name or *; dst is a node name, *, a subnet CIDR, or 0.0.0.0/0 for exit-node internet access.</p>
+<p><select id="aclNet"></select> <button id="aclSave">Save policy</button> <span id="aclMsg" class="muted"></span></p>
+<textarea id="aclText" rows="8" style="width:100%;font-family:monospace"></textarea>
+</section>
 </main>
 <footer>Mnet is provided by Fintex Australia Pty Ltd (ABN 60 688 406 108), New South Wales, Australia. Contact: contact@fintex.au.</footer>
 <script>
@@ -180,7 +186,26 @@ function render(){
   $('#nodes tbody').innerHTML = approved.map(n=>'<tr><td>'+esc(n.name)+'</td><td>'+esc(netName(n.network_id))+'</td><td><code>'+esc(n.ipv4)+'</code></td><td>'+(online[n.pubkey]?'<span class="badge on">online</span>':'<span class="badge off">offline</span>')+'</td><td class="muted">'+esc((n.endpoints||[]).join(', '))+'</td><td>'+ago(n.last_seen)+'</td><td><button class="danger" onclick="delNode(\''+esc(n.id)+'\')">Remove</button></td></tr>').join('') || '<tr><td colspan="7" class="muted">No approved nodes.</td></tr>';
   $('#keys tbody').innerHTML = keys.map(k=>'<tr><td class="key"><code>'+esc(k.key)+'</code></td><td>'+esc(netName(k.network_id))+'</td><td>'+esc(k.note)+'</td><td>'+(k.reusable?'yes':'no')+'</td><td>'+k.uses+'</td><td>'+(k.expires_at?ago(k.expires_at).replace(' ago',' left'):'never')+'</td><td><button class="danger" onclick="delKey(\''+esc(k.id)+'\')">Delete</button></td></tr>').join('') || '<tr><td colspan="7" class="muted">No keys.</td></tr>';
   $('#keyNet').innerHTML = nets.map(n=>'<option value="'+esc(n.id)+'">'+esc(n.name)+'</option>').join('');
+  $('#aclNet').innerHTML = $('#keyNet').innerHTML;
+  loadACL();
 }
+async function loadACL(){
+  const id=$('#aclNet').value;
+  if(!id){ $('#aclText').value=''; return; }
+  const r=await fetch('/admin/api/acl?network_id='+encodeURIComponent(id));
+  if(!r.ok) return;
+  const j=await r.json();
+  $('#aclText').value=JSON.stringify(j.rules||[],null,2);
+}
+$('#aclNet').onchange=loadACL;
+$('#aclSave').onclick=async ()=>{
+  try{
+    const rules=JSON.parse($('#aclText').value||'[]');
+    const r=await fetch('/admin/api/acl',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({network_id:$('#aclNet').value,rules})});
+    const j=await r.json().catch(()=>({}));
+    $('#aclMsg').textContent=r.ok?'Saved.':('Error: '+(j.error||r.statusText));
+  }catch(e){ $('#aclMsg').textContent='Bad JSON: '+e.message; }
+};
 async function approve(id){ await api('/admin/api/nodes/approve',{node_id:id}); load(); }
 async function delNode(id){ if(!confirm('Remove this node?')) return; await api('/admin/api/nodes/delete',{node_id:id}); load(); }
 async function delKey(id){ await api('/admin/api/authkeys/delete',{id}); load(); }

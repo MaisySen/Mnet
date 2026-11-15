@@ -17,9 +17,26 @@ const (
 // Network is one isolated mesh. Nodes from different networks never see
 // each other.
 type Network struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        string     `json:"id"`
+	Name      string     `json:"name"`
+	ACL       *ACLPolicy `json:"acl,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+// ACLPolicy is the network's access list. Nil or empty means allow all
+// (the default for new networks). With at least one rule the default is
+// deny: a peer pair only connects when a rule allows it.
+type ACLPolicy struct {
+	Rules []ACLRule `json:"rules"`
+}
+
+// ACLRule allows traffic from src to dst. src matches node names (case
+// insensitive) or "*". dst additionally accepts CIDRs for advertised
+// subnet routes and "0.0.0.0/0" for exit-node internet access.
+type ACLRule struct {
+	Src     string `json:"src"`
+	Dst     string `json:"dst"`
+	Comment string `json:"comment,omitempty"`
 }
 
 // Node is one device in a network.
