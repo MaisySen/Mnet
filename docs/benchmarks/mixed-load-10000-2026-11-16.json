@@ -1,0 +1,54 @@
+{
+  "initial_seeded_nodes": 10000,
+  "final_nodes": 10016,
+  "workers": 16,
+  "gomaxprocs": 2,
+  "elapsed_seconds_including_drain": 10.484504060999999,
+  "completed_requests_per_second": 30.902749249266567,
+  "allocated_mb_during_run": 4695.011608,
+  "end_heap_inuse_mb_not_peak": 20.373504,
+  "goroutines_before": 3,
+  "goroutines_after_worker_drain": 49,
+  "operations": {
+    "endpoints": {
+      "requests": 67,
+      "ok": 67,
+      "rate_limited": 0,
+      "expected_poll_cancellations": 0,
+      "errors": 0,
+      "p50_ms": 461.697584,
+      "p95_ms": 550.372721,
+      "p99_ms": 567.917293
+    },
+    "join": {
+      "requests": 16,
+      "ok": 16,
+      "rate_limited": 0,
+      "expected_poll_cancellations": 0,
+      "errors": 0,
+      "p50_ms": 106.278389,
+      "p95_ms": 324.439386,
+      "p99_ms": 324.439386
+    },
+    "map": {
+      "requests": 224,
+      "ok": 224,
+      "rate_limited": 0,
+      "expected_poll_cancellations": 0,
+      "errors": 0,
+      "p50_ms": 574.343625,
+      "p95_ms": 738.717729,
+      "p99_ms": 885.743985
+    },
+    "poll": {
+      "requests": 17,
+      "ok": 1,
+      "rate_limited": 0,
+      "expected_poll_cancellations": 16,
+      "errors": 0,
+      "p50_ms": 106.158315,
+      "p95_ms": 132.186841,
+      "p99_ms": 132.186841
+    }
+  }
+}

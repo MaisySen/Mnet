@@ -8,6 +8,14 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- Opt-in sustained HTTP mixed-load harness: map reads, changing endpoint
+  updates, real registration attempts with admission limits left enabled,
+  cancellable polls and connection churn. Committed 10-second local
+  measurements at 1,000 and 10,000 seeded nodes with 16 HTTP workers,
+  including per-operation p50/p95/p99 and explicit failure/cancel/429 counts.
+  These are synthetic closed-loop measurements, not a production capacity
+  claim or an overload/soak test.
+
 - Session backpressure: at most 16MiB of outbound frames can queue before
   sends wait for capacity; close wakes blocked senders. Weighted scheduling
   favors input/screen while allowing chat and bulk completion to progress.
