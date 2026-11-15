@@ -42,6 +42,11 @@ Live proofs and the fixes they exposed.
   accept, refusal and session end lands in <state>/sessions.jsonl.
 - Metrics: GET /admin/api/metrics reports uptime, join and login
   outcomes, rate-limit hits, fleet size and live node count.
+- Session resilience: the mux runs an active keepalive (ping every
+  15 s, close after 45 s of silence) on both host and viewer, so
+  NAT reboots and dead relays no longer leave a session looking
+  open; the CLI viewer reconnects on a drop with capped exponential
+  backoff and the picture resumes from the host's fresh keyframe.
 - CI: GitHub Actions build, vet, race-enabled tests, the secrets
   gate, and the live session proof on every push and PR.
 

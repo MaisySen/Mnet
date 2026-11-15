@@ -243,3 +243,42 @@ func TestFrameRoundTrip(t *testing.T) {
 		t.Fatal("expected oversize error")
 	}
 }
+
+func TestKeepaliveDetectsDeadPeer(t *testing.T) {
+	a, b := net.Pipe()
+	defer b.Close()
+	m := newMux(a, StreamFile+1)
+	m.start()
+	m.Keepalive(50*time.Millisecond, 150*time.Millisecond)
+	select {
+	case <-m.Closed():
+	case <-time.After(3 * time.Second):
+		t.Fatal("dead peer never detected")
+	}
+}
+
+func TestKeepaliveKeepsLivePeer(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		Listen(ln, "host", func(Hello, net.Addr) (bool, string) { return true, "" })
+	}()
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := Dial(conn, "viewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Keepalive(50*time.Millisecond, 5*time.Second)
+	select {
+	case <-m.Closed():
+		t.Fatal("live peer was closed")
+	case <-time.After(400 * time.Millisecond):
+	}
+	m.Close()
+}

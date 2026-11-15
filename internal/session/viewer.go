@@ -44,6 +44,7 @@ func (v *Viewer) SetOnChat(f func(ChatMessage)) {
 // registered before it arrives: ConnectViewer installs them and
 // returns immediately.
 func ConnectViewer(m *Mux) *Viewer {
+	m.Keepalive(15*time.Second, 45*time.Second)
 	v := &Viewer{Mux: m}
 	m.OnStream(v.handleStream)
 	return v

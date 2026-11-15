@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -37,23 +39,24 @@ type Mux struct {
 	closed  chan struct{}
 	closeMu sync.Once
 
+	lastRead   atomic.Int64 // unixnano; any inbound frame proves liveness
 	onStreamMu sync.RWMutex
 	onStream   func(Stream)
 	nextID     uint32 // dynamic stream ids, partitioned by side
-	idMu     sync.Mutex
-	started  bool // frames queue for the write loop only after start()
-	opened   map[uint32]bool             // streams this side has OPENed
-	streams  map[uint32]*streamState     // inbound delivery, both directions
-	streamMu sync.Mutex
+	idMu       sync.Mutex
+	started    bool                    // frames queue for the write loop only after start()
+	opened     map[uint32]bool         // streams this side has OPENed
+	streams    map[uint32]*streamState // inbound delivery, both directions
+	streamMu   sync.Mutex
 }
 
 // streamState is one known stream. Streams opened by the peer before
 // an OnStream handler exists wait in handled=false state; OnStream
 // dispatches them when it is registered.
 type streamState struct {
-	ch       chan Frame
-	open     json.RawMessage
-	handled  bool
+	ch      chan Frame
+	open    json.RawMessage
+	handled bool
 }
 
 // Stream is one opened stream, delivered to the registered handler.
@@ -248,6 +251,33 @@ func (s Stream) Recv(timeout time.Duration) (Frame, error) {
 // Closed returns a channel closed when the session ends.
 func (m *Mux) Closed() <-chan struct{} { return m.closed }
 
+// Keepalive pings the peer every interval and closes the mux when no
+// frame has arrived for timeout. NAT reboots, sleep-wake cycles and
+// dead relays otherwise leave a session looking open forever. Both
+// sides run it; the ping payload echoes nothing meaningful.
+func (m *Mux) Keepalive(interval, timeout time.Duration) {
+	m.lastRead.Store(time.Now().UnixNano())
+	go func() {
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-m.closed:
+				return
+			case now := <-t.C:
+				if now.UnixNano()-m.lastRead.Load() > timeout.Nanoseconds() {
+					log.Printf("session: no traffic for %s, closing", timeout)
+					m.Close()
+					return
+				}
+				if err := m.send(StreamControl, msgPing, PriInteractive, nil); err != nil {
+					return
+				}
+			}
+		}
+	}()
+}
+
 // PeerAddr returns the remote address of the underlying connection,
 // for hosts that bind the claimed peer name to the source mesh IP.
 func (m *Mux) PeerAddr() net.Addr { return m.conn.RemoteAddr() }
@@ -344,6 +374,7 @@ func (m *Mux) readLoop() {
 			m.Close()
 			return
 		}
+		m.lastRead.Store(time.Now().UnixNano())
 		switch f.Type {
 		case msgPing:
 			m.send(f.StreamID, msgPong, PriInteractive, f.Payload)

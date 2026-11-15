@@ -75,6 +75,7 @@ func ServeHost(m *Mux, cap Capturer, inj Injector, fps int) *Host {
 	if fps <= 0 {
 		fps = 5
 	}
+	m.Keepalive(15*time.Second, 45*time.Second)
 	h := &Host{
 		Mux:  m,
 		Cap:  cap,
