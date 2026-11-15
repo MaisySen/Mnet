@@ -18,16 +18,18 @@ import (
 
 func main() {
 	var (
-		listen   = flag.String("listen", ":8080", "address to listen on")
-		data     = flag.String("data", "mnet-control.json", "state file")
-		base     = flag.String("base-url", "", "public base URL clients use, for example https://control.example.com (defaults to http://<listen>)")
-		password = flag.String("admin-password", os.Getenv("MNET_ADMIN_PASSWORD"), "admin dashboard password (or MNET_ADMIN_PASSWORD); generated and printed if empty")
-		oidcIss  = flag.String("oidc-issuer", os.Getenv("MNET_OIDC_ISSUER"), "OIDC issuer URL for SSO joins (or MNET_OIDC_ISSUER)")
-		oidcID   = flag.String("oidc-client-id", os.Getenv("MNET_OIDC_CLIENT_ID"), "OIDC client id (or MNET_OIDC_CLIENT_ID)")
-		oidcSec  = flag.String("oidc-client-secret", os.Getenv("MNET_OIDC_CLIENT_SECRET"), "OIDC client secret (or MNET_OIDC_CLIENT_SECRET)")
-		proxies  = flag.String("trusted-proxies", os.Getenv("MNET_TRUSTED_PROXIES"), "comma-separated trusted reverse-proxy CIDRs; empty ignores X-Forwarded-For (or MNET_TRUSTED_PROXIES)")
-		showVer  = flag.Bool("version", false, "print version and exit")
-		defNet   = flag.String("default-network", os.Getenv("MNET_DEFAULT_NETWORK"), "create this network when the store starts empty (or MNET_DEFAULT_NETWORK); survives hosts with ephemeral disks")
+		listen       = flag.String("listen", ":8080", "address to listen on")
+		data         = flag.String("data", "mnet-control.json", "state file")
+		base         = flag.String("base-url", "", "public base URL clients use, for example https://control.example.com (defaults to http://<listen>)")
+		password     = flag.String("admin-password", os.Getenv("MNET_ADMIN_PASSWORD"), "admin dashboard password (or MNET_ADMIN_PASSWORD); generated and printed if empty")
+		oidcIss      = flag.String("oidc-issuer", os.Getenv("MNET_OIDC_ISSUER"), "OIDC issuer URL for SSO joins (or MNET_OIDC_ISSUER)")
+		oidcID       = flag.String("oidc-client-id", os.Getenv("MNET_OIDC_CLIENT_ID"), "OIDC client id (or MNET_OIDC_CLIENT_ID)")
+		oidcSec      = flag.String("oidc-client-secret", os.Getenv("MNET_OIDC_CLIENT_SECRET"), "OIDC client secret (or MNET_OIDC_CLIENT_SECRET)")
+		oidcSubjects = flag.String("oidc-allowed-subjects", os.Getenv("MNET_OIDC_ALLOWED_SUBJECTS"), "comma-separated allowed OIDC subjects (exact issuer-local IDs)")
+		oidcDomains  = flag.String("oidc-allowed-email-domains", os.Getenv("MNET_OIDC_ALLOWED_EMAIL_DOMAINS"), "comma-separated allowed OIDC email domains; requires verified email")
+		proxies      = flag.String("trusted-proxies", os.Getenv("MNET_TRUSTED_PROXIES"), "comma-separated trusted reverse-proxy CIDRs; empty ignores X-Forwarded-For (or MNET_TRUSTED_PROXIES)")
+		showVer      = flag.Bool("version", false, "print version and exit")
+		defNet       = flag.String("default-network", os.Getenv("MNET_DEFAULT_NETWORK"), "create this network when the store starts empty (or MNET_DEFAULT_NETWORK); survives hosts with ephemeral disks")
 	)
 	flag.Parse()
 	if *showVer {
@@ -61,7 +63,8 @@ func main() {
 	if *oidcIss != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		p, err := control.NewOIDCProvider(ctx, control.OIDCConfig{
-			Issuer: *oidcIss, ClientID: *oidcID, ClientSecret: *oidcSec})
+			Issuer: *oidcIss, ClientID: *oidcID, ClientSecret: *oidcSec,
+			AllowedSubjects: splitList(*oidcSubjects), AllowedEmailDomains: splitList(*oidcDomains)})
 		cancel()
 		if err != nil {
 			log.Fatalf("oidc: %v", err)
@@ -75,4 +78,15 @@ func main() {
 	log.Printf("mnet-control %s listening on %s", version.Version, *listen)
 	log.Printf("dashboard: %s/admin", publicBase)
 	log.Fatal(http.ListenAndServe(*listen, srv.Handler()))
+}
+
+func splitList(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	items := strings.Split(raw, ",")
+	for i := range items {
+		items[i] = strings.TrimSpace(items[i])
+	}
+	return items
 }

@@ -8,11 +8,17 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- SSO is deny-by-default: configuring an issuer also requires exact subject
+  IDs or verified-email domains. Unlisted identities never approve nodes.
+  Per-login nonce binding rejects tokens from a different login. Signed
+  and end-to-end rejection tests cover these cases. Existing SSO operators
+  must add an explicit policy; this is an intentional safe-default change.
+
 - OIDC verification now requires exact issuer, subject, expiry and issued-at
   claims; rejects additional/untyped audiences and a mismatched authorized
   party. Signed negative fixtures reproduced the former acceptance gaps.
   Fake-provider end-to-end tests remain distinct from live issuer testing;
-  SSO's lack of a separate organization allowlist is documented explicitly.
+  admission policy is handled by a separate follow-up change.
 
 - Approval and OIDC callback URLs now use the validated configured base
   origin, not caller-controlled Host or forwarding-protocol headers.

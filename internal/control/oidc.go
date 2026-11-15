@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -18,12 +19,16 @@ import (
 	"time"
 )
 
-// OIDCConfig enables SSO login for node joins. All three fields are
-// required; a nil provider keeps the approval-only flow.
+// OIDCConfig enables SSO login for node joins. Issuer, client credentials
+// and an admission policy are required; nil keeps manual approval.
 type OIDCConfig struct {
 	Issuer       string // for example https://accounts.google.com
 	ClientID     string
 	ClientSecret string
+	// Admission is deny-by-default. Subject identifiers are exact within
+	// this issuer; email domains require a true email_verified claim.
+	AllowedSubjects     []string
+	AllowedEmailDomains []string
 }
 
 // OIDCProvider is a discovered OpenID Connect issuer: authorization code
@@ -49,6 +54,23 @@ type oidcDiscovery struct {
 func NewOIDCProvider(ctx context.Context, cfg OIDCConfig) (*OIDCProvider, error) {
 	if cfg.Issuer == "" || cfg.ClientID == "" || cfg.ClientSecret == "" {
 		return nil, fmt.Errorf("oidc needs issuer, client id and client secret")
+	}
+	if len(cfg.AllowedSubjects)+len(cfg.AllowedEmailDomains) == 0 {
+		return nil, fmt.Errorf("oidc requires allowed subjects or verified email domains")
+	}
+	cfg.AllowedSubjects = append([]string(nil), cfg.AllowedSubjects...)
+	cfg.AllowedEmailDomains = append([]string(nil), cfg.AllowedEmailDomains...)
+	for _, sub := range cfg.AllowedSubjects {
+		if sub == "" {
+			return nil, fmt.Errorf("oidc allowed subject cannot be empty")
+		}
+	}
+	for i, domain := range cfg.AllowedEmailDomains {
+		domain = strings.ToLower(strings.TrimSpace(domain))
+		if domain == "" || strings.ContainsAny(domain, "@/*: \t\r\n") || strings.HasPrefix(domain, ".") || strings.HasSuffix(domain, ".") {
+			return nil, fmt.Errorf("oidc allowed email domain must be an exact domain")
+		}
+		cfg.AllowedEmailDomains[i] = domain
 	}
 	p := &OIDCProvider{cfg: cfg, keys: map[string]*rsa.PublicKey{}}
 	if err := p.discover(ctx); err != nil {
@@ -93,19 +115,22 @@ func (p *OIDCProvider) AuthURL(state, redirectURL string) string {
 		"response_type": {"code"},
 		"scope":         {"openid email profile"},
 		"state":         {state},
+		"nonce":         {state},
 	}
 	return base + "?" + q.Encode()
 }
 
 // Claims is the verified identity from an ID token.
 type OIDCClaims struct {
-	Subject string `json:"sub"`
-	Email   string `json:"email"`
-	Name    string `json:"name"`
+	Subject       string `json:"sub"`
+	Nonce         string `json:"nonce"`
+	EmailVerified bool   `json:"email_verified"`
+	Email         string `json:"email"`
+	Name          string `json:"name"`
 }
 
 // Exchange trades an authorization code for the verified user identity.
-func (p *OIDCProvider) Exchange(ctx context.Context, code, redirectURL string) (*OIDCClaims, error) {
+func (p *OIDCProvider) Exchange(ctx context.Context, code, redirectURL, expectedNonce string) (*OIDCClaims, error) {
 	p.mu.Lock()
 	tokenURL := p.tokenURL
 	p.mu.Unlock()
@@ -133,7 +158,38 @@ func (p *OIDCProvider) Exchange(ctx context.Context, code, redirectURL string) (
 	if err := json.Unmarshal(body, &tok); err != nil || tok.IDToken == "" {
 		return nil, fmt.Errorf("token exchange: no id_token in response")
 	}
-	return p.verifyIDToken(ctx, tok.IDToken)
+	claims, err := p.verifyIDToken(ctx, tok.IDToken)
+	if err != nil {
+		return nil, err
+	}
+	if expectedNonce == "" || subtle.ConstantTimeCompare([]byte(claims.Nonce), []byte(expectedNonce)) != 1 {
+		return nil, fmt.Errorf("id token: nonce mismatch")
+	}
+	if !p.identityAllowed(claims) {
+		return nil, fmt.Errorf("identity is not allowed to join")
+	}
+	return claims, nil
+}
+
+func (p *OIDCProvider) identityAllowed(c *OIDCClaims) bool {
+	for _, sub := range p.cfg.AllowedSubjects {
+		if sub == c.Subject {
+			return true
+		}
+	}
+	if !c.EmailVerified {
+		return false
+	}
+	local, domain, ok := strings.Cut(c.Email, "@")
+	if !ok || local == "" || strings.Contains(domain, "@") {
+		return false
+	}
+	for _, allowed := range p.cfg.AllowedEmailDomains {
+		if strings.EqualFold(domain, allowed) {
+			return true
+		}
+	}
+	return false
 }
 
 // verifyIDToken checks signature (RS256 against the issuer JWKS), issuer,

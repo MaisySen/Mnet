@@ -68,3 +68,43 @@ func TestSignedOIDCClaimValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestOIDCAdmissionPolicy(t *testing.T) {
+	p := &OIDCProvider{cfg: OIDCConfig{AllowedSubjects: []string{"allowed-subject"}, AllowedEmailDomains: []string{"example.test"}}}
+	for _, tc := range []struct {
+		name    string
+		c       OIDCClaims
+		allowed bool
+	}{
+		{"exact subject", OIDCClaims{Subject: "allowed-subject"}, true},
+		{"subject case matters", OIDCClaims{Subject: "Allowed-subject"}, false},
+		{"verified domain", OIDCClaims{Subject: "other", Email: "user@example.test", EmailVerified: true}, true},
+		{"domain case insensitive", OIDCClaims{Subject: "other", Email: "user@EXAMPLE.TEST", EmailVerified: true}, true},
+		{"unverified", OIDCClaims{Subject: "other", Email: "user@example.test"}, false},
+		{"suffix attack", OIDCClaims{Subject: "other", Email: "user@example.test.evil", EmailVerified: true}, false},
+		{"subdomain not granted", OIDCClaims{Subject: "other", Email: "user@sub.example.test", EmailVerified: true}, false},
+		{"multiple at", OIDCClaims{Subject: "other", Email: "a@b@example.test", EmailVerified: true}, false},
+		{"empty local", OIDCClaims{Subject: "other", Email: "@example.test", EmailVerified: true}, false},
+		{"other identity", OIDCClaims{Subject: "other", Email: "user@elsewhere.test", EmailVerified: true}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := p.identityAllowed(&tc.c); got != tc.allowed {
+				t.Fatalf("allowed=%v want %v", got, tc.allowed)
+			}
+		})
+	}
+	if (&OIDCProvider{}).identityAllowed(&OIDCClaims{Subject: "any", Email: "any@example.test", EmailVerified: true}) {
+		t.Fatal("empty policy admitted identity")
+	}
+}
+
+func TestOIDCRequiresAdmissionPolicy(t *testing.T) {
+	if _, err := NewOIDCProvider(context.Background(), OIDCConfig{Issuer: "https://issuer.test", ClientID: "client", ClientSecret: "fixture"}); err == nil {
+		t.Fatal("enabled SSO with no admission policy")
+	}
+	for _, domain := range []string{"", "*.example.test", "example.test/path", "user@example.test", ".example.test", "example.test."} {
+		if _, err := NewOIDCProvider(context.Background(), OIDCConfig{Issuer: "https://issuer.test", ClientID: "client", ClientSecret: "fixture", AllowedEmailDomains: []string{domain}}); err == nil {
+			t.Fatalf("accepted invalid policy domain %q", domain)
+		}
+	}
+}

@@ -27,11 +27,13 @@ import (
 // a signed id_token, and JWKS. evil makes it sign with a key it does
 // not publish, simulating a forged token.
 type fakeOIDC struct {
-	t     *testing.T
-	srv   *httptest.Server
-	key   *rsa.PrivateKey
-	evil  bool
-	email string
+	t            *testing.T
+	srv          *httptest.Server
+	key          *rsa.PrivateKey
+	evil         bool
+	email        string
+	badNonce     bool
+	denyIdentity bool
 }
 
 func newFakeOIDC(t *testing.T, evil bool) *fakeOIDC {
@@ -56,19 +58,27 @@ func newFakeOIDC(t *testing.T, evil bool) *fakeOIDC {
 		if q.Get("client_id") != "mnet-test" || q.Get("response_type") != "code" {
 			t.Errorf("bad auth request: %s", r.URL)
 		}
-		http.Redirect(w, r, q.Get("redirect_uri")+"?code=fake-code&state="+url.QueryEscape(q.Get("state")), http.StatusFound)
+		http.Redirect(w, r, q.Get("redirect_uri")+"?code="+url.QueryEscape(q.Get("nonce"))+"&state="+url.QueryEscape(q.Get("state")), http.StatusFound)
 	})
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
-		if r.Form.Get("code") != "fake-code" || r.Form.Get("client_secret") != "test-secret" {
+		if r.Form.Get("code") == "" || r.Form.Get("client_secret") != "test-secret" {
 			http.Error(w, "bad code", 400)
 			return
 		}
 		head := b64([]byte(`{"alg":"RS256","kid":"testkey"}`))
+		nonce := r.Form.Get("code")
+		if f.badNonce {
+			nonce = "wrong-nonce"
+		}
+		subject := "user-1"
+		if f.denyIdentity {
+			subject = "unlisted-user"
+		}
 		payload, _ := json.Marshal(map[string]any{
 			"iss": f.srv.URL, "aud": "mnet-test",
 			"exp": time.Now().Add(time.Hour).Unix(), "iat": time.Now().Unix(),
-			"sub": "user-1", "email": f.email, "name": "Dev",
+			"sub": subject, "nonce": nonce, "email": f.email, "name": "Dev",
 		})
 		sum := sha256.Sum256([]byte(head + "." + b64(payload)))
 		signer := f.key
@@ -108,7 +118,7 @@ func testEnvOIDC(t *testing.T, fake *fakeOIDC) (*httptest.Server, string) {
 		t.Fatal(err)
 	}
 	p, err := control.NewOIDCProvider(context.Background(), control.OIDCConfig{
-		Issuer: fake.srv.URL, ClientID: "mnet-test", ClientSecret: "test-secret"})
+		Issuer: fake.srv.URL, ClientID: "mnet-test", ClientSecret: "test-secret", AllowedSubjects: []string{"user-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,5 +245,33 @@ func TestOIDCIdentityIsHTMLEscaped(t *testing.T) {
 	code, page := followLogin(t, jr.ApprovalURL)
 	if code != 200 || strings.Contains(page, "<script>") || !strings.Contains(page, "&lt;script&gt;") {
 		t.Fatalf("identity not escaped: %d %s", code, page)
+	}
+}
+
+func TestOIDCRejectsNonceMismatchAndUnlistedIdentity(t *testing.T) {
+	for _, mode := range []string{"nonce", "identity"} {
+		t.Run(mode, func(t *testing.T) {
+			fake := newFakeOIDC(t, false)
+			fake.badNonce = mode == "nonce"
+			fake.denyIdentity = mode == "identity"
+			ts, pw := testEnvOIDC(t, fake)
+			cookie := adminLogin(t, ts.URL, pw)
+			post(t, ts.URL+"/admin/api/networks", map[string]string{"name": "sso"}, map[string]string{"Cookie": cookie.String()})
+			code, body := post(t, ts.URL+"/api/join", netmap.JoinRequest{Network: "sso", Name: "rejected", PubKey: fakePubKey(0x45)}, nil)
+			if code != 200 {
+				t.Fatalf("join %d", code)
+			}
+			var jr netmap.JoinResponse
+			if err := json.Unmarshal(body, &jr); err != nil {
+				t.Fatal(err)
+			}
+			code, _ = followLogin(t, jr.ApprovalURL)
+			if code != 403 {
+				t.Fatalf("invalid %s accepted: %d", mode, code)
+			}
+			if code, _ := getMap(t, ts.URL, jr, map[string]string{"X-Node-ID": jr.NodeID, "X-Node-Token": jr.NodeToken}); code != 403 {
+				t.Fatalf("rejected identity got map: %d", code)
+			}
+		})
 	}
 }

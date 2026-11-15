@@ -107,10 +107,16 @@ Nodes join with:
 ## SSO login (OIDC)
 
 Set MNET_OIDC_ISSUER, MNET_OIDC_CLIENT_ID and MNET_OIDC_CLIENT_SECRET
-(or the matching flags) on mnet-control and joins switch from manual
-approval to SSO. Register <public base>/oidc/callback as the redirect
-URL at the provider. Tested providers: any spec-compliant issuer with
-RS256 ID tokens. The current test evidence is a local signed fake provider,
+(or the matching flags) on mnet-control. Also set an explicit admission
+policy with `MNET_OIDC_ALLOWED_SUBJECTS` (comma-separated exact subject IDs)
+and/or `MNET_OIDC_ALLOWED_EMAIL_DOMAINS` (exact domains, requiring the
+provider's signed `email_verified: true`). Startup rejects SSO without a
+policy. Matching CLI flags are `-oidc-allowed-subjects` and
+`-oidc-allowed-email-domains`. Domain entries do not grant subdomains.
+With valid configuration, joins switch from manual approval to SSO.
+Register <public base>/oidc/callback as the redirect URL at the provider.
+The verifier currently supports RS256 ID tokens only.
+The current test evidence is a local signed fake provider,
 not a live Google, Microsoft Entra, Okta or Keycloak certification. Auth keys
 still bypass SSO, so keep issuing them for servers. The identity from
 the login (email, else subject) lands in the node's User field and the
@@ -212,9 +218,11 @@ against the discovered JWKS. Signed negative-claim tests cover these rules.
 The reference is OpenID Connect Core 1.0 sections 2 and 3.1.3.7:
 https://openid.net/specs/openid-connect-core-1_0.html
 
-SSO currently approves any identity the configured issuer authenticates.
-It does not enforce an email-domain or organization allowlist. Do not use
-an unrestricted consumer issuer as a private-network access policy. Leave
-SSO disabled and use manual approvals or scoped auth keys unless the
-issuer itself restricts who can sign into this client. This implementation
-has not had an independent security review.
+SSO admits only identities matching the configured subject or verified
+email-domain policy. Both the signed token and the per-login nonce must
+validate before approval. The nonce is bound to the one-use login state.
+Email policy trusts the configured issuer's email-verification claim; use
+exact issuer-local subject IDs when that assurance is insufficient. Keep
+SSO disabled and use manual approvals or scoped auth keys if no suitable
+policy is known. This implementation has not had an independent security
+review.

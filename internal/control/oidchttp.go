@@ -79,7 +79,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusForbidden, "identity provider refused: "+e)
 		return
 	}
-	claims, err := p.Exchange(r.Context(), r.URL.Query().Get("code"), s.publicURL("/oidc/callback"))
+	claims, err := p.Exchange(r.Context(), r.URL.Query().Get("code"), s.publicURL("/oidc/callback"), state)
 	if err != nil {
 		writeErr(w, http.StatusForbidden, "login failed: "+err.Error())
 		return
