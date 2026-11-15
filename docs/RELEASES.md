@@ -31,6 +31,19 @@ Live proofs and the fixes they exposed.
   server. Artifacts (frames, summary.json) land in -proof-dir.
 - File transfer: incoming files were refused when the receive
   directory did not exist yet; the receiver now creates it.
+- Control plane hardening: per-IP rate limits on admin login and
+  node join (429 with Retry-After), security headers on every
+  response (API responses deny content loading and caching), and an
+  append-only audit log at <store>.audit.jsonl covering logins,
+  joins, approvals, key and node administration.
+- Session authorization: hosts bind the viewer's claimed node name
+  to the source mesh IP against the network map, mnetd
+  -session-allow restricts hosting to named nodes, and every
+  accept, refusal and session end lands in <state>/sessions.jsonl.
+- Metrics: GET /admin/api/metrics reports uptime, join and login
+  outcomes, rate-limit hits, fleet size and live node count.
+- CI: GitHub Actions build, vet, race-enabled tests, the secrets
+  gate, and the live session proof on every push and PR.
 
 ## 0.7.0 - 2026-11-15
 

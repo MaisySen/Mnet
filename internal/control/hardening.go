@@ -37,11 +37,12 @@ func securityHeaders(next http.Handler) http.Handler {
 // ipLimiters keeps a token bucket per client IP, expiring buckets
 // idle for an hour so the map does not grow forever.
 type ipLimiters struct {
-	mu  sync.Mutex
-	m   map[string]*ipBucket
-	r   rate.Limit
-	b   int
-	now func() time.Time
+	mu      sync.Mutex
+	m       map[string]*ipBucket
+	r       rate.Limit
+	b       int
+	now     func() time.Time
+	onLimit func() // optional, called on every 429
 }
 
 type ipBucket struct {
@@ -81,6 +82,9 @@ func (l *ipLimiters) allow(ip string) bool {
 func (l *ipLimiters) limit(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !l.allow(clientIP(r)) {
+			if l.onLimit != nil {
+				l.onLimit()
+			}
 			w.Header().Set("Retry-After", "60")
 			writeErr(w, http.StatusTooManyRequests, "rate limited; retry later")
 			return
@@ -138,4 +142,22 @@ func (s *Server) audit(r *http.Request, event, actor, detail string, ok bool) {
 	}
 	defer f.Close()
 	fmt.Fprintln(f, string(b))
+}
+
+// Counters for the metrics endpoint. Atomic-free: all increments
+// happen under a small mutex; the rates involved are human-scale.
+type metrics struct {
+	mu           sync.Mutex
+	StartedAt    time.Time
+	JoinsOK      int64
+	JoinsFailed  int64
+	LoginsOK     int64
+	LoginsFailed int64
+	RateLimited  int64
+}
+
+func (m *metrics) bump(field *int64) {
+	m.mu.Lock()
+	*field++
+	m.mu.Unlock()
 }

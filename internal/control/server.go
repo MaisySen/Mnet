@@ -38,6 +38,7 @@ type Server struct {
 	joinLim   *ipLimiters // join flood protection
 	auditPath string       // append-only audit log, <store>.audit.jsonl
 	auditMu   sync.Mutex
+	metrics   *metrics
 }
 
 // NewServer builds a server. adminPassword may be empty, in which case a
@@ -63,7 +64,11 @@ func NewServer(store *Store, hub *relay.Hub, publicBase, adminPassword string) (
 		loginLim:      newIPLimiters(10, 5),
 		joinLim:       newIPLimiters(60, 20),
 		auditPath:     store.Path() + ".audit.jsonl",
+		metrics:       &metrics{StartedAt: time.Now().UTC()},
 	}
+	onLimited := func() { s.metrics.bump(&s.metrics.RateLimited) }
+	s.loginLim.onLimit = onLimited
+	s.joinLim.onLimit = onLimited
 	return s, generated, nil
 }
 
@@ -94,6 +99,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/admin/api/nodes/delete", s.adminOnly(s.handleAdminNodeDelete))
 	mux.HandleFunc("/admin/api/nodes/expire", s.adminOnly(s.handleAdminNodeExpire))
 	mux.HandleFunc("/admin/api/acl", s.adminOnly(s.handleAdminACL))
+	mux.HandleFunc("/admin/api/metrics", s.adminOnly(s.handleAdminMetrics))
 	return securityHeaders(mux)
 }
 
@@ -144,6 +150,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	resp, err := s.store.Join(req)
 	if err != nil {
 		s.audit(r, "join", req.Name, req.Network+": "+err.Error(), false)
+		s.metrics.bump(&s.metrics.JoinsFailed)
 		switch err {
 		case ErrNotFound:
 			writeErr(w, http.StatusNotFound, "network not found")
@@ -157,6 +164,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "join", req.Name, req.Network, true)
+	s.metrics.bump(&s.metrics.JoinsOK)
 	if !resp.Approved {
 		if s.oidcProvider() != nil {
 			// SSO login replaces manual approval.
@@ -274,10 +282,12 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if subtle.ConstantTimeCompare([]byte(body.Password), []byte(s.adminPassword)) != 1 {
 		s.audit(r, "admin_login", "admin", "", false)
+		s.metrics.bump(&s.metrics.LoginsFailed)
 		writeErr(w, http.StatusUnauthorized, "wrong password")
 		return
 	}
 	s.audit(r, "admin_login", "admin", "", true)
+	s.metrics.bump(&s.metrics.LoginsOK)
 	b := make([]byte, 24)
 	rand.Read(b)
 	tok := base64.RawURLEncoding.EncodeToString(b)
@@ -430,4 +440,40 @@ func (s *Server) handleAdminNodeDelete(w http.ResponseWriter, r *http.Request) {
 	s.audit(r, "node_delete", "admin", body.NodeID, true)
 	s.hub.Detach(body.NodeID)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// handleAdminMetrics reports operational counters and fleet size.
+func (s *Server) handleAdminMetrics(w http.ResponseWriter, r *http.Request) {
+	snap := s.store.Snapshot()
+	approved, pending := 0, 0
+	for _, n := range snap.Nodes {
+		if n.Approved {
+			approved++
+		} else {
+			pending++
+		}
+	}
+	s.metrics.mu.Lock()
+	m := metrics{
+		StartedAt:    s.metrics.StartedAt,
+		JoinsOK:      s.metrics.JoinsOK,
+		JoinsFailed:  s.metrics.JoinsFailed,
+		LoginsOK:     s.metrics.LoginsOK,
+		LoginsFailed: s.metrics.LoginsFailed,
+		RateLimited:  s.metrics.RateLimited,
+	}
+	s.metrics.mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"started_at":       m.StartedAt,
+		"uptime_seconds":   int64(time.Since(m.StartedAt).Seconds()),
+		"joins_ok":         m.JoinsOK,
+		"joins_failed":     m.JoinsFailed,
+		"logins_ok":        m.LoginsOK,
+		"logins_failed":    m.LoginsFailed,
+		"rate_limited":     m.RateLimited,
+		"networks":         len(snap.Networks),
+		"nodes_approved":   approved,
+		"nodes_pending":    pending,
+		"nodes_online_now": len(s.hub.OnlineMap()),
+	})
 }
