@@ -136,7 +136,7 @@ footer{padding:1.5rem;color:#9da7b1;font-size:.8rem}
 </section>
 <section>
 <h2>Nodes</h2>
-<table id="nodes"><thead><tr><th>Name</th><th>Network</th><th>IP</th><th>Status</th><th>Endpoints</th><th>Last seen</th><th></th></tr></thead><tbody></tbody></table>
+<table id="nodes"><thead><tr><th>Name</th><th>Network</th><th>IP</th><th>Status</th><th>Endpoints</th><th>Last seen</th><th>Key expiry</th><th></th></tr></thead><tbody></tbody></table>
 </section>
 <section>
 <h2>Auth keys</h2>
@@ -183,7 +183,7 @@ function render(){
   $('#noPending').style.display = pending.length? 'none':'block';
   $('#pending tbody').innerHTML = pending.map(n=>'<tr id="pending-'+esc(n.id)+'"><td>'+esc(n.name)+'</td><td><code>'+esc(n.ipv4)+'</code></td><td><code>'+esc(n.pubkey.slice(0,12))+'...</code></td><td>'+ago(n.created_at)+'</td><td><button onclick="approve(\''+esc(n.id)+'\')">Approve</button> <button class="danger" onclick="delNode(\''+esc(n.id)+'\')">Deny</button></td></tr>').join('');
   const approved = nodes.filter(n=>n.approved);
-  $('#nodes tbody').innerHTML = approved.map(n=>'<tr><td>'+esc(n.name)+'</td><td>'+esc(netName(n.network_id))+'</td><td><code>'+esc(n.ipv4)+'</code></td><td>'+(online[n.pubkey]?'<span class="badge on">online</span>':'<span class="badge off">offline</span>')+'</td><td class="muted">'+esc((n.endpoints||[]).join(', '))+'</td><td>'+ago(n.last_seen)+'</td><td><button class="danger" onclick="delNode(\''+esc(n.id)+'\')">Remove</button></td></tr>').join('') || '<tr><td colspan="7" class="muted">No approved nodes.</td></tr>';
+  $('#nodes tbody').innerHTML = approved.map(n=>'<tr><td>'+esc(n.name)+'</td><td>'+esc(netName(n.network_id))+'</td><td><code>'+esc(n.ipv4)+'</code></td><td>'+(online[n.pubkey]?'<span class="badge on">online</span>':'<span class="badge off">offline</span>')+'</td><td class="muted">'+esc((n.endpoints||[]).join(', '))+'</td><td>'+ago(n.last_seen)+'</td><td>'+(n.key_expiry?ago(n.key_expiry).replace(' ago',' left'):'never')+'</td><td><button onclick="expireNode(\''+esc(n.id)+'\')">Expire key</button> <button class="danger" onclick="delNode(\''+esc(n.id)+'\')">Remove</button></td></tr>').join('') || '<tr><td colspan="9" class="muted">No approved nodes.</td></tr>';
   $('#keys tbody').innerHTML = keys.map(k=>'<tr><td class="key"><code>'+esc(k.key)+'</code></td><td>'+esc(netName(k.network_id))+'</td><td>'+esc(k.note)+'</td><td>'+(k.reusable?'yes':'no')+'</td><td>'+k.uses+'</td><td>'+(k.expires_at?ago(k.expires_at).replace(' ago',' left'):'never')+'</td><td><button class="danger" onclick="delKey(\''+esc(k.id)+'\')">Delete</button></td></tr>').join('') || '<tr><td colspan="7" class="muted">No keys.</td></tr>';
   $('#keyNet').innerHTML = nets.map(n=>'<option value="'+esc(n.id)+'">'+esc(n.name)+'</option>').join('');
   $('#aclNet').innerHTML = $('#keyNet').innerHTML;
@@ -209,6 +209,7 @@ $('#aclSave').onclick=async ()=>{
 async function approve(id){ await api('/admin/api/nodes/approve',{node_id:id}); load(); }
 async function delNode(id){ if(!confirm('Remove this node?')) return; await api('/admin/api/nodes/delete',{node_id:id}); load(); }
 async function delKey(id){ await api('/admin/api/authkeys/delete',{id}); load(); }
+async function expireNode(id){ if(!confirm('Expire this node key now? The device must rejoin.')) return; await api('/admin/api/nodes/expire',{node_id:id}); load(); }
 $('#loginBtn').onclick = async ()=>{ try{ await api('/admin/api/login',{password:$('#pw').value}); $('#pw').value=''; $('#loginMsg').textContent=''; load(); }catch(e){ $('#loginMsg').textContent='Wrong password.'; } };
 $('#pw').addEventListener('keydown', e=>{ if(e.key==='Enter') $('#loginBtn').click(); });
 $('#refresh').onclick = load;

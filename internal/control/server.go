@@ -75,6 +75,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/admin/api/nodes/approve", s.adminOnly(s.handleAdminNodeApprove))
 	mux.HandleFunc("/admin/api/nodes/deny", s.adminOnly(s.handleAdminNodeDeny))
 	mux.HandleFunc("/admin/api/nodes/delete", s.adminOnly(s.handleAdminNodeDelete))
+	mux.HandleFunc("/admin/api/nodes/expire", s.adminOnly(s.handleAdminNodeExpire))
 	mux.HandleFunc("/admin/api/acl", s.adminOnly(s.handleAdminACL))
 	return mux
 }
@@ -372,6 +373,21 @@ func (s *Server) handleAdminNodeApprove(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleAdminNodeDeny(w http.ResponseWriter, r *http.Request) {
 	// Deny removes the pending node so a retry gets a fresh slate.
 	s.handleAdminNodeDelete(w, r)
+}
+
+// handleAdminNodeExpire forces a node's key to expire immediately.
+func (s *Server) handleAdminNodeExpire(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		NodeID string `json:"node_id"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	if err := s.store.ExpireNode(body.NodeID); err != nil {
+		writeErr(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (s *Server) handleAdminNodeDelete(w http.ResponseWriter, r *http.Request) {

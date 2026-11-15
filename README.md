@@ -135,6 +135,13 @@ Advertised subnets become WireGuard allowed IPs on every peer, so traffic
 for 10.9.0.0/24 flows to the router node and out its LAN. Deselecting the
 exit node or rejoining without the flags cleanly removes the routes again.
 
+## Key expiry
+
+Node keys expire 180 days after the first join. An expired node is
+refused by the control plane until it rejoins, which renews the key for
+another 180 days. The admin dashboard shows each node's expiry and has
+an Expire key button to revoke a device immediately.
+
 ## ACL policies
 
 Each network has an access policy, edited in the admin dashboard or through
