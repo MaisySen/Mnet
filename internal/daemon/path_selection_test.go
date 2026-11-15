@@ -94,3 +94,11 @@ func TestRelayRoamingDoesNotCountAsDirectProbeSuccess(t *testing.T) {
 		t.Fatal("next bounded probe window did not open")
 	}
 }
+
+func TestCandidatesCannotRecurseIntoMeshOrAdvertisedRoutes(t *testing.T) {
+	nodes := []netmap.Node{{Routes: []string{"10.9.0.0/24"}}, {Routes: []string{"192.168.7.0/24"}}}
+	got := safePeerEndpoints([]string{"10.9.0.1:1234", "100.64.0.2:1234", "192.168.7.1:1234", "198.18.10.3:1234", "192.168.1.5:1234", "hostname:1234", "malformed"}, nodes)
+	if len(got) != 2 || got[0] != "198.18.10.3:1234" || got[1] != "192.168.1.5:1234" {
+		t.Fatalf("unsafe recursive endpoints retained: %v", got)
+	}
+}

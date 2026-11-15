@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -90,6 +91,7 @@ func (d *Daemon) applyMapLocked(m *netmap.Map) {
 	d.peersMu.Unlock()
 	var probes []device.NoisePublicKey
 	for _, p := range m.Peers {
+		p.Endpoints = safePeerEndpoints(p.Endpoints, m.Peers)
 		pub, err := base64.StdEncoding.DecodeString(p.PubKey)
 		if err != nil || len(pub) != 32 {
 			continue
@@ -162,6 +164,37 @@ func (d *Daemon) applyMapLocked(m *netmap.Map) {
 	if d.dns != nil {
 		d.dns.Update(m)
 	}
+}
+
+// Never choose an underlay endpoint that the current mesh routes back
+// into the TUN. This can include another peer's advertised subnet.
+func safePeerEndpoints(endpoints []string, peers []netmap.Node) []string {
+	blocked := []netip.Prefix{netip.MustParsePrefix("100.64.0.0/10")}
+	for _, peer := range peers {
+		for _, raw := range peer.Routes {
+			if prefix, err := netip.ParsePrefix(raw); err == nil {
+				blocked = append(blocked, prefix.Masked())
+			}
+		}
+	}
+	var safe []string
+	for _, endpoint := range endpoints {
+		addr, err := netip.ParseAddrPort(endpoint)
+		if err != nil {
+			continue
+		}
+		recursive := false
+		for _, prefix := range blocked {
+			if prefix.Contains(addr.Addr().Unmap()) {
+				recursive = true
+				break
+			}
+		}
+		if !recursive {
+			safe = append(safe, endpoint)
+		}
+	}
+	return safe
 }
 
 func (st *peerTrack) currentEndpoint() string {

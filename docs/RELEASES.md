@@ -393,4 +393,4 @@ discovery confirmed live.
 Tag v0.1.0. First working mesh: control plane, daemon, CLI, relay,
 Magic DNS, end-to-end tests green.
 
-A newer kernel extension gracefully stops the serving daemon process and starts a fresh process with saved state and `-up`, asserting unchanged identity and restored direct VPN/LAN. Independent CI is pending. This is not a real reboot, systemd/launchd boot or forced-crash cleanup proof.
+A newer kernel extension gracefully stops the serving daemon process and starts a fresh process with saved state and `-up`, asserting unchanged identity and restored direct VPN/LAN. The first fresh-process restart passed, but the later one-shot LAN ping after ACL restoration failed in [b4046ed CI](https://github.com/MaisySen/Mnet/actions/runs/43774744281). Diagnostics also exposed a candidate inside an advertised subnet, which can route the tunnel endpoint back into itself. New source filters mesh/advertised-prefix endpoint candidates and uses bounded LAN convergence after route restoration; fresh full-repeat CI is pending. This is not a real reboot, systemd/launchd boot or forced-crash cleanup proof.

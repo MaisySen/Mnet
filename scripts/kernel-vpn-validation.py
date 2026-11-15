@@ -298,7 +298,7 @@ print(json.dumps(k))
                     raise RuntimeError('saved node identity changed after restart')
             wait_for(both_direct, 'direct paths after saved-state restart', timeout=40)
             wait_for(subnet_ready, 'subnet route after saved-state restart')
-            run(*ns('a', 'ping', '-c', '1', '-W', '2', '10.9.0.2'))
+            wait_for(lan_reachable, 'LAN forwarding after route restoration', timeout=30)
             serving_state(True)
             print(f'PASS kernel Down/Up cycle {cycle + 1}: same identity/IP and direct path', flush=True)
         # Exercise the installed-daemon startup shape: a fresh process uses
@@ -354,7 +354,7 @@ else:
             raise RuntimeError('ACL withdrawal removed unrelated route')
         run(*ns('c', sys.executable, acl_script, tmp / 'control.json', 'restore'))
         wait_for(subnet_ready, 'ACL restoration reinstalls owned subnet route')
-        run(*ns('a', 'ping', '-c', '1', '-W', '2', '10.9.0.2'))
+        wait_for(lan_reachable, 'LAN forwarding after route restoration', timeout=30)
         print('PASS ACL route-only withdrawal denies subnet and preserves peer/unrelated route; restoration works', flush=True)
         run(*ns('c', sys.executable, acl_script, tmp / 'control.json', 'expire'))
         wait_for(subnet_absent, 'expired peer removes owned subnet OS route')
@@ -367,7 +367,7 @@ else:
         wait_for(lambda: local_api(states['b'])['status'] == 'up' and not local_api(states['b']).get('approval_url'), 'reapproved identity restores up status without stale approval link')
         wait_for(subnet_ready, 'approved identity restores owned subnet route')
         wait_for(both_direct, 'direct paths after expiry and reapproval', timeout=40)
-        run(*ns('a', 'ping', '-c', '1', '-W', '2', '10.9.0.2'))
+        wait_for(lan_reachable, 'LAN forwarding after route restoration', timeout=30)
         print('PASS admin expiry removes peer/subnet route and blocks reachability until reapproval', flush=True)
         # With the control/relay process dead, transfers cannot silently
         # succeed by falling back to the shared control-plane WebSocket.
