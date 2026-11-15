@@ -16,3 +16,6 @@ android/out-aab/
 /mnet
 /mnetd
 /mnet-control
+
+__pycache__/
+*.pyc

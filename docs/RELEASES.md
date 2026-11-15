@@ -8,6 +8,13 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- Source gate: replaced shell-specific dash matching and broad directory
+  exclusions with a portable tracked-source scanner. High-signal private
+  key, provider credential and Mnet-token patterns include docs/tests/
+  workflows; failures print only locations/types, not credential values.
+  Positive/negative fixtures run locally and in CI. This is a narrow
+  safeguard, not a replacement for history/artifact audits or Gitleaks.
+
 - Daemon/API readiness: local API binding errors now fail the daemon
   instead of logging while it looks ready. The HTTP listener is context
   scoped and closes during shutdown. Windows SCM waits for that readiness

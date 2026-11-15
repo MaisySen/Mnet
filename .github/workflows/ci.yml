@@ -23,6 +23,8 @@ jobs:
         run: go vet ./...
       - name: test with race detector
         run: go test -race ./...
+      - name: source gate regression tests
+        run: python3 scripts/test-source-gate.py
       - name: secrets and style gate
         run: sh scripts/check-secrets.sh
 
