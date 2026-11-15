@@ -196,11 +196,23 @@ print(json.dumps(k))
         else:
             raise RuntimeError('kernel mesh ping failed')
         print('PASS actual kernel TUN addresses/routes and encrypted mesh ping', flush=True)
-        for x in 'ab':
-            wait_for(lambda: (p if (p := local_api(states[x]).get('peers', []))
-                              and p[0].get('online') and not p[0].get('relay')
-                              and p[0].get('endpoint', '').startswith('198.18.10.') else None),
-                     'verified direct UDP path ' + x)
+        # Keep emitting application packets while the selector probes. An
+        # existing relay-era handshake alone cannot establish direct UDP.
+        def both_direct():
+            for x in 'ab':
+                subprocess.run(ns(x, 'ping', '-c', '1', '-W', '1', ips['b' if x == 'a' else 'a']),
+                               capture_output=True, timeout=3)
+            snapshots = {x: local_api(states[x]).get('peers', []) for x in 'ab'}
+            if all(p and p[0].get('online') and not p[0].get('relay')
+                   and p[0].get('endpoint', '').startswith('198.18.10.') for p in snapshots.values()):
+                return True
+            return False
+        try:
+            wait_for(both_direct, 'verified direct UDP paths', timeout=40)
+        except RuntimeError:
+            for x in 'ab':
+                print('path diagnostics ' + x + ': ' + json.dumps(local_api(states[x]).get('peers', [])), flush=True)
+            raise
         # With the control/relay process dead, transfers cannot silently
         # succeed by falling back to the shared control-plane WebSocket.
         control.terminate()
