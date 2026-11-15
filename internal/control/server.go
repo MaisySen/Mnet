@@ -106,7 +106,7 @@ func (s *Server) nodeAuth(r *http.Request) (*netmap.Node, bool) {
 		tok = r.URL.Query().Get("token")
 	}
 	n, err := s.store.AuthorizeNode(id, tok)
-	if err != nil {
+	if err != nil || n.KeyExpired() {
 		return nil, false
 	}
 	return n, true

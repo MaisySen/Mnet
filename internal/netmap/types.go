@@ -41,17 +41,23 @@ type ACLRule struct {
 
 // Node is one device in a network.
 type Node struct {
-	ID        string    `json:"id"`
-	NetworkID string    `json:"network_id"`
-	Name      string    `json:"name"`      // hostname, unique inside the network
-	PubKey    string    `json:"pubkey"`    // WireGuard public key, base64
-	IPv4      string    `json:"ipv4"`      // assigned 100.64.0.0/10 address
-	Endpoints []string  `json:"endpoints"` // observed UDP endpoints, host:port
-	Approved  bool      `json:"approved"`
-	ExitNode  bool      `json:"exit_node"`        // offers to carry other nodes' internet traffic
-	Routes    []string  `json:"routes,omitempty"` // advertised subnet CIDRs
-	CreatedAt time.Time `json:"created_at"`
-	LastSeen  time.Time `json:"last_seen"`
+	ID        string     `json:"id"`
+	NetworkID string     `json:"network_id"`
+	Name      string     `json:"name"`      // hostname, unique inside the network
+	PubKey    string     `json:"pubkey"`    // WireGuard public key, base64
+	IPv4      string     `json:"ipv4"`      // assigned 100.64.0.0/10 address
+	Endpoints []string   `json:"endpoints"` // observed UDP endpoints, host:port
+	Approved  bool       `json:"approved"`
+	ExitNode  bool       `json:"exit_node"`        // offers to carry other nodes' internet traffic
+	Routes    []string   `json:"routes,omitempty"` // advertised subnet CIDRs
+	CreatedAt time.Time  `json:"created_at"`
+	LastSeen  time.Time  `json:"last_seen"`
+	KeyExpiry *time.Time `json:"key_expiry,omitempty"` // node key stops working after this
+}
+
+// KeyExpired reports whether the node's key has passed its expiry.
+func (n *Node) KeyExpired() bool {
+	return n.KeyExpiry != nil && time.Now().After(*n.KeyExpiry)
 }
 
 // FQDN returns the Magic DNS name of the node, without a trailing dot.

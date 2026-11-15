@@ -278,6 +278,7 @@ func (s *Store) Join(req netmap.JoinRequest) (*netmap.JoinResponse, error) {
 		}
 	}
 	if node == nil {
+		expiry := time.Now().UTC().Add(DefaultKeyExpiry)
 		node = &netmap.Node{
 			ID:        newID("node"),
 			NetworkID: network.ID,
@@ -285,12 +286,17 @@ func (s *Store) Join(req netmap.JoinRequest) (*netmap.JoinResponse, error) {
 			PubKey:    req.PubKey,
 			IPv4:      s.allocIPLocked(network.ID),
 			CreatedAt: time.Now().UTC(),
+			KeyExpiry: &expiry,
 		}
 		s.data.Nodes[node.ID] = node
 		s.data.NodeTokens[node.ID] = newToken()
 	}
 	node.Approved = node.Approved || approved
 	node.LastSeen = time.Now().UTC()
+	if node.KeyExpired() {
+		expiry := time.Now().UTC().Add(DefaultKeyExpiry)
+		node.KeyExpiry = &expiry // rejoin renews an expired key
+	}
 	node.ExitNode = req.ExitNode
 	node.Routes = cleanRoutes(req.Routes)
 	if err := s.saveLocked(); err != nil {
@@ -362,6 +368,28 @@ func (s *Store) Touch(nodeID string) {
 	if n := s.data.Nodes[nodeID]; n != nil {
 		n.LastSeen = time.Now().UTC()
 	}
+}
+
+// DefaultKeyExpiry is how long a node key stays valid after the first
+// join. Admins re-enable an expired node by rejoining it, which issues a
+// fresh expiry.
+const DefaultKeyExpiry = 180 * 24 * time.Hour
+
+// ExpireNode forces a node's key to expire now (admin action and tests).
+func (s *Store) ExpireNode(nodeID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := s.data.Nodes[nodeID]
+	if n == nil {
+		return ErrNotFound
+	}
+	past := time.Now().UTC().Add(-time.Minute)
+	n.KeyExpiry = &past
+	if err := s.saveLocked(); err != nil {
+		return err
+	}
+	s.bumpLocked(n.NetworkID)
+	return nil
 }
 
 // cleanRoutes keeps only valid CIDRs.
