@@ -88,7 +88,7 @@ No unexpected HTTP or transport errors occurred in these runs. This is
 not the same as every offered operation succeeding: the normal per-IP
 registration limiter rejected most registration attempts in the 1,000-node
 run, and polls deliberately use a 100ms cancellation deadline. The
-10,000-node profile's polls all hit that deadline. The raw summaries
+10,000-node profile cancelled 16 of its 17 polls at that deadline. The raw summaries
 separate OK, rate-limited, cancelled and unexpected outcomes per operation.
 Percentiles combine all attempts within each operation, so join percentiles
 include fast rate-limit responses, and poll percentiles include cancellation.

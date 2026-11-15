@@ -12,3 +12,7 @@ mnet-control.json
 /android/out/
 /android/debug.keystore
 android/out-aab/
+
+/mnet
+/mnetd
+/mnet-control
