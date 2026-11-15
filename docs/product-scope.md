@@ -21,7 +21,7 @@ Real kernel fixtures currently exercise two active VPN nodes plus a separate LAN
 | Platform | Implemented | Verified limit / remaining work |
 | --- | --- | --- |
 | Windows | Automatic-start SCM service uses saved state and requests crash recovery. | Native install/start/API/stop/restart/forced-crash recovery/remove pass. Actual Wintun VPN reconnection and real reboot are not verified. |
-| Linux | Daemon accepts saved-state `-up`; a systemd unit is documented. | Kernel saved Down/Up cycles pass. Automatic installation/enabling and actual systemd boot/reboot are not tested. |
+| Linux | Daemon accepts saved-state `-up`; a systemd unit is documented. | Kernel saved Down/Up cycles pass. A fresh-process saved-state `-up` regression is pending CI. Automatic installation/enabling and actual systemd boot/reboot are not tested. |
 | macOS | Daemon and manual startup; docs suggest a LaunchDaemon. | No packaged/tested launchd setup or actual VPN/reboot proof. |
 | Android | Foreground VpnService uses saved preferences and START_STICKY. | No boot receiver is implemented. Automatic reboot startup/OS always-on behavior and physical-device reconnect remain unverified. Prior virtual Test Lab join is not a startup proof. |
 | iOS | Network Extension source starts a tunnel manually. | On-demand/automatic startup is not implemented or physically verified. Signed app delivery remains open. |

@@ -17,7 +17,7 @@ Test releases and engineering history. Historical entries record what was claime
 
 A later local regression reproduced stale last_error after a successful retry. New source clears errors when a fresh Up attempt starts, preserving errors raised during that attempt. The stronger kernel retry assertion and native regression passed all five jobs and three fresh [4127209 fixtures](https://github.com/MaisySen/Mnet/actions/runs/43772484156), including 140/186/158 later loss-profile drops.
 
-New source adds `mnet up --reset-routing` (while down) to clear saved serving/exit roles without deleting identity. Ordinary saved-state Up keeps its previous routing configuration. Reset cannot be combined with new routing roles. A local API regression reproduced the missing recovery path before this change; local API tests pass, including 20 race-detector repetitions. The first kernel repetition passed the reset; the second failed an initial one-shot LAN ping before reaching it. A bounded 30-second startup reachability assertion and explicit saved-identity comparison are now pending independent CI. No new three-run passing claim is made.
+New source adds `mnet up --reset-routing` (while down) to clear saved serving/exit roles without deleting identity. Ordinary saved-state Up keeps its previous routing configuration. Reset cannot be combined with new routing roles. A local API regression reproduced the missing recovery path before this change; local API tests pass, including 20 race-detector repetitions. A bounded 30-second startup reachability assertion and explicit saved-identity comparison passed all five jobs and three fresh [85c2f79 fixtures](https://github.com/MaisySen/Mnet/actions/runs/43774062502), including 123/157/150 observed later loss-profile drops. This is bounded startup convergence, not arbitrary network readiness.
 
 ## v0.8.2-test.1 - 2026-11-16
 
@@ -392,3 +392,5 @@ discovery confirmed live.
 
 Tag v0.1.0. First working mesh: control plane, daemon, CLI, relay,
 Magic DNS, end-to-end tests green.
+
+A newer kernel extension gracefully stops the serving daemon process and starts a fresh process with saved state and `-up`, asserting unchanged identity and restored direct VPN/LAN. Independent CI is pending. This is not a real reboot, systemd/launchd boot or forced-crash cleanup proof.

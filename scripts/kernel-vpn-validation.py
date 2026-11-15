@@ -199,10 +199,10 @@ print(json.dumps(k))
                 raise RuntimeError('operator forwarding setting was changed')
         serving_state(False)
         run('ip', '-n', spaces['a'], 'route', 'add', '10.8.0.0/24', 'dev', 'eth0')
-        states = {}
+        states, daemon_processes = {}, {}
         for x in 'ab':
             state = tmp / x; state.mkdir(mode=0o700); states[x] = state
-            start(x, [binary_dir / 'mnetd', '-state', state], x)
+            daemon_processes[x] = start(x, [binary_dir / 'mnetd', '-state', state], x)
             wait_for(lambda: local_api(state), 'local API ' + x)
             if x == 'b':
                 run(*ns('b', sys.executable, '-c', "from pathlib import Path; Path('/proc/sys/net/ipv4/ip_forward').write_text('0')"))
@@ -301,6 +301,23 @@ print(json.dumps(k))
             run(*ns('a', 'ping', '-c', '1', '-W', '2', '10.9.0.2'))
             serving_state(True)
             print(f'PASS kernel Down/Up cycle {cycle + 1}: same identity/IP and direct path', flush=True)
+        # Exercise the installed-daemon startup shape: a fresh process uses
+        # -up plus saved state, without a new key or interactive join call.
+        daemon_processes['b'].terminate()
+        if daemon_processes['b'].wait(timeout=10) != 0:
+            raise RuntimeError('graceful daemon process stop failed')
+        serving_state(False)
+        if any(link['ifname'] == 'mnet0' for link in json.loads(run('ip', '-n', spaces['b'], '-j', 'link', 'show'))):
+            raise RuntimeError('graceful process stop leaked kernel TUN')
+        daemon_processes['b'] = start('b', [binary_dir / 'mnetd', '-state', states['b'], '-up'], 'b-restarted')
+        wait_for(lambda: local_api(states['b'])['status'] == 'up', 'fresh daemon saved-state automatic Up')
+        restarted_identity = json.loads((states['b'] / 'state.json').read_text())
+        if any(restarted_identity.get(k) != v for k, v in identities['b'].items()):
+            raise RuntimeError('fresh daemon startup changed saved identity')
+        wait_for(both_direct, 'direct path after daemon process restart', timeout=40)
+        wait_for(lan_reachable, 'LAN reachability after daemon process restart', timeout=30)
+        serving_state(True)
+        print('PASS fresh daemon -up uses saved identity and restores direct VPN/LAN after graceful process restart', flush=True)
         acl_script = tmp / 'acl.py'
         acl_script.write_text(r'''
 import http.cookiejar,json,sys,urllib.request
