@@ -48,7 +48,8 @@ type Node struct {
 	IPv4      string     `json:"ipv4"`      // assigned 100.64.0.0/10 address
 	Endpoints []string   `json:"endpoints"` // observed UDP endpoints, host:port
 	Approved  bool       `json:"approved"`
-	ExitNode  bool       `json:"exit_node"`        // offers to carry other nodes' internet traffic
+	User      string     `json:"user,omitempty"`   // SSO identity that approved the node
+	ExitNode  bool       `json:"exit_node"`        // offers to carry others' internet traffic
 	Routes    []string   `json:"routes,omitempty"` // advertised subnet CIDRs
 	CreatedAt time.Time  `json:"created_at"`
 	LastSeen  time.Time  `json:"last_seen"`

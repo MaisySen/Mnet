@@ -26,6 +26,11 @@ type Server struct {
 	sessions   map[string]time.Time // admin session token -> expiry
 	sessionsMu sync.Mutex
 
+	oidc         *OIDCProvider // nil: manual approval only
+	oidcMu       sync.Mutex
+	oidcStates   map[string]oidcState // login state -> waiting node
+	oidcStatesMu sync.Mutex
+
 	adminPassword string
 	ownPassword   bool // true when generated, so we log it once
 }
@@ -48,6 +53,7 @@ func NewServer(store *Store, hub *relay.Hub, publicBase, adminPassword string) (
 			CheckOrigin: func(*http.Request) bool { return true },
 		},
 		sessions:      map[string]time.Time{},
+		oidcStates:    map[string]oidcState{},
 		adminPassword: adminPassword,
 	}
 	return s, generated, nil
@@ -62,6 +68,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/", s.handleLanding)
 	mux.HandleFunc("/admin", s.handleDashboardPage)
 	mux.HandleFunc("/join/approve", s.handleApprovePage)
+	mux.HandleFunc("/oidc/start", s.handleOIDCStart)
+	mux.HandleFunc("/oidc/callback", s.handleOIDCCallback)
 	mux.HandleFunc("/api/join", s.handleJoin)
 	mux.HandleFunc("/api/join/status", s.handleJoinStatus)
 	mux.HandleFunc("/api/map", s.handleMap)
@@ -139,11 +147,12 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !resp.Approved {
-		scheme := "https"
-		if r.TLS == nil {
-			scheme = "http"
+		if s.oidcProvider() != nil {
+			// SSO login replaces manual approval.
+			resp.ApprovalURL = publicURL(r, "/oidc/start?node_id="+resp.NodeID+"&token="+resp.NodeToken)
+		} else {
+			resp.ApprovalURL = publicURL(r, "/join/approve?node_id="+resp.NodeID)
 		}
-		resp.ApprovalURL = scheme + "://" + r.Host + "/join/approve?node_id=" + resp.NodeID
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

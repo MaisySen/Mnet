@@ -2,4 +2,4 @@
 package version
 
 // Version of this Mnet build.
-const Version = "0.4.0"
+const Version = "0.5.0"

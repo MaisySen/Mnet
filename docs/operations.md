@@ -93,6 +93,18 @@ Nodes join with:
 
     mnetd -up -server https://control.example.com -network mynet -auth-key mnet_...
 
+## SSO login (OIDC)
+
+Set MNET_OIDC_ISSUER, MNET_OIDC_CLIENT_ID and MNET_OIDC_CLIENT_SECRET
+(or the matching flags) on mnet-control and joins switch from manual
+approval to SSO. Register <public base>/oidc/callback as the redirect
+URL at the provider. Tested providers: any spec-compliant issuer with
+RS256 ID tokens (Google, Microsoft Entra, Okta, Keycloak). Auth keys
+still bypass SSO, so keep issuing them for servers. The identity from
+the login (email, else subject) lands in the node's User field and the
+dashboard. One caveat: when the control plane sits behind a proxy, pass
+X-Forwarded-Proto so the callback URL is built with https.
+
 ## STUN and restrictive networks
 
 Endpoint discovery sends STUN binding requests from the WireGuard socket

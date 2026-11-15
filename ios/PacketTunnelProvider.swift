@@ -47,8 +47,11 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let nodeName = options?["nodeName"] as? String ?? UIDevice.current.name
         let exitNode = options?["exitNode"] as? String ?? ""
 
+        // The extension's own container holds the node state. No app group:
+        // on an individual Apple account only the Account Holder can register
+        // groups, and the Fintex runbook says ship without one (apple.md).
         let dir = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: "group.au.fintex.mnet")!
+            .urls(for: .libraryDirectory, in: .userDomainMask).first!
             .appendingPathComponent("state").path
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
 

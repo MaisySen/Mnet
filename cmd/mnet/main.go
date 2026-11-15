@@ -99,7 +99,7 @@ func main() {
 		time.Sleep(1500 * time.Millisecond)
 		st := status(hc)
 		if st.Status == "waiting-approval" {
-			fmt.Println("\napprove this device here:")
+			fmt.Println("\nlog in / approve this device here:")
 			fmt.Println(st.ApprovalURL)
 		}
 	case "down":

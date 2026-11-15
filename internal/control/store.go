@@ -490,6 +490,21 @@ func (s *Store) SetACL(networkID string, pol *netmap.ACLPolicy) error {
 	return nil
 }
 
+// ApproveNodeAs marks a node approved and records the SSO identity
+// behind the approval.
+func (s *Store) ApproveNodeAs(nodeID, user string) error {
+	if err := s.ApproveNode(nodeID); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if n := s.data.Nodes[nodeID]; n != nil {
+		n.User = user
+		return s.saveLocked()
+	}
+	return ErrNotFound
+}
+
 // ApproveNode marks a pending node approved.
 func (s *Store) ApproveNode(nodeID string) error {
 	s.mu.Lock()

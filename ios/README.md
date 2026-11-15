@@ -31,15 +31,19 @@ Then create an Xcode project with:
 - App target `au.fintex.mnet`, embedding `Mnet.xcframework`.
 - App extension target `au.fintex.mnet.tunnel` (Network Extension,
   Packet Tunnel), embedding `Mnet.xcframework`.
-- App group `group.au.fintex.mnet` on both targets (the extension keeps
-  node state there).
+- No app group: the extension keeps node state in its own container, so
+  nothing needs the Account Holder to register a group (individual Apple
+  account; see the Fintex runbook apple.md).
 - Entitlements: Packet Tunnel (`com.apple.developer.networking.networkextension`
   with `packet-tunnel-provider`) on the extension.
 
-## Blocked on the Apple side
+## Remaining Apple steps
 
-These cannot be done without Apple hardware and accounts, and are the
-only remaining steps:
+The Fintex runbook (apple.md) has the proven path: register the bundle
+IDs with the App Store Connect API, sign on a GitHub Actions macOS
+runner with xcodebuild -allowProvisioningUpdates and the Admin API key,
+upload to TestFlight. The app record itself is created by the main Tab's
+Admin Apple ID (the API cannot create apps). What is still needed:
 
 1. macOS + Xcode: `gomobile bind -target ios` needs the Xcode toolchain;
    the cross compile cannot run on Linux.

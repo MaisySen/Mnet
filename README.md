@@ -100,9 +100,9 @@ internal/
 
 ## Status
 
-Version 0.4.0. The mesh works end to end: join, approve, direct and relayed
-traffic, Magic DNS, Android app, exit nodes, subnet routes and network ACL
-policies. On the list next: SSO/OIDC login, key expiry.
+Version 0.5.0. Full Tailscale-parity core: join, approve, SSO/OIDC login,
+direct and relayed traffic, Magic DNS, Android app, iOS sources, exit
+nodes, subnet routes, network ACL policies and 180 day key expiry.
 
 Mnet is provided by Fintex Australia Pty Ltd (ABN 60 688 406 108), New South
 Wales, Australia. Contact: contact@fintex.au.
@@ -134,6 +134,21 @@ host routes keep the tunnel endpoint and the control plane reachable.
 Advertised subnets become WireGuard allowed IPs on every peer, so traffic
 for 10.9.0.0/24 flows to the router node and out its LAN. Deselecting the
 exit node or rejoining without the flags cleanly removes the routes again.
+
+## SSO login (OIDC)
+
+Point mnet-control at any OpenID Connect provider and joins switch from
+manual approval to SSO:
+
+    mnet-control -oidc-issuer https://accounts.google.com \
+      -oidc-client-id ... -oidc-client-secret ...
+
+Register <public base>/oidc/callback as the redirect URL with the
+provider. A node that joins without an auth key then gets a login URL;
+the user's browser round trip verifies an RS256 ID token against the
+issuer JWKS, approves the node, and records the user's email on it (the
+dashboard shows it in the User column). Auth keys still bypass SSO for
+headless machines.
 
 ## Key expiry
 
