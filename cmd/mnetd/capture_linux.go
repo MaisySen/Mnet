@@ -10,11 +10,14 @@ import (
 	"fintex.au/mnet/internal/session"
 )
 
-// Backend choice on Linux: Wayland sessions capture with grim and
-// inject with ydotool (the portal-native D-Bus + PipeWire path is
-// later work); X11 sessions use XGetImage and XTEST. Wayland is
-// preferred when WAYLAND_DISPLAY is set, because X11 capture under
-// XWayland only sees X11 windows, not the real desktop.
+// Backend choice on Linux: Wayland sessions capture with grim on
+// wlroots compositors (Sway, Hyprland, Wayfire, River) or through
+// the XDG ScreenCast portal everywhere else (GNOME above all), and
+// inject with ydotool; X11 sessions use XGetImage and XTEST. Wayland
+// is preferred when WAYLAND_DISPLAY is set, because X11 capture under
+// XWayland only sees X11 windows, not the real desktop. grim stays
+// the default where it works (no consent dialog, lower overhead);
+// MNET_CAPTURE=portal forces the portal backend.
 
 func onWayland() bool {
 	return os.Getenv("WAYLAND_DISPLAY") != ""
@@ -27,10 +30,19 @@ func have(tool string) bool {
 
 func newCapturer() (session.Capturer, error) {
 	if onWayland() {
-		if !have("grim") {
-			return nil, fmt.Errorf("Wayland session but grim not installed; install grim (wlroots) or use an X11 session")
+		forcePortal := os.Getenv("MNET_CAPTURE") == "portal"
+		if !forcePortal && have("grim") {
+			// wlroots compositor: direct screencopy, no dialog.
+			return newWaylandCapturer()
 		}
-		return newWaylandCapturer()
+		c, err := newPortalCapturer()
+		if err != nil {
+			if forcePortal {
+				return nil, fmt.Errorf("Wayland portal capture: %w", err)
+			}
+			return nil, fmt.Errorf("Wayland session without grim (install grim on wlroots compositors); portal capture failed too: %w", err)
+		}
+		return c, nil
 	}
 	return newX11Capturer()
 }

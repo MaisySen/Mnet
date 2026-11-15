@@ -61,6 +61,22 @@ Live proofs and the fixes they exposed.
 - Host-side session recording: mnetd -session-record DIR writes each
   hosted session as a standalone MJPEG video with 0600 permissions,
   deltas composited so the file is complete; audit lines name it.
+- GNOME Wayland capture: new portal backend (internal/portal).
+  mnetd negotiates a monitor stream over the XDG ScreenCast portal
+  in pure Go (godbus; CreateSession, SelectSources, Start,
+  OpenPipeWireRemote behind a testable bus interface) and pumps
+  frames out of the granted PipeWire node with a gst-launch helper
+  that decodes and scales to raw BGRA. Backend selection: grim
+  stays the default on wlroots compositors, the portal takes over
+  on compositors without wlr-screencopy (GNOME), MNET_CAPTURE=portal
+  forces it; ydotool keeps input on every Wayland path. The
+  capturer is tuneable, so adaptive quality applies. Negotiation,
+  parsing, pump framing and change detection unit tested; live
+  verification on a real GNOME session is still pending (no GNOME
+  in CI or the dev sandbox).
+- mnet session log prints the node's hosted-session audit from
+  <state>/sessions.jsonl: accept/refuse/end, viewer, mesh IP,
+  duration, recording path.
 - CI: GitHub Actions build, vet, race-enabled tests, the secrets
   gate, and the live session proof on every push and PR.
 

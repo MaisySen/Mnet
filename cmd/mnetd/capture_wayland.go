@@ -18,8 +18,8 @@ import (
 // compositors: Sway, Hyprland, Wayfire, River, KDE with the wlr
 // protocol); ydotool injects input at the evdev level, which works on
 // every Wayland compositor (needs the ydotoold socket). GNOME and
-// others without the wlr-screencopy protocol need the portal backend,
-// which is later work.
+// others without the wlr-screencopy protocol use the portal backend
+// (capture_portal_linux.go).
 
 type waylandCapturer struct {
 	w, h int
