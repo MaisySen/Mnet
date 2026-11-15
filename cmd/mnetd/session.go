@@ -85,7 +85,7 @@ func (l *sessionLogger) log(ev sessionAudit) {
 // with a reason the viewer can show. Every request is bound to its
 // source mesh IP, filtered by the allow list, and recorded in
 // <state>/sessions.jsonl.
-func runSessionHost(d *daemon.Daemon, stateDir string, autoAccept bool, allow map[string]bool) {
+func runSessionHost(d *daemon.Daemon, stateDir string, autoAccept bool, allow map[string]bool, recordDir string) {
 	audit := &sessionLogger{path: filepath.Join(stateDir, "sessions.jsonl")}
 	var ip string
 	for {
@@ -145,14 +145,31 @@ func runSessionHost(d *daemon.Daemon, stateDir string, autoAccept bool, allow ma
 			log.Printf("mnetd: session host: input injection unavailable: %v", injErr)
 		}
 		h := session.ServeHost(m, cap, inj, 8)
+		var rec *session.Recorder
+		recPath := ""
+		if recordDir != "" {
+			os.MkdirAll(recordDir, 0o700)
+			recPath = filepath.Join(recordDir, fmt.Sprintf("%s-%s.mjpeg", viewer, start.UTC().Format("20060102-150405")))
+			if r, err := session.NewRecorder(recPath); err == nil {
+				rec = r
+				h.SetRecorder(r)
+			} else {
+				log.Printf("mnetd: session recording unavailable: %v", err)
+				recPath = ""
+			}
+		}
 		log.Printf("mnetd: session started for %s (%s)", viewer, viewerIP)
-		audit.log(sessionAudit{Event: "accept", Viewer: viewer, SourceIP: viewerIP})
-		go func(viewer, viewerIP string, start time.Time) {
+		audit.log(sessionAudit{Event: "accept", Viewer: viewer, SourceIP: viewerIP, Reason: recPath})
+		go func(viewer, viewerIP string, start time.Time, rec *session.Recorder, recPath string) {
 			<-m.Closed()
 			h.Stop()
+			if rec != nil {
+				rec.Close()
+				log.Printf("mnetd: session recording %s: %s", recPath, rec)
+			}
 			dur := time.Since(start).Round(time.Second)
 			log.Printf("mnetd: session with %s ended after %s", viewer, dur)
-			audit.log(sessionAudit{Event: "end", Viewer: viewer, SourceIP: viewerIP, Duration: dur.String()})
-		}(viewer, viewerIP, start)
+			audit.log(sessionAudit{Event: "end", Viewer: viewer, SourceIP: viewerIP, Duration: dur.String(), Reason: recPath})
+		}(viewer, viewerIP, start, rec, recPath)
 	}
 }

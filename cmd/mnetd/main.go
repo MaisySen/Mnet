@@ -43,6 +43,7 @@ func main() {
 		sessHost  = flag.Bool("session-host", false, "host remote-desktop sessions on this node (mesh port 5909)")
 		sessAuto  = flag.Bool("session-auto-accept", false, "accept sessions without prompting (required on headless daemons)")
 		sessAllow = flag.String("session-allow", "", "comma separated node names allowed to start sessions (default: every mesh peer)")
+		sessRec   = flag.String("session-record", "", "record hosted sessions as MJPEG videos in this directory")
 		sessProof = flag.Bool("session-proof", false, "validation rigs: run a full two-node session over the mesh on userspace tunnels and exit")
 		proofDir  = flag.String("proof-dir", "/tmp/mnet-session-proof", "artifact directory for -session-proof")
 	)
@@ -107,7 +108,7 @@ func main() {
 				allow[n] = true
 			}
 		}
-		go runSessionHost(d, *stateDir, *sessAuto, allow)
+		go runSessionHost(d, *stateDir, *sessAuto, allow, *sessRec)
 	}
 	log.Printf("mnetd %s ready (state: %s)", version.Version, *stateDir)
 

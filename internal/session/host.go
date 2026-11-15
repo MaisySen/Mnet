@@ -65,6 +65,7 @@ type Host struct {
 	onChat func(ChatMessage)
 	onFile func(name string, size int64)
 
+	rec      *Recorder // optional session recording tap
 	stop     chan struct{}
 	stopOnce sync.Once
 	wg       sync.WaitGroup
@@ -75,6 +76,14 @@ func (h *Host) SetOnChat(f func(ChatMessage)) {
 	h.hmu.Lock()
 	defer h.hmu.Unlock()
 	h.onChat = f
+}
+
+// SetRecorder taps the screen stream into a recording. Call before
+// or soon after ServeHost starts; frames recorded from that point.
+func (h *Host) SetRecorder(r *Recorder) {
+	h.hmu.Lock()
+	h.rec = r
+	h.hmu.Unlock()
 }
 
 // SetOnFile sets the received-file handler.
@@ -203,6 +212,12 @@ func (h *Host) screenLoop() {
 			}
 			seq++
 			fr = ScreenFrame{Seq: seq, Full: true, Image: img}
+		}
+		h.hmu.RLock()
+		rec := h.rec
+		h.hmu.RUnlock()
+		if rec != nil {
+			rec.OnFrame(fr)
 		}
 		b, err := json.Marshal(fr)
 		if err != nil {
