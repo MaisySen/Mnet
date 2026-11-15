@@ -64,7 +64,7 @@ cd "$ROOT"
 # the per-checkout debug key. The release keystore lives outside the repo
 # (default ~/keystores/mnet-upload.keystore) and its password is read from
 # the file in MNET_RELEASE_PASS_FILE, never hardcoded here.
-if [ -n "$MNET_RELEASE_KEYSTORE" ]; then
+if [ -n "${MNET_RELEASE_KEYSTORE:-}" ]; then
     KS="$MNET_RELEASE_KEYSTORE"
     ALIAS="${MNET_RELEASE_ALIAS:-mnet-upload}"
     PASS=$(cat "${MNET_RELEASE_PASS_FILE:?set MNET_RELEASE_PASS_FILE}")
