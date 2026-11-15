@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"image/jpeg"
 	"log"
+	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -137,7 +138,7 @@ func runSessionProof(server, network, authKey, dir string, verbose bool) error {
 	fileGot := make(chan string, 4)
 	hostErr := make(chan error, 1)
 	go func() {
-		m, err := session.Listen(ln, "proof-host", func(session.Hello) (bool, string) { return true, "" })
+		m, err := session.Listen(ln, "proof-host", func(session.Hello, net.Addr) (bool, string) { return true, "" })
 		if err != nil {
 			hostErr <- fmt.Errorf("session listen: %w", err)
 			return

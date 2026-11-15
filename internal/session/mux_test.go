@@ -19,7 +19,7 @@ func pipe(t *testing.T) (client, host *Mux) {
 	go func() {
 		defer wg.Done()
 		var err error
-		host, err = Listen(ln, "host-node", func(h Hello) (bool, string) {
+		host, err = Listen(ln, "host-node", func(h Hello, _ net.Addr) (bool, string) {
 			if h.NodeName != "viewer-node" {
 				t.Errorf("hello node name %q", h.NodeName)
 			}
@@ -53,7 +53,7 @@ func TestHandshakeRefused(t *testing.T) {
 	c1, c2 := net.Pipe()
 	ln := &oneShotListener{ch: make(chan net.Conn, 1)}
 	ln.ch <- c2
-	go Listen(ln, "host", func(Hello) (bool, string) { return false, "not today" })
+	go Listen(ln, "host", func(Hello, net.Addr) (bool, string) { return false, "not today" })
 	if _, err := Dial(c1, "viewer"); err == nil {
 		t.Fatal("expected refusal")
 	} else if got := err.Error(); got != "session: refused: not today" {
@@ -131,7 +131,7 @@ func TestLateHandlerGetsPendingStreams(t *testing.T) {
 	ln.ch <- c2
 	hostDone := make(chan *Mux, 1)
 	go func() {
-		h, err := Listen(ln, "host", func(Hello) (bool, string) { return true, "" })
+		h, err := Listen(ln, "host", func(Hello, net.Addr) (bool, string) { return true, "" })
 		if err == nil {
 			h.SendJSON(StreamChat, PriChat, ChatMessage{From: "host", Text: "early"})
 			hostDone <- h

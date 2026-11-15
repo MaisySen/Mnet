@@ -94,7 +94,7 @@ func (n *Node) StartSessionHost(cb HostCallbacks) error {
 	hostListen = ln
 	go func() {
 		for {
-			m, err := session.Listen(ln, n.d.Status().NodeName, func(h session.Hello) (bool, string) {
+			m, err := session.Listen(ln, n.d.Status().NodeName, func(h session.Hello, _ net.Addr) (bool, string) {
 				sessMu.Lock()
 				busy := hostActive != nil
 				sessMu.Unlock()

@@ -97,7 +97,7 @@ func Dial(conn net.Conn, nodeName string) (*Mux, error) {
 
 // Listen waits for one session on ln, performs the handshake, and asks
 // accept whether to take it. accept may block (e.g. a user prompt).
-func Listen(ln net.Listener, nodeName string, accept func(Hello) (bool, string)) (*Mux, error) {
+func Listen(ln net.Listener, nodeName string, accept func(Hello, net.Addr) (bool, string)) (*Mux, error) {
 	conn, err := ln.Accept()
 	if err != nil {
 		return nil, err
@@ -121,7 +121,7 @@ func Listen(ln net.Listener, nodeName string, accept func(Hello) (bool, string))
 		conn.Close()
 		return nil, fmt.Errorf("session: protocol version %d, want %d", h.Version, protoVersion)
 	}
-	ok, reason := accept(h)
+	ok, reason := accept(h, conn.RemoteAddr())
 	rep := HelloReply{Version: protoVersion, NodeName: nodeName, Accepted: ok, Reason: reason}
 	if err := m.sendJSON(StreamControl, msgData, PriInteractive, rep); err != nil {
 		conn.Close()
@@ -247,6 +247,10 @@ func (s Stream) Recv(timeout time.Duration) (Frame, error) {
 
 // Closed returns a channel closed when the session ends.
 func (m *Mux) Closed() <-chan struct{} { return m.closed }
+
+// PeerAddr returns the remote address of the underlying connection,
+// for hosts that bind the claimed peer name to the source mesh IP.
+func (m *Mux) PeerAddr() net.Addr { return m.conn.RemoteAddr() }
 
 func (m *Mux) Close() error {
 	m.closeMu.Do(func() {

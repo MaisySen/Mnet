@@ -23,7 +23,7 @@ func TestSessionOverTCP(t *testing.T) {
 	fileDir := t.TempDir()
 	hostReady := make(chan *Host, 1)
 	go func() {
-		m, err := Listen(ln, "tcp-host", func(Hello) (bool, string) { return true, "" })
+		m, err := Listen(ln, "tcp-host", func(Hello, net.Addr) (bool, string) { return true, "" })
 		if err != nil {
 			t.Errorf("listen: %v", err)
 			return

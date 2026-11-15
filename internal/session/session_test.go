@@ -39,7 +39,7 @@ func TestFullSession(t *testing.T) {
 	var hostErr error
 	go func() {
 		var m *Mux
-		m, hostErr = Listen(ln, "desk-1", func(Hello) (bool, string) { return true, "" })
+		m, hostErr = Listen(ln, "desk-1", func(Hello, net.Addr) (bool, string) { return true, "" })
 		if hostErr != nil {
 			return
 		}
