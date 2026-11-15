@@ -188,6 +188,12 @@ On the host (Linux desktop; Android can host with a consent tap):
 ./mnetd -session-host -session-auto-accept  # or approve each viewer
 ```
 
+Hosts verify every viewer's claimed node name against the network
+map (the connection's source mesh IP must match), so a peer cannot
+impersonate another node. Restrict who may connect with
+`-session-allow laptop,phone`; every accept, refusal and session end
+is recorded in `<state>/sessions.jsonl`.
+
 From the viewer:
 
 ```bash
