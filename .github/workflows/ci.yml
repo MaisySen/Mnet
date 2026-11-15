@@ -37,7 +37,18 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: install Xvfb and ImageMagick
-        run: sudo apt-get update && sudo apt-get install -y xvfb imagemagick
+      - name: install isolated X11 proof dependencies
+        run: sudo apt-get update && sudo apt-get install -y xvfb x11-xserver-utils
       - name: live session proof against a local control plane
         run: sh scripts/session-validation.sh
+      - name: retain failed proof diagnostics (no credentials or node state)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: session-failure-diagnostics
+          retention-days: 7
+          path: |
+            /tmp/mnet-session.*/proof.log
+            /tmp/mnet-session.*/proof/summary.json
+            /tmp/mnet-session.*/xvfb.log
+            /tmp/mnet-session.*/swap.log

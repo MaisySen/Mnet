@@ -93,6 +93,8 @@ type proofResult struct {
 	ChatOK        bool   `json:"chat_ok"`
 	FileOK        bool   `json:"file_ok"`
 	FileBytes     int64  `json:"file_bytes"`
+	FileAckOK     bool   `json:"file_ack_ok"`
+	FileSendError string `json:"file_send_error,omitempty"`
 	DeltasSmaller bool   `json:"deltas_smaller"`
 	Pass          bool   `json:"pass"`
 	Fail          string `json:"fail,omitempty"`
@@ -226,11 +228,8 @@ func runSessionProof(server, network, authKey, dir string, verbose bool) error {
 	if err := v.SendChat("proof-viewer", chatText); err != nil {
 		return fail("send chat: %v", err)
 	}
-	go func() {
-		if err := session.SendFile(m, payloadPath); err != nil {
-			log.Printf("session-proof: file send: %v", err)
-		}
-	}()
+	fileSent := make(chan error, 1)
+	go func() { fileSent <- session.SendFile(m, payloadPath) }()
 	// One injected text event; an external watcher (xev on the same
 	// display) can prove it reached the X server.
 	v.SendInput(session.InputEvent{Kind: "key", Text: "hi"})
@@ -245,10 +244,17 @@ func runSessionProof(server, network, authKey, dir string, verbose bool) error {
 		frameMu.Lock()
 		haveFrames := frameCount >= 2
 		frameMu.Unlock()
-		if haveFrames && chatOK && fileOK {
+		if haveFrames && chatOK && fileOK && res.FileAckOK {
 			break
 		}
 		select {
+		case sendErr := <-fileSent:
+			if sendErr != nil {
+				res.FileSendError = sendErr.Error()
+				return fail("file sender failed: %v", sendErr)
+			}
+			res.FileAckOK = true
+			log.Printf("session-proof: file sender received verified ACK")
 		case cm := <-chatGot:
 			if cm.Text == chatText {
 				chatOK = true
@@ -289,6 +295,8 @@ func runSessionProof(server, network, authKey, dir string, verbose bool) error {
 		return fail("chat line never reached the host")
 	case !fileOK:
 		return fail("file transfer missing or hash mismatch")
+	case !res.FileAckOK:
+		return fail("file was received but sender never received verified ACK")
 	}
 	res.Pass = true
 	writeProofSummary(dir, res)

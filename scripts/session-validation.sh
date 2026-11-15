@@ -1,50 +1,78 @@
-#!/bin/bash
-# Session validation: a local mnet-control, then mnetd -session-proof
-# runs two nodes on userspace tunnels and proves a full remote-desktop
-# session between them through the encrypted mesh: X11 capture from an
-# Xvfb display, delta frames, chat, file transfer, input injection.
-# Everything dies when the script exits. Needs: go, Xvfb, ImageMagick.
-set -u
+#!/bin/sh
+# Isolated local mesh proof. Preserve artifacts on failure and success.
+set -eu
 cd "$(dirname "$0")/.."
-
-TMP=/tmp/sessval
-rm -rf $TMP && mkdir -p $TMP
-
-go build -o $TMP/mnet-control ./cmd/mnet-control || exit 1
-go build -o $TMP/mnetd ./cmd/mnetd || exit 1
-
-$TMP/mnet-control -listen 127.0.0.1:18081 -data $TMP/control.json -admin-password valpass123 -base-url http://127.0.0.1:18081 >$TMP/control.log 2>&1 &
+TMP=$(mktemp -d /tmp/mnet-session.XXXXXX)
+CPID= XVFB= SWAP= PROOF=
+cleanup() {
+    for pid in "$PROOF" "$SWAP" "$XVFB" "$CPID"; do
+        if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; fi
+    done
+    for pid in "$PROOF" "$SWAP" "$XVFB" "$CPID"; do
+        if [ -n "$pid" ]; then wait "$pid" 2>/dev/null || true; fi
+    done
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+printf 'Session artifacts: %s\n' "$TMP"
+go build -o "$TMP/mnet-control" ./cmd/mnet-control
+go build -o "$TMP/mnetd" ./cmd/mnetd
+# The control server accepts a free loopback port selected for this run.
+PORT=$(python3 - <<'PY'
+import socket
+with socket.socket() as s:
+    s.bind(('127.0.0.1', 0))
+    print(s.getsockname()[1])
+PY
+)
+BASE=http://127.0.0.1:$PORT
+"$TMP/mnet-control" -listen "127.0.0.1:$PORT" -data "$TMP/control.json" -admin-password valpass123 -base-url "$BASE" >"$TMP/control.log" 2>&1 &
 CPID=$!
-sleep 1
-curl -sf http://127.0.0.1:18081/admin/api/login -X POST -H 'Content-Type: application/json' -d '{"password":"valpass123"}' -c $TMP/cookies.txt -o /dev/null || { echo "CONTROL LOGIN FAIL"; cat $TMP/control.log; kill $CPID; exit 1; }
-NET=$(curl -sf --max-time 10 -b $TMP/cookies.txt http://127.0.0.1:18081/admin/api/networks -X POST -H 'Content-Type: application/json' -d '{"name":"sessval"}')
-NETID=$(echo "$NET" | jq -r .id)
-KEY=$(curl -sf --max-time 10 -b $TMP/cookies.txt http://127.0.0.1:18081/admin/api/authkeys -X POST -H 'Content-Type: application/json' -d "{\"network_id\":\"$NETID\",\"reusable\":true}" | jq -r .key)
-echo "control up, network $NETID, auth key created"
-
-# A display with known content; swapped mid-run to exercise deltas.
-Xvfb :99 -screen 0 1280x800x24 >$TMP/xvfb.log 2>&1 &
+for attempt in $(seq 1 100); do
+    if curl -sf --max-time 1 "$BASE/healthz" >"$TMP/health.json"; then break; fi
+    kill -0 "$CPID" || { cat "$TMP/control.log"; exit 1; }
+    sleep .1
+done
+curl -sf --max-time 10 "$BASE/admin/api/login" -X POST -H 'Content-Type: application/json' -d '{"password":"valpass123"}' -c "$TMP/cookies.txt" >"$TMP/login.json"
+curl -sf --max-time 10 -b "$TMP/cookies.txt" "$BASE/admin/api/networks" -X POST -H 'Content-Type: application/json' -d '{"name":"sessval"}' >"$TMP/network.json"
+NETID=$(jq -er .id "$TMP/network.json")
+curl -sf --max-time 10 -b "$TMP/cookies.txt" "$BASE/admin/api/authkeys" -X POST -H 'Content-Type: application/json' -d "{\"network_id\":\"$NETID\",\"reusable\":true}" >"$TMP/authkey.json"
+KEY=$(jq -er .key "$TMP/authkey.json")
+# Xvfb allocates its own display, so concurrent/repeated proofs cannot
+# overwrite each other's wallpaper or kill an unrelated display server.
+Xvfb -noreset -displayfd 3 -screen 0 1280x800x24 3>"$TMP/display-number" >"$TMP/xvfb.log" 2>&1 &
 XVFB=$!
-sleep 2
-export DISPLAY=:99
-convert -size 1280x800 xc:'#203864' -fill white -pointsize 72 -gravity center -annotate +0-40 "MNET SESSION PROOF" $TMP/proof1.png
-convert -size 1280x800 xc:'#5a1e1e' -fill yellow -pointsize 72 -gravity center -annotate +0-40 "SCREEN CHANGED" $TMP/proof2.png
-display -window root $TMP/proof1.png >/dev/null 2>&1 &
-DISP=$!
-sleep 1
-( sleep 20; display -window root $TMP/proof2.png ) &
+for attempt in $(seq 1 100); do
+    [ -s "$TMP/display-number" ] && break
+    kill -0 "$XVFB" || { cat "$TMP/xvfb.log"; exit 1; }
+    sleep .1
+done
+export DISPLAY=:$(cat "$TMP/display-number")
+xsetroot -solid '#203864'
+# Change only after a decoded initial frame is saved, rather than racing
+# tunnel startup with a fixed sleep. xsetroot exits, no wallpaper process.
+(
+    for attempt in $(seq 1 600); do
+        if [ -s "$TMP/proof/frame-first.jpg" ]; then
+            xsetroot -solid '#5a1e1e'
+            printf 'changed\n' >"$TMP/wallpaper-changed"
+            exit 0
+        fi
+        sleep .1
+    done
+    exit 1
+) >"$TMP/swap.log" 2>&1 &
 SWAP=$!
-
-$TMP/mnetd -session-proof -server http://127.0.0.1:18081 -network sessval -auth-key "$KEY" -proof-dir $TMP/proof >$TMP/proof.log 2>&1 &
-PPID2=$!
-wait $PPID2; RC=$?
-
-kill $SWAP $DISP $XVFB $CPID 2>/dev/null
-if [ $RC -eq 0 ]; then
-    echo "SESSION VALIDATION PASS"
-    echo "artifacts in $TMP/proof (frame-first.jpg, frame-latest.jpg, summary.json)"
-    cat $TMP/proof/summary.json
+MNET_SESSION_TRACE=${MNET_SESSION_TRACE:-1} "$TMP/mnetd" -session-proof -server "$BASE" -network sessval -auth-key "$KEY" -proof-dir "$TMP/proof" >"$TMP/proof.log" 2>&1 &
+PROOF=$!
+if wait "$PROOF"; then RC=0; else RC=$?; fi
+PROOF=
+if [ "$RC" -eq 0 ]; then
+    echo 'SESSION VALIDATION PASS'
+    cat "$TMP/proof/summary.json"
 else
-    echo "SESSION VALIDATION FAIL"; tail -20 $TMP/proof.log
+    echo 'SESSION VALIDATION FAIL'
+    tail -40 "$TMP/proof.log"
 fi
-exit $RC
+printf '\nArtifacts retained: %s\n' "$TMP"
+exit "$RC"

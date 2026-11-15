@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,8 +33,11 @@ type HelloReply struct {
 // Frames are written with priority draining; reads dispatch to
 // per-stream handlers registered with OnStream.
 type Mux struct {
-	conn net.Conn
-	wmu  sync.Mutex
+	conn        net.Conn
+	traceMu     sync.Mutex
+	traceEvents [512]frameEvent
+	traceNext   uint64
+	wmu         sync.Mutex
 	// pending[priority] holds queued DATA/OPEN frames per class.
 	pending     [4][]Frame
 	queuedBytes int
@@ -305,6 +309,7 @@ func (m *Mux) RTT() time.Duration { return time.Duration(m.lastRTT.Load()) }
 
 func (m *Mux) Close() error {
 	m.closeMu.Do(func() {
+		m.dumpTrace()
 		// Interrupt any synchronous handshake write before taking wmu.
 		m.conn.Close()
 		m.wmu.Lock()
@@ -384,6 +389,7 @@ func (m *Mux) send(id uint32, typ byte, pri uint8, payload []byte) error {
 		m.pending[pri] = append(m.pending[pri], Frame{StreamID: id, Type: msgOpen, Priority: pri, Payload: []byte(`{}`)})
 	}
 	m.pending[pri] = append(m.pending[pri], f)
+	m.traceFrame("queued", f)
 	m.cond.Signal()
 	return nil
 }
@@ -394,10 +400,12 @@ func (m *Mux) writeLoop() {
 		for {
 			if f, ok := m.popLocked(); ok {
 				m.wmu.Unlock()
+				m.traceFrame("write-start", f)
 				if err := writeFrame(m.conn, f); err != nil {
 					m.Close()
 					return
 				}
+				m.traceFrame("write-done", f)
 				m.wmu.Lock()
 				continue
 			}
@@ -437,6 +445,44 @@ func (m *Mux) popLocked() (Frame, bool) {
 	return Frame{}, false
 }
 
+// Metadata-only tracing is opt-in for diagnosing stalled sessions. It never
+// logs payloads, peer credentials, file names or file contents.
+var traceFrames = os.Getenv("MNET_SESSION_TRACE") == "1"
+
+type frameEvent struct {
+	at    time.Time
+	stage string
+	id    uint32
+	typ   byte
+	size  int
+}
+
+func (m *Mux) traceFrame(stage string, f Frame) {
+	if !traceFrames {
+		return
+	}
+	m.traceMu.Lock()
+	m.traceEvents[m.traceNext%uint64(len(m.traceEvents))] = frameEvent{time.Now(), stage, f.StreamID, f.Type, len(f.Payload)}
+	m.traceNext++
+	m.traceMu.Unlock()
+}
+
+func (m *Mux) dumpTrace() {
+	if !traceFrames {
+		return
+	}
+	m.traceMu.Lock()
+	defer m.traceMu.Unlock()
+	start := uint64(0)
+	if m.traceNext > uint64(len(m.traceEvents)) {
+		start = m.traceNext - uint64(len(m.traceEvents))
+	}
+	for i := start; i < m.traceNext; i++ {
+		e := m.traceEvents[i%uint64(len(m.traceEvents))]
+		log.Printf("session trace mux=%p at=%s stage=%s stream=%d type=%d bytes=%d", m, e.at.Format(time.RFC3339Nano), e.stage, e.id, e.typ, e.size)
+	}
+}
+
 func (m *Mux) readOne() (Frame, error) { return readFrame(m.conn) }
 
 func (m *Mux) readLoop() {
@@ -446,6 +492,7 @@ func (m *Mux) readLoop() {
 			m.Close()
 			return
 		}
+		m.traceFrame("read", f)
 		m.lastRead.Store(time.Now().UnixNano())
 		switch f.Type {
 		case msgPing:
