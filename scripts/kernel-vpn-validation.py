@@ -409,6 +409,17 @@ else:
         if not any(r.get('dst') == '10.8.0.0/24' and r.get('dev') == 'eth0' for r in routes):
             raise RuntimeError('unrelated route removed at final teardown')
         print('PASS Down removes actual TUN/mesh/owned subnet routes and preserves unrelated route', flush=True)
+        # Clearing routing must persist without deleting identity/state.
+        # Control is deliberately still dead, so inspect the saved routing
+        # transition before canceling the unsuccessful reconnect attempt.
+        local_api(states['b'], 'up', {'reset_routing': True})
+        def routing_cleared():
+            state = json.loads((states['b'] / 'state.json').read_text())
+            return not state.get('advertise_routes') and not state.get('exit_node') and not state.get('use_exit_node')
+        wait_for(routing_cleared, 'explicit routing reset persists')
+        local_api(states['b'], 'down', {})
+        serving_state(False)
+        print('PASS explicit routing reset preserves identity while clearing saved serving configuration', flush=True)
     except Exception:
         for path in tmp.glob('*.log'):
             # Daemon logs can contain fixture approval URLs. Keep diagnostics

@@ -82,6 +82,8 @@ func main() {
 				}
 				upFlags["advertise_routes"] = strings.Split(args[i+1], ",")
 				i++
+			case "--reset-routing":
+				upFlags["reset_routing"] = true
 			case "--advertise-exit-node":
 				upFlags["advertise_exit_node"] = true
 			default:
@@ -142,7 +144,8 @@ func usage() {
 	fmt.Print(`mnet - the Mnet command line
 
   mnet up --server https://control.example.com --network mynet [--auth-key KEY] [--name NAME]
-          [--advertise-exit-node] [--advertise-routes CIDR,...] [--exit-node PEER]
+          [--advertise-routes CIDR,...] [--reset-routing]
+          Exit routing is unsupported. --reset-routing clears saved routing roles while down.
   mnet down
   mnet status
   mnet ip

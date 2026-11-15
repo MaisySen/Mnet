@@ -104,3 +104,64 @@ func TestLocalAPIRejectsUnauthenticatedAndMalformedControl(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLocalAPICanResetSavedRouting(t *testing.T) {
+	dir := t.TempDir()
+	d, err := New(Config{StateDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SetRouting(true, []string{"10.9.0.0/24"}, "gateway"); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ready := make(chan error, 1)
+	done := make(chan error, 1)
+	go func() { done <- d.ServeLocalAPIContext(ctx, ready) }()
+	if err := <-ready; err != nil {
+		t.Fatal(err)
+	}
+	network, addr := SocketPath(dir)
+	base := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, addr)
+	}}
+	defer base.CloseIdleConnections()
+	client := &http.Client{Transport: localapi.Transport{StateDir: dir, Base: base}, Timeout: time.Second}
+	post := func(body string) int {
+		t.Helper()
+		r, err := client.Post("http://mnetd/localapi/up", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r.StatusCode
+	}
+	if code := post(`{"reset_routing":true,"exit_node":"gateway"}`); code != 400 {
+		t.Fatalf("conflicting reset status %d", code)
+	}
+	if code := post(`{"reset_routing":true}`); code != 200 {
+		t.Fatal(code)
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(d.Status().LastError, "need --server") {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if !strings.Contains(d.Status().LastError, "need --server") {
+		t.Fatal("reset did not reach ordinary mesh-only Up validation")
+	}
+	saved, err := LoadState(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.ExitNode || saved.UseExitNode != "" || len(saved.AdvertiseRoutes) != 0 {
+		t.Fatal("saved routing was not reset")
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}

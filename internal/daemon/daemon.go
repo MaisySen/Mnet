@@ -149,31 +149,39 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 		}
 		d.serving = nil
 	}
-	if err := d.state.EnsureKey(d.cfg.StateDir); err != nil {
-		d.setDown()
-		return err
-	}
-	if server != "" {
-		d.state.Server = server
-	}
-	if network != "" {
-		d.state.Network = network
-	}
-	if nodeName != "" {
-		d.state.NodeName = nodeName
-	}
-	if d.state.Server == "" || d.state.Network == "" {
-		d.setDown()
-		return fmt.Errorf("need --server and --network for the first join")
-	}
-	if d.state.NodeName == "" {
-		host, _ := os.Hostname()
-		if host == "" {
-			host = "node"
+	// Status can poll during asynchronous startup. Publish identity/config
+	// writes under the same lock its snapshot uses.
+	if err := func() error {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		if err := d.state.EnsureKey(d.cfg.StateDir); err != nil {
+			return err
 		}
-		d.state.NodeName = host
-	}
-	if err := d.state.Save(d.cfg.StateDir); err != nil {
+		if server != "" {
+			d.state.Server = server
+		}
+		if network != "" {
+			d.state.Network = network
+		}
+		if nodeName != "" {
+			d.state.NodeName = nodeName
+		}
+		if d.state.Server == "" || d.state.Network == "" {
+			return fmt.Errorf("need --server and --network for the first join")
+		}
+		if d.state.NodeName == "" {
+			host, _ := os.Hostname()
+			if host == "" {
+				host = "node"
+			}
+			d.state.NodeName = host
+		}
+		if err := d.state.Save(d.cfg.StateDir); err != nil {
+			return err
+		}
+
+		return nil
+	}(); err != nil {
 		d.setDown()
 		return err
 	}

@@ -112,12 +112,23 @@ func (d *Daemon) ServeLocalAPIContext(ctx context.Context, ready chan<- error) e
 			AdvertiseExit   bool     `json:"advertise_exit_node"`
 			AdvertiseRoutes []string `json:"advertise_routes"`
 			UseExitNode     string   `json:"exit_node"`
+			ResetRouting    bool     `json:"reset_routing"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
 			http.Error(w, "invalid request JSON", http.StatusBadRequest)
 			return
 		}
+		if req.ResetRouting && (req.AdvertiseExit || len(req.AdvertiseRoutes) > 0 || req.UseExitNode != "") {
+			http.Error(w, "reset_routing cannot be combined with routing roles", http.StatusBadRequest)
+			return
+		}
 		go func() {
+			if req.ResetRouting {
+				if err := d.SetRouting(false, nil, ""); err != nil {
+					d.setErr(fmt.Errorf("reset routing: %w", err))
+					return
+				}
+			}
 			if req.AdvertiseExit || len(req.AdvertiseRoutes) > 0 || req.UseExitNode != "" {
 				if err := d.SetRouting(req.AdvertiseExit, req.AdvertiseRoutes, req.UseExitNode); err != nil {
 					d.setErr(fmt.Errorf("routing: %w", err))
