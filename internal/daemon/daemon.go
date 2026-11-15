@@ -221,9 +221,10 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 }
 
 // join registers and waits for approval when needed.
-func (d *Daemon) join(ctx context.Context, authKey string) error {
+// postJoin sends one join request.
+func (d *Daemon) postJoin(ctx context.Context, authKey string) (*netmap.JoinResponse, error) {
 	cc := &controlclient.Client{Base: d.state.Server}
-	resp, err := cc.Join(ctx, netmap.JoinRequest{
+	return cc.Join(ctx, netmap.JoinRequest{
 		Network:  d.state.Network,
 		Name:     d.state.NodeName,
 		PubKey:   d.state.PublicKey,
@@ -231,6 +232,18 @@ func (d *Daemon) join(ctx context.Context, authKey string) error {
 		ExitNode: d.state.ExitNode,
 		Routes:   d.state.AdvertiseRoutes,
 	})
+}
+
+func (d *Daemon) join(ctx context.Context, authKey string) error {
+	resp, err := d.postJoin(ctx, authKey)
+	if err != nil && authKey != "" && d.state.NodeID != "" {
+		// One-time auth keys are consumed by the first join (Prepare on
+		// mobile), so the re-join in Up comes back 403. A node the
+		// control plane still knows re-joins fine without a key: the
+		// server matches the public key and keeps its approval.
+		log.Printf("mnetd: keyed join failed (%v); retrying as known node", err)
+		resp, err = d.postJoin(ctx, "")
+	}
 	if err != nil {
 		return fmt.Errorf("join: %w", err)
 	}
@@ -263,7 +276,7 @@ func (d *Daemon) join(ctx context.Context, authKey string) error {
 			return ctx.Err()
 		case <-time.After(3 * time.Second):
 		}
-		st, err := cc.JoinStatus(ctx, resp.NodeID, resp.NodeToken)
+		st, err := (&controlclient.Client{Base: d.state.Server}).JoinStatus(ctx, resp.NodeID, resp.NodeToken)
 		if err != nil {
 			continue
 		}

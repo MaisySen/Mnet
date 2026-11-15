@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.VpnService;
 import android.os.ParcelFileDescriptor;
+import android.util.Log;
 
 import org.json.JSONObject;
 
@@ -21,6 +22,7 @@ public class MnetVpnService extends VpnService {
     public static final String ACTION_STATUS = "au.fintex.mnet.STATUS";
     public static final String EXTRA_STATUS = "status_json";
 
+    private static final String TAG = "MnetVPN";
     private static final String CHANNEL = "mesh";
     private static final int NOTIF_ID = 1;
 
@@ -64,7 +66,9 @@ public class MnetVpnService extends VpnService {
             if (!exitNode.isEmpty()) {
                 node.setUseExitNode(exitNode);
             }
+            Log.i(TAG, "prepare: joining " + network + " on " + server);
             String ipv4 = node.prepare(server, network, name, authKey);
+            Log.i(TAG, "prepare ok: mesh ip " + ipv4);
 
             Builder b = new Builder()
                     .setSession("Mnet")
@@ -84,11 +88,14 @@ public class MnetVpnService extends VpnService {
                 return;
             }
             int fd = pfd.detachFd(); // the Go side owns it now
+            Log.i(TAG, "interface established, starting node");
             node.start(fd, server, network, name, authKey);
+            Log.i(TAG, "node up: " + node.status());
             broadcastLoop();
         } catch (Exception e) {
-            broadcast("error: " + e.getMessage());
-            stopMesh();
+            String msg = e.getMessage() == null ? e.toString() : e.getMessage();
+            Log.e(TAG, "mesh failed: " + msg, e);
+            stopMesh(msg);
         }
     }
 
@@ -141,6 +148,12 @@ public class MnetVpnService extends VpnService {
     }
 
     private void stopMesh() {
+        stopMesh(null);
+    }
+
+    // stopMesh tears the tunnel down. A failure reason is kept in the
+    // final broadcast so the activity shows it instead of a bare down.
+    private void stopMesh(String lastError) {
         running = false;
         sharedNode = null;
         if (node != null) {
@@ -149,7 +162,12 @@ public class MnetVpnService extends VpnService {
         }
         stopForeground(true);
         stopSelf();
-        broadcast("{\"status\":\"down\"}");
+        if (lastError != null) {
+            broadcast("{\"status\":\"down\",\"last_error\":"
+                    + JSONObject.quote(lastError) + "}");
+        } else {
+            broadcast("{\"status\":\"down\"}");
+        }
     }
 
     @Override
