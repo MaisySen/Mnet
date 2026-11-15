@@ -47,6 +47,10 @@ Live proofs and the fixes they exposed.
   NAT reboots and dead relays no longer leave a session looking
   open; the CLI viewer reconnects on a drop with capped exponential
   backoff and the picture resumes from the host's fresh keyframe.
+- Adaptive streaming: keepalive pings now carry a timestamp so both
+  sides measure the path round trip; hosts with a tuneable capturer
+  (the X11 backend) step JPEG quality between 70, 55 and 40 as the
+  RTT crosses 120 ms and 250 ms, reviewed every 5 s.
 - CI: GitHub Actions build, vet, race-enabled tests, the secrets
   gate, and the live session proof on every push and PR.
 

@@ -6,6 +6,28 @@ import (
 	"time"
 )
 
+// TuneableCapturer is a capturer whose encode quality can follow
+// path conditions. SetQuality takes a JPEG quality 20-90.
+type TuneableCapturer interface {
+	SetQuality(q int)
+}
+
+// qualityForRTT picks the JPEG quality band for the measured path.
+// Generous on good paths, frugal once the round trip says the link
+// is the bottleneck.
+func qualityForRTT(rtt time.Duration) int {
+	switch {
+	case rtt <= 0:
+		return 70 // no measurement yet: host default
+	case rtt > 250*time.Millisecond:
+		return 40
+	case rtt > 120*time.Millisecond:
+		return 55
+	default:
+		return 70
+	}
+}
+
 // Capturer produces host screen frames. Platform implementations:
 // Android MediaProjection, Linux X11.
 type Capturer interface {
@@ -132,6 +154,9 @@ func (h *Host) screenLoop() {
 	tick := time.NewTicker(interval)
 	defer tick.Stop()
 	dc, _ := h.Cap.(DeltaCapturer)
+	tune, _ := h.Cap.(TuneableCapturer)
+	adapt := time.NewTicker(5 * time.Second)
+	defer adapt.Stop()
 	var seq uint32
 	for {
 		select {
@@ -139,6 +164,11 @@ func (h *Host) screenLoop() {
 			return
 		case <-h.Mux.closed:
 			return
+		case <-adapt.C:
+			if tune != nil {
+				tune.SetQuality(qualityForRTT(h.Mux.RTT()))
+			}
+			continue
 		case <-tick.C:
 		}
 		var fr ScreenFrame

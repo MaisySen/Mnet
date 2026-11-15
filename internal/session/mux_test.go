@@ -282,3 +282,55 @@ func TestKeepaliveKeepsLivePeer(t *testing.T) {
 	}
 	m.Close()
 }
+
+func TestKeepaliveMeasuresRTT(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	hostReady := make(chan *Mux, 1)
+	go func() {
+		m, err := Listen(ln, "host", func(Hello, net.Addr) (bool, string) { return true, "" })
+		if err == nil {
+			hostReady <- m
+		}
+	}()
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := Dial(conn, "viewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	m.Keepalive(20*time.Millisecond, 5*time.Second)
+	deadline := time.Now().Add(2 * time.Second)
+	for m.RTT() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if m.RTT() == 0 {
+		t.Fatal("no RTT measured")
+	}
+	if m.RTT() > time.Second {
+		t.Fatalf("loopback RTT absurd: %s", m.RTT())
+	}
+	h := <-hostReady
+	defer h.Close()
+}
+
+func TestQualityForRTT(t *testing.T) {
+	if qualityForRTT(0) != 70 {
+		t.Fatal("no measurement keeps the default")
+	}
+	if qualityForRTT(50*time.Millisecond) != 70 {
+		t.Fatal("good path keeps full quality")
+	}
+	if qualityForRTT(200*time.Millisecond) != 55 {
+		t.Fatal("medium path steps down")
+	}
+	if qualityForRTT(time.Second) != 40 {
+		t.Fatal("bad path drops to the floor band")
+	}
+}

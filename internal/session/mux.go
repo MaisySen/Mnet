@@ -1,6 +1,7 @@
 package session
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,6 +41,7 @@ type Mux struct {
 	closeMu sync.Once
 
 	lastRead   atomic.Int64 // unixnano; any inbound frame proves liveness
+	lastRTT    atomic.Int64 // nanoseconds; last keepalive round trip
 	onStreamMu sync.RWMutex
 	onStream   func(Stream)
 	nextID     uint32 // dynamic stream ids, partitioned by side
@@ -270,7 +272,9 @@ func (m *Mux) Keepalive(interval, timeout time.Duration) {
 					m.Close()
 					return
 				}
-				if err := m.send(StreamControl, msgPing, PriInteractive, nil); err != nil {
+				var ts [8]byte
+				binary.BigEndian.PutUint64(ts[:], uint64(now.UnixNano()))
+				if err := m.send(StreamControl, msgPing, PriInteractive, ts[:]); err != nil {
 					return
 				}
 			}
@@ -281,6 +285,10 @@ func (m *Mux) Keepalive(interval, timeout time.Duration) {
 // PeerAddr returns the remote address of the underlying connection,
 // for hosts that bind the claimed peer name to the source mesh IP.
 func (m *Mux) PeerAddr() net.Addr { return m.conn.RemoteAddr() }
+
+// RTT is the last measured keepalive round trip; zero before the
+// first pong. Hosts use it to adapt stream quality to the path.
+func (m *Mux) RTT() time.Duration { return time.Duration(m.lastRTT.Load()) }
 
 func (m *Mux) Close() error {
 	m.closeMu.Do(func() {
@@ -380,6 +388,10 @@ func (m *Mux) readLoop() {
 			m.send(f.StreamID, msgPong, PriInteractive, f.Payload)
 			continue
 		case msgPong:
+			if len(f.Payload) == 8 {
+				sent := int64(binary.BigEndian.Uint64(f.Payload))
+				m.lastRTT.Store(time.Now().UnixNano() - sent)
+			}
 			continue
 		}
 		m.streamMu.Lock()

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image"
 	"image/jpeg"
+	"sync/atomic"
 
 	"github.com/jezek/xgb"
 	"github.com/jezek/xgb/xproto"
@@ -25,7 +26,7 @@ type x11Host struct {
 	scale    int // downscale factor: frames are capped on the long edge
 	last     []byte
 	lastRGBA *image.RGBA
-	jpegQ    int
+	jpegQ    atomic.Int32
 	textMode string
 	remapKC  byte
 }
@@ -40,7 +41,9 @@ func newX11Capturer() (session.Capturer, error) {
 	root := scr.Root
 	w, h := int(scr.WidthInPixels), int(scr.HeightInPixels)
 	xtest.Init(c)
-	return &x11Host{conn: c, root: root, w: w, h: h, scale: capScale(w, h), jpegQ: 70}, nil
+	x := &x11Host{conn: c, root: root, w: w, h: h, scale: capScale(w, h)}
+	x.jpegQ.Store(70)
+	return x, nil
 }
 
 func newX11Injector() (session.Injector, error) {
@@ -68,6 +71,18 @@ func capScale(w, h int) int {
 }
 
 func (x *x11Host) Geometry() (int, int) { return x.w / x.scale, x.h / x.scale }
+
+// SetQuality adapts the JPEG encode quality to path conditions (the
+// session layer drives it from the measured round trip).
+func (x *x11Host) SetQuality(q int) {
+	if q < 20 {
+		q = 20
+	}
+	if q > 90 {
+		q = 90
+	}
+	x.jpegQ.Store(int32(q))
+}
 
 // grab captures and downscales the screen to one RGBA image.
 func (x *x11Host) grab() (*image.RGBA, error) {
@@ -103,7 +118,7 @@ func (x *x11Host) Capture() ([]byte, bool, error) {
 		return nil, false, err
 	}
 	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: x.jpegQ}); err != nil {
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: int(x.jpegQ.Load())}); err != nil {
 		return nil, false, err
 	}
 	changed := !bytes.Equal(buf.Bytes(), x.last)
@@ -126,7 +141,7 @@ func (x *x11Host) CaptureDelta() ([]byte, []session.Tile, error) {
 		return nil, nil, nil
 	}
 	if x.lastRGBA != nil && len(rects) <= total*3/5 {
-		tiles, err := session.EncodeTiles(img, rects, x.jpegQ)
+		tiles, err := session.EncodeTiles(img, rects, int(x.jpegQ.Load()))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -134,7 +149,7 @@ func (x *x11Host) CaptureDelta() ([]byte, []session.Tile, error) {
 		return nil, tiles, nil
 	}
 	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: x.jpegQ}); err != nil {
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: int(x.jpegQ.Load())}); err != nil {
 		return nil, nil, err
 	}
 	x.lastRGBA = img
