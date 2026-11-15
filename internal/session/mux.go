@@ -42,9 +42,18 @@ type Mux struct {
 	nextID     uint32 // dynamic stream ids, partitioned by side
 	idMu     sync.Mutex
 	started  bool // frames queue for the write loop only after start()
-	opened   map[uint32]bool          // streams this side has OPENed
-	streams  map[uint32]chan Frame    // inbound delivery, both directions
+	opened   map[uint32]bool             // streams this side has OPENed
+	streams  map[uint32]*streamState     // inbound delivery, both directions
 	streamMu sync.Mutex
+}
+
+// streamState is one known stream. Streams opened by the peer before
+// an OnStream handler exists wait in handled=false state; OnStream
+// dispatches them when it is registered.
+type streamState struct {
+	ch       chan Frame
+	open     json.RawMessage
+	handled  bool
 }
 
 // Stream is one opened stream, delivered to the registered handler.
@@ -128,7 +137,7 @@ func Listen(ln net.Listener, nodeName string, accept func(Hello) (bool, string))
 
 func newMux(conn net.Conn, firstDynamic uint32) *Mux {
 	m := &Mux{conn: conn, closed: make(chan struct{}), nextID: firstDynamic,
-		opened: map[uint32]bool{StreamControl: true}, streams: map[uint32]chan Frame{}}
+		opened: map[uint32]bool{StreamControl: true}, streams: map[uint32]*streamState{}}
 	m.cond = sync.NewCond(&m.wmu)
 	return m
 }
@@ -143,11 +152,24 @@ func (m *Mux) start() {
 
 // OnStream registers the handler for streams opened by the peer.
 // OPENs for StreamScreen/StreamInput/StreamChat are dispatched too.
-// Safe to call after the session has started.
+// Safe to call after the session has started; streams that arrived
+// earlier without a handler are dispatched now.
 func (m *Mux) OnStream(h func(Stream)) {
 	m.onStreamMu.Lock()
-	defer m.onStreamMu.Unlock()
 	m.onStream = h
+	m.onStreamMu.Unlock()
+	m.streamMu.Lock()
+	var pending []Stream
+	for id, st := range m.streams {
+		if !st.handled {
+			st.handled = true
+			pending = append(pending, Stream{Mux: m, ID: id, OpenJSON: st.open, in: st.ch})
+		}
+	}
+	m.streamMu.Unlock()
+	for _, s := range pending {
+		go h(s)
+	}
 }
 
 func (m *Mux) streamHandler() func(Stream) {
@@ -175,7 +197,7 @@ func (m *Mux) Open(priority uint8, openPayload any) (Stream, error) {
 	}
 	s.OpenJSON = raw
 	m.streamMu.Lock()
-	m.streams[id] = s.in
+	m.streams[id] = &streamState{ch: s.in, open: raw, handled: true}
 	m.streamMu.Unlock()
 	if err := m.send(id, msgOpen, priority, raw); err != nil {
 		return Stream{}, err
@@ -326,13 +348,16 @@ func (m *Mux) readLoop() {
 			continue
 		}
 		m.streamMu.Lock()
-		ch, ok := m.streams[f.StreamID]
+		st, ok := m.streams[f.StreamID]
 		if f.Type == msgOpen {
 			if !ok {
-				ch = make(chan Frame, 16)
-				m.streams[f.StreamID] = ch
+				st = &streamState{ch: make(chan Frame, 16), open: json.RawMessage(f.Payload)}
 				if h := m.streamHandler(); h != nil {
-					go h(Stream{Mux: m, ID: f.StreamID, OpenJSON: json.RawMessage(f.Payload), in: ch})
+					st.handled = true
+					m.streams[f.StreamID] = st
+					go h(Stream{Mux: m, ID: f.StreamID, OpenJSON: st.open, in: st.ch})
+				} else {
+					m.streams[f.StreamID] = st
 				}
 			}
 			// An OPEN for a stream we opened locally is the peer's
@@ -345,14 +370,14 @@ func (m *Mux) readLoop() {
 			continue // DATA for a stream we did not see OPEN: drop
 		}
 		if f.Type == msgFin || f.Type == msgRst {
-			close(ch)
+			close(st.ch)
 			m.streamMu.Lock()
 			delete(m.streams, f.StreamID)
 			m.streamMu.Unlock()
 			continue
 		}
 		select {
-		case ch <- f:
+		case st.ch <- f:
 		case <-m.closed:
 			return
 		}

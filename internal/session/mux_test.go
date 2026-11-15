@@ -123,6 +123,55 @@ func TestPriorityDrainsFirst(t *testing.T) {
 	}
 }
 
+func TestLateHandlerGetsPendingStreams(t *testing.T) {
+	// A stream opened by the peer before OnStream is registered must
+	// be dispatched when the handler arrives, not lost.
+	c1, c2 := net.Pipe()
+	ln := &oneShotListener{ch: make(chan net.Conn, 1)}
+	ln.ch <- c2
+	hostDone := make(chan *Mux, 1)
+	go func() {
+		h, err := Listen(ln, "host", func(Hello) (bool, string) { return true, "" })
+		if err == nil {
+			h.SendJSON(StreamChat, PriChat, ChatMessage{From: "host", Text: "early"})
+			hostDone <- h
+		} else {
+			hostDone <- nil
+		}
+	}()
+	client, err := Dial(c1, "viewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	time.Sleep(100 * time.Millisecond) // chat stream arrived with no handler
+	got := make(chan ChatMessage, 1)
+	client.OnStream(func(s Stream) {
+		if s.ID != StreamChat {
+			return
+		}
+		f, err := s.Recv(2 * time.Second)
+		if err != nil {
+			t.Errorf("recv: %v", err)
+			return
+		}
+		var m ChatMessage
+		json.Unmarshal(f.Payload, &m)
+		got <- m
+	})
+	select {
+	case m := <-got:
+		if m.Text != "early" {
+			t.Fatalf("got %q", m.Text)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("pending stream never dispatched")
+	}
+	if h := <-hostDone; h != nil {
+		h.Close()
+	}
+}
+
 func TestDynamicStreamFileTransfer(t *testing.T) {
 	client, host := pipe(t)
 	defer client.Close()

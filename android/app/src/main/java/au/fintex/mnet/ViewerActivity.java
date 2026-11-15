@@ -79,9 +79,18 @@ public class ViewerActivity extends Activity implements ViewerCallbacks {
             if (viewer == null) {
                 return true;
             }
-            // Map view coordinates into frame coordinates.
-            float sx = ev.getX() / v.getWidth() * frameW;
-            float sy = ev.getY() / v.getHeight() * frameH;
+            // Map view coordinates into frame coordinates. FIT_CENTER
+            // letterboxes the frame, so scale by the fitted rect, not
+            // the raw view.
+            float vw = v.getWidth(), vh = v.getHeight();
+            float fit = Math.min(vw / frameW, vh / frameH);
+            float offX = (vw - frameW * fit) / 2f;
+            float offY = (vh - frameH * fit) / 2f;
+            float sx = (ev.getX() - offX) / fit;
+            float sy = (ev.getY() - offY) / fit;
+            if (sx < 0 || sy < 0 || sx >= frameW || sy >= frameH) {
+                return true; // touch in the letterbox margin
+            }
             String action;
             switch (ev.getAction()) {
                 case MotionEvent.ACTION_DOWN:
