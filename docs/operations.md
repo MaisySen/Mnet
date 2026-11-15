@@ -147,7 +147,7 @@ Current limitations from source review:
 - Existing helpers can replace host/default-split routes without recording prior ownership. Safe rollback, control/relay reachability, endpoint changes, selected-peer removal and existing-route preservation need tests before enabling these paths as supported behavior.
 - Mobile VPN APIs own their interface routes, but end-to-end exit/subnet operation on physical mobile devices has not been verified.
 
-The established Linux kernel result covers mesh addresses and mesh-route removal. The newer advertised-subnet reachability, lifecycle cleanup and unrelated-route preservation fixture passes; STATUS links its result. Route-only ACL withdrawal/restoration also passed once, including peer and unrelated-route preservation; repeated kernel verification is in progress. No exit forwarding or internet-routing proof is established. Do not apply manual forwarding/firewall changes to a primary machine based on the old routing claims.
+The established Linux kernel result covers mesh addresses and mesh-route removal. The newer advertised-subnet reachability, lifecycle cleanup and unrelated-route preservation fixture passes; STATUS links its result. Route-only ACL withdrawal/restoration also passed once, including peer and unrelated-route preservation; three fresh full-kernel repetitions passed. Admin expiry with actual route teardown/reapproval is a separate pending extension. No exit forwarding or internet-routing proof is established. Do not apply manual forwarding/firewall changes to a primary machine based on the old routing claims.
 
 ## Android
 

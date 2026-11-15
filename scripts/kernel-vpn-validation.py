@@ -263,9 +263,17 @@ def call(path,data,method='POST'):
  req=urllib.request.Request('http://198.18.10.1:8080'+path,json.dumps(data).encode(),{'Content-Type':'application/json'},method=method)
  return json.load(opener.open(req,timeout=3))
 call('/admin/api/login',{'password':'kernel-ci-fixture-only'})
-network=next(iter(json.loads(Path(sys.argv[1]).read_text())['networks']))
-rules=[{'src':'a','dst':'b'}] if sys.argv[2]=='deny-route' else []
-call('/admin/api/acl',{'network_id':network,'rules':rules},'PUT')
+snapshot=json.loads(Path(sys.argv[1]).read_text())
+network=next(iter(snapshot['networks']))
+node=next(n for n in snapshot['nodes'].values() if n['name']=='b')
+if sys.argv[2]=='expire':
+ for key in snapshot['auth_keys'].values(): call('/admin/api/authkeys/delete',{'id':key['id']})
+ call('/admin/api/nodes/expire',{'node_id':node['id']})
+elif sys.argv[2]=='approve':
+ call('/admin/api/nodes/approve',{'node_id':node['id']})
+else:
+ rules=[{'src':'a','dst':'b'}] if sys.argv[2]=='deny-route' else []
+ call('/admin/api/acl',{'network_id':network,'rules':rules},'PUT')
 ''')
         run(*ns('c', sys.executable, acl_script, tmp / 'control.json', 'deny-route'))
         def subnet_absent():
@@ -283,6 +291,18 @@ call('/admin/api/acl',{'network_id':network,'rules':rules},'PUT')
         wait_for(subnet_ready, 'ACL restoration reinstalls owned subnet route')
         run(*ns('a', 'ping', '-c', '1', '-W', '2', '10.9.0.1'))
         print('PASS ACL route-only withdrawal denies subnet and preserves peer/unrelated route; restoration works', flush=True)
+        run(*ns('c', sys.executable, acl_script, tmp / 'control.json', 'expire'))
+        wait_for(subnet_absent, 'expired peer removes owned subnet OS route')
+        wait_for(lambda: not local_api(states['a']).get('peers'), 'expired peer disappears from client map')
+        wait_for(lambda: local_api(states['b'])['status'] == 'waiting-approval', 'expired identity requires fresh approval')
+        denied = subprocess.run(ns('a', 'ping', '-c', '1', '-W', '1', '10.9.0.1'), capture_output=True, timeout=3)
+        if denied.returncode == 0:
+            raise RuntimeError('expired subnet remained reachable')
+        run(*ns('c', sys.executable, acl_script, tmp / 'control.json', 'approve'))
+        wait_for(subnet_ready, 'approved identity restores owned subnet route')
+        wait_for(both_direct, 'direct paths after expiry and reapproval', timeout=40)
+        run(*ns('a', 'ping', '-c', '1', '-W', '2', '10.9.0.1'))
+        print('PASS admin expiry removes peer/subnet route and blocks reachability until reapproval', flush=True)
         # With the control/relay process dead, transfers cannot silently
         # succeed by falling back to the shared control-plane WebSocket.
         control.terminate()

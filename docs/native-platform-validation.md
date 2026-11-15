@@ -16,6 +16,8 @@ Evidence for the combined direct-path check: [c4a1bcd, all five jobs](https://gi
 
 Bounded Linux RFC1918 subnet routing: [8fcaf91 CI](https://github.com/MaisySen/Mnet/actions/runs/43764310572) checks an advertised prefix reaches an address on the peer loopback, owned-route cleanup/reinstallation across two saved-state cycles, and preservation of an unrelated underlay route. This is not forwarding through a separate LAN host, exit routing, IPv6 or non-Linux subnet routing.
 
+Three fresh full fixture runs passed in [2d23b6a CI](https://github.com/MaisySen/Mnet/actions/runs/43765976816), including route-only ACL withdrawal/restoration with peer/unrelated-route preservation and actual drops 135/149/169. This is bounded regression repeatability, not a soak.
+
 ## Private state behavior
 
 The daemon's dedicated state directory is restricted before secret bytes are created. On Unix it is 0700 and identity files are 0600. On Windows a protected DACL replaces inherited grants; the existing owner, LocalSystem and local administrators retain full access. Administrators remain trusted, as they can control the service itself.
