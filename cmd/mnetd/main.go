@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"os"
@@ -52,6 +53,7 @@ type options struct {
 	proofDir  string
 
 	serviceAction string
+	ready         chan<- error // set by SCM; console leaves nil
 }
 
 func main() {
@@ -169,11 +171,19 @@ func runDaemon(o options, stop <-chan struct{}) error {
 		}()
 	}
 
-	go func() {
-		if err := d.ServeLocalAPI(); err != nil {
-			log.Printf("mnetd: local api: %v", err)
-		}
-	}()
+	apiCtx, cancelAPI := context.WithCancel(context.Background())
+	defer cancelAPI()
+	apiReady := make(chan error, 1)
+	apiDone := make(chan error, 1)
+	go func() { apiDone <- d.ServeLocalAPIContext(apiCtx, apiReady) }()
+	if err := <-apiReady; err != nil {
+		d.Down()
+		return err
+	}
+	if o.ready != nil {
+		o.ready <- nil
+	}
+
 	if o.sessHost {
 		allow := map[string]bool{}
 		for _, n := range strings.Split(o.sessAllow, ",") {
@@ -187,15 +197,25 @@ func runDaemon(o options, stop <-chan struct{}) error {
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sig)
 	if stop != nil {
 		select {
 		case <-sig:
 		case <-stop:
+		case err := <-apiDone:
+			d.Down()
+			return err
 		}
 	} else {
-		<-sig
+		select {
+		case <-sig:
+		case err := <-apiDone:
+			d.Down()
+			return err
+		}
 	}
 	log.Printf("mnetd: shutting down")
+	cancelAPI()
 	d.Down()
 	return nil
 }

@@ -8,6 +8,15 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- Daemon/API readiness: local API binding errors now fail the daemon
+  instead of logging while it looks ready. The HTTP listener is context
+  scoped and closes during shutdown. Windows SCM waits for that readiness
+  before reporting Running, stores an absolute state path, preserves the
+  interface name and installs restart recovery. Service installation
+  refuses command-line auth keys; initialize saved state first. Local API
+  cancellation is regression-tested; Windows remains compile-verified,
+  pending a real-machine SCM/tunnel test.
+
 - Session stream lifecycle: cap each side at 256 active streams, release
   completed transfer channel/open-marker entries and distinguish reset
   from successful end-of-stream so an aborted file cannot publish.

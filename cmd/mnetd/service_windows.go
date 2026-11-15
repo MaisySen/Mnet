@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 
 	"golang.org/x/sys/windows/svc"
@@ -54,6 +55,15 @@ func installService(o options) error {
 	if err != nil {
 		return fmt.Errorf("locate executable: %w", err)
 	}
+	if !filepath.IsAbs(o.stateDir) {
+		o.stateDir, err = filepath.Abs(o.stateDir)
+		if err != nil {
+			return fmt.Errorf("absolute state path: %w", err)
+		}
+	}
+	if o.authKey != "" {
+		return fmt.Errorf("initialize saved node state before installing; auth keys must not be stored in service command lines")
+	}
 	m, err := mgr.Connect()
 	if err != nil {
 		return fmt.Errorf("service manager (run as Administrator): %w", err)
@@ -63,11 +73,14 @@ func installService(o options) error {
 		DisplayName: "Mnet node daemon",
 		Description: serviceDesc,
 		StartType:   mgr.StartAutomatic,
-	}, "-service", "run", "-state", o.stateDir, "-up")
+	}, "-service", "run", "-state", o.stateDir, "-ifname", o.ifname, "-up")
 	if err != nil {
 		return fmt.Errorf("create service: %w", err)
 	}
 	defer s.Close()
+	if err := s.SetRecoveryActions([]mgr.RecoveryAction{{Type: mgr.ServiceRestart, Delay: 5 * time.Second}, {Type: mgr.ServiceRestart, Delay: 30 * time.Second}}, 86400); err != nil {
+		fmt.Fprintf(os.Stderr, "mnetd: service recovery not configured: %v\n", err)
+	}
 	if err := eventlog.InstallAsEventCreate(serviceName, eventlog.Error|eventlog.Warning|eventlog.Info); err != nil {
 		// The service itself is registered; event source
 		// registration failure is worth saying, not failing over.
@@ -137,11 +150,19 @@ func (h *serviceHandler) Execute(args []string, r <-chan svc.ChangeRequest, s ch
 	s <- svc.Status{State: svc.StartPending}
 
 	stop := make(chan struct{})
+	ready := make(chan error, 1)
+	h.opts.ready = ready
 	errCh := make(chan error, 1)
 	go func() { errCh <- runDaemon(h.opts, stop) }()
 
-	s <- svc.Status{State: svc.Running, Accepts: accepted}
-	h.logf(1, "service started")
+	select {
+	case <-ready:
+		s <- svc.Status{State: svc.Running, Accepts: accepted}
+		h.logf(1, "service started; local API bound")
+	case err := <-errCh:
+		h.logf(2, "service startup failed: %v", err)
+		return true, 1
+	}
 
 	loop := true
 	for loop {

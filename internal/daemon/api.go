@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"fintex.au/mnet/internal/version"
 )
@@ -58,16 +60,30 @@ func SocketPath(stateDir string) (network, addr string) {
 
 // ServeLocalAPI runs the CLI-facing API until the daemon stops.
 func (d *Daemon) ServeLocalAPI() error {
+	return d.ServeLocalAPIContext(context.Background(), nil)
+}
+
+// ServeLocalAPIContext reports readiness only after binding and closes the
+// listener/HTTP handlers when ctx ends. ready receives setup errors too.
+func (d *Daemon) ServeLocalAPIContext(ctx context.Context, ready chan<- error) error {
+	notify := func(err error) {
+		if ready != nil {
+			ready <- err
+		}
+	}
 	network, addr := SocketPath(d.cfg.StateDir)
 	if network == "unix" {
 		os.Remove(addr)
 		if err := os.MkdirAll(filepath.Dir(addr), 0o700); err != nil {
+			notify(err)
 			return err
 		}
 	}
 	ln, err := net.Listen(network, addr)
 	if err != nil {
-		return fmt.Errorf("local api listen: %w", err)
+		err = fmt.Errorf("local api listen: %w", err)
+		notify(err)
+		return err
 	}
 	if network == "unix" {
 		os.Chmod(addr, 0o600)
@@ -115,5 +131,20 @@ func (d *Daemon) ServeLocalAPI() error {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "down"})
 	})
-	return http.Serve(ln, mux)
+	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
+	stopped := make(chan struct{})
+	defer close(stopped)
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = server.Close()
+		case <-stopped:
+		}
+	}()
+	notify(nil)
+	err = server.Serve(ln)
+	if err == http.ErrServerClosed {
+		return nil
+	}
+	return err
 }

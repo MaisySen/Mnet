@@ -9,7 +9,6 @@ import (
 	"testing"
 )
 
-
 func jpegBytes(t *testing.T, img *image.RGBA) []byte {
 	t.Helper()
 	var buf bytes.Buffer

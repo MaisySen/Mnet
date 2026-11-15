@@ -56,9 +56,9 @@ type FileOffer struct {
 
 // FileAccept is the receiver's answer.
 type FileAccept struct {
-	OK     bool  `json:"ok"`
+	OK     bool   `json:"ok"`
 	Reason string `json:"reason,omitempty"`
-	Offset int64 `json:"offset"` // resume position
+	Offset int64  `json:"offset"` // resume position
 }
 
 // FileAck closes a completed transfer.

@@ -62,12 +62,22 @@ or leave the key off and approve the device from the dashboard link the
 CLI prints.
 
 macOS: run mnetd with sudo or a LaunchDaemon. Windows: run mnetd.exe as
-Administrator with wintun.dll next to it.
+Administrator with wintun.dll next to it. Service mode is implemented but
+still needs live verification on a real Windows machine. Use an explicit
+absolute state path consistently, initialize/join it in an elevated console,
+then install with `mnetd.exe -state C:\MnetState -service install` and start
+with `sc.exe start mnetd`. Never include an auth key in the install command.
+Removal: `mnetd.exe -service remove`. Keep the binary and its parent directory
+writable only by administrators; LocalSystem executes it at boot. Choose a
+state directory whose Windows ACL grants access only to administrators and
+SYSTEM. Automatic restart recovery is requested at installation. The SCM
+Running status means the local API is bound, not that the mesh has joined.
 
 ## Sizing
 
 The relay carries only nodes that cannot find a direct path. Each relayed
-node is one WebSocket; a small VM handles hundreds of relayed nodes.
+node is one WebSocket. Relay capacity has not yet been measured; see
+docs/scale-testing.md for the narrower local control-plane measurements.
 Direct traffic never touches the control plane.
 
 ## Public deployment (validated 2026-11-15)
