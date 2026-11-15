@@ -104,7 +104,20 @@ func (h *Host) SetFileDir(dir string) {
 
 // ServeHost wires a mux (from Listen) to host duties and starts the
 // screen loop. fps <= 0 defaults to 5.
+// HostOptions are installed before queued peer streams can be dispatched.
+// Use these for startup configuration instead of racing the Set methods.
+type HostOptions struct {
+	FileDir  string
+	OnChat   func(ChatMessage)
+	OnFile   func(string, int64)
+	Recorder *Recorder
+}
+
 func ServeHost(m *Mux, cap Capturer, inj Injector, fps int) *Host {
+	return ServeHostWithOptions(m, cap, inj, fps, HostOptions{})
+}
+
+func ServeHostWithOptions(m *Mux, cap Capturer, inj Injector, fps int, opts HostOptions) *Host {
 	if fps <= 0 {
 		fps = 5
 	}
@@ -116,7 +129,10 @@ func ServeHost(m *Mux, cap Capturer, inj Injector, fps int) *Host {
 		FPS:  fps,
 		stop: make(chan struct{}),
 	}
-	h.Incoming = FileReceiver{Mux: m, OnDone: func(name string, size int64) {
+	h.onChat = opts.OnChat
+	h.onFile = opts.OnFile
+	h.rec = opts.Recorder
+	h.Incoming = FileReceiver{Mux: m, Dir: opts.FileDir, OnDone: func(name string, size int64) {
 		h.hmu.RLock()
 		f := h.onFile
 		h.hmu.RUnlock()

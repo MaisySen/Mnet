@@ -144,7 +144,6 @@ func runSessionHost(d *daemon.Daemon, stateDir string, autoAccept bool, allow ma
 		if injErr != nil {
 			log.Printf("mnetd: session host: input injection unavailable: %v", injErr)
 		}
-		h := session.ServeHost(m, cap, inj, 8)
 		var rec *session.Recorder
 		recPath := ""
 		if recordDir != "" {
@@ -152,12 +151,14 @@ func runSessionHost(d *daemon.Daemon, stateDir string, autoAccept bool, allow ma
 			recPath = filepath.Join(recordDir, fmt.Sprintf("%s-%s.mjpeg", viewer, start.UTC().Format("20060102-150405")))
 			if r, err := session.NewRecorder(recPath); err == nil {
 				rec = r
-				h.SetRecorder(r)
 			} else {
 				log.Printf("mnetd: session recording unavailable: %v", err)
 				recPath = ""
 			}
 		}
+		h := session.ServeHostWithOptions(m, cap, inj, 8, session.HostOptions{
+			FileDir: filepath.Join(stateDir, "received-files"), Recorder: rec,
+		})
 		log.Printf("mnetd: session started for %s (%s)", viewer, viewerIP)
 		audit.log(sessionAudit{Event: "accept", Viewer: viewer, SourceIP: viewerIP, Reason: recPath})
 		go func(viewer, viewerIP string, start time.Time, rec *session.Recorder, recPath string) {

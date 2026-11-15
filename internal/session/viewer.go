@@ -43,9 +43,19 @@ func (v *Viewer) SetOnChat(f func(ChatMessage)) {
 // opens the screen stream after the handshake, so handlers must be
 // registered before it arrives: ConnectViewer installs them and
 // returns immediately.
+// ViewerOptions installs callbacks before dispatching already queued streams.
+type ViewerOptions struct {
+	OnFrame func(ScreenFrame)
+	OnChat  func(ChatMessage)
+}
+
 func ConnectViewer(m *Mux) *Viewer {
+	return ConnectViewerWithOptions(m, ViewerOptions{})
+}
+
+func ConnectViewerWithOptions(m *Mux, opts ViewerOptions) *Viewer {
 	m.Keepalive(15*time.Second, 45*time.Second)
-	v := &Viewer{Mux: m}
+	v := &Viewer{Mux: m, onFrame: opts.OnFrame, onChat: opts.OnChat}
 	m.OnStream(v.handleStream)
 	return v
 }

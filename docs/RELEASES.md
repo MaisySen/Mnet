@@ -8,6 +8,15 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- Startup ordering: host/viewer option constructors install file paths,
+  recording and callbacks before dispatching streams already queued by an
+  eager peer. Desktop incoming files now land under the daemon state
+  directory, not its working directory. The local session proof uses
+  synchronized frame counters and requires both initial and changed frames.
+  Regression tests queue a file and screen frame before host/viewer setup.
+  This fixes a concrete setup race; the earlier isolated ACK timeout is
+  still not conclusively attributed to it.
+
 - Owned control-map snapshots: copy mutable node and policy state under
   the store lock, then filter/sort outside it; preallocate and compact the
   peer array. Repeated/reordered identical endpoint reports no longer

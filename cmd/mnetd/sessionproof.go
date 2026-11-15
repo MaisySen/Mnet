@@ -25,6 +25,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"golang.zx2c4.com/wireguard/tun/netstack"
@@ -153,10 +154,12 @@ func runSessionProof(server, network, authKey, dir string, verbose bool) error {
 		if injErr != nil {
 			log.Printf("session-proof: injection unavailable: %v", injErr)
 		}
-		h := session.ServeHost(m, cap, inj, 8)
-		h.SetFileDir(filepath.Join(dir, "host-files"))
-		h.SetOnChat(func(cm session.ChatMessage) { chatGot <- cm })
-		h.SetOnFile(func(name string, size int64) { fileGot <- name })
+
+		h := session.ServeHostWithOptions(m, cap, inj, 8, session.HostOptions{
+			FileDir: filepath.Join(dir, "host-files"),
+			OnChat:  func(cm session.ChatMessage) { chatGot <- cm },
+			OnFile:  func(name string, size int64) { fileGot <- name },
+		})
 		log.Printf("session-proof: session started")
 		<-m.Closed()
 		h.Stop()
@@ -187,11 +190,13 @@ func runSessionProof(server, network, authKey, dir string, verbose bool) error {
 	defer m.Close()
 	log.Printf("session-proof: viewer connected to host through the mesh")
 
-	v := session.ConnectViewer(m)
+	var frameMu sync.Mutex
 	var first, latest []byte
 	frameCount := 0
 	fw, fh := 0, 0
-	v.SetOnFrame(func(fr session.ScreenFrame) {
+	v := session.ConnectViewerWithOptions(m, session.ViewerOptions{OnFrame: func(fr session.ScreenFrame) {
+		frameMu.Lock()
+		defer frameMu.Unlock()
 		img, err := jpeg.Decode(bytes.NewReader(fr.Image))
 		if err != nil {
 			log.Printf("session-proof: undecodable frame %d: %v", fr.Seq, err)
@@ -206,7 +211,7 @@ func runSessionProof(server, network, authKey, dir string, verbose bool) error {
 		}
 		latest = fr.Image
 		os.WriteFile(filepath.Join(dir, "frame-latest.jpg"), fr.Image, 0o644)
-	})
+	}})
 
 	// File push: 256 KiB of random bytes, verified by hash.
 	payload := make([]byte, 256*1024)
@@ -236,7 +241,13 @@ func runSessionProof(server, network, authKey, dir string, verbose bool) error {
 	// after the rig's wallpaper swap, not a frame rate.
 	end := time.Now().Add(90 * time.Second)
 	chatOK, fileOK := false, false
-	for time.Now().Before(end) && !(frameCount >= 2 && chatOK && fileOK) {
+	for time.Now().Before(end) {
+		frameMu.Lock()
+		haveFrames := frameCount >= 2
+		frameMu.Unlock()
+		if haveFrames && chatOK && fileOK {
+			break
+		}
 		select {
 		case cm := <-chatGot:
 			if cm.Text == chatText {
@@ -257,6 +268,8 @@ func runSessionProof(server, network, authKey, dir string, verbose bool) error {
 		case <-time.After(500 * time.Millisecond):
 		}
 	}
+	frameMu.Lock()
+	defer frameMu.Unlock()
 	res.Frames = frameCount
 	res.FrameWidth, res.FrameHeight = fw, fh
 	res.FirstFrameB = len(first)
@@ -266,8 +279,8 @@ func runSessionProof(server, network, authKey, dir string, verbose bool) error {
 	}
 
 	switch {
-	case frameCount < 1:
-		return fail("no frames in 90s")
+	case frameCount < 2:
+		return fail("initial and changed-content frames did not both arrive in 90s")
 	case fw == 0 || fh == 0:
 		return fail("frames did not decode")
 	case frameCount >= 2 && bytes.Equal(first, latest):

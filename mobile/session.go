@@ -111,12 +111,11 @@ func (n *Node) StartSessionHost(cb HostCallbacks) error {
 			}
 			cap := &appCapturer{cb: cb}
 			inj := &appInjector{cb: cb}
-			h := session.ServeHost(m, cap, inj, 8)
-			h.SetOnChat(func(cm session.ChatMessage) {
-				b, _ := json.Marshal(cm)
-				cb.OnChat(string(b))
+
+			h := session.ServeHostWithOptions(m, cap, inj, 8, session.HostOptions{
+				OnChat: func(cm session.ChatMessage) { b, _ := json.Marshal(cm); cb.OnChat(string(b)) },
+				OnFile: cb.OnFile,
 			})
-			h.SetOnFile(cb.OnFile)
 			sh := &SessionHost{host: h, mux: m, nodeName: n.d.Status().NodeName}
 			sessMu.Lock()
 			hostActive = sh
@@ -162,11 +161,10 @@ func (n *Node) ConnectSession(peerIP string, cb ViewerCallbacks) (*SessionViewer
 		conn.Close()
 		return nil, err
 	}
-	v := session.ConnectViewer(m)
-	v.SetOnFrame(func(fr session.ScreenFrame) { cb.OnFrame(fr.Image) })
-	v.SetOnChat(func(cm session.ChatMessage) {
-		b, _ := json.Marshal(cm)
-		cb.OnChat(string(b))
+
+	v := session.ConnectViewerWithOptions(m, session.ViewerOptions{
+		OnFrame: func(fr session.ScreenFrame) { cb.OnFrame(fr.Image) },
+		OnChat:  func(cm session.ChatMessage) { b, _ := json.Marshal(cm); cb.OnChat(string(b)) },
 	})
 	go func() {
 		<-m.Closed()
