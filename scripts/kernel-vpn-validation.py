@@ -385,9 +385,12 @@ else:
             if any(link['ifname'] == 'mnet0' for link in links):
                 raise RuntimeError('kernel interface survived Down')
             routes = json.loads(run('ip', '-n', spaces[x], '-N', '-j', 'route', 'show'))
-            if any(r.get('dst') in ['100.64.0.0/10', '10.9.0.0/24'] for r in routes):
+            if any(r.get('dst') == '100.64.0.0/10' or (x == 'a' and r.get('dst') == '10.9.0.0/24') for r in routes):
                 raise RuntimeError('mesh route survived Down')
         serving_state(False)
+        lan_routes = json.loads(run('ip', '-n', spaces['b'], '-N', '-j', 'route', 'show'))
+        if not any(r.get('dst') == '10.9.0.0/24' and r.get('dev') == 'lan0' for r in lan_routes):
+            raise RuntimeError('operator LAN route removed at teardown')
         routes = json.loads(run('ip', '-n', spaces['a'], '-N', '-j', 'route', 'show'))
         if not any(r.get('dst') == '10.8.0.0/24' and r.get('dev') == 'eth0' for r in routes):
             raise RuntimeError('unrelated route removed at final teardown')
