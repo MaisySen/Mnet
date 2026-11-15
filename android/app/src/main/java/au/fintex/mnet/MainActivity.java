@@ -80,6 +80,37 @@ public class MainActivity extends Activity {
         toggle.setOnClickListener(v -> onToggle());
         root.addView(toggle);
 
+        // Session layer: host this phone, or view a peer.
+        LinearLayout sessionRow = new LinearLayout(this);
+        sessionRow.setOrientation(LinearLayout.HORIZONTAL);
+        Button hostBtn = new Button(this);
+        hostBtn.setText("Host a session");
+        hostBtn.setOnClickListener(v ->
+                startActivity(new Intent(this, HostingActivity.class)));
+        sessionRow.addView(hostBtn, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        Button viewBtn = new Button(this);
+        viewBtn.setText("View a peer");
+        viewBtn.setOnClickListener(v -> {
+            android.widget.EditText in = new EditText(this);
+            in.setHint("peer mesh IP");
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("View a peer")
+                    .setView(in)
+                    .setPositiveButton("Connect", (d, w) -> {
+                        String ip = in.getText().toString().trim();
+                        if (!ip.isEmpty()) {
+                            startActivity(new Intent(this, ViewerActivity.class)
+                                    .putExtra("peer_ip", ip));
+                        }
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+        });
+        sessionRow.addView(viewBtn, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        root.addView(sessionRow);
+
         ScrollView scroll = new ScrollView(this);
         status = new TextView(this);
         status.setTypeface(Typeface.MONOSPACE);

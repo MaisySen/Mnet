@@ -24,6 +24,13 @@ public class MnetVpnService extends VpnService {
     private static final String CHANNEL = "mesh";
     private static final int NOTIF_ID = 1;
 
+    private static volatile Node sharedNode;
+
+    // currentNode exposes the live node to the session services.
+    public static Node currentNode() {
+        return sharedNode;
+    }
+
     private Node node;
     private Thread worker;
     private volatile boolean running;
@@ -52,6 +59,7 @@ public class MnetVpnService extends VpnService {
         String name = prefs.getString("name", android.os.Build.MODEL);
         try {
             node = Mobile.newNode(getFilesDir() + "/mnet");
+            sharedNode = node;
             String exitNode = prefs.getString("exitnode", "");
             if (!exitNode.isEmpty()) {
                 node.setUseExitNode(exitNode);
@@ -134,6 +142,7 @@ public class MnetVpnService extends VpnService {
 
     private void stopMesh() {
         running = false;
+        sharedNode = null;
         if (node != null) {
             node.stop();
             node = null;

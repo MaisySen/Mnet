@@ -11,4 +11,5 @@
     <string name="exitnode_hint">Exit node (optional, peer name)</string>
     <string name="notification_title">Mnet is connected</string>
     <string name="notification_channel">Mesh status</string>
+    <string name="accessibility_desc">Mnet session control: while you host a session, a connected peer you approved can tap and scroll on this phone. Only active during a hosted session.</string>
 </resources>

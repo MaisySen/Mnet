@@ -1,0 +1,169 @@
+package au.fintex.mnet;
+
+import android.app.Activity;
+import android.graphics.BitmapFactory;
+import android.os.Bundle;
+import android.view.MotionEvent;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
+import org.json.JSONObject;
+
+import mobile.Node;
+import mobile.SessionViewer;
+import mobile.ViewerCallbacks;
+
+// ViewerActivity is the viewing side of a session: it renders the
+// peer's screen, turns touches into pointer events, and carries chat.
+public class ViewerActivity extends Activity implements ViewerCallbacks {
+
+    private ImageView screen;
+    private TextView chat;
+    private EditText chatIn;
+    private SessionViewer viewer;
+    private volatile int frameW = 1, frameH = 1;
+
+    @Override
+    protected void onCreate(Bundle saved) {
+        super.onCreate(saved);
+        String peerIp = getIntent().getStringExtra("peer_ip");
+        if (peerIp == null) {
+            finish();
+            return;
+        }
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+
+        screen = new ImageView(this);
+        screen.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+        root.addView(screen, sp);
+
+        chat = new TextView(this);
+        chat.setTypeface(android.graphics.Typeface.MONOSPACE);
+        chat.setTextSize(11);
+        chat.setMaxLines(4);
+        root.addView(chat);
+
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        chatIn = new EditText(this);
+        LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        bar.addView(chatIn, ep);
+        Button send = new Button(this);
+        send.setText("Send");
+        send.setOnClickListener(v -> {
+            String t = chatIn.getText().toString().trim();
+            if (!t.isEmpty() && viewer != null) {
+                new Thread(() -> {
+                    try {
+                        viewer.sendChat(t);
+                    } catch (Exception ignored) {
+                    }
+                }).start();
+                chatIn.setText("");
+            }
+        });
+        bar.addView(send);
+        root.addView(bar);
+        setContentView(root);
+
+        screen.setOnTouchListener((v, ev) -> {
+            if (viewer == null) {
+                return true;
+            }
+            // Map view coordinates into frame coordinates.
+            float sx = ev.getX() / v.getWidth() * frameW;
+            float sy = ev.getY() / v.getHeight() * frameH;
+            String action;
+            switch (ev.getAction()) {
+                case MotionEvent.ACTION_DOWN:
+                    action = "down";
+                    break;
+                case MotionEvent.ACTION_UP:
+                    action = "up";
+                    break;
+                default:
+                    action = "move";
+            }
+            // Taps become clicks; drags send move while held.
+            if ("down".equals(action) || "up".equals(action)) {
+                action = "click";
+            }
+            String json = String.format(java.util.Locale.US,
+                    "{\"kind\":\"pointer\",\"x\":%d,\"y\":%d,\"button\":\"left\",\"action\":\"%s\"}",
+                    (int) sx, (int) sy, action);
+            new Thread(() -> {
+                try {
+                    viewer.sendInputJSON(json);
+                } catch (Exception ignored) {
+                }
+            }).start();
+            return true;
+        });
+
+        new Thread(() -> {
+            Node node = MnetVpnService.currentNode();
+            if (node == null) {
+                appendChat("connect the mesh first");
+                return;
+            }
+            try {
+                viewer = node.connectSession(peerIp, this);
+                appendChat("connected to " + peerIp);
+            } catch (Exception e) {
+                appendChat("connect failed: " + e.getMessage());
+            }
+        }, "session-connect").start();
+    }
+
+    @Override
+    public void onFrame(byte[] jpeg) {
+        if (jpeg == null || jpeg.length == 0) {
+            return;
+        }
+        android.graphics.Bitmap bmp = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length);
+        if (bmp == null) {
+            return;
+        }
+        frameW = bmp.getWidth();
+        frameH = bmp.getHeight();
+        runOnUiThread(() -> screen.setImageBitmap(bmp));
+    }
+
+    @Override
+    public void onChat(String msgJson) {
+        try {
+            JSONObject m = new JSONObject(msgJson);
+            appendChat(m.optString("from") + ": " + m.optString("text"));
+        } catch (Exception ignored) {
+        }
+    }
+
+    @Override
+    public void onClosed() {
+        appendChat("session ended");
+    }
+
+    private void appendChat(String s) {
+        runOnUiThread(() -> chat.append(s + "\n"));
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (viewer != null) {
+            try {
+                viewer.close();
+            } catch (Exception ignored) {
+            }
+        }
+        super.onDestroy();
+    }
+}
