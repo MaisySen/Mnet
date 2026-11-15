@@ -145,7 +145,7 @@ def main():
             config = Path('/etc/netns') / spaces[x]
             config.mkdir(parents=True); configs.append(config)
             (config / 'hosts').write_text('127.0.0.1 localhost\n198.18.10.1 stun.l.google.com stun1.l.google.com stun.cloudflare.com\n')
-        start('c', [binary_dir / 'mnet-control', '-listen', '198.18.10.1:8080',
+        control = start('c', [binary_dir / 'mnet-control', '-listen', '198.18.10.1:8080',
                     '-base-url', 'http://198.18.10.1:8080', '-data', tmp / 'control.json',
                     '-admin-password', 'kernel-ci-fixture-only'], 'control')
         # Control administration runs inside the isolated namespace. Never
@@ -196,6 +196,17 @@ print(json.dumps(k))
         else:
             raise RuntimeError('kernel mesh ping failed')
         print('PASS actual kernel TUN addresses/routes and encrypted mesh ping', flush=True)
+        for x in 'ab':
+            wait_for(lambda: (p if (p := local_api(states[x]).get('peers', []))
+                              and p[0].get('online') and not p[0].get('relay')
+                              and p[0].get('endpoint', '').startswith('198.18.10.') else None),
+                     'verified direct UDP path ' + x)
+        # With the control/relay process dead, transfers cannot silently
+        # succeed by falling back to the shared control-plane WebSocket.
+        control.terminate()
+        if control.wait(timeout=5) == 0:
+            raise RuntimeError('fixture control unexpectedly exited cleanly')
+        print('PASS direct WireGuard UDP endpoints; control/relay process stopped', flush=True)
         for profile in ['normal', 'loss-1pct-delay-20ms']:
             if profile != 'normal':
                 for x in 'ab':
@@ -211,6 +222,18 @@ print(json.dumps(k))
             if server.wait(timeout=5) != 0:
                 raise RuntimeError('TCP server exited with failure')
             print(f'PASS OS TCP {profile}: 3 x 4MiB, receiver hash and sender ACK', flush=True)
+            if profile != 'normal':
+                drops = 0
+                for x in 'ab':
+                    stats = json.loads(run(*ns(x, 'tc', '-s', '-j', 'qdisc', 'show', 'dev', 'eth0')))
+                    netem = [q for q in stats if q.get('kind') == 'netem']
+                    if len(netem) != 1:
+                        raise RuntimeError('netem qdisc not active during loss profile')
+                    drops += netem[0].get('drops', 0)
+                if drops == 0:
+                    raise RuntimeError('loss profile did not actually drop any underlay packets')
+                print(f'PASS actual netem underlay packet drops observed: {drops}', flush=True)
+
         for x in 'ab':
             local_api(states[x], 'down', {})
             if local_api(states[x])['status'] != 'down':
