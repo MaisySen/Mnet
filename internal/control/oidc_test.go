@@ -48,6 +48,7 @@ func newFakeOIDC(t *testing.T, evil bool) *fakeOIDC {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{
+			"issuer":                 f.srv.URL,
 			"authorization_endpoint": f.srv.URL + "/auth",
 			"token_endpoint":         f.srv.URL + "/token",
 			"jwks_uri":               f.srv.URL + "/jwks",

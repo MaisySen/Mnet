@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -44,7 +45,35 @@ type OIDCProvider struct {
 	keysAt   time.Time
 }
 
+// Bound provider calls independently of inbound request deadlines. Never
+// repeat client credentials to a redirect-selected destination.
+var oidcHTTPClient = &http.Client{
+	Timeout:       15 * time.Second,
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+}
+
+// Production endpoints require TLS. Plain HTTP is limited to loopback
+// for local integration testing, not remote private-network addresses.
+func validateOIDCURL(raw string, issuer bool) error {
+	u, err := url.Parse(raw)
+	if err != nil || u == nil || u.Hostname() == "" || u.User != nil || u.Fragment != "" || u.Opaque != "" {
+		return fmt.Errorf("invalid OIDC endpoint URL")
+	}
+	if issuer && (u.RawQuery != "" || u.ForceQuery) {
+		return fmt.Errorf("OIDC issuer cannot include query")
+	}
+	loopback := strings.EqualFold(u.Hostname(), "localhost")
+	if ip := net.ParseIP(u.Hostname()); ip != nil {
+		loopback = ip.IsLoopback()
+	}
+	if u.Scheme != "https" && !(u.Scheme == "http" && loopback) {
+		return fmt.Errorf("OIDC endpoint requires HTTPS (HTTP allowed only on loopback)")
+	}
+	return nil
+}
+
 type oidcDiscovery struct {
+	Issuer                string `json:"issuer"`
 	AuthorizationEndpoint string `json:"authorization_endpoint"`
 	TokenEndpoint         string `json:"token_endpoint"`
 	JWKSUri               string `json:"jwks_uri"`
@@ -72,6 +101,9 @@ func NewOIDCProvider(ctx context.Context, cfg OIDCConfig) (*OIDCProvider, error)
 		}
 		cfg.AllowedEmailDomains[i] = domain
 	}
+	if err := validateOIDCURL(cfg.Issuer, true); err != nil {
+		return nil, err
+	}
 	p := &OIDCProvider{cfg: cfg, keys: map[string]*rsa.PublicKey{}}
 	if err := p.discover(ctx); err != nil {
 		return nil, err
@@ -81,8 +113,11 @@ func NewOIDCProvider(ctx context.Context, cfg OIDCConfig) (*OIDCProvider, error)
 
 func (p *OIDCProvider) discover(ctx context.Context) error {
 	u := strings.TrimRight(p.cfg.Issuer, "/") + "/.well-known/openid-configuration"
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	resp, err := http.DefaultClient.Do(req)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return fmt.Errorf("oidc discovery: invalid request URL")
+	}
+	resp, err := oidcHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("oidc discovery: %w", err)
 	}
@@ -94,8 +129,13 @@ func (p *OIDCProvider) discover(ctx context.Context) error {
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&d); err != nil {
 		return fmt.Errorf("oidc discovery: %w", err)
 	}
-	if d.AuthorizationEndpoint == "" || d.TokenEndpoint == "" || d.JWKSUri == "" {
-		return fmt.Errorf("oidc discovery: incomplete metadata from %s", u)
+	if d.Issuer != p.cfg.Issuer {
+		return fmt.Errorf("oidc discovery: issuer mismatch")
+	}
+	for _, endpoint := range []string{d.AuthorizationEndpoint, d.TokenEndpoint, d.JWKSUri} {
+		if err := validateOIDCURL(endpoint, false); err != nil {
+			return fmt.Errorf("oidc discovery: %w", err)
+		}
 	}
 	p.mu.Lock()
 	p.authURL, p.tokenURL, p.jwksURL = d.AuthorizationEndpoint, d.TokenEndpoint, d.JWKSUri
@@ -117,7 +157,13 @@ func (p *OIDCProvider) AuthURL(state, redirectURL string) string {
 		"state":         {state},
 		"nonce":         {state},
 	}
-	return base + "?" + q.Encode()
+	u, _ := url.Parse(base) // validated discovery metadata
+	values := u.Query()
+	for key, value := range q {
+		values[key] = value
+	}
+	u.RawQuery = values.Encode()
+	return u.String()
 }
 
 // Claims is the verified identity from an ID token.
@@ -141,16 +187,19 @@ func (p *OIDCProvider) Exchange(ctx context.Context, code, redirectURL, expected
 		"client_id":     {p.cfg.ClientID},
 		"client_secret": {p.cfg.ClientSecret},
 	}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("token exchange: invalid request URL")
+	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := oidcHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("token exchange: %w", err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("token exchange: %s: %s", resp.Status, body)
+		return nil, fmt.Errorf("token exchange: upstream status %d", resp.StatusCode)
 	}
 	var tok struct {
 		IDToken string `json:"id_token"`
@@ -287,12 +336,18 @@ func (p *OIDCProvider) key(ctx context.Context, kid string) (*rsa.PublicKey, err
 	jwksURL := p.jwksURL
 	p.mu.Unlock()
 
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, jwksURL, nil)
-	resp, err := http.DefaultClient.Do(req)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("jwks: invalid request URL")
+	}
+	resp, err := oidcHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("jwks: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("jwks: upstream status %d", resp.StatusCode)
+	}
 	var set struct {
 		Keys []struct {
 			Kty string `json:"kty"`

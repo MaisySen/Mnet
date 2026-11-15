@@ -8,6 +8,11 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- OIDC transport: bounded provider requests, no redirect following (a
+  reproduced 307 credential-forwarding regression), exact discovery issuer,
+  TLS endpoint policy with loopback-only HTTP for local tests, no upstream
+  error-body echo. Authorization endpoints retain existing query values.
+
 - SSO is deny-by-default: configuring an issuer also requires exact subject
   IDs or verified-email domains. Unlisted identities never approve nodes.
   Per-login nonce binding rejects tokens from a different login. Signed

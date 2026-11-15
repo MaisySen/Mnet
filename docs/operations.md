@@ -226,3 +226,11 @@ exact issuer-local subject IDs when that assurance is insufficient. Keep
 SSO disabled and use manual approvals or scoped auth keys if no suitable
 policy is known. This implementation has not had an independent security
 review.
+
+
+OIDC discovery must return the exact configured issuer. Provider discovery,
+token and JWKS calls have a 15-second total timeout, honor request
+cancellation, and never follow redirects. A redirect at the token endpoint
+cannot forward the client secret to another destination. Provider error
+bodies are not echoed to the browser. Production issuer/endpoints require
+HTTPS; plain HTTP is accepted only for loopback local integration tests.
