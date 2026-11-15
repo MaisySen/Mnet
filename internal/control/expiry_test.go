@@ -18,9 +18,10 @@ func TestKeyExpiry(t *testing.T) {
 
 	post(t, base+"/admin/api/networks", map[string]string{"name": "exp"}, auth)
 
+	var headers map[string]string
 	join := func() netmap.JoinResponse {
 		code, body := post(t, base+"/api/join", netmap.JoinRequest{
-			Network: "exp", Name: "laptop", PubKey: fakePubKey(0x77)}, nil)
+			Network: "exp", Name: "laptop", PubKey: fakePubKey(0x77)}, headers)
 		if code != 200 {
 			t.Fatalf("join: %d %s", code, body)
 		}
@@ -31,7 +32,7 @@ func TestKeyExpiry(t *testing.T) {
 	j := join()
 	post(t, base+"/admin/api/nodes/approve", map[string]string{"node_id": j.NodeID}, auth)
 
-	headers := map[string]string{"X-Node-ID": j.NodeID, "X-Node-Token": j.NodeToken}
+	headers = map[string]string{"X-Node-ID": j.NodeID, "X-Node-Token": j.NodeToken}
 	if code, m := getMap(t, base, j, headers); code != 200 || m.Self.KeyExpiry == nil {
 		t.Fatalf("map before expiry: %d %+v", code, m.Self)
 	}
@@ -45,11 +46,18 @@ func TestKeyExpiry(t *testing.T) {
 		t.Fatalf("expired node should get 401, got %d", code)
 	}
 
-	// Rejoin renews the key and the node works again.
+	// Authenticated rejoin preserves identity but cannot undo expiry approval.
 	j2 := join()
 	if j2.NodeID != j.NodeID {
 		t.Fatalf("rejoin should keep node identity: %s vs %s", j2.NodeID, j.NodeID)
 	}
+	if j2.Approved {
+		t.Fatal("saved credential bypassed admin expiry")
+	}
+	if code, _ := getMap(t, base, j2, headers); code != 403 {
+		t.Fatalf("renewal without approval returned %d", code)
+	}
+	post(t, base+"/admin/api/nodes/approve", map[string]string{"node_id": j2.NodeID}, auth)
 	if code, m := getMap(t, base, j2, headers); code != 200 {
 		t.Fatalf("renewed node should pass: %d", code)
 	} else if m.Self.KeyExpiry == nil || time.Until(*m.Self.KeyExpiry) < 24*time.Hour {

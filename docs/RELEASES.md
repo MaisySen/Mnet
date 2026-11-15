@@ -8,6 +8,13 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- Security: authenticated rejoin now requires the saved node credential;
+  the public WireGuard key can no longer recover a known identity token.
+  Expired nodes no longer retain approval merely by rejoining. Current
+  daemons supply saved credentials, and fresh enrollment authorization or
+  admin reapproval is required after expiration. All previously published
+  releases precede this fix and must not be treated as production-safe.
+
 - Control listener has bounded header/body reads, writes and idle time,
   plus a smaller header limit. Map polls retain time to finish; a real TCP
   WebSocket echo test verifies upgrade traffic is not cut off by HTTP

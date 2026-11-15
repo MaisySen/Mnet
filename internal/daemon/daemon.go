@@ -234,7 +234,7 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 // join registers and waits for approval when needed.
 // postJoin sends one join request.
 func (d *Daemon) postJoin(ctx context.Context, authKey string) (*netmap.JoinResponse, error) {
-	cc := &controlclient.Client{Base: d.state.Server}
+	cc := &controlclient.Client{Base: d.state.Server, NodeID: d.state.NodeID, Token: d.state.NodeToken}
 	return cc.Join(ctx, netmap.JoinRequest{
 		Network:  d.state.Network,
 		Name:     d.state.NodeName,
@@ -258,7 +258,7 @@ func (d *Daemon) joinLocked(ctx context.Context, authKey string) error {
 		// One-time auth keys are consumed by the first join (Prepare on
 		// mobile), so the re-join in Up comes back 403. A node the
 		// control plane still knows re-joins fine without a key: the
-		// server matches the public key and keeps its approval.
+		// server verifies the saved node credential before preserving identity.
 		log.Printf("mnetd: keyed join failed (%v); retrying as known node", err)
 		resp, err = d.postJoin(ctx, "")
 	}
@@ -323,8 +323,8 @@ func (d *Daemon) rejoin(ctx context.Context) {
 		return
 	}
 	log.Printf("mnetd: control plane no longer knows this node; re-joining")
-	d.state.NodeID = ""
-	d.state.NodeToken = ""
+	// Keep the credential for an expired but still-known identity.
+	// A deleted identity can enroll anew using the saved valid auth key.
 	if err := d.joinLocked(ctx, d.state.AuthKey); err != nil {
 		log.Printf("mnetd: rejoin: %v", err)
 		waitContext(ctx, 10*time.Second)

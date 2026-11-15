@@ -5,6 +5,7 @@ package control
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -264,6 +265,19 @@ func (s *Store) Join(req netmap.JoinRequest) (*netmap.JoinResponse, error) {
 		return nil, ErrNotFound
 	}
 
+	// A WireGuard public key is public metadata, not proof of ownership.
+	// Reusing a stored identity always needs its saved control credential,
+	// even when a separate network-enrollment key is supplied.
+	var node *netmap.Node
+	for _, n := range s.data.Nodes {
+		if n.NetworkID == network.ID && n.PubKey == req.PubKey {
+			node = n
+			break
+		}
+	}
+	if node != nil && (req.NodeID != node.ID || req.NodeToken == "" || subtle.ConstantTimeCompare([]byte(s.data.NodeTokens[node.ID]), []byte(req.NodeToken)) != 1) {
+		return nil, ErrUnauthorized
+	}
 	approved := false
 	if req.AuthKey != "" {
 		k := s.findAuthKeyLocked(req.AuthKey)
@@ -273,20 +287,11 @@ func (s *Store) Join(req netmap.JoinRequest) (*netmap.JoinResponse, error) {
 		if k.ExpiresAt != nil && time.Now().After(*k.ExpiresAt) {
 			return nil, ErrBadAuthKey
 		}
-		k.Uses++
-		if !k.Reusable && k.Uses > 1 {
+		if !k.Reusable && k.Uses >= 1 {
 			return nil, ErrBadAuthKey
 		}
+		k.Uses++
 		approved = true
-	}
-
-	// Same device rejoining keeps its identity and address.
-	var node *netmap.Node
-	for _, n := range s.data.Nodes {
-		if n.NetworkID == network.ID && n.PubKey == req.PubKey {
-			node = n
-			break
-		}
 	}
 	if node == nil {
 		expiry := time.Now().UTC().Add(DefaultKeyExpiry)
@@ -306,7 +311,11 @@ func (s *Store) Join(req netmap.JoinRequest) (*netmap.JoinResponse, error) {
 	node.LastSeen = time.Now().UTC()
 	if node.KeyExpired() {
 		expiry := time.Now().UTC().Add(DefaultKeyExpiry)
-		node.KeyExpiry = &expiry // rejoin renews an expired key
+		node.KeyExpiry = &expiry
+		// Expiry revokes authorization, not identity. A saved node token
+		// cannot silently bypass an admin expiration; require fresh approval
+		// or a currently valid enrollment key.
+		node.Approved = approved
 	}
 	node.ExitNode = req.ExitNode
 	node.Routes = cleanRoutes(req.Routes)

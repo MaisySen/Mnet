@@ -90,12 +90,15 @@ type Map struct {
 
 // JoinRequest is what a client sends to join a network.
 type JoinRequest struct {
-	Network  string   `json:"network"` // network name or ID
-	Name     string   `json:"name"`    // requested node name (hostname)
-	PubKey   string   `json:"pubkey"`
-	AuthKey  string   `json:"auth_key,omitempty"`  // optional pre-auth key
-	ExitNode bool     `json:"exit_node,omitempty"` // offer to be an exit node
-	Routes   []string `json:"routes,omitempty"`    // subnet CIDRs to advertise
+	// Populated by the server from authenticated request headers, never JSON.
+	NodeID    string   `json:"-"`
+	NodeToken string   `json:"-"`
+	Network   string   `json:"network"` // network name or ID
+	Name      string   `json:"name"`    // requested node name (hostname)
+	PubKey    string   `json:"pubkey"`
+	AuthKey   string   `json:"auth_key,omitempty"`  // optional pre-auth key
+	ExitNode  bool     `json:"exit_node,omitempty"` // offer to be an exit node
+	Routes    []string `json:"routes,omitempty"`    // subnet CIDRs to advertise
 }
 
 // JoinResponse is returned immediately after a join request.

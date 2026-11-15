@@ -181,11 +181,15 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
+	req.NodeID = r.Header.Get("X-Node-ID")
+	req.NodeToken = r.Header.Get("X-Node-Token")
 	resp, err := s.store.Join(req)
 	if err != nil {
 		s.audit(r, "join", req.Name, req.Network+": "+err.Error(), false)
 		s.metrics.bump(&s.metrics.JoinsFailed)
 		switch err {
+		case ErrUnauthorized:
+			writeErr(w, http.StatusUnauthorized, "existing node requires its saved credential")
 		case ErrNotFound:
 			writeErr(w, http.StatusNotFound, "network not found")
 		case ErrBadAuthKey:

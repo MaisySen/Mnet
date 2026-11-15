@@ -245,3 +245,19 @@ read buffer allowance). The write timeout leaves room for 50-second map
 polls. WebSocket relay connections have their own deadlines after upgrade;
 TCP tests verify they continue beyond an artificially shortened HTTP
 deadline. Slow-header, slow-body and oversized-header tests also run.
+
+
+### Authenticated rejoin and expiration
+
+Existing node identities require their saved node ID and token on join;
+a public WireGuard key alone is never an identity-recovery credential.
+Clients send these in `X-Node-ID` and `X-Node-Token`, not the join JSON.
+Even a valid network enrollment key cannot take over a known identity
+without its saved node credential. If local credentials are lost, an
+administrator must remove the stale node before reenrollment, then approve
+it again or supply a valid enrollment key.
+
+Expiration also removes approval on rejoin unless a valid enrollment key
+authorizes renewal. The saved node token preserves identity, not perpetual
+approval. Updated daemons preserve and present their node credentials;
+older clients that relied on public-key-only rejoin must be updated.
