@@ -72,10 +72,13 @@ Live proofs and the fixes they exposed.
   forces it; ydotool keeps input on every Wayland path. The
   capturer is tuneable, so adaptive quality applies, and implements
   dirty-rect deltas: GNOME sessions send changed 64x64 tiles instead
-  of full frames under the same 60% rule as X11. Negotiation,
-  parsing, pump framing, change detection and delta tiling unit
-  tested; live verification on a real GNOME session is still pending
-  (no GNOME in CI or the dev sandbox).
+  of full frames under the same 60% rule as X11. The grant persists:
+  the compositor's restore token is stored 0600 in the state
+  directory and later daemon starts restore the selection without
+  re-showing the consent dialog while the grant lasts. Negotiation,
+  parsing, pump framing, change detection, delta tiling and token
+  persistence unit tested; live verification on a real GNOME session
+  is still pending (no GNOME in CI or the dev sandbox).
 - mnet session log prints the node's hosted-session audit from
   <state>/sessions.jsonl: accept/refuse/end, viewer, mesh IP,
   duration, recording path.

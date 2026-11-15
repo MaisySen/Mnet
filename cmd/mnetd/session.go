@@ -134,7 +134,7 @@ func runSessionHost(d *daemon.Daemon, stateDir string, autoAccept bool, allow ma
 			}
 			continue
 		}
-		cap, capErr := newCapturer()
+		cap, capErr := newCapturer(stateDir)
 		if capErr != nil {
 			log.Printf("mnetd: session host: capture unavailable: %v", capErr)
 			m.Close()

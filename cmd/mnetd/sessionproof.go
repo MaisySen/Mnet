@@ -143,7 +143,7 @@ func runSessionProof(server, network, authKey, dir string, verbose bool) error {
 			hostErr <- fmt.Errorf("session listen: %w", err)
 			return
 		}
-		cap, err := newCapturer()
+		cap, err := newCapturer("")
 		if err != nil {
 			hostErr <- fmt.Errorf("capture: %w", err)
 			m.Close()

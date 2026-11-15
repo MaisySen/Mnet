@@ -8,7 +8,7 @@ import (
 	"fintex.au/mnet/internal/session"
 )
 
-func newCapturer() (session.Capturer, error) {
+func newCapturer(stateDir string) (session.Capturer, error) {
 	return nil, errors.New("no screen capture backend on this platform yet")
 }
 

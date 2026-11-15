@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"image"
 	"image/jpeg"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"fintex.au/mnet/internal/portal"
@@ -110,6 +112,29 @@ func TestPortalCapturerDelta(t *testing.T) {
 	full, tiles, err = c.CaptureDelta()
 	if err != nil || len(full) == 0 || len(tiles) != 0 {
 		t.Fatalf("full repaint: full=%d tiles=%d err=%v", len(full), len(tiles), err)
+	}
+}
+
+func TestPortalTokenPersistence(t *testing.T) {
+	dir := t.TempDir()
+	if got := loadPortalToken(dir); got != "" {
+		t.Fatalf("missing token = %q", got)
+	}
+	savePortalToken(dir, "v2_token-abc")
+	if got := loadPortalToken(dir); got != "v2_token-abc" {
+		t.Fatalf("round trip = %q", got)
+	}
+	fi, err := os.Stat(filepath.Join(dir, "portal-restore-token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0600 {
+		t.Fatalf("token mode = %o", fi.Mode().Perm())
+	}
+	// Empty state dir (proof rigs): a no-op, never a write.
+	savePortalToken("", "v2_token-abc")
+	if got := loadPortalToken(""); got != "" {
+		t.Fatalf("stateless load = %q", got)
 	}
 }
 

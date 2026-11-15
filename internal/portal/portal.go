@@ -68,12 +68,15 @@ type Bus interface {
 // connected socket fd, plus its negotiated geometry when the
 // compositor reported it.
 type Stream struct {
-	NodeID  uint32
-	Width   int
-	Height  int
-	FD      int
-	session string
-	bus     Bus
+	NodeID uint32
+	Width  int
+	Height int
+	FD     int
+	// RestoreToken is the compositor's persist token for the next
+	// OpenMonitor call; empty when the compositor does not persist.
+	RestoreToken string
+	session      string
+	bus          Bus
 }
 
 // Close ends the portal session and releases the bus.
@@ -96,6 +99,12 @@ type Client struct {
 	// user may need time to click through the consent dialog, so
 	// this is generous.
 	ResponseTimeout time.Duration
+	// RestoreToken, when non-empty, asks the compositor to restore a
+	// previously granted selection without showing the consent
+	// dialog. mnetd persists the token the portal returns in its
+	// state directory; an unknown or revoked token simply falls back
+	// to the dialog.
+	RestoreToken string
 }
 
 // NewClient wraps a session bus.
@@ -131,12 +140,19 @@ func (c *Client) OpenMonitor() (*Stream, error) {
 		return nil, fmt.Errorf("CreateSession response without session_handle")
 	}
 
-	reply, err = c.bus.Call(ifaceScreenCast, "SelectSources", session, map[string]any{
+	selOpts := map[string]any{
 		"handle_token": token,
 		"types":        uint32(sourceMonitor),
 		"multiple":     false,
 		"cursor_mode":  uint32(cursorEmbedded),
-	})
+		// persist_mode 2: the grant survives daemon restarts until
+		// the user revokes it in the compositor's settings.
+		"persist_mode": uint32(2),
+	}
+	if c.RestoreToken != "" {
+		selOpts["restore_token"] = c.RestoreToken
+	}
+	reply, err = c.bus.Call(ifaceScreenCast, "SelectSources", session, selOpts)
 	if err != nil {
 		return nil, fmt.Errorf("SelectSources: %w", err)
 	}
@@ -158,6 +174,9 @@ func (c *Client) OpenMonitor() (*Stream, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The compositor may issue (or rotate) a restore token with the
+	// grant; the caller persists it for the next start.
+	restoreToken, _ := stringResult(resp.Results, "restore_token")
 
 	reply, err = c.bus.Call(ifaceScreenCast, "OpenPipeWireRemote", session, map[string]any{})
 	if err != nil {
@@ -167,7 +186,7 @@ func (c *Client) OpenMonitor() (*Stream, error) {
 	if !ok {
 		return nil, fmt.Errorf("OpenPipeWireRemote reply without a file descriptor")
 	}
-	return &Stream{NodeID: node, Width: w, Height: h, FD: fd, session: session, bus: c.bus}, nil
+	return &Stream{NodeID: node, Width: w, Height: h, FD: fd, session: session, bus: c.bus, RestoreToken: restoreToken}, nil
 }
 
 // await watches the request object a portal call returned and waits

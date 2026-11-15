@@ -155,6 +155,53 @@ func TestOpenMonitorResponseTimeout(t *testing.T) {
 	}
 }
 
+func TestOpenMonitorRestoreToken(t *testing.T) {
+	start := okStart()
+	start.Results["restore_token"] = "v2_token-abc"
+	bus := &fakeBus{
+		responses: []Response{okSession(), {Code: 0}, start},
+		fdReply:   []any{int32(7)},
+	}
+	c := NewClient(bus)
+	c.ResponseTimeout = time.Second
+	c.RestoreToken = "v1_token-xyz"
+	s, err := c.OpenMonitor()
+	if err != nil {
+		t.Fatalf("OpenMonitor: %v", err)
+	}
+	if s.RestoreToken != "v2_token-abc" {
+		t.Fatalf("RestoreToken = %q", s.RestoreToken)
+	}
+	sel := bus.calls[1]
+	opts := sel.args[1].(map[string]any)
+	if opts["restore_token"] != "v1_token-xyz" {
+		t.Fatalf("restore_token option = %v", opts["restore_token"])
+	}
+	if opts["persist_mode"] != uint32(2) {
+		t.Fatalf("persist_mode = %v", opts["persist_mode"])
+	}
+}
+
+func TestOpenMonitorNoRestoreTokenWithoutPersist(t *testing.T) {
+	bus := &fakeBus{
+		responses: []Response{okSession(), {Code: 0}, okStart()},
+		fdReply:   []any{int32(7)},
+	}
+	c := NewClient(bus)
+	c.ResponseTimeout = time.Second
+	s, err := c.OpenMonitor()
+	if err != nil {
+		t.Fatalf("OpenMonitor: %v", err)
+	}
+	if s.RestoreToken != "" {
+		t.Fatalf("unexpected RestoreToken %q", s.RestoreToken)
+	}
+	opts := bus.calls[1].args[1].(map[string]any)
+	if _, present := opts["restore_token"]; present {
+		t.Fatalf("restore_token sent without a stored token: %v", opts)
+	}
+}
+
 func TestFirstStreamParsing(t *testing.T) {
 	node, w, h, err := firstStream(okStart().Results)
 	if err != nil || node != 42 || w != 1920 || h != 1080 {

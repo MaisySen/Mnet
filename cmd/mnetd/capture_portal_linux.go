@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"image"
 	"image/jpeg"
+	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync/atomic"
 
 	"fintex.au/mnet/internal/portal"
@@ -36,15 +39,23 @@ type portalCapturer struct {
 	jpegQ    atomic.Int32
 }
 
-func newPortalCapturer() (session.Capturer, error) {
+// newPortalCapturerFor negotiates a portal stream, persisting the
+// compositor's restore token in stateDir (empty: no persistence) so
+// later daemon starts skip the consent dialog while the grant lasts.
+func newPortalCapturerFor(stateDir string) (session.Capturer, error) {
 	bus, err := portal.DialSession()
 	if err != nil {
 		return nil, err
 	}
-	stream, err := portal.NewClient(bus).OpenMonitor()
+	client := portal.NewClient(bus)
+	client.RestoreToken = loadPortalToken(stateDir)
+	stream, err := client.OpenMonitor()
 	if err != nil {
 		_ = bus.Close()
 		return nil, fmt.Errorf("portal: %w", err)
+	}
+	if stream.RestoreToken != "" {
+		savePortalToken(stateDir, stream.RestoreToken)
 	}
 	if stream.Width <= 0 || stream.Height <= 0 {
 		_ = stream.Close()
@@ -65,6 +76,38 @@ func newPortalCapturer() (session.Capturer, error) {
 	c := &portalCapturer{stream: stream, pwfd: pwfd, pump: pump}
 	c.jpegQ.Store(70)
 	return c, nil
+}
+
+// portalTokenPath is where the compositor's persist token lives. The
+// token lets the holder capture the screen without the consent
+// dialog, so it is 0600 in the (0700) state directory like the
+// node's keys.
+func portalTokenPath(stateDir string) string {
+	return filepath.Join(stateDir, "portal-restore-token")
+}
+
+func loadPortalToken(stateDir string) string {
+	if stateDir == "" {
+		return ""
+	}
+	b, err := os.ReadFile(portalTokenPath(stateDir))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+func savePortalToken(stateDir, token string) {
+	if stateDir == "" || token == "" {
+		return
+	}
+	if err := os.MkdirAll(stateDir, 0700); err != nil {
+		log.Printf("mnetd: portal token: %v", err)
+		return
+	}
+	if err := os.WriteFile(portalTokenPath(stateDir), []byte(token+"\n"), 0600); err != nil {
+		log.Printf("mnetd: portal token: %v", err)
+	}
 }
 
 // SetQuality adapts the JPEG encode quality to path conditions.

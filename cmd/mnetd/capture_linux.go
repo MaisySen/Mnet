@@ -28,14 +28,14 @@ func have(tool string) bool {
 	return err == nil
 }
 
-func newCapturer() (session.Capturer, error) {
+func newCapturer(stateDir string) (session.Capturer, error) {
 	if onWayland() {
 		forcePortal := os.Getenv("MNET_CAPTURE") == "portal"
 		if !forcePortal && have("grim") {
 			// wlroots compositor: direct screencopy, no dialog.
 			return newWaylandCapturer()
 		}
-		c, err := newPortalCapturer()
+		c, err := newPortalCapturerFor(stateDir)
 		if err != nil {
 			if forcePortal {
 				return nil, fmt.Errorf("Wayland portal capture: %w", err)
