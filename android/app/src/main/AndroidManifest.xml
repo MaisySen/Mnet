@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     package="au.fintex.mnet"
-    android:versionCode="9"
+    android:versionCode="10"
     android:versionName="0.6.0">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
@@ -32,6 +32,7 @@
         <service
             android:name=".MnetVpnService"
             android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
