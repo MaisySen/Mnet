@@ -4,6 +4,34 @@ Every shipped build, newest first. Runbook format: number, time, commit,
 what changed. Test counts: full suite green at every tag
 (`go test ./...`: bind, control, daemon, dns, stun, mobile all ok).
 
+## 0.7.0 - 2026-11-15
+
+Session layer performance and platform coverage.
+
+- Dirty-rect screen deltas: hosts with raw frame access (X11 backend)
+  diff frames into 64x64 tiles and send only changed tiles as JPEGs,
+  with a full keyframe every 100 frames. Viewers composite tiles onto
+  the stored base frame and always surface complete JPEGs, so apps
+  need no changes. Deltas arriving before the first keyframe are
+  skipped. Diff, encode, composite and viewer resolution unit tested,
+  pixel assertions validated against JPEG chroma subsampling.
+- Wayland backend: mnetd captures with grim (wlroots screencopy) and
+  injects with ydotool (evdev level, compositor agnostic) when
+  WAYLAND_DISPLAY is set; X11 path unchanged otherwise. GNOME and
+  other compositors without wlr-screencopy still need the
+  portal-native D-Bus + PipeWire backend (later).
+- Selectable text injection (MNET_TEXT_MODE): keysym typing (X11
+  default) now remaps a spare keycode for characters outside the
+  current keyboard layout, so arbitrary Unicode types on X11;
+  clipboard mode sets the clipboard via xclip/xsel or wl-copy and
+  injects Ctrl-V. Falls back to the backend default when the
+  clipboard tool is missing.
+- README gained a remote desktop quick start.
+
+Known limits unchanged: Android session UI compiled but not
+device-tested; Android key text injection out of scope; iOS session
+support parked with the Apple account work.
+
 ## 0.6.0 - 2026-11-15
 
 The session layer: TeamViewer-style remote desktop over the mesh.
