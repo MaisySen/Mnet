@@ -360,6 +360,7 @@ func (d *Daemon) relayLoop(ctx context.Context) {
 		}
 		r, err := d.cc.DialRelay(ctx, d.state.PublicKey, d.bind.Inject)
 		if err != nil {
+			log.Printf("mnetd: relay dial failed: %v (retrying)", err)
 			time.Sleep(3 * time.Second)
 			continue
 		}
@@ -367,6 +368,7 @@ func (d *Daemon) relayLoop(ctx context.Context) {
 		d.relay = r
 		d.mu.Unlock()
 		d.bind.SetRelaySender(r.Send)
+		log.Printf("mnetd: relay connected")
 		select {
 		case <-ctx.Done():
 			r.Close()
