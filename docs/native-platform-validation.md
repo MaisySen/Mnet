@@ -37,3 +37,7 @@ Use a dedicated state directory, not a shared document folder or a directory own
 - Fleet/soak tests, persistent production hosting, independent security review and operational recovery.
 
 No release or passing CI run alone closes this list.
+
+## Separate LAN extension (pending)
+
+New source extends the isolated kernel topology with a fourth namespace: a LAN host without a mesh return route. It asserts owned NAT cleanup on Down/Up, unrelated NAT and forwarding preservation, reapproval status, and control-off OS TCP to that LAN host. Local serving ownership/rollback and daemon race tests pass. The independent kernel run for this extension is pending. The fixture explicitly enables forwarding; Mnet does not change shared sysctls.

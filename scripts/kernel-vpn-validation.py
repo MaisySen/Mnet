@@ -99,7 +99,7 @@ with socket.create_connection((sys.argv[1],42001),timeout=60) as s:
 def main():
     if sys.platform != 'linux' or os.geteuid() != 0:
         raise RuntimeError('requires root in a disposable Linux runner')
-    for command in ['ip', 'tc', 'ping']:
+    for command in ['ip', 'tc', 'ping', 'iptables']:
         if not shutil.which(command):
             raise RuntimeError(f'required command missing: {command}')
     if not Path('/dev/net/tun').exists():
@@ -107,7 +107,7 @@ def main():
     tmp = Path(tempfile.mkdtemp(prefix='mnet-kernel-'))
     os.chmod(tmp, 0o700)
     tag = uuid.uuid4().hex[:7]
-    spaces = {x: 'mn' + tag + x for x in 'cab'}
+    spaces = {x: 'mn' + tag + x for x in 'cabd'}
     processes, logs, created, host_links, configs = [], [], [], [], []
 
     def ns(which, *args):
@@ -124,7 +124,7 @@ def main():
         # Build without changing root's Go environment: binaries are supplied
         # by CI before sudo, and only these temporary files are executed.
         binary_dir = Path(os.environ['MNET_KERNEL_BIN']).resolve()
-        for x in 'cab':
+        for x in 'cabd':
             run('ip', 'netns', 'add', spaces[x]); created.append(spaces[x])
             run('ip', '-n', spaces[x], 'link', 'set', 'lo', 'up')
         run('ip', '-n', spaces['c'], 'link', 'add', 'br0', 'type', 'bridge')
@@ -172,7 +172,32 @@ print(json.dumps(k))
         else:
             raise RuntimeError('control did not listen')
         key = json.loads(run(*ns('c', sys.executable, admin)))['key']
-        run('ip', '-n', spaces['b'], 'addr', 'add', '10.9.0.1/32', 'dev', 'lo')
+        # A separate LAN host has no mesh route, so return traffic requires
+        # the serving node's scoped NAT, not loopback-only delivery.
+        left, right = 'l' + tag, 'r' + tag
+        run('ip', 'link', 'add', left, 'type', 'veth', 'peer', 'name', right)
+        host_links.extend([left, right])
+        for x, link, addr in [('b', left, '10.9.0.1/24'), ('d', right, '10.9.0.2/24')]:
+            run('ip', 'link', 'set', link, 'netns', spaces[x])
+            run('ip', '-n', spaces[x], 'link', 'set', link, 'name', 'lan0')
+            run('ip', '-n', spaces[x], 'addr', 'add', addr, 'dev', 'lan0')
+            run('ip', '-n', spaces[x], 'link', 'set', 'lan0', 'up')
+        run(*ns('b', sys.executable, '-c', "from pathlib import Path; Path('/proc/sys/net/ipv4/ip_forward').write_text('1')"))
+        preserved_nat = ['-t', 'nat', '-A', 'POSTROUTING', '-s', '192.0.2.0/24', '-m', 'comment', '--comment', 'fixture-preserve', '-j', 'RETURN']
+        run(*ns('b', 'iptables', *preserved_nat))
+        def serving_state(active):
+            rules = run(*ns('b', 'iptables', '-t', 'nat', '-S', 'POSTROUTING'))
+            owned = [line for line in rules.splitlines() if '--comment mnet-' in line]
+            if len(owned) != int(active):
+                raise RuntimeError('owned NAT lifecycle mismatch: ' + rules)
+            if 'fixture-preserve' not in rules or '192.0.2.0/24' not in rules:
+                raise RuntimeError('unrelated NAT rule removed')
+            if active and ('-d 10.9.0.0/24' not in owned[0] or '! -o mnet0' not in owned[0]):
+                raise RuntimeError('NAT rule not destination/interface scoped')
+            forwarding = run(*ns('b', sys.executable, '-c', "from pathlib import Path; print(Path('/proc/sys/net/ipv4/ip_forward').read_text().strip())")).strip()
+            if forwarding != '1':
+                raise RuntimeError('operator forwarding setting was changed')
+        serving_state(False)
         run('ip', '-n', spaces['a'], 'route', 'add', '10.8.0.0/24', 'dev', 'eth0')
         states = {}
         for x in 'ab':
@@ -208,8 +233,9 @@ print(json.dumps(k))
             print('subnet route diagnostics: ' + run('ip', '-n', spaces['a'], '-N', '-j', 'route', 'show'), flush=True)
             print('subnet daemon error: ' + str(local_api(states['a']).get('last_error')), flush=True)
             raise
-        run(*ns('a', 'ping', '-c', '2', '-W', '2', '10.9.0.1'))
-        print('PASS advertised subnet has owned OS route and reaches peer loopback over VPN', flush=True)
+        run(*ns('a', 'ping', '-c', '2', '-W', '2', '10.9.0.2'))
+        serving_state(True)
+        print('PASS advertised subnet reaches separate LAN host with scoped NAT; unrelated NAT and operator forwarding preserved', flush=True)
         # Keep emitting application packets while the selector probes. An
         # existing relay-era handshake alone cannot establish direct UDP.
         def both_direct():
@@ -243,6 +269,8 @@ print(json.dumps(k))
                         raise RuntimeError('owned subnet route survived Down')
                     if not any(r.get('dst') == '10.8.0.0/24' and r.get('dev') == 'eth0' for r in routes):
                         raise RuntimeError('unrelated route removed during Down')
+                if x == 'b':
+                    serving_state(False)
                 local_api(states[x], 'up', {})  # saved credentials, no new enrollment key
                 wait_for(lambda: local_api(states[x])['status'] == 'up', 'saved-state kernel restart')
                 if local_api(states[x])['ipv4'] != ips[x]:
@@ -252,7 +280,8 @@ print(json.dumps(k))
                     raise RuntimeError('saved node identity changed after restart')
             wait_for(both_direct, 'direct paths after saved-state restart', timeout=40)
             wait_for(subnet_ready, 'subnet route after saved-state restart')
-            run(*ns('a', 'ping', '-c', '1', '-W', '2', '10.9.0.1'))
+            run(*ns('a', 'ping', '-c', '1', '-W', '2', '10.9.0.2'))
+            serving_state(True)
             print(f'PASS kernel Down/Up cycle {cycle + 1}: same identity/IP and direct path', flush=True)
         acl_script = tmp / 'acl.py'
         acl_script.write_text(r'''
@@ -281,28 +310,29 @@ else:
         wait_for(subnet_absent, 'ACL withdrawal removes owned subnet route')
         if not local_api(states['a']).get('peers'):
             raise RuntimeError('ACL fixture removed peer instead of only route visibility')
-        denied = subprocess.run(ns('a', 'ping', '-c', '1', '-W', '1', '10.9.0.1'), capture_output=True, timeout=3)
+        denied = subprocess.run(ns('a', 'ping', '-c', '1', '-W', '1', '10.9.0.2'), capture_output=True, timeout=3)
         if denied.returncode == 0:
             raise RuntimeError('withdrawn subnet remained reachable')
+        serving_state(False)
         routes = json.loads(run('ip', '-n', spaces['a'], '-N', '-j', 'route', 'show'))
         if not any(r.get('dst') == '10.8.0.0/24' and r.get('dev') == 'eth0' for r in routes):
             raise RuntimeError('ACL withdrawal removed unrelated route')
         run(*ns('c', sys.executable, acl_script, tmp / 'control.json', 'restore'))
         wait_for(subnet_ready, 'ACL restoration reinstalls owned subnet route')
-        run(*ns('a', 'ping', '-c', '1', '-W', '2', '10.9.0.1'))
+        run(*ns('a', 'ping', '-c', '1', '-W', '2', '10.9.0.2'))
         print('PASS ACL route-only withdrawal denies subnet and preserves peer/unrelated route; restoration works', flush=True)
         run(*ns('c', sys.executable, acl_script, tmp / 'control.json', 'expire'))
         wait_for(subnet_absent, 'expired peer removes owned subnet OS route')
         wait_for(lambda: not local_api(states['a']).get('peers'), 'expired peer disappears from client map')
         wait_for(lambda: local_api(states['b'])['status'] == 'waiting-approval', 'expired identity requires fresh approval')
-        denied = subprocess.run(ns('a', 'ping', '-c', '1', '-W', '1', '10.9.0.1'), capture_output=True, timeout=3)
+        denied = subprocess.run(ns('a', 'ping', '-c', '1', '-W', '1', '10.9.0.2'), capture_output=True, timeout=3)
         if denied.returncode == 0:
             raise RuntimeError('expired subnet remained reachable')
         run(*ns('c', sys.executable, acl_script, tmp / 'control.json', 'approve'))
         wait_for(lambda: local_api(states['b'])['status'] == 'up' and not local_api(states['b']).get('approval_url'), 'reapproved identity restores up status without stale approval link')
         wait_for(subnet_ready, 'approved identity restores owned subnet route')
         wait_for(both_direct, 'direct paths after expiry and reapproval', timeout=40)
-        run(*ns('a', 'ping', '-c', '1', '-W', '2', '10.9.0.1'))
+        run(*ns('a', 'ping', '-c', '1', '-W', '2', '10.9.0.2'))
         print('PASS admin expiry removes peer/subnet route and blocks reachability until reapproval', flush=True)
         # With the control/relay process dead, transfers cannot silently
         # succeed by falling back to the shared control-plane WebSocket.
@@ -310,6 +340,16 @@ else:
         if control.wait(timeout=5) == 0:
             raise RuntimeError('fixture control unexpectedly exited cleanly')
         print('PASS direct WireGuard UDP endpoints; control/relay process stopped', flush=True)
+        ready = tmp / 'ready-lan'
+        lan_server = start('d', [sys.executable, '-c', SERVER, '10.9.0.2', ready], 'lan-tcp')
+        wait_for(ready.exists, 'separate LAN OS TCP receiver')
+        for _ in range(3):
+            result = json.loads(run(*ns('a', sys.executable, '-c', CLIENT, '10.9.0.2')))
+            if result != {'bytes': len(PAYLOAD), 'sha256': DIGEST}:
+                raise RuntimeError('LAN TCP hash check failed')
+        if lan_server.wait(timeout=5) != 0:
+            raise RuntimeError('LAN TCP server failed')
+        print('PASS control-off VPN to separate LAN host OS TCP: 3 x 4MiB hash and ACK; LAN has no mesh return route', flush=True)
         for profile in ['normal', 'loss-1pct-delay-20ms']:
             if profile != 'normal':
                 for x in 'ab':
@@ -347,6 +387,7 @@ else:
             routes = json.loads(run('ip', '-n', spaces[x], '-N', '-j', 'route', 'show'))
             if any(r.get('dst') in ['100.64.0.0/10', '10.9.0.0/24'] for r in routes):
                 raise RuntimeError('mesh route survived Down')
+        serving_state(False)
         routes = json.loads(run('ip', '-n', spaces['a'], '-N', '-j', 'route', 'show'))
         if not any(r.get('dst') == '10.8.0.0/24' and r.get('dev') == 'eth0' for r in routes):
             raise RuntimeError('unrelated route removed at final teardown')

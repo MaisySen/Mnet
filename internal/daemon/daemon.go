@@ -66,6 +66,7 @@ type Daemon struct {
 	relay   *controlclient.Relay
 	dns     *dns.Server
 	subnets *ifacectl.SubnetRoutes
+	serving *ifacectl.Serving
 	cancel  context.CancelFunc
 
 	mapChanged  chan struct{} // wake local authorization-expiry guard
@@ -133,6 +134,14 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 	d.status = "joining"
 	d.mu.Unlock()
 
+	// A failed teardown remains owned. Never overwrite its retry handle.
+	if d.serving != nil {
+		if err := d.serving.Close(); err != nil {
+			d.setDown()
+			return fmt.Errorf("retry serving cleanup: %w", err)
+		}
+		d.serving = nil
+	}
 	if err := d.state.EnsureKey(d.cfg.StateDir); err != nil {
 		d.setDown()
 		return err
@@ -196,11 +205,6 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 	d.mu.Lock()
 	d.lastMap = m
 	d.mu.Unlock()
-	if d.state.ExitNode || len(d.state.AdvertiseRoutes) > 0 {
-		if err := ifacectl.EnableServing(d.state.AdvertiseRoutes); err != nil {
-			log.Printf("mnetd: serving setup: %v", err)
-		}
-	}
 	if d.cfg.ManagedIface {
 		if err := ifacectl.Configure(d.cfg.IfName, m.Self.IPv4, MTU); err != nil {
 			d.stopDevice()
@@ -216,6 +220,23 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 			d.setDown()
 			cancel()
 			return fmt.Errorf("initialize subnet route owner")
+		}
+	}
+	if d.state.ExitNode || len(d.state.AdvertiseRoutes) > 0 {
+		var servingErr error
+		if d.state.ExitNode || !d.cfg.ManagedIface {
+			servingErr = fmt.Errorf("automatic exit/mobile serving is not supported")
+		} else {
+			d.serving, servingErr = ifacectl.NewServing(d.cfg.IfName)
+			if servingErr == nil {
+				servingErr = d.serving.Start(d.state.AdvertiseRoutes)
+			}
+		}
+		if servingErr != nil {
+			d.stopDevice()
+			d.setDown()
+			cancel()
+			return fmt.Errorf("subnet serving setup: %w", servingErr)
 		}
 	}
 	d.applyMap(m)
@@ -389,6 +410,13 @@ func (d *Daemon) startDevice() error {
 func (d *Daemon) stopDevice() {
 	d.applyMu.Lock()
 	defer d.applyMu.Unlock()
+	if d.serving != nil {
+		if err := d.serving.Close(); err != nil {
+			d.setErr(fmt.Errorf("serving cleanup: %w", err))
+		} else {
+			d.serving = nil
+		}
+	}
 	if d.subnets != nil {
 		if err := d.subnets.Close(); err != nil {
 			d.setErr(fmt.Errorf("subnet cleanup: %w", err))

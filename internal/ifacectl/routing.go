@@ -4,42 +4,10 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"os"
 	"os/exec"
 	"runtime"
 	"strings"
 )
-
-// EnableServing turns this node into a forwarder: kernel IP forwarding on,
-// and masquerade for mesh traffic leaving for advertised subnets or the
-// internet (exit-node duty). routes is the list of advertised subnet CIDRs;
-// an exit node needs no list, the whole mesh range is masqueraded.
-func EnableServing(routes []string) error {
-	switch runtime.GOOS {
-	case "linux":
-		if err := os.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte("1\n"), 0644); err != nil {
-			return fmt.Errorf("enable ip_forward: %w", err)
-		}
-		// Masquerade mesh source addresses out the underlay. Covers both
-		// exit-node traffic and subnet-routed traffic for advertised CIDRs.
-		out, err := exec.Command("iptables", "-t", "nat", "-C", "POSTROUTING", "-s", "100.64.0.0/10", "-j", "MASQUERADE").CombinedOutput()
-		if err != nil {
-			if out2, err2 := exec.Command("iptables", "-t", "nat", "-A", "POSTROUTING", "-s", "100.64.0.0/10", "-j", "MASQUERADE").CombinedOutput(); err2 != nil {
-				return fmt.Errorf("masquerade: %v: %s (check: %s)", err2, out2, out)
-			}
-		}
-		return nil
-	case "darwin":
-		if out, err := exec.Command("sysctl", "-w", "net.inet.ip.forwarding=1").CombinedOutput(); err != nil {
-			return fmt.Errorf("enable forwarding: %v: %s", err, out)
-		}
-		return fmt.Errorf("darwin masquerade needs a pf anchor; add one manually, see docs/operations.md")
-	case "windows":
-		return fmt.Errorf("windows serving needs Internet Connection Sharing; enable it for the Mnet interface manually")
-	default:
-		return fmt.Errorf("unsupported platform %s", runtime.GOOS)
-	}
-}
 
 // DefaultRoute returns the current underlay default gateway and device.
 func DefaultRoute() (gw, dev string, err error) {

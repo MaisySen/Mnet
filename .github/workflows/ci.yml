@@ -75,7 +75,7 @@ jobs:
       - name: native identity persistence and in-memory WireGuard IPC
         run: go test -race -count=1 -timeout=5m ./internal/daemon -run 'TestPrivateStateAtomicRoundTrip|TestStateRefusesLinkedIdentity|TestStatsReadsActualDeviceIPC|TestParseWireGuardPeerStats'
       - name: native local key expiry and daemon restart
-        run: go test -race -count=3 -timeout=5m ./internal/daemon -run 'TestApplyMapRejectsExpiredAuthorization|TestLocalExpiryWithoutControlResponse|TestExpiryGuardRenewsAndWakesFromNoDeadline|TestExpiryEqualityAndNoDeadlineCompatibility|TestDaemonExpiryWithBlockedControlAndRestart'
+        run: go test -race -count=3 -timeout=5m ./internal/daemon -run 'TestApplyMapRejectsExpiredAuthorization|TestLocalExpiryWithoutControlResponse|TestExpiryGuardRenewsAndWakesFromNoDeadline|TestExpiryEqualityAndNoDeadlineCompatibility|TestDaemonExpiryWithBlockedControlAndRestart|TestReapprovedMapRestoresRunningStatus'
       - name: native OS TCP session and file transfer
         run: go test -race -count=3 -timeout=5m ./internal/session -run 'TestSessionOverTCP|TestQueuedFileSeesStartupOptions|TestRepeatedFileTransfersReleaseStreams'
       - name: native Windows SCM lifecycle (offline fixture, no Wintun)
@@ -95,7 +95,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: install kernel fixture dependencies
-        run: sudo apt-get update && sudo apt-get install -y iproute2 iputils-ping
+        run: sudo apt-get update && sudo apt-get install -y iproute2 iputils-ping iptables
       - name: build native daemons
         run: |
           mkdir -p "$RUNNER_TEMP/mnet-kernel-bin"
