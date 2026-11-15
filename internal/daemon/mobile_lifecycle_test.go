@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 
 func TestPrepareSerializesIdentityAndPublishesStatus(t *testing.T) {
 	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/join":
@@ -25,6 +28,7 @@ func TestPrepareSerializesIdentityAndPublishesStatus(t *testing.T) {
 		}
 	}))
 	defer server.Close()
+	defer unblock()
 	d, err := New(Config{StateDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
@@ -37,29 +41,18 @@ func TestPrepareSerializesIdentityAndPublishesStatus(t *testing.T) {
 		t.Fatal("Prepare did not join")
 	}
 	if got := d.Status().Status; got != "preparing" {
-		close(release)
+		unblock()
 		<-result
 		t.Fatalf("Prepare status %q, want preparing", got)
 	}
 	if err := d.SetRouting(false, nil, ""); err == nil {
 		t.Error("routing changed during Prepare")
 	}
-	downDone := make(chan struct{})
-	go func() { d.Down(); close(downDone) }()
-	select {
-	case <-downDone:
-		t.Error("Down did not wait for Prepare lifecycle")
-	case <-time.After(20 * time.Millisecond):
-	}
-	close(release)
+	unblock()
 	if err := <-result; err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-downDone:
-	case <-time.After(10 * time.Second):
-		t.Fatal("Down blocked after Prepare")
-	}
+	d.Down()
 	if d.Status().Status != "down" {
 		t.Fatal("Prepare did not finish down")
 	}
@@ -72,5 +65,50 @@ func TestPrepareSerializesIdentityAndPublishesStatus(t *testing.T) {
 	snapshot.AdvertiseRoutes[0] = "10.9.0.0/24"
 	if d.State().AdvertiseRoutes[0] != "10.8.0.0/24" {
 		t.Fatal("state snapshot aliases mutable routes")
+	}
+}
+
+func TestDownCancelsBlockedPrepare(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(entered)
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
+	}))
+	defer server.Close()
+	defer close(release)
+	d, err := New(Config{StateDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finished := make(chan error, 1)
+	go func() { _, err := d.Prepare(server.URL, "fixture", "phone", ""); finished <- err }()
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Prepare did not enter blocked join")
+	}
+	down := make(chan struct{})
+	go func() { d.Down(); close(down) }()
+	select {
+	case <-down:
+	case <-time.After(time.Second):
+		d.mu.Lock()
+		cancel := d.cancel
+		d.mu.Unlock()
+		if cancel != nil {
+			cancel()
+		}
+		server.CloseClientConnections()
+		t.Fatal("Down did not cancel blocked Prepare")
+	}
+	if err := <-finished; err == nil {
+		t.Fatal("cancelled Prepare succeeded")
+	}
+	if d.Status().Status != "down" {
+		t.Fatal("cancelled Prepare not down")
 	}
 }

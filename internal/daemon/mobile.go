@@ -39,10 +39,13 @@ func (d *Daemon) Prepare(server, network, nodeName, authKey string) (string, err
 		d.mu.Unlock()
 		return "", fmt.Errorf("already %s", d.status)
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	d.cancel = cancel
 	d.status = "preparing"
 	d.lastErr = ""
 	d.mu.Unlock()
 	defer d.setDown()
+	defer cancel()
 
 	if err := func() error {
 		d.mu.Lock()
@@ -71,8 +74,6 @@ func (d *Daemon) Prepare(server, network, nodeName, authKey string) (string, err
 		return "", err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
 	if err := d.join(ctx, authKey); err != nil {
 		return "", err
 	}
