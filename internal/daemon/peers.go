@@ -18,6 +18,7 @@ import (
 	"fintex.au/mnet/internal/ifacectl"
 	"fintex.au/mnet/internal/netmap"
 	"fintex.au/mnet/internal/stun"
+	"golang.zx2c4.com/wireguard/device"
 )
 
 // PeerStatus is the CLI view of one peer.
@@ -41,6 +42,7 @@ type peerTrack struct {
 	onRelay       bool
 	lastSwitch    time.Time
 	lastDirectTry time.Time
+	probe         bool // one authenticated direct handshake after endpoint application
 }
 
 // applyMap writes the map into the WireGuard device.
@@ -87,6 +89,7 @@ func (d *Daemon) applyMapLocked(m *netmap.Map) {
 		}
 	}
 	d.peersMu.Unlock()
+	var probes []device.NoisePublicKey
 	for _, p := range m.Peers {
 		pub, err := base64.StdEncoding.DecodeString(p.PubKey)
 		if err != nil || len(pub) != 32 {
@@ -101,6 +104,12 @@ func (d *Daemon) applyMapLocked(m *netmap.Map) {
 			st.node = p
 		}
 		ep := st.currentEndpoint()
+		if st.probe && !st.onRelay && !strings.HasPrefix(ep, bind.RelayPrefix) {
+			var key device.NoisePublicKey
+			copy(key[:], pub)
+			probes = append(probes, key)
+			st.probe = false
+		}
 		d.peersMu.Unlock()
 		fmt.Fprintf(&conf, "public_key=%s\n", hex.EncodeToString(pub))
 		fmt.Fprintf(&conf, "replace_allowed_ips=true\n")
@@ -120,6 +129,11 @@ func (d *Daemon) applyMapLocked(m *netmap.Map) {
 	if err := d.dev.IpcSetOperation(&conf); err != nil {
 		d.setErr(fmt.Errorf("apply map: %w", err))
 		return
+	}
+	for _, key := range probes {
+		if peer := d.dev.LookupPeer(key); peer != nil {
+			_ = peer.SendHandshakeInitiation(false)
+		}
 	}
 	d.peersMu.Lock()
 	for _, key := range removed {
@@ -482,44 +496,54 @@ func (d *Daemon) PeerStatuses() []PeerStatus {
 	return out
 }
 
+// selectPaths opens a bounded 30-second direct-probe window, then backs
+// off for 90 seconds. Authenticated relay traffic can roam the WG endpoint
+// back while a probe is pending, so a healthy relay is not direct success.
 func (d *Daemon) selectPaths(stats map[string]*peerStats, now time.Time) bool {
 	changed := false
 	d.peersMu.Lock()
+	defer d.peersMu.Unlock()
 	for pk, st := range d.peers {
 		s := stats[pk]
 		healthy := s != nil && s.handshake > 0 && now.Unix()-s.handshake < 90
 		direct := s != nil && s.endpoint != "" && !strings.HasPrefix(s.endpoint, bind.RelayPrefix)
-		// A healthy relay must not suppress direct probing forever.
-		// Preserve roaming to an already working direct endpoint first.
-		if st.onRelay && !(healthy && direct) && len(st.node.Endpoints) > 0 && now.Sub(st.lastDirectTry) > 90*time.Second {
-			st.onRelay = false
-			st.lastSwitch = now
-			st.lastDirectTry = now
-			changed = true
-			continue
-		}
-		if healthy {
-			// A working direct path leaves relay mode behind.
-			if st.onRelay && s != nil && !strings.HasPrefix(s.endpoint, bind.RelayPrefix) && s.endpoint != "" {
+		if healthy && direct {
+			if st.onRelay {
 				st.onRelay = false
 				changed = true
 			}
 			continue
 		}
-		if !st.onRelay {
-			// Rotate candidates, then give up to the relay.
-			if len(st.node.Endpoints) == 0 || now.Sub(st.lastSwitch) > 30*time.Second {
+		if len(st.node.Endpoints) == 0 {
+			if !st.onRelay {
 				st.onRelay = true
 				st.lastSwitch = now
 				changed = true
-			} else if now.Sub(st.lastSwitch) > 5*time.Second {
+			}
+			continue
+		}
+		elapsed := now.Sub(st.lastDirectTry)
+		if st.lastDirectTry.IsZero() || elapsed > 90*time.Second {
+			st.onRelay = false
+			st.probe = true
+			st.lastDirectTry = now
+			st.lastSwitch = now
+			changed = true
+			continue
+		}
+		if elapsed <= 30*time.Second {
+			if !st.onRelay && now.Sub(st.lastSwitch) >= 5*time.Second {
 				st.cycle++
+				st.probe = true
 				st.lastSwitch = now
 				changed = true
 			}
+		} else if !st.onRelay {
+			st.onRelay = true
+			st.lastSwitch = now
+			changed = true
 		}
 	}
-	d.peersMu.Unlock()
 	return changed
 }
 

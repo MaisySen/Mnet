@@ -67,3 +67,30 @@ func TestUnderlayCandidatesExcludeOverlayAddress(t *testing.T) {
 		}
 	}
 }
+
+func TestRelayRoamingDoesNotCountAsDirectProbeSuccess(t *testing.T) {
+	now := time.Now()
+	key := pubKeyOf(t, 0x53)
+	st := &peerTrack{node: netmap.Node{PubKey: key, Endpoints: []string{"198.18.10.3:12345", "198.18.10.4:12345"}}}
+	d := &Daemon{peers: map[string]*peerTrack{key: st}}
+	stats := map[string]*peerStats{key: {endpoint: bind.RelayPrefix + key, handshake: now.Unix()}}
+	if !d.selectPaths(stats, now) || !st.probe || st.onRelay {
+		t.Fatal("did not start authenticated direct probe")
+	}
+	st.probe = false
+	if d.selectPaths(stats, now.Add(time.Second)) {
+		t.Fatal("unbounded probe rate")
+	}
+	if !d.selectPaths(stats, now.Add(5*time.Second)) || !st.probe || st.cycle != 1 {
+		t.Fatal("relay roaming suppressed next direct candidate")
+	}
+	if !d.selectPaths(stats, now.Add(31*time.Second)) || !st.onRelay {
+		t.Fatal("failed direct probe window did not fall back")
+	}
+	if d.selectPaths(stats, now.Add(60*time.Second)) {
+		t.Fatal("no cooldown after failed window")
+	}
+	if !d.selectPaths(stats, now.Add(91*time.Second)) || st.onRelay {
+		t.Fatal("next bounded probe window did not open")
+	}
+}
