@@ -83,11 +83,7 @@ func TestChatRoundTrip(t *testing.T) {
 		}
 		got <- m
 	})
-	// Viewer opens the chat stream by sending an OPEN, then DATA.
-	if err := client.send(StreamChat, msgOpen, PriChat, []byte(`{}`)); err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(50 * time.Millisecond)
+	// Viewer sends a chat line; the stream OPEN is implicit.
 	want := ChatMessage{From: "viewer-node", Text: "hello host", At: 123}
 	if err := client.SendJSON(StreamChat, PriChat, want); err != nil {
 		t.Fatal(err)
@@ -103,42 +99,27 @@ func TestChatRoundTrip(t *testing.T) {
 }
 
 func TestPriorityDrainsFirst(t *testing.T) {
-	client, host := pipe(t)
-	defer client.Close()
-	defer host.Close()
-
-	// Fill the host-bound pipe with bulk data, then queue interactive.
-	// net.Pipe is synchronous, so drain on the host concurrently.
-	received := make(chan Frame, 64)
-	host.OnStream(func(s Stream) {})
-	go func() {
-		for {
-			f, err := readFrame(host.conn)
-			if err != nil {
-				return
-			}
-			if f.Type == msgData {
-				received <- f
-			}
-		}
-	}()
-
-	// Queue a bulk frame and an interactive frame while the writer is
-	// blocked, then check the interactive one arrives first. To force
-	// ordering, hold the mux write mutex around both sends.
-	client.wmu.Lock()
+	// popLocked must drain the lowest priority class first, FIFO
+	// within a class.
+	m := newMux(nil, StreamFile)
 	big := bytes.Repeat([]byte("x"), 1024)
-	client.pending[PriBulk] = append(client.pending[PriBulk],
+	m.pending[PriBulk] = append(m.pending[PriBulk],
 		Frame{StreamID: StreamFile, Type: msgData, Priority: PriBulk, Payload: big},
 		Frame{StreamID: StreamFile, Type: msgData, Priority: PriBulk, Payload: big})
-	client.pending[PriInteractive] = append(client.pending[PriInteractive],
-		Frame{StreamID: StreamInput, Type: msgData, Priority: PriInteractive, Payload: []byte(`{"kind":"key","text":"a"}`)})
-	client.wmu.Unlock()
-	client.cond.Signal()
+	m.pending[PriInteractive] = append(m.pending[PriInteractive],
+		Frame{StreamID: StreamInput, Type: msgData, Priority: PriInteractive, Payload: []byte("a")})
+	m.pending[PriScreen] = append(m.pending[PriScreen],
+		Frame{StreamID: StreamScreen, Type: msgData, Priority: PriScreen, Payload: []byte("s")})
 
-	first := <-received
-	if first.StreamID != StreamInput {
-		t.Fatalf("first frame was stream %d, want interactive input", first.StreamID)
+	want := []uint32{StreamInput, StreamScreen, StreamFile, StreamFile}
+	for i, w := range want {
+		f, ok := m.popLocked()
+		if !ok || f.StreamID != w {
+			t.Fatalf("pop %d = stream %d, want %d", i, f.StreamID, w)
+		}
+	}
+	if _, ok := m.popLocked(); ok {
+		t.Fatal("queue should be empty")
 	}
 }
 

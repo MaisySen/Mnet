@@ -102,10 +102,14 @@ passwords on top of the mesh.
 
 ## Pieces
 
-- internal/session: framing, mux, stream types, handshake (done, tested)
-- mnetd --session-host: desktop host (capture, inject) [next]
+- internal/session: framing, mux, stream types, handshake, host and
+  viewer logic, file transfer (done, race-tested)
+- mnetd -session-host -session-auto-accept: desktop host on Linux
+  with X11 capture (JPEG, capped at 1280 on the long edge) and XTEST
+  input injection (done); Wayland needs a portal backend (later)
+- mnet session connect / mnet session send: terminal viewer with
+  chat, frame saving, file push (done)
 - Android: host service (MediaProjection + accessibility) and viewer
-  screen [next]
-- CLI: mnet session connect <peer> for a desktop viewer [next]
+  screen (next)
 - iOS: viewer only; hosting needs ReplayKit and is parked with the
   Apple account work

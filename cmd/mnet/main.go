@@ -48,8 +48,11 @@ func apiBase() string {
 	return "http://mnetd" // dummy host, the unix socket carries it
 }
 
+// stateDir is set in main from --state before any subcommand runs.
+var stateDir string
+
 func main() {
-	stateDir := defaultStateDir()
+	stateDir = defaultStateDir()
 	args := os.Args[1:]
 	for len(args) > 0 && args[0] == "--state" {
 		if len(args) < 2 {
@@ -115,6 +118,8 @@ func main() {
 			fatal("not up")
 		}
 		fmt.Println(st.IPv4)
+	case "session":
+		runSession(args[1:])
 	case "ping":
 		if len(args) < 2 {
 			fatal("usage: mnet ping <node>")
@@ -145,6 +150,8 @@ func usage() {
   mnet status
   mnet ip
   mnet ping <node>
+  mnet session connect <peer> [--save-frames DIR] [--send-file PATH]
+  mnet session send <peer> <file>
   mnet version
 
 Global flag: --state DIR (default: user config dir /mnet)

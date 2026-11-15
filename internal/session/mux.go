@@ -37,10 +37,14 @@ type Mux struct {
 	closed  chan struct{}
 	closeMu sync.Once
 
-	onStream func(Stream)
-	nextID   uint32
+	onStreamMu sync.RWMutex
+	onStream   func(Stream)
+	nextID     uint32 // dynamic stream ids, partitioned by side
 	idMu     sync.Mutex
 	started  bool // frames queue for the write loop only after start()
+	opened   map[uint32]bool          // streams this side has OPENed
+	streams  map[uint32]chan Frame    // inbound delivery, both directions
+	streamMu sync.Mutex
 }
 
 // Stream is one opened stream, delivered to the registered handler.
@@ -56,7 +60,7 @@ type Stream struct {
 // Dial opens a session to a host and performs the handshake.
 // accept is called on the host side (via Listen) to decide consent.
 func Dial(conn net.Conn, nodeName string) (*Mux, error) {
-	m := newMux(conn, StreamFile)
+	m := newMux(conn, StreamFile) // client dynamic ids: 4, 6, 8, ...
 	h := Hello{Version: protoVersion, NodeName: nodeName, Want: "screen"}
 	if err := m.sendJSON(StreamControl, msgOpen, PriInteractive, h); err != nil {
 		return nil, err
@@ -89,7 +93,7 @@ func Listen(ln net.Listener, nodeName string, accept func(Hello) (bool, string))
 	if err != nil {
 		return nil, err
 	}
-	m := newMux(conn, StreamFile)
+	m := newMux(conn, StreamFile+1) // host dynamic ids: 5, 7, 9, ...
 	f, err := m.readOne()
 	if err != nil {
 		conn.Close()
@@ -123,7 +127,8 @@ func Listen(ln net.Listener, nodeName string, accept func(Hello) (bool, string))
 }
 
 func newMux(conn net.Conn, firstDynamic uint32) *Mux {
-	m := &Mux{conn: conn, closed: make(chan struct{}), nextID: firstDynamic}
+	m := &Mux{conn: conn, closed: make(chan struct{}), nextID: firstDynamic,
+		opened: map[uint32]bool{StreamControl: true}, streams: map[uint32]chan Frame{}}
 	m.cond = sync.NewCond(&m.wmu)
 	return m
 }
@@ -138,13 +143,26 @@ func (m *Mux) start() {
 
 // OnStream registers the handler for streams opened by the peer.
 // OPENs for StreamScreen/StreamInput/StreamChat are dispatched too.
-func (m *Mux) OnStream(h func(Stream)) { m.onStream = h }
+// Safe to call after the session has started.
+func (m *Mux) OnStream(h func(Stream)) {
+	m.onStreamMu.Lock()
+	defer m.onStreamMu.Unlock()
+	m.onStream = h
+}
+
+func (m *Mux) streamHandler() func(Stream) {
+	m.onStreamMu.RLock()
+	defer m.onStreamMu.RUnlock()
+	return m.onStream
+}
 
 // Open opens a new dynamic stream (file transfers, future kinds).
+// Client and host allocate from disjoint id ranges so either side can
+// open without coordination.
 func (m *Mux) Open(priority uint8, openPayload any) (Stream, error) {
 	m.idMu.Lock()
 	id := m.nextID
-	m.nextID++
+	m.nextID += 2
 	m.idMu.Unlock()
 	s := Stream{Mux: m, ID: id, in: make(chan Frame, 16)}
 	var raw json.RawMessage
@@ -156,9 +174,15 @@ func (m *Mux) Open(priority uint8, openPayload any) (Stream, error) {
 		raw = b
 	}
 	s.OpenJSON = raw
+	m.streamMu.Lock()
+	m.streams[id] = s.in
+	m.streamMu.Unlock()
 	if err := m.send(id, msgOpen, priority, raw); err != nil {
 		return Stream{}, err
 	}
+	m.wmu.Lock()
+	m.opened[id] = true
+	m.wmu.Unlock()
 	return s, nil
 }
 
@@ -172,7 +196,20 @@ func (m *Mux) SendBytes(streamID uint32, priority uint8, b []byte) error {
 	return m.send(streamID, msgData, priority, b)
 }
 
+// Recv returns the next DATA frame on the stream. A timeout <= 0
+// blocks until a frame, FIN/RST, or mux close.
 func (s Stream) Recv(timeout time.Duration) (Frame, error) {
+	if timeout <= 0 {
+		select {
+		case f, ok := <-s.in:
+			if !ok {
+				return Frame{}, io.EOF
+			}
+			return f, nil
+		case <-s.Mux.closed:
+			return Frame{}, io.ErrClosedPipe
+		}
+	}
 	select {
 	case f, ok := <-s.in:
 		if !ok {
@@ -185,6 +222,9 @@ func (s Stream) Recv(timeout time.Duration) (Frame, error) {
 		return Frame{}, io.ErrClosedPipe
 	}
 }
+
+// Closed returns a channel closed when the session ends.
+func (m *Mux) Closed() <-chan struct{} { return m.closed }
 
 func (m *Mux) Close() error {
 	m.closeMu.Do(func() {
@@ -220,6 +260,12 @@ func (m *Mux) send(id uint32, typ byte, pri uint8, payload []byte) error {
 	}
 	if int(pri) >= len(m.pending) {
 		pri = PriBulk
+	}
+	// Implicit OPEN on first send: OPEN is how the peer learns the
+	// stream exists, so DATA on a fresh stream is preceded by one.
+	if typ == msgData && !m.opened[id] {
+		m.opened[id] = true
+		m.pending[pri] = append(m.pending[pri], Frame{StreamID: id, Type: msgOpen, Priority: pri, Payload: []byte(`{}`)})
 	}
 	m.pending[pri] = append(m.pending[pri], f)
 	m.cond.Signal()
@@ -266,8 +312,6 @@ func (m *Mux) popLocked() (Frame, bool) {
 func (m *Mux) readOne() (Frame, error) { return readFrame(m.conn) }
 
 func (m *Mux) readLoop() {
-	streams := map[uint32]chan Frame{}
-	var streamsMu sync.Mutex
 	for {
 		f, err := readFrame(m.conn)
 		if err != nil {
@@ -281,27 +325,30 @@ func (m *Mux) readLoop() {
 		case msgPong:
 			continue
 		}
-		streamsMu.Lock()
-		ch, ok := streams[f.StreamID]
+		m.streamMu.Lock()
+		ch, ok := m.streams[f.StreamID]
 		if f.Type == msgOpen {
-			ch = make(chan Frame, 16)
-			streams[f.StreamID] = ch
-			ok = true
-			if m.onStream != nil {
-				go m.onStream(Stream{Mux: m, ID: f.StreamID, OpenJSON: json.RawMessage(f.Payload), in: ch})
+			if !ok {
+				ch = make(chan Frame, 16)
+				m.streams[f.StreamID] = ch
+				if h := m.streamHandler(); h != nil {
+					go h(Stream{Mux: m, ID: f.StreamID, OpenJSON: json.RawMessage(f.Payload), in: ch})
+				}
 			}
-			streamsMu.Unlock()
+			// An OPEN for a stream we opened locally is the peer's
+			// implicit-open echo on reply; the channel already exists.
+			m.streamMu.Unlock()
 			continue
 		}
-		streamsMu.Unlock()
+		m.streamMu.Unlock()
 		if !ok {
 			continue // DATA for a stream we did not see OPEN: drop
 		}
 		if f.Type == msgFin || f.Type == msgRst {
 			close(ch)
-			streamsMu.Lock()
-			delete(streams, f.StreamID)
-			streamsMu.Unlock()
+			m.streamMu.Lock()
+			delete(m.streams, f.StreamID)
+			m.streamMu.Unlock()
 			continue
 		}
 		select {

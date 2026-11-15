@@ -40,6 +40,8 @@ func main() {
 		advExit   = flag.Bool("advertise-exit-node", false, "offer to carry other nodes' internet traffic")
 		advRoutes = flag.String("advertise-routes", "", "comma separated subnet CIDRs this node serves")
 		useExit   = flag.String("exit-node", "", "peer name or mesh IP to send internet traffic through")
+		sessHost  = flag.Bool("session-host", false, "host remote-desktop sessions on this node (mesh port 5909)")
+		sessAuto  = flag.Bool("session-auto-accept", false, "accept sessions without prompting (required on headless daemons)")
 	)
 	flag.Parse()
 	if *showVer {
@@ -89,6 +91,9 @@ func main() {
 			log.Fatalf("mnetd: local api: %v", err)
 		}
 	}()
+	if *sessHost {
+		go runSessionHost(d, *sessAuto)
+	}
 	log.Printf("mnetd %s ready (state: %s)", version.Version, *stateDir)
 
 	sig := make(chan os.Signal, 1)
