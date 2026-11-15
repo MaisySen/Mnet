@@ -74,6 +74,45 @@ func TestPortalCapturerChangeDetection(t *testing.T) {
 	}
 }
 
+func TestPortalCapturerDelta(t *testing.T) {
+	w, h := 128, 128
+	f1 := solidFrame(w, h, 10, 20, 30)
+	f2 := append([]byte{}, f1...)
+	// Dirty one 64x64 tile: the top-left quadrant changes color.
+	for y := 0; y < 64; y++ {
+		for x := 0; x < 64; x++ {
+			i := (y*w + x) * 4
+			f2[i+0], f2[i+1], f2[i+2] = 200, 100, 50
+		}
+	}
+	f3 := solidFrame(w, h, 90, 80, 70)
+	var stream bytes.Buffer
+	stream.Write(f1)
+	stream.Write(f1) // identical: no change
+	stream.Write(f2) // one tile dirty
+	stream.Write(f3) // everything dirty
+	c := portalCapturerFromPump(portal.NewRawPump(&stream, w, h))
+
+	full, tiles, err := c.CaptureDelta()
+	if err != nil || len(full) == 0 || len(tiles) != 0 {
+		t.Fatalf("first frame: full=%d tiles=%d err=%v", len(full), len(tiles), err)
+	}
+	if full, tiles, err = c.CaptureDelta(); err != nil || full != nil || tiles != nil {
+		t.Fatalf("identical frame: full=%v tiles=%v err=%v", full, tiles, err)
+	}
+	full, tiles, err = c.CaptureDelta()
+	if err != nil || full != nil || len(tiles) != 1 {
+		t.Fatalf("one dirty tile: full=%d tiles=%d err=%v", len(full), len(tiles), err)
+	}
+	if tiles[0].Rect.X != 0 || tiles[0].Rect.Y != 0 {
+		t.Fatalf("tile origin = %d,%d", tiles[0].Rect.X, tiles[0].Rect.Y)
+	}
+	full, tiles, err = c.CaptureDelta()
+	if err != nil || len(full) == 0 || len(tiles) != 0 {
+		t.Fatalf("full repaint: full=%d tiles=%d err=%v", len(full), len(tiles), err)
+	}
+}
+
 func TestPortalCapturerQualityClamp(t *testing.T) {
 	c := portalCapturerFromPump(portal.NewRawPump(bytes.NewReader(nil), 2, 2))
 	c.SetQuality(5)

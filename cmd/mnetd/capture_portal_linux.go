@@ -27,12 +27,13 @@ import (
 // below the D-Bus socket is unit tested.
 
 type portalCapturer struct {
-	stream *portal.Stream
-	pwfd   *os.File
-	pump   *portal.Pump
-	raw    []byte
-	last   []byte
-	jpegQ  atomic.Int32
+	stream   *portal.Stream
+	pwfd     *os.File
+	pump     *portal.Pump
+	raw      []byte
+	last     []byte
+	lastRGBA *image.RGBA
+	jpegQ    atomic.Int32
 }
 
 func newPortalCapturer() (session.Capturer, error) {
@@ -107,5 +108,39 @@ func (c *portalCapturer) Capture() ([]byte, bool, error) {
 	}
 	changed := !bytes.Equal(buf.Bytes(), c.last)
 	c.last = buf.Bytes()
+	c.lastRGBA = img
 	return c.last, changed, nil
+}
+
+// CaptureDelta gives portal sessions the same dirty-rect savings as
+// X11: only changed 64x64 tiles cross the wire while a minority of
+// the screen moved; past 60% changed tiles a full frame is cheaper.
+func (c *portalCapturer) CaptureDelta() ([]byte, []session.Tile, error) {
+	raw, err := c.pump.ReadFrame(c.raw)
+	if err != nil {
+		return nil, nil, err
+	}
+	c.raw = raw
+	img := bgraToRGBA(raw, c.pump.Width, c.pump.Height)
+	rects := session.DiffTiles(c.lastRGBA, img, 64)
+	b := img.Bounds()
+	total := ((b.Dx() + 63) / 64) * ((b.Dy() + 63) / 64)
+	if c.lastRGBA != nil && len(rects) == 0 {
+		return nil, nil, nil
+	}
+	if c.lastRGBA != nil && len(rects) <= total*3/5 {
+		tiles, err := session.EncodeTiles(img, rects, int(c.jpegQ.Load()))
+		if err != nil {
+			return nil, nil, err
+		}
+		c.lastRGBA = img
+		return nil, tiles, nil
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: int(c.jpegQ.Load())}); err != nil {
+		return nil, nil, err
+	}
+	c.lastRGBA = img
+	c.last = buf.Bytes()
+	return buf.Bytes(), nil, nil
 }

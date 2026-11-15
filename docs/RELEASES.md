@@ -70,10 +70,12 @@ Live proofs and the fixes they exposed.
   stays the default on wlroots compositors, the portal takes over
   on compositors without wlr-screencopy (GNOME), MNET_CAPTURE=portal
   forces it; ydotool keeps input on every Wayland path. The
-  capturer is tuneable, so adaptive quality applies. Negotiation,
-  parsing, pump framing and change detection unit tested; live
-  verification on a real GNOME session is still pending (no GNOME
-  in CI or the dev sandbox).
+  capturer is tuneable, so adaptive quality applies, and implements
+  dirty-rect deltas: GNOME sessions send changed 64x64 tiles instead
+  of full frames under the same 60% rule as X11. Negotiation,
+  parsing, pump framing, change detection and delta tiling unit
+  tested; live verification on a real GNOME session is still pending
+  (no GNOME in CI or the dev sandbox).
 - mnet session log prints the node's hosted-session audit from
   <state>/sessions.jsonl: accept/refuse/end, viewer, mesh IP,
   duration, recording path.
