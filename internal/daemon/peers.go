@@ -305,9 +305,14 @@ func (d *Daemon) stats() map[string]*peerStats {
 	if err := d.dev.IpcGetOperation(&buf); err != nil {
 		return out
 	}
+	return parsePeerStats(buf.String())
+}
+
+func parsePeerStats(raw string) map[string]*peerStats {
+	out := map[string]*peerStats{}
 	var cur *peerStats
 	var curKey string
-	for _, line := range strings.Split(buf.String(), "\n") {
+	for _, line := range strings.Split(raw, "\n") {
 		k, v, found := strings.Cut(line, "=")
 		if !found {
 			continue
@@ -326,15 +331,15 @@ func (d *Daemon) stats() map[string]*peerStats {
 			if cur != nil {
 				cur.endpoint = v
 			}
-		case "latest_handshake":
+		case "last_handshake_time_sec":
 			if cur != nil {
 				cur.handshake, _ = strconv.ParseInt(v, 10, 64)
 			}
-		case "transfer_rx":
+		case "rx_bytes":
 			if cur != nil {
 				cur.rx, _ = strconv.ParseInt(v, 10, 64)
 			}
-		case "transfer_tx":
+		case "tx_bytes":
 			if cur != nil {
 				cur.tx, _ = strconv.ParseInt(v, 10, 64)
 			}

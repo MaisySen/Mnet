@@ -311,7 +311,7 @@ func (s *Server) handleRelayWS(w http.ResponseWriter, r *http.Request) {
 	s.store.Touch(node.ID)
 	s.hub.AttachScoped(node.ID, node.NetworkID, node.PubKey, ws, func(src, dst string, payload []byte) {
 		if s.store.RelayAllowed(node.ID, dst) {
-			s.hub.ForwardScoped(node.NetworkID, src, dst, payload)
+			s.hub.ForwardScopedChecked(node.NetworkID, src, dst, payload, func() bool { return s.store.RelayAllowed(node.ID, dst) })
 		}
 	})
 }

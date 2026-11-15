@@ -25,6 +25,8 @@ jobs:
         run: go tool govulncheck ./...
       - name: test with race detector
         run: go test -race -count=1 -timeout=5m ./...
+      - name: userspace mesh file burst regression (100 transfers)
+        run: MNET_MESH_STRESS=1 go test -race -count=1 -timeout=2m ./cmd/mnetd -run '^TestMeshFileStress$'
       - name: source gate regression tests
         run: python3 scripts/test-source-gate.py
       - name: secrets and style gate

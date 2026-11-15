@@ -27,6 +27,9 @@ const (
 	writeWait = 10 * time.Second
 	pongWait  = 60 * time.Second
 	pingEvery = 45 * time.Second
+	// A short, bounded wait absorbs scheduler bursts without unbounded
+	// queues or holding the hub lock while a destination is slow.
+	forwardQueueWait = 100 * time.Millisecond
 )
 
 // EncodeKey turns a raw 32 byte key into its standard base64 form.
@@ -49,9 +52,16 @@ type Hub struct {
 	ByNodeID map[string]string // node ID -> pubkey
 }
 
+type queuedPacket struct {
+	data    []byte
+	allowed func() bool
+}
+
+func (p queuedPacket) permitted() bool { return p.allowed == nil || p.allowed() }
+
 type conn struct {
 	ws     *websocket.Conn
-	send   chan []byte
+	send   chan queuedPacket
 	done   chan struct{}
 	once   sync.Once
 	nodeID string
@@ -95,7 +105,7 @@ func (h *Hub) Attach(nodeID, pubkey string, ws *websocket.Conn, onPacket func(sr
 // AttachScoped isolates identical public keys and destinations by network.
 func (h *Hub) AttachScoped(nodeID, scope, pubkey string, ws *websocket.Conn, onPacket func(src, dst string, payload []byte)) {
 	key := scope + "\x00" + pubkey
-	c := &conn{ws: ws, send: make(chan []byte, 64), done: make(chan struct{}), nodeID: nodeID}
+	c := &conn{ws: ws, send: make(chan queuedPacket, 64), done: make(chan struct{}), nodeID: nodeID}
 	h.mu.Lock()
 	if old := h.conns[key]; old != nil {
 		old.close()
@@ -136,7 +146,16 @@ func (h *Hub) AttachScoped(nodeID, scope, pubkey string, ws *websocket.Conn, onP
 			select {
 			case <-c.done:
 				return
-			case msg = <-c.send:
+			case p := <-c.send:
+				if !p.permitted() {
+					continue
+				}
+				select {
+				case <-c.done:
+					return
+				default:
+				}
+				msg = p.data
 				typ = websocket.BinaryMessage
 			case <-t.C:
 				typ = websocket.PingMessage
@@ -193,6 +212,12 @@ func (h *Hub) Forward(src, dst string, payload []byte) bool {
 }
 
 func (h *Hub) ForwardScoped(scope, src, dst string, payload []byte) bool {
+	return h.ForwardScopedChecked(scope, src, dst, payload, nil)
+}
+
+// ForwardScopedChecked revalidates queued traffic immediately before the
+// destination write. Authorization may change during bounded queue pressure.
+func (h *Hub) ForwardScopedChecked(scope, src, dst string, payload []byte, allowed func() bool) bool {
 	if len(payload) == 0 || len(payload) > MaxPacket {
 		return false
 	}
@@ -212,9 +237,18 @@ func (h *Hub) ForwardScoped(scope, src, dst string, payload []byte) bool {
 	select {
 	case <-c.done:
 		return false
-	case c.send <- frame:
+	case c.send <- queuedPacket{data: frame, allowed: allowed}:
 		return true
 	default:
-		return false // peer too slow, drop like UDP would
+	}
+	timer := time.NewTimer(forwardQueueWait)
+	defer timer.Stop()
+	select {
+	case <-c.done:
+		return false
+	case c.send <- queuedPacket{data: frame, allowed: allowed}:
+		return true
+	case <-timer.C:
+		return false // bounded backpressure, never stall another peer indefinitely
 	}
 }
