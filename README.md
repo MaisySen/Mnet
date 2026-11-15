@@ -174,6 +174,33 @@ routes the node may not use are stripped, and exit offers are hidden
 without internet access. Changes push to every node over the long-poll
 map feed within seconds.
 
+## Remote desktop sessions
+
+Mnet doubles as a remote desktop: screen capture, input injection, chat
+and file transfer ride typed streams over the encrypted mesh, so no
+third party ever relays your screen. Full detail in
+docs/session-layer.md.
+
+On the host (Linux desktop; Android can host with a consent tap):
+
+```bash
+./mnetd &                                   # already running for the mesh
+./mnetd -session-host -session-auto-accept  # or approve each viewer
+```
+
+From the viewer:
+
+```bash
+./mnet session connect other-laptop         # terminal viewer
+./mnet session send other-laptop ./file.zip # push a file
+```
+
+Android hosts stream with MediaProjection and inject gestures through
+an accessibility service; Android and iOS both work as viewers. Frames
+stream as dirty-tile deltas with periodic keyframes; on Linux,
+MNET_TEXT_MODE picks how typed text reaches the host (keysym remap or
+clipboard paste).
+
 ## Mobile
 
 - **Android**: `android/` holds a complete app (VpnService, join form, live
