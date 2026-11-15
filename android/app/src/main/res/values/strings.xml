@@ -4,6 +4,7 @@
     <string name="connect">Connect</string>
     <string name="disconnect">Disconnect</string>
     <string name="server_hint">Control server URL</string>
+    <string name="server_default">https://mnet-control.onrender.com</string>
     <string name="network_hint">Network name</string>
     <string name="authkey_hint">Auth key (first join)</string>
     <string name="name_hint">This device name</string>

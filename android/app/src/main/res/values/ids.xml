@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="server_url" type="id" />
+    <item name="network_name" type="id" />
+    <item name="auth_key" type="id" />
+    <item name="device_name" type="id" />
+    <item name="exit_node" type="id" />
+    <item name="connect_button" type="id" />
+</resources>

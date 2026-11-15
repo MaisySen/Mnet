@@ -54,12 +54,13 @@ VPN app: declare VpnService usage in the declaration section.
 - The control plane is operator-controlled; Fintex hosts the default at
   mnet-control.onrender.com.
 
-## Store graphics still needed
+## Store graphics (in store-assets/, produced 2026-11-15)
 
-- Hi-res icon 512x512 (export of ic_mnet).
-- Feature graphic 1024x500.
-- 2+ phone screenshots (use the Firebase Test Lab captures once the
-  robo run lands, or a quick emulator/phone capture).
+- icon-512.png: hi-res icon, export of drawable/ic_mnet at 512x512.
+- feature-graphic-1024x500.png: feature graphic.
+- shot-1-main.png, shot-2-vpn-consent.png: phone screenshots, real
+  device captures from the Firebase Test Lab robo run (Pixel 9,
+  1080x2160, 2:1 for Play).
 
 ## Release track
 

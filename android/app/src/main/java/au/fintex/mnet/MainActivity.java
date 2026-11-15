@@ -57,19 +57,25 @@ public class MainActivity extends Activity {
         root.addView(title);
 
         server = field(root, R.string.server_hint);
+        server.setId(R.id.server_url);
         network = field(root, R.string.network_hint);
+        network.setId(R.id.network_name);
         authKey = field(root, R.string.authkey_hint);
+        authKey.setId(R.id.auth_key);
         name = field(root, R.string.name_hint);
+        name.setId(R.id.device_name);
         exitNode = field(root, R.string.exitnode_hint);
+        exitNode.setId(R.id.exit_node);
 
         SharedPreferences prefs = getSharedPreferences("mnet", MODE_PRIVATE);
-        server.setText(prefs.getString("server", ""));
+        server.setText(prefs.getString("server", getString(R.string.server_default)));
         network.setText(prefs.getString("network", ""));
         authKey.setText(prefs.getString("authkey", ""));
         name.setText(prefs.getString("name", android.os.Build.MODEL));
         exitNode.setText(prefs.getString("exitnode", ""));
 
         toggle = new Button(this);
+        toggle.setId(R.id.connect_button);
         toggle.setText(R.string.connect);
         toggle.setOnClickListener(v -> onToggle());
         root.addView(toggle);
