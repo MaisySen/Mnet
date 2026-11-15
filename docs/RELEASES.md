@@ -8,6 +8,15 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- Owned control-map snapshots: copy mutable node and policy state under
+  the store lock, then filter/sort outside it; preallocate and compact the
+  peer array. Repeated/reordered identical endpoint reports no longer
+  rewrite the store or wake readers. Tests cover snapshot isolation and
+  no-op behavior. Repeated synthetic benchmarks cut 10,000-node map
+  allocations from ~11.1MB to ~2.32MB; mixed-load latency is not uniformly
+  improved and changed-endpoint persistence remains the main bottleneck.
+  Both before/after results are retained in docs/benchmarks.
+
 - Opt-in sustained HTTP mixed-load harness: map reads, changing endpoint
   updates, real registration attempts with admission limits left enabled,
   cancellable polls and connection churn. Committed 10-second local

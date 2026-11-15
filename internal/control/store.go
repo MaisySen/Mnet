@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -358,7 +359,7 @@ func (s *Store) AuthorizeNode(nodeID, token string) (*netmap.Node, error) {
 	if s.data.NodeTokens[nodeID] != token || token == "" {
 		return nil, ErrUnauthorized
 	}
-	c := *n
+	c := cloneNode(n)
 	return &c, nil
 }
 
@@ -421,14 +422,24 @@ func (s *Store) SetEndpoints(nodeID string, eps []string) error {
 	if n == nil {
 		return ErrNotFound
 	}
+
 	clean := make([]string, 0, len(eps))
-	for _, e := range eps {
-		if _, _, err := net.SplitHostPort(e); err == nil {
-			clean = append(clean, e)
+	for _, endpoint := range eps {
+		if _, _, err := net.SplitHostPort(endpoint); err == nil {
+			clean = append(clean, endpoint)
 		}
 	}
-	n.Endpoints = clean
+	sort.Strings(clean)
+	clean = slices.Compact(clean)
+	previous := append([]string(nil), n.Endpoints...)
+	sort.Strings(previous)
+	previous = slices.Compact(previous)
 	n.LastSeen = time.Now().UTC()
+	if slices.Equal(previous, clean) {
+		return nil
+	}
+	n.Endpoints = clean
+
 	if err := s.saveLocked(); err != nil {
 		return err
 	}
@@ -437,29 +448,57 @@ func (s *Store) SetEndpoints(nodeID string, eps []string) error {
 }
 
 // Map builds the network map for a node.
+// cloneNode makes a detached value, including all mutable nested data.
+func cloneNode(n *netmap.Node) netmap.Node {
+	c := *n
+	c.Endpoints = append([]string(nil), n.Endpoints...)
+	c.Routes = append([]string(nil), n.Routes...)
+	if n.KeyExpiry != nil {
+		expiry := *n.KeyExpiry
+		c.KeyExpiry = &expiry
+	}
+	return c
+}
+func cloneNetwork(n *netmap.Network) netmap.Network {
+	c := *n
+	if n.ACL != nil {
+		c.ACL = &netmap.ACLPolicy{Rules: append([]netmap.ACLRule(nil), n.ACL.Rules...)}
+	}
+	return c
+}
+
 func (s *Store) Map(nodeID string) (*netmap.Map, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	self := s.data.Nodes[nodeID]
 	if self == nil {
+		s.mu.Unlock()
 		return nil, ErrNotFound
 	}
 	network := s.data.Networks[self.NetworkID]
 	if network == nil {
+		s.mu.Unlock()
 		return nil, ErrNotFound
 	}
-	m := &netmap.Map{
-		Version:   s.version,
-		Network:   *network,
-		Self:      *self,
-		Generated: time.Now().UTC(),
-	}
+	m := &netmap.Map{Version: s.version, Network: cloneNetwork(network), Self: cloneNode(self), Generated: time.Now().UTC()}
+	// Snapshot only while holding the lock. ACL evaluation, sorting and
+	// subsequent HTTP encoding work on owned values outside the store lock.
+	peers := make([]netmap.Node, 0, len(s.data.Nodes))
 	for _, n := range s.data.Nodes {
 		if n.NetworkID == self.NetworkID && n.ID != self.ID && n.Approved {
-			if c := filterPeer(network.ACL, self, n); c != nil {
-				m.Peers = append(m.Peers, *c)
-			}
+			peers = append(peers, cloneNode(n))
 		}
+	}
+	s.mu.Unlock()
+	visible := 0
+	for i := range peers {
+		if filterPeerInPlace(m.Network.ACL, &m.Self, &peers[i]) {
+			peers[visible] = peers[i]
+			visible++
+		}
+	}
+	clear(peers[visible:])
+	if visible > 0 {
+		m.Peers = peers[:visible]
 	}
 	sort.Slice(m.Peers, func(i, j int) bool { return m.Peers[i].IPv4 < m.Peers[j].IPv4 })
 	return m, nil
@@ -473,7 +512,7 @@ func (s *Store) Network(idOrName string) *netmap.Network {
 	if n == nil {
 		return nil
 	}
-	c := *n
+	c := cloneNetwork(n)
 	return &c
 }
 
@@ -491,6 +530,9 @@ func (s *Store) SetACL(networkID string, pol *netmap.ACLPolicy) error {
 	}
 	if pol != nil && len(pol.Rules) == 0 {
 		pol = nil
+	}
+	if pol != nil {
+		pol = &netmap.ACLPolicy{Rules: append([]netmap.ACLRule(nil), pol.Rules...)}
 	}
 	n.ACL = pol
 	if err := s.saveLocked(); err != nil {
@@ -598,11 +640,11 @@ func (s *Store) Snapshot() *Snapshot {
 	defer s.mu.Unlock()
 	snap := &Snapshot{}
 	for _, n := range s.data.Networks {
-		c := *n
+		c := cloneNetwork(n)
 		snap.Networks = append(snap.Networks, &c)
 	}
 	for _, n := range s.data.Nodes {
-		c := *n
+		c := cloneNode(n)
 		snap.Nodes = append(snap.Nodes, &c)
 	}
 	for _, k := range s.data.AuthKeys {

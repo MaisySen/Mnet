@@ -104,3 +104,40 @@ This short test is local and synthetic, with one process and two Go
 workers. It is not a soak test, independent-client validation or a certified
 fleet size. It gives stronger evidence for the store bottleneck and a
 repeatable way to measure changes before choosing a production architecture.
+
+## Owned snapshots and no-op endpoint reports
+
+The next implementation copies node/ACL values while holding the store
+lock, then filters and sorts its owned snapshot after releasing that lock.
+It also preallocates and compacts the peer array instead of repeatedly
+growing it. Returned maps no longer alias live endpoint/route/ACL slices.
+Unchanged endpoint sets, including reordered or duplicated reports, refresh
+in-memory LastSeen without rewriting the JSON store or waking map readers.
+Changed endpoint sets still persist before publishing a new version.
+
+Same host, GOMAXPROCS=2, three 500ms benchmark runs:
+
+- 10,000-node map construction: 6.67-7.58ms and 2.32MB allocated per map,
+  versus the earlier 13.77-15.54ms and 11.10MB. These are microbenchmarks,
+  not independent production measurements or confidence intervals.
+- HTTP map throughput timing at 10,000 nodes: 21.03-23.14ms/op versus
+  28.99-34.15ms/op. These remain amortized timings, not latency percentiles.
+- Unchanged endpoint report: about 178-199ns/op and 32 bytes allocated
+  in-process. This measures the new no-op path, not an HTTP request or a
+  persisted update. The persistence benchmark now deliberately changes
+  the endpoint each iteration so it cannot silently measure that shortcut.
+  A changed update at 10,000 nodes still costs 46.1-47.4ms in this profile.
+
+Repeating the 10-second changing-endpoint mixed-load profiles produced:
+
+| Initial seeded nodes | Completed requests/sec | Map p95 | Endpoint-update p95 |
+| --- | --- | --- | --- |
+| 1,000 | 353.4 | 95.7ms | 77.3ms |
+| 10,000 | 36.6 | 718.0ms | 494.2ms |
+
+No unexpected errors were observed, with rate limits and intentional poll
+cancellations still counted separately. Throughput increased, but latency
+is not uniformly better: the 1,000-node profile's p95 values worsened in
+this repeat. Whole-store persistence still dominates mixed load. These
+short samples cannot establish stable SLOs; retain both sets of raw
+results rather than selecting only favorable numbers.

@@ -82,29 +82,26 @@ func filterRoutes(pol *netmap.ACLPolicy, viewer, peer *netmap.Node) []string {
 	return out
 }
 
-// filterPeer applies the network policy to one peer in viewer's map.
-// Returns nil when the pair may not connect at all. Routes the viewer may
-// not use are stripped, and the exit-node offer is hidden unless a rule
-// allows the viewer internet access through it ("*" or 0.0.0.0/0).
-func filterPeer(pol *netmap.ACLPolicy, viewer, peer *netmap.Node) *netmap.Node {
+// filterPeerInPlace filters an already detached peer snapshot, avoiding
+// an allocation for each peer. Only snapshot-owned memory may be passed.
+func filterPeerInPlace(pol *netmap.ACLPolicy, viewer, peer *netmap.Node) bool {
 	if !allowsPair(pol, viewer, peer) {
-		return nil
+		return false
 	}
-	c := *peer
-	c.Routes = filterRoutes(pol, viewer, peer)
-	if c.ExitNode && pol != nil && len(pol.Rules) > 0 {
+	peer.Routes = filterRoutes(pol, viewer, peer)
+	if peer.ExitNode && pol != nil && len(pol.Rules) > 0 {
 		allowed := false
-		for _, r := range pol.Rules {
-			if matchNode(r.Src, viewer) && (r.Dst == "*" || r.Dst == "0.0.0.0/0" || matchNode(r.Dst, peer)) {
+		for _, rule := range pol.Rules {
+			if matchNode(rule.Src, viewer) && (rule.Dst == "*" || rule.Dst == "0.0.0.0/0" || matchNode(rule.Dst, peer)) {
 				allowed = true
 				break
 			}
 		}
 		if !allowed {
-			c.ExitNode = false
+			peer.ExitNode = false
 		}
 	}
-	return &c
+	return true
 }
 
 // validateACL sanity checks a policy before storing: src must be "*" or a

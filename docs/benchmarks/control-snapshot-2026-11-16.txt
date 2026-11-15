@@ -1,0 +1,42 @@
+goos: linux
+goarch: amd64
+pkg: fintex.au/mnet/internal/control
+cpu: Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz
+BenchmarkNetworkMapScale/100-2        	   15272	     38928 ns/op	   24008 B/op	     105 allocs/op
+BenchmarkNetworkMapScale/100-2        	   15357	     40268 ns/op	   24008 B/op	     105 allocs/op
+BenchmarkNetworkMapScale/100-2        	   15243	     40091 ns/op	   24008 B/op	     105 allocs/op
+BenchmarkNetworkMapScale/1000-2       	    1101	    498504 ns/op	  237836 B/op	    1005 allocs/op
+BenchmarkNetworkMapScale/1000-2       	    1198	    478687 ns/op	  237834 B/op	    1005 allocs/op
+BenchmarkNetworkMapScale/1000-2       	    1210	    501291 ns/op	  237833 B/op	    1005 allocs/op
+BenchmarkNetworkMapScale/10000-2      	      98	   6666092 ns/op	 2323336 B/op	   10005 allocs/op
+BenchmarkNetworkMapScale/10000-2      	     100	   7065895 ns/op	 2323336 B/op	   10005 allocs/op
+BenchmarkNetworkMapScale/10000-2      	      73	   7582810 ns/op	 2323336 B/op	   10005 allocs/op
+BenchmarkMapHTTPScale/100-2           	    2730	    211218 ns/op	   43957 B/op	     426 allocs/op
+BenchmarkMapHTTPScale/100-2           	    2690	    210336 ns/op	   43896 B/op	     426 allocs/op
+BenchmarkMapHTTPScale/100-2           	    2649	    208776 ns/op	   43943 B/op	     426 allocs/op
+BenchmarkMapHTTPScale/1000-2          	     291	   2046454 ns/op	  384626 B/op	    3130 allocs/op
+BenchmarkMapHTTPScale/1000-2          	     280	   2135824 ns/op	  380613 B/op	    3130 allocs/op
+BenchmarkMapHTTPScale/1000-2          	     282	   2221403 ns/op	  380437 B/op	    3130 allocs/op
+BenchmarkMapHTTPScale/10000-2         	      25	  23143118 ns/op	 3967231 B/op	   30138 allocs/op
+BenchmarkMapHTTPScale/10000-2         	      30	  22220640 ns/op	 3855890 B/op	   30137 allocs/op
+BenchmarkMapHTTPScale/10000-2         	      31	  21030981 ns/op	 3837886 B/op	   30138 allocs/op
+BenchmarkEndpointPersistenceScale/100-2         	    1188	    475724 ns/op	  122191 B/op	     521 allocs/op
+BenchmarkEndpointPersistenceScale/100-2         	    1237	    482589 ns/op	  122294 B/op	     521 allocs/op
+BenchmarkEndpointPersistenceScale/100-2         	    1300	    475487 ns/op	  122131 B/op	     521 allocs/op
+BenchmarkEndpointPersistenceScale/1000-2        	     124	   4839423 ns/op	 1246272 B/op	    5026 allocs/op
+BenchmarkEndpointPersistenceScale/1000-2        	     130	   4356344 ns/op	 1169324 B/op	    5024 allocs/op
+BenchmarkEndpointPersistenceScale/1000-2        	     134	   4391196 ns/op	 1168839 B/op	    5024 allocs/op
+BenchmarkEndpointPersistenceScale/10000-2       	      12	  46069714 ns/op	17728025 B/op	   50049 allocs/op
+BenchmarkEndpointPersistenceScale/10000-2       	      12	  46452107 ns/op	16329980 B/op	   50045 allocs/op
+BenchmarkEndpointPersistenceScale/10000-2       	      12	  47375332 ns/op	17028958 B/op	   50047 allocs/op
+BenchmarkUnchangedEndpoints/100-2               	 3420883	       181.0 ns/op	      32 B/op	       2 allocs/op
+BenchmarkUnchangedEndpoints/100-2               	 3268449	       177.9 ns/op	      32 B/op	       2 allocs/op
+BenchmarkUnchangedEndpoints/100-2               	 3347516	       180.6 ns/op	      32 B/op	       2 allocs/op
+BenchmarkUnchangedEndpoints/1000-2              	 3286008	       179.3 ns/op	      32 B/op	       2 allocs/op
+BenchmarkUnchangedEndpoints/1000-2              	 3341083	       181.3 ns/op	      32 B/op	       2 allocs/op
+BenchmarkUnchangedEndpoints/1000-2              	 3305971	       184.1 ns/op	      32 B/op	       2 allocs/op
+BenchmarkUnchangedEndpoints/10000-2             	 3025945	       198.7 ns/op	      32 B/op	       2 allocs/op
+BenchmarkUnchangedEndpoints/10000-2             	 2989981	       199.2 ns/op	      32 B/op	       2 allocs/op
+BenchmarkUnchangedEndpoints/10000-2             	 3057625	       198.0 ns/op	      32 B/op	       2 allocs/op
+PASS
+ok  	fintex.au/mnet/internal/control	30.408s

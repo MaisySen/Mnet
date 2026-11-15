@@ -130,6 +130,23 @@ func BenchmarkEndpointPersistenceScale(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
+				if err := s.SetEndpoints("node-000000", []string{fmt.Sprintf("192.0.2.1:%d", 10000+i%50000)}); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+// Separate no-op profile: a periodic discovery report that changes nothing
+// must not be compared against the persisted-changing-endpoint baseline.
+func BenchmarkUnchangedEndpoints(b *testing.B) {
+	for _, size := range []int{100, 1000, 10000} {
+		b.Run(fmt.Sprint(size), func(b *testing.B) {
+			s := scaleStore(b, size)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
 				if err := s.SetEndpoints("node-000000", []string{"192.0.2.1:12345"}); err != nil {
 					b.Fatal(err)
 				}
