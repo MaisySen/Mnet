@@ -118,3 +118,13 @@ passwords on top of the mesh.
   chat) (done; key text injection intentionally out of v1)
 - iOS: viewer only; hosting needs ReplayKit and is parked with the
   Apple account work
+
+Text injection on Linux hosts is selectable with MNET_TEXT_MODE:
+auto (default) types per rune via keysyms on X11 (remapping a spare
+keycode for characters outside the current layout, so Unicode works)
+and via ydotool type on Wayland. MNET_TEXT_MODE=clipboard instead
+sets the clipboard (xclip/xsel on X11, wl-copy on Wayland) and
+injects Ctrl+V, which pastes any text the tool accepts but clobbers
+the user's clipboard. Frames stream as dirty-tile deltas (64x64 JPEG
+tiles) when only part of the screen changes, with a full keyframe
+every 100 frames; viewers composite tiles onto the base frame.

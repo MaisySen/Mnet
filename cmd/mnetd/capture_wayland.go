@@ -22,8 +22,8 @@ import (
 // which is later work.
 
 type waylandCapturer struct {
-	w, h  int
-	last  []byte
+	w, h int
+	last []byte
 }
 
 func newWaylandCapturer() (session.Capturer, error) {
@@ -104,6 +104,7 @@ func toRGBADownscale(src image.Image, factor int) *image.RGBA {
 // compositors map it to the focused output, matching grim's capture.
 type waylandInjector struct {
 	scaleX, scaleY float64
+	textMode       string
 }
 
 func newWaylandInjector() session.Injector {
@@ -151,7 +152,7 @@ func (i *waylandInjector) Inject(ev session.InputEvent) error {
 		}
 	case "key":
 		if ev.Text != "" {
-			return run("ydotool", "type", "--", ev.Text)
+			return i.TypeText(ev.Text)
 		}
 	}
 	return nil

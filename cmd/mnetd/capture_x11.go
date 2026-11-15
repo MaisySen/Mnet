@@ -26,6 +26,8 @@ type x11Host struct {
 	last     []byte
 	lastRGBA *image.RGBA
 	jpegQ    int
+	textMode string
+	remapKC  byte
 }
 
 func newX11Capturer() (session.Capturer, error) {
@@ -204,19 +206,8 @@ func (x *x11Host) Inject(ev session.InputEvent) error {
 			xtest.FakeInput(x.conn, xproto.ButtonRelease, btn, 0, x.root, 0, 0, 0)
 		}
 	case "key":
-		// Key text arrives as characters; map via the keyboard's own
-		// layout using keysyms for ASCII, the common case.
-		for _, r := range ev.Text {
-			code, ok := keysymFor(r)
-			if !ok {
-				continue
-			}
-			kc := keycodeFor(x.conn, code)
-			if kc == 0 {
-				continue
-			}
-			xtest.FakeInput(x.conn, xproto.KeyPress, kc, 0, x.root, 0, 0, 0)
-			xtest.FakeInput(x.conn, xproto.KeyRelease, kc, 0, x.root, 0, 0, 0)
+		if ev.Text != "" {
+			return x.TypeText(ev.Text)
 		}
 	}
 	x.conn.Sync()
@@ -232,16 +223,6 @@ func buttonCode(name string) byte {
 	default:
 		return 1
 	}
-}
-
-// keysymFor maps ASCII runes to X keysyms. ASCII keysyms equal their
-// rune values; space and a few punctuation marks are covered by the
-// same rule.
-func keysymFor(r rune) (xproto.Keysym, bool) {
-	if r >= 0x20 && r < 0x7f {
-		return xproto.Keysym(r), true
-	}
-	return 0, false
 }
 
 // keycodeFor finds the keycode that produces a keysym in the current

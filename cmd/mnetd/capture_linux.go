@@ -36,11 +36,23 @@ func newCapturer() (session.Capturer, error) {
 }
 
 func newInjector() (session.Injector, error) {
+	mode := os.Getenv("MNET_TEXT_MODE")
 	if onWayland() {
 		if !have("ydotool") {
 			return nil, fmt.Errorf("Wayland session but ydotool not installed; install ydotool or use an X11 session")
 		}
-		return newWaylandInjector(), nil
+		inj := newWaylandInjector()
+		if w, ok := inj.(*waylandInjector); ok {
+			w.textMode = resolveTextMode(mode, "wayland", have)
+		}
+		return inj, nil
 	}
-	return newX11Injector()
+	inj, err := newX11Injector()
+	if err != nil {
+		return nil, err
+	}
+	if x, ok := inj.(*x11Host); ok {
+		x.textMode = resolveTextMode(mode, "x11", have)
+	}
+	return inj, nil
 }
