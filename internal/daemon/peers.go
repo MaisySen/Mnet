@@ -383,41 +383,7 @@ func (d *Daemon) pathLoop(ctx context.Context) {
 		if d.dev == nil {
 			continue
 		}
-		stats := d.stats()
-		now := time.Now()
-		changed := false
-		d.peersMu.Lock()
-		for pk, st := range d.peers {
-			s := stats[pk]
-			healthy := s != nil && s.handshake > 0 && now.Unix()-s.handshake < 90
-			if healthy {
-				// A working direct path leaves relay mode behind.
-				if st.onRelay && s != nil && !strings.HasPrefix(s.endpoint, bind.RelayPrefix) && s.endpoint != "" {
-					st.onRelay = false
-					changed = true
-				}
-				continue
-			}
-			if !st.onRelay {
-				// Rotate candidates, then give up to the relay.
-				if len(st.node.Endpoints) == 0 || now.Sub(st.lastSwitch) > 30*time.Second {
-					st.onRelay = true
-					st.lastSwitch = now
-					changed = true
-				} else if now.Sub(st.lastSwitch) > 5*time.Second {
-					st.cycle++
-					st.lastSwitch = now
-					changed = true
-				}
-			} else if len(st.node.Endpoints) > 0 && now.Sub(st.lastDirectTry) > 90*time.Second {
-				// Retry direct now and then; roaming keeps it if it works.
-				st.onRelay = false
-				st.lastSwitch = now
-				st.lastDirectTry = now
-				changed = true
-			}
-		}
-		d.peersMu.Unlock()
+		changed := d.selectPaths(d.stats(), time.Now())
 		if changed {
 			d.refreshPaths()
 		}
@@ -495,4 +461,45 @@ func (d *Daemon) PeerStatuses() []PeerStatus {
 		out = append(out, ps)
 	}
 	return out
+}
+
+func (d *Daemon) selectPaths(stats map[string]*peerStats, now time.Time) bool {
+	changed := false
+	d.peersMu.Lock()
+	for pk, st := range d.peers {
+		s := stats[pk]
+		healthy := s != nil && s.handshake > 0 && now.Unix()-s.handshake < 90
+		direct := s != nil && s.endpoint != "" && !strings.HasPrefix(s.endpoint, bind.RelayPrefix)
+		// A healthy relay must not suppress direct probing forever.
+		// Preserve roaming to an already working direct endpoint first.
+		if st.onRelay && !(healthy && direct) && len(st.node.Endpoints) > 0 && now.Sub(st.lastDirectTry) > 90*time.Second {
+			st.onRelay = false
+			st.lastSwitch = now
+			st.lastDirectTry = now
+			changed = true
+			continue
+		}
+		if healthy {
+			// A working direct path leaves relay mode behind.
+			if st.onRelay && s != nil && !strings.HasPrefix(s.endpoint, bind.RelayPrefix) && s.endpoint != "" {
+				st.onRelay = false
+				changed = true
+			}
+			continue
+		}
+		if !st.onRelay {
+			// Rotate candidates, then give up to the relay.
+			if len(st.node.Endpoints) == 0 || now.Sub(st.lastSwitch) > 30*time.Second {
+				st.onRelay = true
+				st.lastSwitch = now
+				changed = true
+			} else if now.Sub(st.lastSwitch) > 5*time.Second {
+				st.cycle++
+				st.lastSwitch = now
+				changed = true
+			}
+		}
+	}
+	d.peersMu.Unlock()
+	return changed
 }
