@@ -206,14 +206,11 @@ print(json.dumps(k))
             wait_for(lambda: local_api(state), 'local API ' + x)
             if x == 'b':
                 run(*ns('b', sys.executable, '-c', "from pathlib import Path; Path('/proc/sys/net/ipv4/ip_forward').write_text('0')"))
-                try:
-                    local_api(state, 'up', {'server': 'http://198.18.10.1:8080', 'network': 'kerneltest', 'name': x, 'auth_key': key, 'advertise_routes': ['10.9.0.0/24']})
-                except RuntimeError:
-                    pass
-                else:
-                    raise RuntimeError('serving Up succeeded without operator forwarding prerequisite')
-                if local_api(state)['status'] != 'down':
-                    raise RuntimeError('failed serving setup left daemon running')
+                local_api(state, 'up', {'server': 'http://198.18.10.1:8080', 'network': 'kerneltest', 'name': x, 'auth_key': key, 'advertise_routes': ['10.9.0.0/24']})
+                # Up is asynchronous: HTTP 200 only acknowledges starting.
+                # Wait for the actual daemon failure instead of treating the
+                # acknowledgment itself as successful serving setup.
+                wait_for(lambda: (s := local_api(state))['status'] == 'down' and 'operator-enabled IPv4 forwarding' in s.get('last_error', ''), 'serving setup fails without forwarding')
                 if any(link['ifname'] == 'mnet0' for link in json.loads(run('ip', '-n', spaces['b'], '-j', 'link', 'show'))):
                     raise RuntimeError('failed serving setup leaked kernel TUN')
                 serving_state(False, '0')
