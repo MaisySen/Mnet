@@ -8,6 +8,12 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- Scale baseline: reproducible map/HTTP/persistence benchmarks at 100,
+  1,000 and 10,000 synthetic nodes, plus a race-tested 1,000-watcher
+  cancellation regression. Full results and measurement limits are in
+  docs/scale-testing.md. This identifies single-lock/whole-file-store
+  bottlenecks; it does not claim production fleet capacity.
+
 - Lifecycle hardening: daemon Down cancels and joins its background loops
   before clearing the device and DNS; endpoint reports honor cancellation.
   Map snapshots and device stats use locks. Fresh race testing found the
