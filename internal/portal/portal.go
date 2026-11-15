@@ -152,6 +152,12 @@ func (c *Client) OpenMonitor() (*Stream, error) {
 	if c.RestoreToken != "" {
 		selOpts["restore_token"] = c.RestoreToken
 	}
+	opened := false
+	defer func() {
+		if !opened {
+			_, _ = c.bus.CallOn(session, "org.freedesktop.portal.Session", "Close")
+		}
+	}()
 	reply, err = c.bus.Call(ifaceScreenCast, "SelectSources", session, selOpts)
 	if err != nil {
 		return nil, fmt.Errorf("SelectSources: %w", err)
@@ -186,6 +192,7 @@ func (c *Client) OpenMonitor() (*Stream, error) {
 	if !ok {
 		return nil, fmt.Errorf("OpenPipeWireRemote reply without a file descriptor")
 	}
+	opened = true
 	return &Stream{NodeID: node, Width: w, Height: h, FD: fd, session: session, bus: c.bus, RestoreToken: restoreToken}, nil
 }
 
@@ -209,7 +216,10 @@ func (c *Client) await(reply []any, what string) (Response, error) {
 		timeout = 5 * time.Minute
 	}
 	select {
-	case r := <-ch:
+	case r, ok := <-ch:
+		if !ok {
+			return Response{}, fmt.Errorf("%s: portal connection closed", what)
+		}
 		switch r.Code {
 		case 0:
 			return r, nil

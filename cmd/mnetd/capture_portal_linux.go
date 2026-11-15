@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"fintex.au/mnet/internal/portal"
@@ -30,13 +31,14 @@ import (
 // below the D-Bus socket is unit tested.
 
 type portalCapturer struct {
-	stream   *portal.Stream
-	pwfd     *os.File
-	pump     *portal.Pump
-	raw      []byte
-	last     []byte
-	lastRGBA *image.RGBA
-	jpegQ    atomic.Int32
+	stream    *portal.Stream
+	pwfd      *os.File
+	pump      *portal.Pump
+	raw       []byte
+	last      []byte
+	lastRGBA  *image.RGBA
+	jpegQ     atomic.Int32
+	closeOnce sync.Once
 }
 
 // newPortalCapturerFor negotiates a portal stream, persisting the
@@ -57,19 +59,21 @@ func newPortalCapturerFor(stateDir string) (session.Capturer, error) {
 	if stream.RestoreToken != "" {
 		savePortalToken(stateDir, stream.RestoreToken)
 	}
-	if stream.Width <= 0 || stream.Height <= 0 {
-		_ = stream.Close()
-		return nil, fmt.Errorf("portal: compositor reported no stream size; cannot pace raw frames")
-	}
-	scale := capScale(stream.Width, stream.Height)
-	w, h := stream.Width/scale, stream.Height/scale
 	pwfd := os.NewFile(uintptr(stream.FD), "mnet-pipewire")
 	if pwfd == nil {
 		_ = stream.Close()
 		return nil, fmt.Errorf("portal: bad PipeWire fd")
 	}
+	if stream.Width <= 0 || stream.Height <= 0 || stream.Width > 16384 || stream.Height > 16384 {
+		_ = pwfd.Close()
+		_ = stream.Close()
+		return nil, fmt.Errorf("portal: compositor reported no stream size; cannot pace raw frames")
+	}
+	scale := capScale(stream.Width, stream.Height)
+	w, h := stream.Width/scale, stream.Height/scale
 	pump, err := portal.StartPump(stream, pwfd, w, h)
 	if err != nil {
+		_ = pwfd.Close()
 		_ = stream.Close()
 		return nil, err
 	}
@@ -105,7 +109,25 @@ func savePortalToken(stateDir, token string) {
 		log.Printf("mnetd: portal token: %v", err)
 		return
 	}
-	if err := os.WriteFile(portalTokenPath(stateDir), []byte(token+"\n"), 0600); err != nil {
+	f, err := os.CreateTemp(stateDir, ".portal-token-*")
+	if err != nil {
+		log.Printf("mnetd: portal token: %v", err)
+		return
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
+	_, err = f.WriteString(token + "\n")
+	if err == nil {
+		err = f.Sync()
+	}
+	cerr := f.Close()
+	if err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(tmp, portalTokenPath(stateDir))
+	}
+	if err != nil {
 		log.Printf("mnetd: portal token: %v", err)
 	}
 }
@@ -186,4 +208,21 @@ func (c *portalCapturer) CaptureDelta() ([]byte, []session.Tile, error) {
 	c.lastRGBA = img
 	c.last = buf.Bytes()
 	return buf.Bytes(), nil, nil
+}
+
+// Close interrupts a blocked frame read before the host waits for its
+// screen goroutine. Each session owns its helper, descriptor and portal.
+func (c *portalCapturer) Close() error {
+	c.closeOnce.Do(func() {
+		if c.pump != nil {
+			_ = c.pump.Close()
+		}
+		if c.pwfd != nil {
+			_ = c.pwfd.Close()
+		}
+		if c.stream != nil {
+			_ = c.stream.Close()
+		}
+	})
+	return nil
 }

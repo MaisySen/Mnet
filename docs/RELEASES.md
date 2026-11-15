@@ -8,6 +8,24 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- Lifecycle hardening: daemon Down cancels and joins its background loops
+  before clearing the device and DNS; endpoint reports honor cancellation.
+  Map snapshots and device stats use locks. Fresh race testing found the
+  shutdown/map race and a separate relay ping/data concurrent-writer race.
+  Relay ping and packets now share one writer; disconnect/replacement stops
+  that writer, unblocks the reader and removes stale presence records.
+  Regression tests exercise status during rejoin/shutdown and relay
+  replacement during active forwarding.
+
+- Portal wire hardening: subscribe to Response signals before making
+  portal calls, preserve object-path argument types, bound method calls,
+  and close sessions after failed setup. A real private D-Bus test enforces
+  method signatures, sends responses before method replies, parses real
+  structured streams, and transfers a Unix descriptor. This is protocol
+  testing, not a GNOME screen-capture pass. Portal host shutdown now kills
+  the helper and unblocks capture, closes descriptors and ends the portal
+  session; restore tokens are replaced atomically with private permissions.
+
 - Queue payload ownership: asynchronous session sends copy caller buffers
   before returning. A deterministic regression reproduced corruption when
   SendFile reused its chunk buffer; the TCP test now uses random bytes

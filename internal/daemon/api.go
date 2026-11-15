@@ -29,7 +29,6 @@ type Status struct {
 // Status renders current state.
 func (d *Daemon) Status() *Status {
 	d.mu.Lock()
-	defer d.mu.Unlock()
 	st := &Status{
 		Status:      d.status,
 		Version:     version.Version,
@@ -44,6 +43,7 @@ func (d *Daemon) Status() *Status {
 		st.IPv4 = d.lastMap.Self.IPv4
 		st.Network = d.lastMap.Network.Name
 	}
+	d.mu.Unlock()
 	st.Peers = d.PeerStatuses()
 	return st
 }

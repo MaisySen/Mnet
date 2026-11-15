@@ -45,8 +45,11 @@ type Config struct {
 
 // Daemon is the running node.
 type Daemon struct {
-	cfg   Config
-	state *State
+	cfg         Config
+	state       *State
+	lifecycleMu sync.Mutex
+	loops       sync.WaitGroup
+	deviceMu    sync.RWMutex
 
 	mu     sync.Mutex
 	status string // down, joining, waiting-approval, up
@@ -115,6 +118,8 @@ func (d *Daemon) SetRouting(advertiseExit bool, routes []string, useExit string)
 // Up brings the mesh up. server, network and authKey are only needed on the
 // first join; after that the saved state is enough.
 func (d *Daemon) Up(server, network, nodeName, authKey string) error {
+	d.lifecycleMu.Lock()
+	defer d.lifecycleMu.Unlock()
 	d.mu.Lock()
 	if d.status != "down" {
 		d.mu.Unlock()
@@ -183,7 +188,9 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 		cancel()
 		return fmt.Errorf("first map: %w", err)
 	}
+	d.mu.Lock()
 	d.lastMap = m
+	d.mu.Unlock()
 	if d.state.ExitNode || len(d.state.AdvertiseRoutes) > 0 {
 		if err := ifacectl.EnableServing(d.state.AdvertiseRoutes); err != nil {
 			log.Printf("mnetd: serving setup: %v", err)
@@ -217,10 +224,10 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 	d.status = "up"
 	d.mu.Unlock()
 
-	go d.mapLoop(ctx)
-	go d.endpointLoop(ctx)
-	go d.pathLoop(ctx)
-	go d.relayLoop(ctx)
+	for _, loop := range []func(context.Context){d.mapLoop, d.endpointLoop, d.pathLoop, d.relayLoop} {
+		d.loops.Add(1)
+		go func(f func(context.Context)) { defer d.loops.Done(); f(ctx) }(loop)
+	}
 	return nil
 }
 
@@ -312,7 +319,7 @@ func (d *Daemon) rejoin(ctx context.Context) {
 	defer d.joinMu.Unlock()
 	if d.state.AuthKey == "" {
 		log.Printf("mnetd: control plane no longer knows this node and no auth key is saved; re-run `mnetd -up -auth-key ...`")
-		time.Sleep(30 * time.Second)
+		waitContext(ctx, 30*time.Second)
 		return
 	}
 	log.Printf("mnetd: control plane no longer knows this node; re-joining")
@@ -320,7 +327,7 @@ func (d *Daemon) rejoin(ctx context.Context) {
 	d.state.NodeToken = ""
 	if err := d.joinLocked(ctx, d.state.AuthKey); err != nil {
 		log.Printf("mnetd: rejoin: %v", err)
-		time.Sleep(10 * time.Second)
+		waitContext(ctx, 10*time.Second)
 	}
 }
 
@@ -344,7 +351,9 @@ func (d *Daemon) startDevice() error {
 	}
 	logger := device.NewLogger(level, "mnetd: ")
 	dev := device.NewDevice(t, b, logger)
+	d.deviceMu.Lock()
 	d.tun, d.bind, d.dev = t, b, dev
+	d.deviceMu.Unlock()
 
 	b.SetStunHandler(d.onStun)
 
@@ -361,6 +370,8 @@ func (d *Daemon) startDevice() error {
 }
 
 func (d *Daemon) stopDevice() {
+	d.deviceMu.Lock()
+	defer d.deviceMu.Unlock()
 	if d.dev != nil {
 		d.dev.Close()
 		d.dev = nil
@@ -379,6 +390,16 @@ func (d *Daemon) Down() {
 	if cancel != nil {
 		cancel()
 	}
+	d.lifecycleMu.Lock()
+	defer d.lifecycleMu.Unlock()
+	// Up may have published its cancellation function after the first read.
+	d.mu.Lock()
+	cancel = d.cancel
+	d.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	d.loops.Wait()
 	d.stopDevice()
 	d.setDown()
 }
@@ -404,4 +425,18 @@ func base64DecodeKey(s string) ([]byte, error) {
 		return nil, fmt.Errorf("bad stored key")
 	}
 	return b, nil
+}
+
+func waitContext(ctx context.Context, duration time.Duration) {
+	t := time.NewTimer(duration)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+	case <-t.C:
+	}
+}
+func (d *Daemon) currentMap() *netmap.Map {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.lastMap
 }

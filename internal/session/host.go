@@ -2,6 +2,7 @@ package session
 
 import (
 	"encoding/json"
+	"io"
 	"sync"
 	"time"
 )
@@ -272,6 +273,9 @@ func (h *Host) Stop() {
 	h.stopOnce.Do(func() {
 		close(h.stop)
 		h.Mux.Close()
+		if closer, ok := h.Cap.(io.Closer); ok {
+			_ = closer.Close()
+		}
 		h.wg.Wait()
 	})
 }

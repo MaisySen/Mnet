@@ -3,6 +3,7 @@
 package control
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
@@ -121,6 +122,11 @@ func (s *Store) Version() int64 {
 // WaitForChange blocks until the network's map version exceeds since or the
 // timeout passes. Returns the new version.
 func (s *Store) WaitForChange(networkID string, since int64, timeout time.Duration) int64 {
+	return s.WaitForChangeContext(context.Background(), networkID, since, timeout)
+}
+
+// WaitForChangeContext releases its watcher promptly when a client leaves.
+func (s *Store) WaitForChangeContext(ctx context.Context, networkID string, since int64, timeout time.Duration) int64 {
 	s.mu.Lock()
 	if s.version > since {
 		v := s.version
@@ -137,6 +143,7 @@ func (s *Store) WaitForChange(networkID string, since int64, timeout time.Durati
 	t := time.NewTimer(timeout)
 	defer t.Stop()
 	select {
+	case <-ctx.Done():
 	case <-ch:
 	case <-t.C:
 	}

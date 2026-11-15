@@ -45,6 +45,8 @@ type peerTrack struct {
 
 // applyMap writes the map into the WireGuard device.
 func (d *Daemon) applyMap(m *netmap.Map) {
+	d.deviceMu.RLock()
+	defer d.deviceMu.RUnlock()
 	if d.dev == nil {
 		return
 	}
@@ -62,6 +64,7 @@ func (d *Daemon) applyMap(m *netmap.Map) {
 		} else {
 			st.node = p
 		}
+		ep := st.currentEndpoint()
 		d.peersMu.Unlock()
 		fmt.Fprintf(&conf, "public_key=%s\n", hex.EncodeToString(pub))
 		fmt.Fprintf(&conf, "replace_allowed_ips=true\n")
@@ -74,7 +77,7 @@ func (d *Daemon) applyMap(m *netmap.Map) {
 			fmt.Fprintf(&conf, "allowed_ip=::/0\n")
 		}
 		fmt.Fprintf(&conf, "persistent_keepalive_interval=25\n")
-		if ep := st.currentEndpoint(); ep != "" {
+		if ep != "" {
 			fmt.Fprintf(&conf, "endpoint=%s\n", ep)
 		}
 	}
@@ -82,7 +85,9 @@ func (d *Daemon) applyMap(m *netmap.Map) {
 		d.setErr(fmt.Errorf("apply map: %w", err))
 		return
 	}
+	d.mu.Lock()
 	d.lastMap = m
+	d.mu.Unlock()
 	if d.dns != nil {
 		d.dns.Update(m)
 	}
@@ -141,8 +146,8 @@ func (d *Daemon) applyExitNode(m *netmap.Map) error {
 func (d *Daemon) mapLoop(ctx context.Context) {
 	for {
 		var since int64
-		if d.lastMap != nil {
-			since = d.lastMap.Version
+		if m := d.currentMap(); m != nil {
+			since = m.Version
 		}
 		m, err := d.client().WaitMap(ctx, since)
 		if err != nil {
@@ -153,7 +158,7 @@ func (d *Daemon) mapLoop(ctx context.Context) {
 				d.rejoin(ctx)
 				continue
 			}
-			time.Sleep(2 * time.Second)
+			waitContext(ctx, 2*time.Second)
 			continue
 		}
 		if m.Self.Approved {
@@ -166,7 +171,7 @@ func (d *Daemon) mapLoop(ctx context.Context) {
 func (d *Daemon) endpointLoop(ctx context.Context) {
 	changes := watchNetworkChanges(ctx)
 	for {
-		d.discoverEndpoints()
+		d.discoverEndpoints(ctx)
 		select {
 		case <-ctx.Done():
 			return
@@ -180,7 +185,7 @@ func (d *Daemon) endpointLoop(ctx context.Context) {
 	}
 }
 
-func (d *Daemon) discoverEndpoints() {
+func (d *Daemon) discoverEndpoints(ctx context.Context) {
 	if d.bind == nil || d.client() == nil {
 		return
 	}
@@ -199,7 +204,10 @@ func (d *Daemon) discoverEndpoints() {
 		_ = d.bind.WriteStun(req, srv)
 	}
 	// Give responses a moment, the handler fills stunResult.
-	time.Sleep(1200 * time.Millisecond)
+	waitContext(ctx, 1200*time.Millisecond)
+	if ctx.Err() != nil {
+		return
+	}
 	d.stunMu.Lock()
 	if d.stunResult != "" {
 		eps[d.stunResult] = true
@@ -222,7 +230,7 @@ func (d *Daemon) discoverEndpoints() {
 	for e := range eps {
 		out = append(out, e)
 	}
-	if err := d.client().ReportEndpoints(context.Background(), out); err != nil {
+	if err := d.client().ReportEndpoints(ctx, out); err != nil {
 		d.setErr(fmt.Errorf("report endpoints: %w", err))
 	}
 }
@@ -254,6 +262,8 @@ type peerStats struct {
 
 // stats reads every peer's counters from the device.
 func (d *Daemon) stats() map[string]*peerStats {
+	d.deviceMu.RLock()
+	defer d.deviceMu.RUnlock()
 	out := map[string]*peerStats{}
 	if d.dev == nil {
 		return out
@@ -352,8 +362,8 @@ func (d *Daemon) pathLoop(ctx context.Context) {
 			}
 		}
 		d.peersMu.Unlock()
-		if changed && d.lastMap != nil {
-			d.applyMap(d.lastMap)
+		if m := d.currentMap(); changed && m != nil {
+			d.applyMap(m)
 		}
 	}
 }
@@ -367,7 +377,7 @@ func (d *Daemon) relayLoop(ctx context.Context) {
 		default:
 		}
 		if d.dev == nil || d.client() == nil {
-			time.Sleep(time.Second)
+			waitContext(ctx, time.Second)
 			continue
 		}
 		r, err := d.client().DialRelay(ctx, d.state.PublicKey, d.bind.Inject)
@@ -377,7 +387,7 @@ func (d *Daemon) relayLoop(ctx context.Context) {
 				continue
 			}
 			log.Printf("mnetd: relay dial failed: %v (retrying)", err)
-			time.Sleep(3 * time.Second)
+			waitContext(ctx, 3*time.Second)
 			continue
 		}
 		d.mu.Lock()
@@ -392,7 +402,7 @@ func (d *Daemon) relayLoop(ctx context.Context) {
 		case <-r.Done():
 		}
 		d.bind.SetRelaySender(nil)
-		time.Sleep(2 * time.Second)
+		waitContext(ctx, 2*time.Second)
 	}
 }
 
@@ -401,14 +411,15 @@ func (d *Daemon) PeerStatuses() []PeerStatus {
 	stats := d.stats()
 	now := time.Now()
 	var out []PeerStatus
-	if d.lastMap == nil {
+	m := d.currentMap()
+	if m == nil {
 		return out
 	}
-	for _, p := range d.lastMap.Peers {
+	for _, p := range m.Peers {
 		ps := PeerStatus{
 			Name:        p.Name,
 			IPv4:        p.IPv4,
-			FQDN:        p.FQDN(d.lastMap.Network.Name),
+			FQDN:        p.FQDN(m.Network.Name),
 			PubKeyShort: p.PubKey[:12] + "...",
 		}
 		if s := stats[p.PubKey]; s != nil {

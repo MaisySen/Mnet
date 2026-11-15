@@ -274,3 +274,25 @@ func TestPumpReadFrame(t *testing.T) {
 		t.Fatalf("short frame err = %v", err)
 	}
 }
+
+func TestPumpCloseInterruptsRead(t *testing.T) {
+	r, w := io.Pipe()
+	defer w.Close()
+	p := NewRawPump(r, 2, 2)
+	result := make(chan error, 1)
+	go func() { _, err := p.ReadFrame(nil); result <- err }()
+	if err := p.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("blocked read succeeded")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("close did not interrupt read")
+	}
+}

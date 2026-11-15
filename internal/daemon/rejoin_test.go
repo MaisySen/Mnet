@@ -61,6 +61,21 @@ func TestDaemonRejoinsAfterNodeDelete(t *testing.T) {
 		t.Fatalf("up: %v", err)
 	}
 	defer d.Down()
+	// Status reads run while rejoin swaps maps and while Down tears down.
+	stopStatus := make(chan struct{})
+	statusDone := make(chan struct{})
+	go func() {
+		defer close(statusDone)
+		for {
+			select {
+			case <-stopStatus:
+				return
+			default:
+				_ = d.Status()
+			}
+		}
+	}()
+	defer func() { d.Down(); close(stopStatus); <-statusDone }()
 
 	state := func() []netmap.Node {
 		req, _ := http.NewRequest(http.MethodPost, base+"/admin/api/state", nil)

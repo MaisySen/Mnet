@@ -5,7 +5,10 @@
 package portal
 
 import (
+	"context"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -17,18 +20,54 @@ func DialSession() (Bus, error) {
 	if err != nil {
 		return nil, fmt.Errorf("session bus: %w", err)
 	}
-	return &dbusBus{conn: conn}, nil
+	b, err := newDBusBus(conn)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return b, nil
 }
 
-type dbusBus struct{ conn *dbus.Conn }
+type dbusBus struct {
+	conn      *dbus.Conn
+	signals   chan *dbus.Signal
+	done      chan struct{}
+	closeOnce sync.Once
+}
 
-func (b *dbusBus) Close() error { return b.conn.Close() }
+func newDBusBus(conn *dbus.Conn) (*dbusBus, error) {
+	b := &dbusBus{conn: conn, signals: make(chan *dbus.Signal, 32), done: make(chan struct{})}
+	// Register before any portal method can emit a Response. A portal may
+	// emit before returning its method reply, so watching afterwards loses it.
+	conn.Signal(b.signals)
+	err := conn.AddMatchSignal(dbus.WithMatchSender(dest), dbus.WithMatchInterface(ifaceRequest), dbus.WithMatchMember("Response"))
+	if err != nil {
+		conn.RemoveSignal(b.signals)
+		return nil, err
+	}
+	return b, nil
+}
+
+func (b *dbusBus) Close() error {
+	var err error
+	b.closeOnce.Do(func() { close(b.done); b.conn.RemoveSignal(b.signals); err = b.conn.Close() })
+	return err
+}
 
 func (b *dbusBus) CallOn(path, iface, method string, args ...any) ([]any, error) {
 	obj := b.conn.Object(dest, dbus.ObjectPath(path))
 	// Portals respond promptly; the wait for the USER is in the
 	// Response signal, not the method reply.
-	call := obj.Call(iface+"."+method, 0, args...)
+	if iface == ifaceScreenCast && (method == "SelectSources" || method == "Start" || method == "OpenPipeWireRemote") && len(args) > 0 {
+		// Session handles are object paths on the wire, not D-Bus strings.
+		args = append([]any(nil), args...)
+		if path, ok := args[0].(string); ok {
+			args[0] = dbus.ObjectPath(path)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	call := obj.CallWithContext(ctx, iface+"."+method, 0, args...)
 	if call.Err != nil {
 		return nil, call.Err
 	}
@@ -42,42 +81,38 @@ func (b *dbusBus) Call(iface, method string, args ...any) ([]any, error) {
 }
 
 func (b *dbusBus) WatchResponse(requestPath string) (<-chan Response, func(), error) {
-	err := b.conn.AddMatchSignal(
-		dbus.WithMatchSender(dest),
-		dbus.WithMatchObjectPath(dbus.ObjectPath(requestPath)),
-		dbus.WithMatchInterface(ifaceRequest),
-		dbus.WithMatchMember("Response"),
-	)
-	if err != nil {
-		return nil, nil, fmt.Errorf("add match: %w", err)
-	}
-	sigs := make(chan *dbus.Signal, 4)
-	b.conn.Signal(sigs)
 	out := make(chan Response, 1)
+	stopped := make(chan struct{})
+	var once sync.Once
+	cancel := func() { once.Do(func() { close(stopped) }) }
 	go func() {
-		for sig := range sigs {
-			if len(sig.Body) != 2 {
-				continue
+		defer close(out)
+		for {
+			select {
+			case <-stopped:
+				return
+			case <-b.done:
+				return
+			case sig, ok := <-b.signals:
+				if !ok {
+					return
+				}
+				if sig == nil || sig.Name != ifaceRequest+".Response" || string(sig.Path) != requestPath || len(sig.Body) != 2 {
+					continue
+				}
+				code, ok := sig.Body[0].(uint32)
+				if !ok {
+					continue
+				}
+				results, ok := sig.Body[1].(map[string]dbus.Variant)
+				if !ok {
+					continue
+				}
+				out <- Response{Code: code, Results: unwrapMap(results)}
+				return
 			}
-			code, ok := sig.Body[0].(uint32)
-			if !ok {
-				continue
-			}
-			results, _ := sig.Body[1].(map[string]dbus.Variant)
-			out <- Response{Code: code, Results: unwrapMap(results)}
-			return
 		}
 	}()
-	cancel := func() {
-		b.conn.RemoveSignal(sigs)
-		close(sigs)
-		_ = b.conn.RemoveMatchSignal(
-			dbus.WithMatchSender(dest),
-			dbus.WithMatchObjectPath(dbus.ObjectPath(requestPath)),
-			dbus.WithMatchInterface(ifaceRequest),
-			dbus.WithMatchMember("Response"),
-		)
-	}
 	return out, cancel, nil
 }
 

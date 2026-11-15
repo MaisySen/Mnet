@@ -36,7 +36,7 @@ type Server struct {
 
 	loginLim  *ipLimiters // admin login brute-force protection
 	joinLim   *ipLimiters // join flood protection
-	auditPath string       // append-only audit log, <store>.audit.jsonl
+	auditPath string      // append-only audit log, <store>.audit.jsonl
 	auditMu   sync.Mutex
 	metrics   *metrics
 }
@@ -201,7 +201,10 @@ func (s *Server) handleMap(w http.ResponseWriter, r *http.Request) {
 		fmt_Sscanf(v, &since)
 	}
 	if wait := r.URL.Query().Get("wait"); wait == "1" {
-		s.store.WaitForChange(node.NetworkID, since, 50*time.Second)
+		s.store.WaitForChangeContext(r.Context(), node.NetworkID, since, 50*time.Second)
+		if r.Context().Err() != nil {
+			return
+		}
 	}
 	m, err := s.store.Map(node.ID)
 	if err != nil {

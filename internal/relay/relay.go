@@ -49,9 +49,14 @@ type Hub struct {
 }
 
 type conn struct {
-	ws   *websocket.Conn
-	send chan []byte
+	ws     *websocket.Conn
+	send   chan []byte
+	done   chan struct{}
+	once   sync.Once
+	nodeID string
 }
+
+func (c *conn) close() { c.once.Do(func() { close(c.done); c.ws.Close() }) }
 
 // NewHub makes an empty hub.
 func NewHub() *Hub {
@@ -80,39 +85,54 @@ func (h *Hub) OnlineMap() map[string]bool {
 // Attach registers a websocket for a node pubkey and pumps it until it
 // dies. nodeID may be empty.
 func (h *Hub) Attach(nodeID, pubkey string, ws *websocket.Conn, onPacket func(src, dst string, payload []byte)) {
-	c := &conn{ws: ws, send: make(chan []byte, 64)}
+	c := &conn{ws: ws, send: make(chan []byte, 64), done: make(chan struct{}), nodeID: nodeID}
 	h.mu.Lock()
 	if old := h.conns[pubkey]; old != nil {
-		close(old.send)
+		old.close()
+		if old.nodeID != "" {
+			delete(h.ByNodeID, old.nodeID)
+		}
 	}
 	h.conns[pubkey] = c
 	if nodeID != "" {
 		h.ByNodeID[nodeID] = pubkey
 	}
 	h.mu.Unlock()
+
+	var writer sync.WaitGroup
+	writer.Add(1)
 	defer func() {
+		c.close()
+		writer.Wait()
 		h.mu.Lock()
 		if h.conns[pubkey] == c {
 			delete(h.conns, pubkey)
-		}
-		h.mu.Unlock()
-		ws.Close()
-	}()
-
-	go func() {
-		for msg := range c.send {
-			c.ws.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := c.ws.WriteMessage(websocket.BinaryMessage, msg); err != nil {
-				return
+			if nodeID != "" {
+				delete(h.ByNodeID, nodeID)
 			}
 		}
+		h.mu.Unlock()
 	}()
+	// Gorilla permits one concurrent data writer. Ping and data share
+	// this loop; closing the socket interrupts either a blocked read/write.
 	go func() {
+		defer writer.Done()
+		defer c.close()
 		t := time.NewTicker(pingEvery)
 		defer t.Stop()
-		for range t.C {
+		for {
+			var typ int
+			var msg []byte
+			select {
+			case <-c.done:
+				return
+			case msg = <-c.send:
+				typ = websocket.BinaryMessage
+			case <-t.C:
+				typ = websocket.PingMessage
+			}
 			c.ws.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := c.ws.WriteMessage(websocket.PingMessage, nil); err != nil {
+			if err := c.ws.WriteMessage(typ, msg); err != nil {
 				return
 			}
 		}
@@ -153,7 +173,7 @@ func (h *Hub) Detach(nodeID string) {
 	}
 	h.mu.Unlock()
 	if c != nil {
-		c.ws.Close()
+		c.close()
 	}
 }
 
@@ -173,6 +193,8 @@ func (h *Hub) Forward(src, dst string, payload []byte) bool {
 	frame = append(frame, srcRaw...)
 	frame = append(frame, payload...)
 	select {
+	case <-c.done:
+		return false
 	case c.send <- frame:
 		return true
 	default:

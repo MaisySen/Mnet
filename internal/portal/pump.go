@@ -19,16 +19,18 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"sync"
 )
 
 // Pump reads raw BGRA frames of a fixed geometry from a PipeWire
 // stream.
 type Pump struct {
-	cmd    *exec.Cmd
-	out    io.Reader
-	frame  int // bytes per frame: w*h*4
-	Width  int
-	Height int
+	cmd       *exec.Cmd
+	closeOnce sync.Once
+	out       io.Reader
+	frame     int // bytes per frame: w*h*4
+	Width     int
+	Height    int
 }
 
 // PumpCommand builds the gst-launch argv for a stream. The socket fd
@@ -51,7 +53,7 @@ func StartPump(s *Stream, pwfd *os.File, width, height int) (*Pump, error) {
 	if _, err := exec.LookPath("gst-launch-1.0"); err != nil {
 		return nil, fmt.Errorf("gst-launch-1.0 not installed (package gstreamer1.0-tools): %w", err)
 	}
-	if width <= 0 || height <= 0 {
+	if width <= 0 || height <= 0 || width > 16384 || height > 16384 || int64(width)*int64(height) > 16*1024*1024 {
 		return nil, fmt.Errorf("stream geometry unknown (the compositor reported no size)")
 	}
 	cmd := exec.Command(PumpCommand(s.NodeID, 3, width, height)[0], PumpCommand(s.NodeID, 3, width, height)[1:]...)
@@ -88,8 +90,16 @@ func (p *Pump) ReadFrame(reuse []byte) ([]byte, error) {
 
 // Close stops the helper.
 func (p *Pump) Close() error {
-	if p.cmd.Process != nil {
-		_ = p.cmd.Process.Kill()
-	}
-	return p.cmd.Wait()
+	p.closeOnce.Do(func() {
+		if closer, ok := p.out.(io.Closer); ok {
+			_ = closer.Close()
+		}
+		if p.cmd != nil {
+			if p.cmd.Process != nil {
+				_ = p.cmd.Process.Kill()
+			}
+			_ = p.cmd.Wait()
+		}
+	})
+	return nil
 }
