@@ -53,7 +53,7 @@ type Daemon struct {
 	deviceMu    sync.RWMutex
 
 	mu     sync.Mutex
-	status string // down, joining, waiting-approval, up
+	status string // down, joining, waiting-approval, up, key-expired
 	// joinMu serializes join and rejoin: the control-plane identity
 	// (node id, token, auth key, control client) swaps as one step,
 	// never concurrently from two loops.
@@ -66,6 +66,7 @@ type Daemon struct {
 	dns    *dns.Server
 	cancel context.CancelFunc
 
+	mapChanged  chan struct{} // wake local authorization-expiry guard
 	lastMap     *netmap.Map
 	approvalURL string
 	lastErr     string
@@ -89,11 +90,12 @@ func New(cfg Config) (*Daemon, error) {
 		return nil, err
 	}
 	return &Daemon{
-		cfg:    cfg,
-		state:  st,
-		status: "down",
-		stunTx: map[stun.TxID]time.Time{},
-		peers:  map[string]*peerTrack{},
+		cfg:        cfg,
+		state:      st,
+		status:     "down",
+		mapChanged: make(chan struct{}, 1),
+		stunTx:     map[stun.TxID]time.Time{},
+		peers:      map[string]*peerTrack{},
 	}, nil
 }
 
@@ -223,9 +225,12 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 
 	d.mu.Lock()
 	d.status = "up"
+	if m.Self.KeyExpired() {
+		d.status = "key-expired"
+	}
 	d.mu.Unlock()
 
-	for _, loop := range []func(context.Context){d.mapLoop, d.endpointLoop, d.pathLoop, d.relayLoop} {
+	for _, loop := range []func(context.Context){d.mapLoop, d.endpointLoop, d.pathLoop, d.relayLoop, d.expiryLoop} {
 		d.loops.Add(1)
 		go func(f func(context.Context)) { defer d.loops.Done(); f(ctx) }(loop)
 	}

@@ -295,9 +295,15 @@ an unauthorized control response. Older daemons did not fully apply peer
 removals and must be updated for direct-path revocation. Relay-only server
 updates cannot remove a key retained by an old client. Already established
 direct paths on offline/outdated clients are not instantaneously revoked
-by the control plane; online updated clients apply a new map, and natural
-expiry is reevaluated during map polling (up to the poll interval). This
-is not per-packet application-port enforcement. Existing ACLs operate at
+by the control plane; online updated clients apply a new map. Updated
+daemons also enforce self and peer expiry timestamps already received in
+their map using a local deadline guard, independent of subsequent control
+responses. Self expiry removes all peers and reports `key-expired`; peer
+expiry removes that peer from WireGuard, path selection, status and DNS.
+A newly authorized map can restore renewed keys. This relies on the local
+clock and process being scheduled, and does not discover an unseen admin
+change while offline. Maps with no expiry retain their legacy behavior.
+This is not per-packet application-port enforcement. Existing ACLs operate at
 peer-pair and advertised-route visibility level.
 
 

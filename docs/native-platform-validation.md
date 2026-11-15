@@ -7,7 +7,7 @@ Native CI is a narrower claim than a physical desktop/phone test. Always name th
 - Windows and macOS build every package on a native runner, not only a cross-compiler.
 - Local API lifecycle and capability tests exercise the runner's local transports.
 - Private state tests exercise actual file replacement, link rejection and cleanup. Windows tests read the actual security descriptor, require a protected DACL, and reject grants outside the file owner, LocalSystem and local administrators. This is ACL inspection, not an impersonated second-user penetration test.
-- Daemon tests exercise state round trips and WireGuard IPC using an in-memory TUN. They do not create an OS VPN interface.
+- Daemon tests exercise state round trips and WireGuard IPC using an in-memory TUN. Local-expiry regressions cover self/peer deadlines, renewal, stale-map refresh, and repeated Up/Down while later control polls are blocked. They do not create an OS VPN interface.
 - Session tests exercise a native loopback TCP connection, screen/input/chat framing and a verified 3MiB file. They also test queued startup and repeated stream cleanup. They do not cross an actual VPN interface or a lossy public network.
 
 ## Private state behavior

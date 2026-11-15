@@ -48,6 +48,10 @@ func (d *Daemon) applyMap(m *netmap.Map) {
 	d.applyMu.Lock()
 	defer d.applyMu.Unlock()
 	d.applyMapLocked(m)
+	select {
+	case d.mapChanged <- struct{}{}:
+	default:
+	}
 }
 
 // refreshPaths uses the latest authorized map after taking the apply lock,
@@ -61,6 +65,7 @@ func (d *Daemon) refreshPaths() {
 }
 
 func (d *Daemon) applyMapLocked(m *netmap.Map) {
+	m = unexpiredMap(m, time.Now())
 	d.deviceMu.RLock()
 	defer d.deviceMu.RUnlock()
 	if d.dev == nil {
@@ -71,13 +76,14 @@ func (d *Daemon) applyMapLocked(m *netmap.Map) {
 	for _, p := range m.Peers {
 		wanted[p.PubKey] = true
 	}
+	var removed []string
 	d.peersMu.Lock()
 	for key := range d.peers {
 		if !wanted[key] {
 			if raw, err := base64.StdEncoding.DecodeString(key); err == nil && len(raw) == 32 {
 				fmt.Fprintf(&conf, "public_key=%s\nremove=true\n", hex.EncodeToString(raw))
 			}
-			delete(d.peers, key)
+			removed = append(removed, key)
 		}
 	}
 	d.peersMu.Unlock()
@@ -115,8 +121,20 @@ func (d *Daemon) applyMapLocked(m *netmap.Map) {
 		d.setErr(fmt.Errorf("apply map: %w", err))
 		return
 	}
+	d.peersMu.Lock()
+	for _, key := range removed {
+		delete(d.peers, key)
+	}
+	d.peersMu.Unlock()
 	d.mu.Lock()
 	d.lastMap = m
+	if d.status == "up" || d.status == "key-expired" {
+		if m.Self.KeyExpired() {
+			d.status = "key-expired"
+		} else if d.status == "key-expired" && m.Self.Approved {
+			d.status = "up"
+		}
+	}
 	d.mu.Unlock()
 	if d.dns != nil {
 		d.dns.Update(m)

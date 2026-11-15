@@ -17,7 +17,7 @@ import (
 
 // Status is the CLI's view of the daemon.
 type Status struct {
-	Status      string       `json:"status"` // down, joining, waiting-approval, up
+	Status      string       `json:"status"` // down, joining, waiting-approval, up, key-expired
 	Version     string       `json:"version"`
 	Server      string       `json:"server,omitempty"`
 	Network     string       `json:"network,omitempty"`
