@@ -84,12 +84,14 @@ public class MainActivity extends Activity {
         LinearLayout sessionRow = new LinearLayout(this);
         sessionRow.setOrientation(LinearLayout.HORIZONTAL);
         Button hostBtn = new Button(this);
+        hostBtn.setId(R.id.host_session_button);
         hostBtn.setText("Host a session");
         hostBtn.setOnClickListener(v ->
                 startActivity(new Intent(this, HostingActivity.class)));
         sessionRow.addView(hostBtn, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         Button viewBtn = new Button(this);
+        viewBtn.setId(R.id.view_peer_button);
         viewBtn.setText("View a peer");
         viewBtn.setOnClickListener(v -> {
             android.widget.EditText in = new EditText(this);

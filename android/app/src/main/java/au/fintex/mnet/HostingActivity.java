@@ -73,6 +73,7 @@ public class HostingActivity extends Activity {
         root.addView(autoAccept);
 
         Button start = new Button(this);
+        start.setId(R.id.start_hosting_button);
         start.setText("Start hosting");
         start.setOnClickListener(v -> {
             HostSessionService.autoAccept.set(autoAccept.isChecked());
