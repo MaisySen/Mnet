@@ -41,6 +41,19 @@ addresses and endpoints. Nodes long poll; any change wakes them at once.
   unambiguous) from the live map on the node's own mesh address, and
   forwards everything else upstream.
 
+## Sessions (remote desktop over the mesh)
+
+On top of the mesh sits the session layer (docs/session-layer.md): one
+TCP connection between two mesh IPs on port 5909, carrying typed
+streams (screen, input, chat, file) with priority classes. The mesh
+already provides NAT traversal, authentication and WireGuard
+encryption end to end, so sessions add no second crypto stack and no
+new trust surface: the host's consent (prompt or allowlist) gates each
+session. Linux desktops host via X11 capture and XTEST injection
+(`mnetd -session-host`); Android hosts via MediaProjection and an
+accessibility service; viewers exist on the CLI (`mnet session`) and
+in the app.
+
 ## Addressing
 
 Nodes get addresses from 100.64.0.0/10 (CGNAT space), allocated by the
