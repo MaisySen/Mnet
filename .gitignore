@@ -1,0 +1,9 @@
+/dist/
+*.exe
+*.test
+*.out
+.DS_Store
+multies-control.json
+mnet-control.json
+*.tmp
+.env
