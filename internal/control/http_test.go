@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"fintex.au/mnet/internal/version"
 	"github.com/gorilla/websocket"
+	"net/http/httptest"
 )
 
 func serveHTTPPolicy(t *testing.T, s *http.Server) string {
@@ -142,5 +144,13 @@ func TestHTTPTimeoutsDoNotTruncateWebSocket(t *testing.T) {
 	_, b, err := c.ReadMessage()
 	if err != nil || string(b) != "relay-after-http-deadline" {
 		t.Fatalf("upgraded connection inherited HTTP deadline: %q %v", b, err)
+	}
+}
+
+func TestHealthReportsBuildRevision(t *testing.T) {
+	rec := httptest.NewRecorder()
+	(&Server{}).handleHealthz(rec, httptest.NewRequest("GET", "/healthz", nil))
+	if rec.Code != 200 || rec.Body.String() != "ok\n" || rec.Header().Get("X-Mnet-Revision") != version.Revision {
+		t.Fatal("health revision metadata missing")
 	}
 }

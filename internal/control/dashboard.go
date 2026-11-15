@@ -1,6 +1,7 @@
 package control
 
 import (
+	"fintex.au/mnet/internal/version"
 	"fmt"
 	"html"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 
 // handleHealthz is the unauthenticated liveness probe for hosting platforms.
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("X-Mnet-Revision", version.Revision)
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	fmt.Fprintln(w, "ok")
 }
