@@ -254,6 +254,35 @@ print(json.dumps(k))
             wait_for(subnet_ready, 'subnet route after saved-state restart')
             run(*ns('a', 'ping', '-c', '1', '-W', '2', '10.9.0.1'))
             print(f'PASS kernel Down/Up cycle {cycle + 1}: same identity/IP and direct path', flush=True)
+        acl_script = tmp / 'acl.py'
+        acl_script.write_text(r'''
+import http.cookiejar,json,sys,urllib.request
+from pathlib import Path
+opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+def call(path,data,method='POST'):
+ req=urllib.request.Request('http://198.18.10.1:8080'+path,json.dumps(data).encode(),{'Content-Type':'application/json'},method=method)
+ return json.load(opener.open(req,timeout=3))
+call('/admin/api/login',{'password':'kernel-ci-fixture-only'})
+network=next(iter(json.loads(Path(sys.argv[1]).read_text())['networks']))
+rules=[{'src':'a','dst':'b'}] if sys.argv[2]=='deny-route' else []
+call('/admin/api/acl',{'network_id':network,'rules':rules},'PUT')
+''')
+        run(*ns('c', sys.executable, acl_script, tmp / 'control.json', 'deny-route'))
+        def subnet_absent():
+            return not json.loads(run('ip', '-n', spaces['a'], '-N', '-j', 'route', 'show', 'exact', '10.9.0.0/24'))
+        wait_for(subnet_absent, 'ACL withdrawal removes owned subnet route')
+        if not local_api(states['a']).get('peers'):
+            raise RuntimeError('ACL fixture removed peer instead of only route visibility')
+        denied = subprocess.run(ns('a', 'ping', '-c', '1', '-W', '1', '10.9.0.1'), capture_output=True, timeout=3)
+        if denied.returncode == 0:
+            raise RuntimeError('withdrawn subnet remained reachable')
+        routes = json.loads(run('ip', '-n', spaces['a'], '-N', '-j', 'route', 'show'))
+        if not any(r.get('dst') == '10.8.0.0/24' and r.get('dev') == 'eth0' for r in routes):
+            raise RuntimeError('ACL withdrawal removed unrelated route')
+        run(*ns('c', sys.executable, acl_script, tmp / 'control.json', 'restore'))
+        wait_for(subnet_ready, 'ACL restoration reinstalls owned subnet route')
+        run(*ns('a', 'ping', '-c', '1', '-W', '2', '10.9.0.1'))
+        print('PASS ACL route-only withdrawal denies subnet and preserves peer/unrelated route; restoration works', flush=True)
         # With the control/relay process dead, transfers cannot silently
         # succeed by falling back to the shared control-plane WebSocket.
         control.terminate()
