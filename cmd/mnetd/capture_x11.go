@@ -19,12 +19,13 @@ import (
 // capture; they need a portal backend, which is later work.
 
 type x11Host struct {
-	conn  *xgb.Conn
-	root  xproto.Window
-	w, h  int
-	scale int // downscale factor: frames are capped on the long edge
-	last  []byte
-	jpegQ int
+	conn     *xgb.Conn
+	root     xproto.Window
+	w, h     int
+	scale    int // downscale factor: frames are capped on the long edge
+	last     []byte
+	lastRGBA *image.RGBA
+	jpegQ    int
 }
 
 func newX11Capturer() (session.Capturer, error) {
@@ -66,17 +67,18 @@ func capScale(w, h int) int {
 
 func (x *x11Host) Geometry() (int, int) { return x.w / x.scale, x.h / x.scale }
 
-func (x *x11Host) Capture() ([]byte, bool, error) {
+// grab captures and downscales the screen to one RGBA image.
+func (x *x11Host) grab() (*image.RGBA, error) {
 	reply, err := xproto.GetImage(x.conn, xproto.ImageFormatZPixmap, xproto.Drawable(x.root),
 		0, 0, uint16(x.w), uint16(x.h), 0xffffffff).Reply()
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	// ZPixmap on a 24/32bpp TrueColor screen: BGRX byte order.
 	src := reply.Data
 	n := x.w * x.h
 	if len(src) < n*4 {
-		return nil, false, fmt.Errorf("short image: %d bytes for %dx%d", len(src), x.w, x.h)
+		return nil, fmt.Errorf("short image: %d bytes for %dx%d", len(src), x.w, x.h)
 	}
 	img := image.NewRGBA(image.Rect(0, 0, x.w, x.h))
 	j := 0
@@ -90,13 +92,52 @@ func (x *x11Host) Capture() ([]byte, bool, error) {
 	if x.scale > 1 {
 		img = downscale(img, x.scale)
 	}
+	return img, nil
+}
+
+func (x *x11Host) Capture() ([]byte, bool, error) {
+	img, err := x.grab()
+	if err != nil {
+		return nil, false, err
+	}
 	var buf bytes.Buffer
 	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: x.jpegQ}); err != nil {
 		return nil, false, err
 	}
 	changed := !bytes.Equal(buf.Bytes(), x.last)
 	x.last = buf.Bytes()
+	x.lastRGBA = img
 	return buf.Bytes(), changed, nil
+}
+
+// CaptureDelta sends only changed 64x64 tiles when a minority of the
+// screen moved; past 60% changed tiles a full frame is cheaper.
+func (x *x11Host) CaptureDelta() ([]byte, []session.Tile, error) {
+	img, err := x.grab()
+	if err != nil {
+		return nil, nil, err
+	}
+	rects := session.DiffTiles(x.lastRGBA, img, 64)
+	b := img.Bounds()
+	total := ((b.Dx() + 63) / 64) * ((b.Dy() + 63) / 64)
+	if x.lastRGBA != nil && len(rects) == 0 {
+		return nil, nil, nil
+	}
+	if x.lastRGBA != nil && len(rects) <= total*3/5 {
+		tiles, err := session.EncodeTiles(img, rects, x.jpegQ)
+		if err != nil {
+			return nil, nil, err
+		}
+		x.lastRGBA = img
+		return nil, tiles, nil
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: x.jpegQ}); err != nil {
+		return nil, nil, err
+	}
+	x.lastRGBA = img
+	x.last = buf.Bytes()
+	return buf.Bytes(), nil, nil
 }
 
 // downscale averages scale-by-scale blocks. Cheap and good enough at

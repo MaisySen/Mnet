@@ -21,6 +21,13 @@ type Injector interface {
 	Inject(ev InputEvent) error
 }
 
+// DeltaCapturer is a Capturer that can send dirty-rect tile deltas
+// instead of full frames. A nil full with empty tiles means no change.
+type DeltaCapturer interface {
+	Capturer
+	CaptureDelta() (full []byte, tiles []Tile, err error)
+}
+
 // Host runs the hosting side of one session: it streams the screen,
 // applies input, relays chat and receives files. Handlers and the
 // incoming-file directory can be set or changed at any time via the
@@ -123,6 +130,7 @@ func (h *Host) screenLoop() {
 	interval := time.Second / time.Duration(h.FPS)
 	tick := time.NewTicker(interval)
 	defer tick.Stop()
+	dc, _ := h.Cap.(DeltaCapturer)
 	var seq uint32
 	for {
 		select {
@@ -132,15 +140,39 @@ func (h *Host) screenLoop() {
 			return
 		case <-tick.C:
 		}
-		img, changed, err := h.Cap.Capture()
-		if err != nil {
-			return
+		var fr ScreenFrame
+		if dc != nil {
+			full, tiles, err := dc.CaptureDelta()
+			if err != nil {
+				return
+			}
+			if full == nil && len(tiles) == 0 {
+				continue
+			}
+			seq++
+			// Periodic keyframe: late joiners and drift recovery.
+			if seq%100 == 1 && full == nil {
+				img, _, err := h.Cap.Capture()
+				if err != nil {
+					return
+				}
+				fr = ScreenFrame{Seq: seq, Full: true, Image: img}
+			} else if full != nil {
+				fr = ScreenFrame{Seq: seq, Full: true, Image: full}
+			} else {
+				fr = ScreenFrame{Seq: seq, Tiles: tiles}
+			}
+		} else {
+			img, changed, err := h.Cap.Capture()
+			if err != nil {
+				return
+			}
+			if !changed {
+				continue
+			}
+			seq++
+			fr = ScreenFrame{Seq: seq, Full: true, Image: img}
 		}
-		if !changed {
-			continue
-		}
-		seq++
-		fr := ScreenFrame{Seq: seq, Full: true, Image: img}
 		b, err := json.Marshal(fr)
 		if err != nil {
 			continue

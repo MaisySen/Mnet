@@ -10,14 +10,15 @@ type ScreenOpen struct {
 	FPS    int    `json:"fps"`
 }
 
-// ScreenFrame is one screen update. Rects is empty for a full frame;
-// v1 always sends full frames when anything changed, and the rect
-// list keeps dirty-rect deltas a compatible later step.
+// ScreenFrame is one screen update. Full frames carry Image; delta
+// frames carry Tiles to composite onto the last full frame. Viewers
+// composite deltas internally and always surface complete frames.
 type ScreenFrame struct {
 	Seq   uint32 `json:"seq"`
 	Full  bool   `json:"full"`
 	Rects []Rect `json:"rects,omitempty"`
-	Image []byte `json:"image"` // codec bytes (JPEG in v1)
+	Image []byte `json:"image,omitempty"` // codec bytes (JPEG in v1)
+	Tiles []Tile `json:"tiles,omitempty"`
 }
 
 type Rect struct {

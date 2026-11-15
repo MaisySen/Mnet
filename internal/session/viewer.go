@@ -1,7 +1,10 @@
 package session
 
 import (
+	"bytes"
 	"encoding/json"
+	"image"
+	"image/jpeg"
 	"sync"
 	"time"
 )
@@ -17,6 +20,9 @@ type Viewer struct {
 	onFrame func(ScreenFrame)
 	onChat  func(ChatMessage)
 	geo     ScreenOpen
+
+	frameMu sync.Mutex
+	base    *image.RGBA // last full frame, for delta compositing
 }
 
 // SetOnFrame sets the screen-frame handler.
@@ -92,6 +98,9 @@ func (v *Viewer) screenLoop(s Stream) {
 		if err := json.Unmarshal(f.Payload, &fr); err != nil {
 			continue
 		}
+		if !v.resolveFrame(&fr) {
+			continue // delta with no base yet: wait for a keyframe
+		}
 		v.vmu.RLock()
 		cb := v.onFrame
 		v.vmu.RUnlock()
@@ -99,6 +108,52 @@ func (v *Viewer) screenLoop(s Stream) {
 			cb(fr)
 		}
 	}
+}
+
+// resolveFrame turns delta frames into full frames: composites tiles
+// onto the stored base and re-encodes, so OnFrame always delivers a
+// complete JPEG. Returns false when the frame must be skipped.
+func (v *Viewer) resolveFrame(fr *ScreenFrame) bool {
+	v.frameMu.Lock()
+	defer v.frameMu.Unlock()
+	if fr.Full || len(fr.Tiles) == 0 {
+		if len(fr.Image) > 0 {
+			if img, err := jpeg.Decode(bytes.NewReader(fr.Image)); err == nil {
+				v.base = imageToRGBA(img)
+			}
+		}
+		return len(fr.Image) > 0
+	}
+	if v.base == nil {
+		return false
+	}
+	merged, err := CompositeTiles(v.base, fr.Tiles)
+	if err != nil {
+		return false
+	}
+	v.base = merged
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, merged, &jpeg.Options{Quality: 80}); err != nil {
+		return false
+	}
+	fr.Full = true
+	fr.Image = buf.Bytes()
+	fr.Tiles = nil
+	return true
+}
+
+func imageToRGBA(src image.Image) *image.RGBA {
+	if rgba, ok := src.(*image.RGBA); ok {
+		return rgba
+	}
+	b := src.Bounds()
+	out := image.NewRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+	for y := 0; y < b.Dy(); y++ {
+		for x := 0; x < b.Dx(); x++ {
+			out.Set(x, y, src.At(b.Min.X+x, b.Min.Y+y))
+		}
+	}
+	return out
 }
 
 func (v *Viewer) chatLoop(s Stream) {
