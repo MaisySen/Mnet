@@ -1,15 +1,18 @@
 package ifacectl
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"os/exec"
 	"runtime"
 	"sort"
 	"strconv"
+	"time"
 )
 
 // SubnetRoutes owns only the explicit IPv4 routes it successfully added.
@@ -35,7 +38,11 @@ func NewSubnetRoutes(iface string) *SubnetRoutes {
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return nil
 	}
-	return &SubnetRoutes{iface: iface, metric: strconv.FormatUint(uint64(binary.BigEndian.Uint32(nonce[:])|0x40000000), 10), owned: map[string]bool{}, command: func(args ...string) ([]byte, error) { return exec.Command("ip", args...).CombinedOutput() }}
+	return &SubnetRoutes{iface: iface, metric: strconv.FormatUint(uint64(binary.BigEndian.Uint32(nonce[:])|0x40000000), 10), owned: map[string]bool{}, command: func(args ...string) ([]byte, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return exec.CommandContext(ctx, "ip", args...).CombinedOutput()
+	}}
 }
 
 func (r *SubnetRoutes) change(action, prefix string) error {
@@ -57,11 +64,17 @@ func (r *SubnetRoutes) Sync(prefixes []string) error {
 		return fmt.Errorf("managed subnet OS routes currently support Linux only")
 	}
 	desired := map[string]netip.Prefix{}
+	var validation error
 	mesh := netip.MustParsePrefix("100.64.0.0/10")
+	if len(prefixes) > 1024 {
+		validation = fmt.Errorf("subnet input exceeds 1024 entries")
+		prefixes = nil // fail closed: withdraw all old ownership, add nothing
+	}
 	for _, raw := range prefixes {
 		p, err := netip.ParsePrefix(raw)
 		if err != nil || !p.Addr().Is4() || p.Bits() == 0 {
-			return fmt.Errorf("unsupported subnet route %q", raw)
+			validation = errors.Join(validation, fmt.Errorf("unsupported subnet route %q", raw))
+			continue
 		}
 		p = p.Masked()
 		private := false
@@ -73,10 +86,16 @@ func (r *SubnetRoutes) Sync(prefixes []string) error {
 			}
 		}
 		if !private {
-			return fmt.Errorf("managed subnet route requires RFC1918 IPv4 prefix: %s", p)
+			validation = errors.Join(validation, fmt.Errorf("managed subnet route requires RFC1918 IPv4 prefix: %s", p))
+			continue
 		}
 		if p.Overlaps(mesh) || p.Addr().IsLoopback() || p.Addr().IsMulticast() || p.Addr().IsLinkLocalUnicast() {
-			return fmt.Errorf("unsafe subnet route %q", raw)
+			validation = errors.Join(validation, fmt.Errorf("unsafe subnet route %q", raw))
+			continue
+		}
+		if _, exists := desired[p.String()]; !exists && len(desired) >= 256 {
+			validation = errors.Join(validation, fmt.Errorf("managed subnet route limit is 256"))
+			break
 		}
 		desired[p.String()] = p
 	}
@@ -100,6 +119,10 @@ func (r *SubnetRoutes) Sync(prefixes []string) error {
 			}
 			delete(r.owned, prefix)
 		}
+	}
+	// Withdrawal is independent of whether new additions are acceptable.
+	if validation != nil {
+		return validation
 	}
 	raw, err := r.command("-N", "-4", "-j", "route", "show", "table", "main")
 	if err != nil {

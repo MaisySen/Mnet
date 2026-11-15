@@ -23,9 +23,9 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 
 ## Important open work
 
-- A later repeated kernel run exposed intermittent direct convergence despite valid candidates. Earlier successful runs remain evidence, not a repeatability guarantee. A bounded authenticated handshake-probe window is under independent validation; route-only ACL withdrawal coverage is also pending.
+- A later repeated kernel run exposed intermittent direct convergence despite valid candidates. Earlier successful runs remain evidence, not a repeatability guarantee. A bounded authenticated handshake-probe window passed once with route-only ACL withdrawal/restoration in [7a72378 CI](https://github.com/MaisySen/Mnet/actions/runs/43765437995). Three fresh full-kernel runs are pending before closing the intermittency item.
 
-- Exit/subnet OS route correctness and ownership-safe cleanup. A bounded Linux RFC1918 subnet-route owner passed [8fcaf91 kernel CI](https://github.com/MaisySen/Mnet/actions/runs/43764310572): owned route installation, peer-loopback subnet reachability, saved lifecycle and unrelated-route preservation. ACL withdrawal/restoration extension is pending. This is not external LAN forwarding or exit internet routing. Current desktop exit setup is skipped by an inverted `ManagedIface` guard; mesh-only tests do not validate it.
+- Exit/subnet OS route correctness and ownership-safe cleanup. A bounded Linux RFC1918 subnet-route owner passed [8fcaf91 kernel CI](https://github.com/MaisySen/Mnet/actions/runs/43764310572): owned route installation, peer-loopback subnet reachability, saved lifecycle and unrelated-route preservation. Actual route-only ACL withdrawal/restoration also passed in 7a72378; repeated full-kernel validation is in progress. This is not external LAN forwarding or exit internet routing. Current desktop exit setup is skipped by an inverted `ManagedIface` guard; mesh-only tests do not validate it.
 - Real Windows Wintun and macOS VPN interfaces, second-user Windows access tests, physical capture/input/permission flows, GNOME portal and physical mobile behavior.
 - Larger/cancelled transfers, bandwidth limits, long sessions, sleep/wake, sustained churn and fleet/relay capacity.
 - Persistent production storage, recovery practice and independent security review.

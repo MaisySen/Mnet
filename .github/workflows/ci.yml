@@ -101,5 +101,9 @@ jobs:
           mkdir -p "$RUNNER_TEMP/mnet-kernel-bin"
           go build -o "$RUNNER_TEMP/mnet-kernel-bin/mnet-control" ./cmd/mnet-control
           go build -o "$RUNNER_TEMP/mnet-kernel-bin/mnetd" ./cmd/mnetd
-      - name: actual kernel TUN and OS TCP under loss, then teardown
-        run: sudo env MNET_KERNEL_BIN="$RUNNER_TEMP/mnet-kernel-bin" python3 scripts/kernel-vpn-validation.py
+      - name: actual kernel TUN and OS TCP under loss, then teardown (three fresh runs)
+        run: |
+          for attempt in 1 2 3; do
+            echo "Kernel fixture run $attempt of 3"
+            sudo env MNET_KERNEL_BIN="$RUNNER_TEMP/mnet-kernel-bin" python3 scripts/kernel-vpn-validation.py
+          done

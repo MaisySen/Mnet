@@ -94,3 +94,16 @@ func TestSubnetOwnerDoesNotDeleteReplacement(t *testing.T) {
 		t.Fatal("did not release absent ownership")
 	}
 }
+
+func TestInvalidNewPrefixCannotKeepWithdrawnOwnedRoute(t *testing.T) {
+	r, changes := fakeSubnetRoutes(t)
+	if err := r.Sync([]string{"10.9.0.0/24"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Sync([]string{"invalid-new-prefix"}); err == nil {
+		t.Fatal("invalid prefix accepted")
+	}
+	if len(r.owned) != 0 || len(*changes) != 2 || !strings.Contains((*changes)[1], "del 10.9.0.0/24") {
+		t.Fatal("invalid new prefix prevented withdrawn route removal")
+	}
+}
