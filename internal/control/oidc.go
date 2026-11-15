@@ -175,35 +175,48 @@ func (p *OIDCProvider) verifyIDToken(ctx context.Context, idToken string) (*OIDC
 	}
 	var claims struct {
 		OIDCClaims
-		Iss string `json:"iss"`
-		Aud any    `json:"aud"`
-		Exp int64  `json:"exp"`
+		Iss string  `json:"iss"`
+		Aud any     `json:"aud"`
+		Exp int64   `json:"exp"`
+		Iat int64   `json:"iat"`
+		Azp *string `json:"azp"`
 	}
 	if err := json.Unmarshal(payload, &claims); err != nil {
 		return nil, fmt.Errorf("id token payload: %w", err)
 	}
-	if !strings.EqualFold(strings.TrimRight(claims.Iss, "/"), strings.TrimRight(p.cfg.Issuer, "/")) {
+	if claims.Iss != p.cfg.Issuer {
 		return nil, fmt.Errorf("id token: issuer %q does not match", claims.Iss)
 	}
+	// We have no policy granting trust to other audience identifiers.
+	// Accept a string or a one-element string array, never mixed types.
 	audOK := false
 	switch a := claims.Aud.(type) {
 	case string:
 		audOK = a == p.cfg.ClientID
 	case []any:
-		for _, v := range a {
-			if v == p.cfg.ClientID {
-				audOK = true
-			}
-		}
+		audOK = len(a) == 1 && a[0] == p.cfg.ClientID
 	}
 	if !audOK {
-		return nil, fmt.Errorf("id token: not issued for this client")
+		return nil, fmt.Errorf("id token: untrusted audience")
 	}
-	if claims.Exp != 0 && time.Now().Unix() > claims.Exp {
-		return nil, fmt.Errorf("id token: expired")
+	if claims.Azp != nil && *claims.Azp != p.cfg.ClientID {
+		return nil, fmt.Errorf("id token: wrong authorized party")
 	}
-	if claims.OIDCClaims.Email == "" && claims.OIDCClaims.Subject == "" {
-		return nil, fmt.Errorf("id token: no identity claims")
+	now := time.Now().Unix()
+	if claims.Exp <= now {
+		return nil, fmt.Errorf("id token: missing or expired exp")
+	}
+	// Require issued-at and allow at most a minute of future clock skew.
+	if claims.Iat <= 0 || claims.Iat > now+60 || claims.Iat >= claims.Exp {
+		return nil, fmt.Errorf("id token: missing or invalid iat")
+	}
+	if claims.Subject == "" || len(claims.Subject) > 255 {
+		return nil, fmt.Errorf("id token: missing or invalid subject")
+	}
+	for _, ch := range claims.Subject {
+		if ch > 127 {
+			return nil, fmt.Errorf("id token: subject must be ASCII")
+		}
 	}
 	return &claims.OIDCClaims, nil
 }

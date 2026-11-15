@@ -110,7 +110,8 @@ Set MNET_OIDC_ISSUER, MNET_OIDC_CLIENT_ID and MNET_OIDC_CLIENT_SECRET
 (or the matching flags) on mnet-control and joins switch from manual
 approval to SSO. Register <public base>/oidc/callback as the redirect
 URL at the provider. Tested providers: any spec-compliant issuer with
-RS256 ID tokens (Google, Microsoft Entra, Okta, Keycloak). Auth keys
+RS256 ID tokens. The current test evidence is a local signed fake provider,
+not a live Google, Microsoft Entra, Okta or Keycloak certification. Auth keys
 still bypass SSO, so keep issuing them for servers. The identity from
 the login (email, else subject) lands in the node's User field and the
 dashboard. Set `-base-url` to the externally reachable HTTP(S) origin.
@@ -197,3 +198,23 @@ entries at most once per minute. A full table rejects new addresses until
 capacity expires; it does not evict active callers to reset their budgets.
 These in-process limits are defense in depth, not a distributed DDoS
 service. Use network edge limits for public deployments.
+
+
+### OIDC token validation limits
+
+The verifier requires an exact, case-sensitive configured issuer, an ASCII
+subject up to 255 bytes, future expiration, and issued-at no more than one
+minute ahead of the server clock (and before expiration). Audience must be
+this client alone, either a string or a single-element array; additional
+audiences are rejected because no additional-audience trust is configured.
+If `azp` is present, it must be this client. RS256 signatures are checked
+against the discovered JWKS. Signed negative-claim tests cover these rules.
+The reference is OpenID Connect Core 1.0 sections 2 and 3.1.3.7:
+https://openid.net/specs/openid-connect-core-1_0.html
+
+SSO currently approves any identity the configured issuer authenticates.
+It does not enforce an email-domain or organization allowlist. Do not use
+an unrestricted consumer issuer as a private-network access policy. Leave
+SSO disabled and use manual approvals or scoped auth keys unless the
+issuer itself restricts who can sign into this client. This implementation
+has not had an independent security review.

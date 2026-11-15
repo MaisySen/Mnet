@@ -8,6 +8,12 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- OIDC verification now requires exact issuer, subject, expiry and issued-at
+  claims; rejects additional/untyped audiences and a mismatched authorized
+  party. Signed negative fixtures reproduced the former acceptance gaps.
+  Fake-provider end-to-end tests remain distinct from live issuer testing;
+  SSO's lack of a separate organization allowlist is documented explicitly.
+
 - Approval and OIDC callback URLs now use the validated configured base
   origin, not caller-controlled Host or forwarding-protocol headers.
   Signed identity strings are HTML-escaped on the success page. Origin

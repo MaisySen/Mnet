@@ -67,7 +67,7 @@ func newFakeOIDC(t *testing.T, evil bool) *fakeOIDC {
 		head := b64([]byte(`{"alg":"RS256","kid":"testkey"}`))
 		payload, _ := json.Marshal(map[string]any{
 			"iss": f.srv.URL, "aud": "mnet-test",
-			"exp": time.Now().Add(time.Hour).Unix(),
+			"exp": time.Now().Add(time.Hour).Unix(), "iat": time.Now().Unix(),
 			"sub": "user-1", "email": f.email, "name": "Dev",
 		})
 		sum := sha256.Sum256([]byte(head + "." + b64(payload)))
