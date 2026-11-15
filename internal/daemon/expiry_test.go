@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"golang.zx2c4.com/wireguard/tun/tuntest"
 	"net/http"
 	"net/http/httptest"
@@ -228,5 +229,38 @@ func TestReapprovedMapRestoresRunningStatus(t *testing.T) {
 				t.Fatal("approved map missing peer authorization")
 			}
 		})
+	}
+}
+
+func TestSuccessfulRetryClearsPreviousError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/join":
+			json.NewEncoder(w).Encode(netmap.JoinResponse{NodeID: "fixture", NodeToken: "test-token", Approved: true})
+		case "/api/map":
+			if r.URL.Query().Get("since") == "0" {
+				json.NewEncoder(w).Encode(netmap.Map{Version: 1, Self: netmap.Node{Approved: true, IPv4: "100.64.0.1"}})
+			} else {
+				<-r.Context().Done()
+			}
+		default:
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		}
+	}))
+	defer server.Close()
+	d, err := New(Config{StateDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Down()
+	d.setErr(fmt.Errorf("previous setup failure"))
+	if err := d.SetTUN(tuntest.NewChannelTUN().TUN()); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Up(server.URL, "fixture", "node", ""); err != nil {
+		t.Fatal(err)
+	}
+	if d.Status().LastError != "" {
+		t.Fatalf("successful retry retained old error: %s", d.Status().LastError)
 	}
 }

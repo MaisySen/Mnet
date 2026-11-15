@@ -220,6 +220,8 @@ print(json.dumps(k))
                                    'name': x, 'auth_key': key,
                                    'advertise_routes': ['10.9.0.0/24'] if x == 'b' else []})
             wait_for(lambda: local_api(state)['status'] == 'up', 'kernel TUN up ' + x)
+            if local_api(state).get('last_error'):
+                raise RuntimeError('successful Up retained setup error: ' + local_api(state)['last_error'])
         wait_for(lambda: (s if len(s.get('peers', [])) == 1 else None)
                           if (s := local_api(states['a'])) else None, 'peer map')
         ips = {x: local_api(states[x])['ipv4'] for x in 'ab'}

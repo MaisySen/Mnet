@@ -4,7 +4,7 @@ Test releases and engineering history. Historical entries record what was claime
 
 ## Unreleased after v0.8.2-test.1
 
-- Source-only subnet serving safety change: replace broad unowned NAT/global-forwarding mutation with unique destination-scoped Linux NAT ownership and an explicit operator-enabled forwarding prerequisite. Setup errors fail Up; unsupported automatic exit/mobile serving is rejected. Local tests and three fresh separate-LAN/control-off TCP fixtures passed in [6735500 CI](https://github.com/MaisySen/Mnet/actions/runs/43770289687). A further disabled-forwarding failure-path fixture is pending. Older broad NAT rules are not adopted or removed.
+- Source-only subnet serving safety change: replace broad unowned NAT/global-forwarding mutation with unique destination-scoped Linux NAT ownership and an explicit operator-enabled forwarding prerequisite. Setup errors fail Up; unsupported automatic exit/mobile serving is rejected. Local tests and three fresh separate-LAN/control-off TCP fixtures passed in [6735500 CI](https://github.com/MaisySen/Mnet/actions/runs/43770289687). The disabled-forwarding failure path passed three fresh [fcbddd1 fixtures](https://github.com/MaisySen/Mnet/actions/runs/43771745649), including retry after the fixture enables forwarding. Older broad NAT rules are not adopted or removed.
 
 - Bounded Linux RFC1918 subnet-route ownership implementation in progress: tagged add-only routes, conflict refusal, failed-batch rollback and scoped deletion. Unit regressions and actual kernel subnet/route-preservation extension pass in [8fcaf91 CI](https://github.com/MaisySen/Mnet/actions/runs/43764310572). Route-only ACL withdrawal/restoration passed once in [7a72378 CI](https://github.com/MaisySen/Mnet/actions/runs/43765437995); three fresh full-kernel runs passed in [2d23b6a CI](https://github.com/MaisySen/Mnet/actions/runs/43765976816). Admin expiry/reapproval with route teardown and corrected local up status passed three fresh [e6ab28d fixtures](https://github.com/MaisySen/Mnet/actions/runs/43767516777). Invalid additions no longer prevent withdrawal cleanup, and route counts/command duration are bounded. Exit routing remains separate and incomplete.
 
@@ -388,3 +388,5 @@ discovery confirmed live.
 
 Tag v0.1.0. First working mesh: control plane, daemon, CLI, relay,
 Magic DNS, end-to-end tests green.
+
+A later local regression reproduced stale last_error after a successful retry. New source clears errors when a fresh Up attempt starts, preserving errors raised during that attempt. The stronger actual-kernel retry assertion and native regression are pending independent CI.

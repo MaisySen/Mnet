@@ -132,6 +132,7 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 		return fmt.Errorf("already %s", d.status)
 	}
 	d.status = "joining"
+	d.lastErr = "" // start a new attempt; keep any errors raised during it
 	d.mu.Unlock()
 
 	// Unsupported routing must fail before enrollment or host mutations,
