@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"golang.zx2c4.com/wireguard/tun/tuntest"
@@ -25,17 +26,20 @@ func defaultStateDir() string {
 
 func main() {
 	var (
-		stateDir = flag.String("state", defaultStateDir(), "state directory")
-		ifname   = flag.String("ifname", "mnet0", "TUN interface name")
-		verbose  = flag.Bool("verbose", false, "verbose wireguard logging")
-		showVer  = flag.Bool("version", false, "print version and exit")
-		up       = flag.Bool("up", false, "join immediately using saved state or the flags below")
-		fakeTun  = flag.Bool("fake-tun", false, "validation rigs: in-memory TUN, no root needed")
-		selfTest = flag.String("self-test", "", "validation rigs: ping this peer mesh IP and exit")
-		server   = flag.String("server", "", "control plane URL, needed on first join")
-		network  = flag.String("network", "", "network to join, needed on first join")
-		name     = flag.String("name", "", "node name (default: hostname)")
-		authKey  = flag.String("auth-key", "", "pre-auth key for instant join")
+		stateDir  = flag.String("state", defaultStateDir(), "state directory")
+		ifname    = flag.String("ifname", "mnet0", "TUN interface name")
+		verbose   = flag.Bool("verbose", false, "verbose wireguard logging")
+		showVer   = flag.Bool("version", false, "print version and exit")
+		up        = flag.Bool("up", false, "join immediately using saved state or the flags below")
+		fakeTun   = flag.Bool("fake-tun", false, "validation rigs: in-memory TUN, no root needed")
+		selfTest  = flag.String("self-test", "", "validation rigs: ping this peer mesh IP and exit")
+		server    = flag.String("server", "", "control plane URL, needed on first join")
+		network   = flag.String("network", "", "network to join, needed on first join")
+		name      = flag.String("name", "", "node name (default: hostname)")
+		authKey   = flag.String("auth-key", "", "pre-auth key for instant join")
+		advExit   = flag.Bool("advertise-exit-node", false, "offer to carry other nodes' internet traffic")
+		advRoutes = flag.String("advertise-routes", "", "comma separated subnet CIDRs this node serves")
+		useExit   = flag.String("exit-node", "", "peer name or mesh IP to send internet traffic through")
 	)
 	flag.Parse()
 	if *showVer {
@@ -63,6 +67,15 @@ func main() {
 		return
 	}
 
+	if *advExit || *advRoutes != "" || *useExit != "" {
+		var routes []string
+		if *advRoutes != "" {
+			routes = strings.Split(*advRoutes, ",")
+		}
+		if err := d.SetRouting(*advExit, routes, *useExit); err != nil {
+			log.Printf("mnetd: routing: %v", err)
+		}
+	}
 	if *up {
 		go func() {
 			if err := d.Up(*server, *network, *name, *authKey); err != nil {

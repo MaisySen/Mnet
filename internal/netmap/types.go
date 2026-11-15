@@ -31,6 +31,8 @@ type Node struct {
 	IPv4      string    `json:"ipv4"`      // assigned 100.64.0.0/10 address
 	Endpoints []string  `json:"endpoints"` // observed UDP endpoints, host:port
 	Approved  bool      `json:"approved"`
+	ExitNode  bool      `json:"exit_node"`        // offers to carry other nodes' internet traffic
+	Routes    []string  `json:"routes,omitempty"` // advertised subnet CIDRs
 	CreatedAt time.Time `json:"created_at"`
 	LastSeen  time.Time `json:"last_seen"`
 }
@@ -64,10 +66,12 @@ type Map struct {
 
 // JoinRequest is what a client sends to join a network.
 type JoinRequest struct {
-	Network string `json:"network"` // network name or ID
-	Name    string `json:"name"`    // requested node name (hostname)
-	PubKey  string `json:"pubkey"`
-	AuthKey string `json:"auth_key,omitempty"` // optional pre-auth key
+	Network  string   `json:"network"` // network name or ID
+	Name     string   `json:"name"`    // requested node name (hostname)
+	PubKey   string   `json:"pubkey"`
+	AuthKey  string   `json:"auth_key,omitempty"`  // optional pre-auth key
+	ExitNode bool     `json:"exit_node,omitempty"` // offer to be an exit node
+	Routes   []string `json:"routes,omitempty"`    // subnet CIDRs to advertise
 }
 
 // JoinResponse is returned immediately after a join request.

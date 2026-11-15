@@ -8,6 +8,7 @@ struct ContentView: View {
     @State private var network = UserDefaults.standard.string(forKey: "network") ?? ""
     @State private var authKey = UserDefaults.standard.string(forKey: "authKey") ?? ""
     @State private var nodeName = UIDevice.current.name
+    @State private var exitNode = UserDefaults.standard.string(forKey: "exitNode") ?? ""
     @State private var statusText = "Disconnected"
     @State private var connected = false
     @State private var busy = false
@@ -24,6 +25,8 @@ struct ContentView: View {
                     TextField("Auth key (first join)", text: $authKey)
                         .autocapitalization(.none)
                     TextField("This device name", text: $nodeName)
+                    TextField("Exit node (optional, peer name)", text: $exitNode)
+                        .autocapitalization(.none)
                 }
                 Section {
                     Button(connected ? "Disconnect" : (busy ? "Working..." : "Connect")) {
@@ -48,6 +51,7 @@ struct ContentView: View {
         d.set(network, forKey: "network")
         d.set(authKey, forKey: "authKey")
         d.set(nodeName, forKey: "nodeName")
+        d.set(exitNode, forKey: "exitNode")
     }
 
     private func manager(_ cb: @escaping (NETunnelProviderManager?) -> Void) {
@@ -76,6 +80,7 @@ struct ContentView: View {
                 "network": network as NSObject,
                 "authKey": authKey as NSObject,
                 "nodeName": nodeName as NSObject,
+                "exitNode": exitNode as NSObject,
             ]
             do {
                 try m.connection.startVPNTunnel(options: opts)

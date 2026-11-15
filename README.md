@@ -100,9 +100,9 @@ internal/
 
 ## Status
 
-Version 0.1.0. The mesh works end to end: join, approve, direct and relayed
-traffic, Magic DNS. On the list next: iOS and Android apps, exit nodes,
-subnet routes, ACLs.
+Version 0.3.0. The mesh works end to end: join, approve, direct and relayed
+traffic, Magic DNS, Android app, exit nodes and subnet routes. On the list
+next: ACLs, SSO/OIDC login, key expiry.
 
 Mnet is provided by Fintex Australia Pty Ltd (ABN 60 688 406 108), New South
 Wales, Australia. Contact: contact@fintex.au.
@@ -114,6 +114,26 @@ Wales, Australia. Contact: contact@fintex.au.
 - The relay forwards frames as opaque datagrams and cannot read WireGuard payloads; privacy
   depends on WireGuard end-to-end encryption, not on relay trust.
 - Windows clients need `wintun.dll` beside `mnetd.exe` (see below).
+
+## Exit nodes and subnet routes
+
+Any node can offer to carry traffic for the rest of the mesh:
+
+    # on the machine that should be the exit node / subnet router
+    mnet up --advertise-exit-node
+    mnet up --advertise-routes 10.9.0.0/24,192.168.50.0/24
+
+    # on a device that wants to use them
+    mnet up --exit-node gateway
+
+The serving node turns on kernel forwarding and masquerading automatically
+(Linux; see docs/operations.md for macOS and Windows). The client selects
+an exit node by peer name or mesh IP; its default route moves into the
+tunnel (split /1 routes, so the underlay default stays as a fallback) while
+host routes keep the tunnel endpoint and the control plane reachable.
+Advertised subnets become WireGuard allowed IPs on every peer, so traffic
+for 10.9.0.0/24 flows to the router node and out its LAN. Deselecting the
+exit node or rejoining without the flags cleanly removes the routes again.
 
 ## Mobile
 

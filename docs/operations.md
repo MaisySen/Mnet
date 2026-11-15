@@ -102,6 +102,34 @@ STUN simply finds nothing; the daemon falls back to relay-only operation
 and keeps retrying on a 45 s cycle. No configuration is needed either
 way.
 
+## Exit nodes and subnet routes
+
+A node serving as an exit node or subnet router runs:
+
+    mnetd -up -advertise-exit-node
+    mnetd -up -advertise-routes 10.9.0.0/24
+
+Linux serving setup is automatic: the daemon writes
+/proc/sys/net/ipv4/ip_forward and adds a POSTROUTING MASQUERADE rule for
+100.64.0.0/10 with iptables. Keep both on a dedicated node with a systemd
+unit; netfilter-persistent is not needed because the daemon reasserts the
+rule on every up.
+
+macOS: the daemon sets net.inet.ip.forwarding=1, but masquerading needs a
+pf anchor you add once by hand: `nat on en0 from 100.64.0.0/10 to any -> (en0)`
+in /etc/pf.conf, then `pfctl -f /etc/pf.conf -e`.
+
+Windows: enable Internet Connection Sharing for the Mnet interface; the
+daemon reports this until native forwarding support lands.
+
+Clients pick the exit node with `mnet up --exit-node NAME`. The client
+pins host routes for the tunnel endpoint and the control server through
+the underlay gateway, then installs 0.0.0.0/1 + 128.0.0.0/1 via mnet0.
+The underlay default route stays in place, so `mnet down` restores
+ordinary routing without cleanup. Mobile clients skip OS route changes:
+the Android VpnService and iOS NetworkExtension builders own the route
+table, and the allowed IPs already steer traffic into the tunnel.
+
 ## Android
 
 android/build.sh builds android/out/mnet.apk without Gradle: gomobile

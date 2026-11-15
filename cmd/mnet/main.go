@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -67,17 +68,24 @@ func main() {
 	case "version":
 		fmt.Printf("mnet %s\n", version.Version)
 	case "up":
-		upFlags := map[string]string{}
-		for i := 1; i+1 < len(args); i += 2 {
+		upFlags := map[string]any{}
+		for i := 1; i < len(args); i++ {
 			switch args[i] {
-			case "--server":
-				upFlags["server"] = args[i+1]
-			case "--network":
-				upFlags["network"] = args[i+1]
-			case "--name":
-				upFlags["name"] = args[i+1]
-			case "--auth-key":
-				upFlags["auth_key"] = args[i+1]
+			case "--server", "--network", "--name", "--auth-key", "--exit-node":
+				if i+1 >= len(args) {
+					fatal(args[i] + " needs a value")
+				}
+				key := strings.TrimPrefix(args[i], "--")
+				upFlags[strings.ReplaceAll(key, "-", "_")] = args[i+1]
+				i++
+			case "--advertise-routes":
+				if i+1 >= len(args) {
+					fatal("--advertise-routes needs a value")
+				}
+				upFlags["advertise_routes"] = strings.Split(args[i+1], ",")
+				i++
+			case "--advertise-exit-node":
+				upFlags["advertise_exit_node"] = true
 			default:
 				fatal("unknown flag " + args[i])
 			}
@@ -132,6 +140,7 @@ func usage() {
 	fmt.Print(`mnet - the Mnet command line
 
   mnet up --server https://control.example.com --network mynet [--auth-key KEY] [--name NAME]
+          [--advertise-exit-node] [--advertise-routes CIDR,...] [--exit-node PEER]
   mnet down
   mnet status
   mnet ip

@@ -45,6 +45,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let network = options?["network"] as? String ?? ""
         let authKey = options?["authKey"] as? String ?? ""
         let nodeName = options?["nodeName"] as? String ?? UIDevice.current.name
+        let exitNode = options?["exitNode"] as? String ?? ""
 
         let dir = FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: "group.au.fintex.mnet")!
@@ -57,6 +58,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             return
         }
         self.node = node
+        if !exitNode.isEmpty {
+            try? node.setUseExitNode(exitNode)
+        }
 
         DispatchQueue.global(qos: .userInitiated).async {
             // Join first: the mesh assigns our address before we configure
@@ -71,6 +75,11 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             settings.mtu = 1280
             let v4 = NEIPv4Settings(addresses: [ipv4], subnetMasks: ["255.192.0.0"])
             v4.includedRoutes = [NEIPv4Route(destinationAddress: "100.64.0.0", subnetMask: "255.192.0.0")]
+            if !exitNode.isEmpty {
+                // Whole internet into the tunnel; allowed IPs steer it to
+                // the exit node.
+                v4.includedRoutes?.append(NEIPv4Route.default())
+            }
             settings.ipv4Settings = v4
             settings.dnsSettings = NEDNSSettings(servers: [ipv4])
             settings.dnsSettings?.matchDomains = ["mnet"]

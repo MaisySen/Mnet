@@ -52,6 +52,10 @@ public class MnetVpnService extends VpnService {
         String name = prefs.getString("name", android.os.Build.MODEL);
         try {
             node = Mobile.newNode(getFilesDir() + "/mnet");
+            String exitNode = prefs.getString("exitnode", "");
+            if (!exitNode.isEmpty()) {
+                node.setUseExitNode(exitNode);
+            }
             String ipv4 = node.prepare(server, network, name, authKey);
 
             Builder b = new Builder()
@@ -60,6 +64,11 @@ public class MnetVpnService extends VpnService {
                     .addAddress(ipv4, 32)
                     .addRoute("100.64.0.0", 10)
                     .addDnsServer(ipv4);
+            if (!exitNode.isEmpty()) {
+                // Whole internet into the tunnel; allowed IPs steer it to
+                // the exit node. The VPN API excludes the tunnel itself.
+                b.addRoute("0.0.0.0", 0);
+            }
             ParcelFileDescriptor pfd = b.establish();
             if (pfd == null) {
                 broadcast("error: system refused the VPN interface");

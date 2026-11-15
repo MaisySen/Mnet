@@ -20,6 +20,10 @@ type State struct {
 	NodeID     string `json:"node_id"`
 	NodeToken  string `json:"node_token"`
 	NodeName   string `json:"node_name"`
+
+	ExitNode        bool     `json:"exit_node,omitempty"`        // offer to carry others' internet traffic
+	AdvertiseRoutes []string `json:"advertise_routes,omitempty"` // subnet CIDRs this node serves
+	UseExitNode     string   `json:"use_exit_node,omitempty"`    // peer name or mesh IP to send internet traffic via
 }
 
 func statePath(dir string) string { return filepath.Join(dir, "state.json") }

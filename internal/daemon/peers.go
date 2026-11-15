@@ -6,12 +6,14 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"net"
 	"strconv"
 	"strings"
 	"time"
 
 	"fintex.au/mnet/internal/bind"
+	"fintex.au/mnet/internal/ifacectl"
 	"fintex.au/mnet/internal/netmap"
 	"fintex.au/mnet/internal/stun"
 )
@@ -60,7 +62,15 @@ func (d *Daemon) applyMap(m *netmap.Map) {
 		}
 		d.peersMu.Unlock()
 		fmt.Fprintf(&conf, "public_key=%s\n", hex.EncodeToString(pub))
+		fmt.Fprintf(&conf, "replace_allowed_ips=true\n")
 		fmt.Fprintf(&conf, "allowed_ip=%s/32\n", p.IPv4)
+		for _, r := range p.Routes {
+			fmt.Fprintf(&conf, "allowed_ip=%s\n", r)
+		}
+		if d.state.UseExitNode != "" && p.ExitNode && (p.Name == d.state.UseExitNode || p.IPv4 == d.state.UseExitNode) {
+			fmt.Fprintf(&conf, "allowed_ip=0.0.0.0/0\n")
+			fmt.Fprintf(&conf, "allowed_ip=::/0\n")
+		}
 		fmt.Fprintf(&conf, "persistent_keepalive_interval=25\n")
 		if ep := st.currentEndpoint(); ep != "" {
 			fmt.Fprintf(&conf, "endpoint=%s\n", ep)
@@ -81,6 +91,48 @@ func (st *peerTrack) currentEndpoint() string {
 		return bind.RelayPrefix + st.node.PubKey
 	}
 	return st.node.Endpoints[st.cycle%len(st.node.Endpoints)]
+}
+
+// applyExitNode switches the underlay default route into the tunnel so all
+// internet traffic leaves through the selected exit node. Kernel routing,
+// skipped on managed (mobile) interfaces where the OS VPN API owns routes.
+func (d *Daemon) applyExitNode(m *netmap.Map) error {
+	var target *netmap.Node
+	for i, p := range m.Peers {
+		if p.ExitNode && (p.Name == d.state.UseExitNode || p.IPv4 == d.state.UseExitNode) {
+			target = &m.Peers[i]
+			break
+		}
+	}
+	if target == nil {
+		return fmt.Errorf("exit node %q not found in map", d.state.UseExitNode)
+	}
+	if d.cfg.ManagedIface {
+		return nil
+	}
+	gw, dev, err := ifacectl.DefaultRoute()
+	if err != nil {
+		return err
+	}
+	d.peersMu.Lock()
+	var ep string
+	if st := d.peers[target.PubKey]; st != nil {
+		ep = st.currentEndpoint()
+	}
+	d.peersMu.Unlock()
+	if ep != "" && !strings.HasPrefix(ep, bind.RelayPrefix) {
+		if err := ifacectl.HostRoute(ep, gw); err != nil {
+			return err
+		}
+	}
+	if err := ifacectl.HostRouteURL(d.state.Server, gw); err != nil {
+		log.Printf("mnetd: control host route: %v", err)
+	}
+	if err := ifacectl.DefaultRouteVia(d.cfg.IfName); err != nil {
+		return err
+	}
+	log.Printf("mnetd: internet traffic exits via %s (%s), underlay gateway %s dev %s", target.Name, target.IPv4, gw, dev)
+	return nil
 }
 
 // mapLoop long polls the control plane for new maps.

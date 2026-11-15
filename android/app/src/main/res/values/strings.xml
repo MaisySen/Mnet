@@ -7,6 +7,7 @@
     <string name="network_hint">Network name</string>
     <string name="authkey_hint">Auth key (first join)</string>
     <string name="name_hint">This device name</string>
+    <string name="exitnode_hint">Exit node (optional, peer name)</string>
     <string name="notification_title">Mnet is connected</string>
     <string name="notification_channel">Mesh status</string>
 </resources>

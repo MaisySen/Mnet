@@ -92,6 +92,22 @@ func New(cfg Config) (*Daemon, error) {
 // State returns the current persisted state.
 func (d *Daemon) State() State { return *d.state }
 
+// SetRouting configures exit-node and subnet-routing roles. advertiseExit
+// offers this node as an exit node, routes are subnet CIDRs it serves,
+// useExit is a peer name or mesh IP to send internet traffic through.
+// Persists; takes effect on the next Up.
+func (d *Daemon) SetRouting(advertiseExit bool, routes []string, useExit string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.status != "down" {
+		return fmt.Errorf("routing changes apply while down; node is %s", d.status)
+	}
+	d.state.ExitNode = advertiseExit
+	d.state.AdvertiseRoutes = routes
+	d.state.UseExitNode = useExit
+	return d.state.Save(d.cfg.StateDir)
+}
+
 // Up brings the mesh up. server, network and authKey are only needed on the
 // first join; after that the saved state is enough.
 func (d *Daemon) Up(server, network, nodeName, authKey string) error {
@@ -164,6 +180,11 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 		return fmt.Errorf("first map: %w", err)
 	}
 	d.lastMap = m
+	if d.state.ExitNode || len(d.state.AdvertiseRoutes) > 0 {
+		if err := ifacectl.EnableServing(d.state.AdvertiseRoutes); err != nil {
+			log.Printf("mnetd: serving setup: %v", err)
+		}
+	}
 	if d.cfg.ManagedIface {
 		if err := ifacectl.Configure(d.cfg.IfName, m.Self.IPv4, MTU); err != nil {
 			d.stopDevice()
@@ -173,6 +194,11 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 		}
 	}
 	d.applyMap(m)
+	if d.state.UseExitNode != "" {
+		if err := d.applyExitNode(m); err != nil {
+			log.Printf("mnetd: exit node: %v", err)
+		}
+	}
 
 	// Magic DNS on our own mesh address.
 	if dnsSrv, err := dns.New(m.Self.IPv4); err == nil {
@@ -198,10 +224,12 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 func (d *Daemon) join(ctx context.Context, authKey string) error {
 	cc := &controlclient.Client{Base: d.state.Server}
 	resp, err := cc.Join(ctx, netmap.JoinRequest{
-		Network: d.state.Network,
-		Name:    d.state.NodeName,
-		PubKey:  d.state.PublicKey,
-		AuthKey: authKey,
+		Network:  d.state.Network,
+		Name:     d.state.NodeName,
+		PubKey:   d.state.PublicKey,
+		AuthKey:  authKey,
+		ExitNode: d.state.ExitNode,
+		Routes:   d.state.AdvertiseRoutes,
 	})
 	if err != nil {
 		return fmt.Errorf("join: %w", err)

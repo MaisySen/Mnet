@@ -25,7 +25,7 @@ import org.json.JSONObject;
 // shows live mesh status pushed by MnetVpnService.
 public class MainActivity extends Activity {
 
-    private EditText server, network, authKey, name;
+    private EditText server, network, authKey, name, exitNode;
     private Button toggle;
     private TextView status;
     private boolean connected;
@@ -60,12 +60,14 @@ public class MainActivity extends Activity {
         network = field(root, R.string.network_hint);
         authKey = field(root, R.string.authkey_hint);
         name = field(root, R.string.name_hint);
+        exitNode = field(root, R.string.exitnode_hint);
 
         SharedPreferences prefs = getSharedPreferences("mnet", MODE_PRIVATE);
         server.setText(prefs.getString("server", ""));
         network.setText(prefs.getString("network", ""));
         authKey.setText(prefs.getString("authkey", ""));
         name.setText(prefs.getString("name", android.os.Build.MODEL));
+        exitNode.setText(prefs.getString("exitnode", ""));
 
         toggle = new Button(this);
         toggle.setText(R.string.connect);
@@ -106,6 +108,7 @@ public class MainActivity extends Activity {
         ed.putString("network", network.getText().toString().trim());
         ed.putString("authkey", authKey.getText().toString().trim());
         ed.putString("name", name.getText().toString().trim());
+        ed.putString("exitnode", exitNode.getText().toString().trim());
         ed.apply();
 
         Intent consent = VpnService.prepare(this);

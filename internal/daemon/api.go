@@ -83,13 +83,22 @@ func (d *Daemon) ServeLocalAPI() error {
 			return
 		}
 		var req struct {
-			Server  string `json:"server"`
-			Network string `json:"network"`
-			Name    string `json:"name"`
-			AuthKey string `json:"auth_key"`
+			Server          string   `json:"server"`
+			Network         string   `json:"network"`
+			Name            string   `json:"name"`
+			AuthKey         string   `json:"auth_key"`
+			AdvertiseExit   bool     `json:"advertise_exit_node"`
+			AdvertiseRoutes []string `json:"advertise_routes"`
+			UseExitNode     string   `json:"exit_node"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
 		go func() {
+			if req.AdvertiseExit || len(req.AdvertiseRoutes) > 0 || req.UseExitNode != "" {
+				if err := d.SetRouting(req.AdvertiseExit, req.AdvertiseRoutes, req.UseExitNode); err != nil {
+					d.setErr(fmt.Errorf("routing: %w", err))
+					return
+				}
+			}
 			if err := d.Up(req.Server, req.Network, req.Name, req.AuthKey); err != nil {
 				d.setErr(fmt.Errorf("up: %w", err))
 			}

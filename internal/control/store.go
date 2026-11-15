@@ -291,6 +291,8 @@ func (s *Store) Join(req netmap.JoinRequest) (*netmap.JoinResponse, error) {
 	}
 	node.Approved = node.Approved || approved
 	node.LastSeen = time.Now().UTC()
+	node.ExitNode = req.ExitNode
+	node.Routes = cleanRoutes(req.Routes)
 	if err := s.saveLocked(); err != nil {
 		return nil, err
 	}
@@ -360,6 +362,17 @@ func (s *Store) Touch(nodeID string) {
 	if n := s.data.Nodes[nodeID]; n != nil {
 		n.LastSeen = time.Now().UTC()
 	}
+}
+
+// cleanRoutes keeps only valid CIDRs.
+func cleanRoutes(in []string) []string {
+	var out []string
+	for _, r := range in {
+		if _, _, err := net.ParseCIDR(r); err == nil {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // SetEndpoints stores a node's candidate endpoints.

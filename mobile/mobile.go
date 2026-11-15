@@ -43,6 +43,13 @@ func (n *Node) Prepare(server, network, name, authKey string) (string, error) {
 	return n.d.Prepare(server, network, name, authKey)
 }
 
+// SetUseExitNode routes the device's internet traffic through the named
+// peer (name or mesh IP). Call before Prepare; pass an empty string to
+// clear. The app must also add a default route to its tunnel builder.
+func (n *Node) SetUseExitNode(peer string) error {
+	return n.d.SetRouting(false, nil, peer)
+}
+
 // Status returns the daemon status as JSON: state, mesh IP, peers with
 // paths and handshake times. Never blocks on the network.
 func (n *Node) Status() string {
