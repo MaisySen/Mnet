@@ -28,8 +28,8 @@ import (
 	"sync"
 	"time"
 
+	"fintex.au/mnet/internal/proofnet"
 	"golang.zx2c4.com/wireguard/tun"
-	"golang.zx2c4.com/wireguard/tun/netstack"
 
 	"fintex.au/mnet/internal/daemon"
 	"fintex.au/mnet/internal/session"
@@ -39,7 +39,7 @@ const proofPort = 5909
 
 type proofNodeT struct {
 	d   *daemon.Daemon
-	net *netstack.Net
+	net *proofnet.Net
 	ip  netip.Addr
 }
 
@@ -66,7 +66,7 @@ func newProofNodeWithTUN(dir, sub, server, network, name, key string, verbose bo
 	if err != nil {
 		return nil, fmt.Errorf("%s: bad assigned address %q: %w", name, ipStr, err)
 	}
-	dev, tnet, err := netstack.CreateNetTUN([]netip.Addr{ip}, nil, 1420)
+	dev, tnet, err := proofnet.CreateNetTUN([]netip.Addr{ip}, nil, 1420)
 	if err != nil {
 		return nil, fmt.Errorf("%s netstack: %w", name, err)
 	}

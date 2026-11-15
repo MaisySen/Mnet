@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -100,7 +101,11 @@ func TestMeshFileStress(t *testing.T) {
 				if mt == websocket.BinaryMessage && len(b) > 1000 && binary.LittleEndian.Uint32(b[32:36]) == 4 && func() bool {
 					n := largePackets.Add(1)
 					if n == 5 {
-						dropUntil.Store(time.Now().Add(20 * time.Millisecond).UnixNano())
+						duration := 20 * time.Millisecond
+						if value, e := strconv.Atoi(os.Getenv("MNET_LOSS_MS")); e == nil && value >= 1 && value <= 1000 {
+							duration = time.Duration(value) * time.Millisecond
+						}
+						dropUntil.Store(time.Now().Add(duration).UnixNano())
 						return true
 					}
 					return lossMode == "burst" && time.Now().UnixNano() < dropUntil.Load()
