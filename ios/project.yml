@@ -1,0 +1,49 @@
+# XcodeGen spec for Mnet iOS. Regenerate the project with:
+#   xcodegen --spec ios/project.yml --project ios
+# Bundle IDs are registered through the App Store Connect API; signing is
+# automatic (xcodebuild -allowProvisioningUpdates with the Admin API key).
+name: Mnet
+options:
+  bundleIdPrefix: au.fintex
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    CURRENT_PROJECT_VERSION: $(MNET_BUILD_NUMBER)
+    MARKETING_VERSION: 0.5.0
+    SWIFT_VERSION: "5.0"
+    GENERATE_INFOPLIST_FILE: NO
+targets:
+  Mnet:
+    type: application
+    platform: iOS
+    sources:
+      - path: ios
+        excludes:
+          - "PacketTunnelProvider.swift"
+          - "*.md"
+          - "build-go.sh"
+          - "project.yml"
+          - "MnetTunnel.entitlements"
+          - "MnetTunnel-Info.plist"
+          - "Mnet.xcframework/**"
+    dependencies:
+      - framework: ios/Mnet.xcframework
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: au.fintex.mnet
+        INFOPLIST_FILE: ios/Mnet-Info.plist
+  MnetTunnel:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ios/PacketTunnelProvider.swift
+    dependencies:
+      - framework: ios/Mnet.xcframework
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: au.fintex.mnet.tunnel
+        INFOPLIST_FILE: ios/MnetTunnel-Info.plist
+        CODE_SIGN_ENTITLEMENTS: ios/MnetTunnel.entitlements
