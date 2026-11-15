@@ -234,3 +234,14 @@ cancellation, and never follow redirects. A redirect at the token endpoint
 cannot forward the client secret to another destination. Provider error
 bodies are not echoed to the browser. Production issuer/endpoints require
 HTTPS; plain HTTP is accepted only for loopback local integration tests.
+
+
+### HTTP ingress bounds
+
+The control listener applies a 5-second header timeout, 30-second request
+read timeout, 65-second response write timeout, 90-second keep-alive idle
+timeout, and 32KiB header limit (Go's HTTP parser has a small additional
+read buffer allowance). The write timeout leaves room for 50-second map
+polls. WebSocket relay connections have their own deadlines after upgrade;
+TCP tests verify they continue beyond an artificially shortened HTTP
+deadline. Slow-header, slow-body and oversized-header tests also run.

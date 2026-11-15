@@ -6,7 +6,6 @@ import (
 	"context"
 	"flag"
 	"log"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -77,7 +76,7 @@ func main() {
 	}
 	log.Printf("mnet-control %s listening on %s", version.Version, *listen)
 	log.Printf("dashboard: %s/admin", publicBase)
-	log.Fatal(http.ListenAndServe(*listen, srv.Handler()))
+	log.Fatal(control.NewHTTPServer(*listen, srv.Handler()).ListenAndServe())
 }
 
 func splitList(raw string) []string {

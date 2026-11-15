@@ -8,6 +8,11 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- Control listener has bounded header/body reads, writes and idle time,
+  plus a smaller header limit. Map polls retain time to finish; a real TCP
+  WebSocket echo test verifies upgrade traffic is not cut off by HTTP
+  deadlines. Slow-header/body and oversized-header tests cover rejection.
+
 - OIDC transport: bounded provider requests, no redirect following (a
   reproduced 307 credential-forwarding regression), exact discovery issuer,
   TLS endpoint policy with loopback-only HTTP for local tests, no upstream
