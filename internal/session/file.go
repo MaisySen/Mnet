@@ -35,6 +35,10 @@ func (r FileReceiver) Handle(s Stream) {
 	if name == "." || name == "/" || name == "" {
 		return
 	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		r.Mux.SendJSON(s.ID, PriBulk, FileAccept{OK: false, Reason: err.Error()})
+		return
+	}
 	path := filepath.Join(dir, name)
 	f, err := os.Create(path)
 	if err != nil {

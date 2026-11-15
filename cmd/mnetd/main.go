@@ -42,10 +42,18 @@ func main() {
 		useExit   = flag.String("exit-node", "", "peer name or mesh IP to send internet traffic through")
 		sessHost  = flag.Bool("session-host", false, "host remote-desktop sessions on this node (mesh port 5909)")
 		sessAuto  = flag.Bool("session-auto-accept", false, "accept sessions without prompting (required on headless daemons)")
+		sessProof = flag.Bool("session-proof", false, "validation rigs: run a full two-node session over the mesh on userspace tunnels and exit")
+		proofDir  = flag.String("proof-dir", "/tmp/mnet-session-proof", "artifact directory for -session-proof")
 	)
 	flag.Parse()
 	if *showVer {
 		log.Printf("mnetd %s", version.Version)
+		return
+	}
+	if *sessProof {
+		if err := runSessionProof(*server, *network, *authKey, *proofDir, *verbose); err != nil {
+			log.Fatalf("mnetd session-proof: %v", err)
+		}
 		return
 	}
 
