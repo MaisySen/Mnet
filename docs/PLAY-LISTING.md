@@ -30,6 +30,9 @@ networks - with WireGuard encryption end to end.
 - Direct where possible, relayed where not: Mnet finds the fastest path.
 - Exit nodes: route all traffic through a device you trust.
 - Subnet routing: reach whole networks through one Mnet node.
+- Remote sessions: view and control one Mnet device from another,
+  right over the mesh. Screen, touch input, chat and file transfer,
+  with your approval before anyone connects.
 - SSO login: join with your existing identity provider.
 - Your control plane: self-host the coordination server, keep your keys.
 
