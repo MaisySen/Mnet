@@ -8,6 +8,17 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- Session backpressure: at most 16MiB of outbound frames can queue before
+  sends wait for capacity; close wakes blocked senders. Weighted scheduling
+  favors input/screen while allowing chat and bulk completion to progress.
+- Safe file reception: incoming transfers default to a 1GiB per-file cap,
+  reject unsafe names/invalid sizes and existing targets, write private
+  temporary files, check every write/length/digest, then publish atomically
+  without replacing a destination. Failed/partial files are removed. The
+  sender checks receiver offsets and final digest. Regression tests cover
+  acceptance/refusal, traversal, truncation, overflow, existing files,
+  private permissions, queue limits and bulk fairness.
+
 - Scale baseline: reproducible map/HTTP/persistence benchmarks at 100,
   1,000 and 10,000 synthetic nodes, plus a race-tested 1,000-watcher
   cancellation regression. Full results and measurement limits are in

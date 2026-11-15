@@ -4,71 +4,130 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
 const fileChunk = 256 * 1024
 
+// DefaultMaxFileBytes bounds one incoming transfer unless explicitly raised.
+const DefaultMaxFileBytes int64 = 1 << 30
+
 // FileReceiver handles incoming file transfer streams. Files land in
 // Dir (default: current directory) under their offered base name.
 type FileReceiver struct {
-	Mux    *Mux
-	Dir    string
-	OnDone func(name string, size int64)
+	Mux      *Mux
+	Dir      string
+	MaxBytes int64 // <=0 uses DefaultMaxFileBytes
+	OnDone   func(name string, size int64)
 }
 
 // Handle runs one incoming file stream to completion.
 func (r FileReceiver) Handle(s Stream) {
+	refuse := func(reason string) { _ = r.Mux.SendJSON(s.ID, PriBulk, FileAccept{OK: false, Reason: reason}) }
 	var offer FileOffer
 	if err := json.Unmarshal(s.OpenJSON, &offer); err != nil {
+		refuse("invalid offer")
 		return
+	}
+	limit := r.MaxBytes
+	if limit <= 0 {
+		limit = DefaultMaxFileBytes
+	}
+	name := offer.Name
+	if name == "" || name == "." || name == ".." || len(name) > 255 || strings.ContainsAny(name, "/\\\x00") || filepath.Base(name) != name {
+		refuse("invalid file name")
+		return
+	}
+	if offer.Size < 0 || offer.Size > limit {
+		refuse("file size exceeds receiver policy")
+		return
+	}
+	if offer.SHA256 != "" {
+		digest, err := hex.DecodeString(offer.SHA256)
+		if err != nil || len(digest) != sha256.Size {
+			refuse("invalid SHA256")
+			return
+		}
 	}
 	dir := r.Dir
 	if dir == "" {
 		dir = "."
 	}
-	name := filepath.Base(offer.Name)
-	if name == "." || name == "/" || name == "" {
-		return
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		r.Mux.SendJSON(s.ID, PriBulk, FileAccept{OK: false, Reason: err.Error()})
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		refuse(err.Error())
 		return
 	}
 	path := filepath.Join(dir, name)
-	f, err := os.Create(path)
+	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+		refuse("destination already exists or is inaccessible")
+		return
+	}
+	// Never expose or overwrite the offered destination until the complete
+	// bytes, length and digest have been verified. CreateTemp uses mode 0600.
+	f, err := os.CreateTemp(dir, ".mnet-transfer-*")
 	if err != nil {
-		r.Mux.SendJSON(s.ID, PriBulk, FileAccept{OK: false, Reason: err.Error()})
+		refuse(err.Error())
 		return
 	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
 	defer f.Close()
-	if err := r.Mux.SendJSON(s.ID, PriBulk, FileAccept{OK: true}); err != nil {
+	if err = r.Mux.SendJSON(s.ID, PriBulk, FileAccept{OK: true}); err != nil {
 		return
 	}
+	ack := func(ok bool, digest string) { _ = r.Mux.SendJSON(s.ID, PriBulk, FileAck{OK: ok, SHA256: digest}) }
 	h := sha256.New()
 	var n int64
 	for {
 		fr, err := s.Recv(0)
+		if errors.Is(err, io.EOF) {
+			break
+		}
 		if err != nil {
-			break // FIN: transfer stream closed by sender
+			return
 		}
 		if fr.Type != msgData {
 			continue
 		}
-		// An ack/accept from the sender side arrives as JSON DATA;
-		// chunk data is raw. Chunks are the only DATA we expect here.
-		f.Write(fr.Payload)
-		h.Write(fr.Payload)
-		n += int64(len(fr.Payload))
+		if int64(len(fr.Payload)) > offer.Size-n {
+			ack(false, "")
+			return
+		}
+		written, err := f.Write(fr.Payload)
+		if err != nil || written != len(fr.Payload) {
+			ack(false, "")
+			return
+		}
+		_, _ = h.Write(fr.Payload)
+		n += int64(written)
 	}
 	digest := hex.EncodeToString(h.Sum(nil))
-	ok := n == offer.Size && (offer.SHA256 == "" || digest == offer.SHA256)
-	r.Mux.SendJSON(s.ID, PriBulk, FileAck{OK: ok, SHA256: digest})
-	if ok && r.OnDone != nil {
+	if n != offer.Size || (offer.SHA256 != "" && !strings.EqualFold(digest, offer.SHA256)) {
+		ack(false, digest)
+		return
+	}
+	if err = f.Sync(); err != nil {
+		ack(false, digest)
+		return
+	}
+	if err = f.Close(); err != nil {
+		ack(false, digest)
+		return
+	}
+	// Hard-link publication is atomic and fails if another transfer or a
+	// symlink already occupies the destination. No replace-on-rename race.
+	if err = os.Link(tmp, path); err != nil {
+		ack(false, digest)
+		return
+	}
+	ack(true, digest)
+	if r.OnDone != nil {
 		r.OnDone(name, n)
 	}
 }
@@ -84,6 +143,9 @@ func SendFile(m *Mux, path string) error {
 	st, err := f.Stat()
 	if err != nil {
 		return err
+	}
+	if !st.Mode().IsRegular() {
+		return fmt.Errorf("session: only regular files can be sent")
 	}
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
@@ -112,6 +174,9 @@ func SendFile(m *Mux, path string) error {
 	}
 	if !accept.OK {
 		return fmt.Errorf("session: file refused: %s", accept.Reason)
+	}
+	if accept.Offset < 0 || accept.Offset > st.Size() {
+		return fmt.Errorf("session: invalid receiver offset")
 	}
 	if accept.Offset > 0 {
 		if _, err := f.Seek(accept.Offset, 0); err != nil {
@@ -146,7 +211,7 @@ func SendFile(m *Mux, path string) error {
 	if err := json.Unmarshal(ack.Payload, &fa); err != nil {
 		return err
 	}
-	if !fa.OK {
+	if !fa.OK || !strings.EqualFold(fa.SHA256, offer.SHA256) {
 		return fmt.Errorf("session: receiver digest mismatch")
 	}
 	return nil

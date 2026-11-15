@@ -35,10 +35,12 @@ type Mux struct {
 	conn net.Conn
 	wmu  sync.Mutex
 	// pending[priority] holds queued DATA/OPEN frames per class.
-	pending [4][]Frame
-	cond    *sync.Cond
-	closed  chan struct{}
-	closeMu sync.Once
+	pending     [4][]Frame
+	queuedBytes int
+	drainSlot   int
+	cond        *sync.Cond
+	closed      chan struct{}
+	closeMu     sync.Once
 
 	lastRead   atomic.Int64 // unixnano; any inbound frame proves liveness
 	lastRTT    atomic.Int64 // nanoseconds; last keepalive round trip
@@ -319,7 +321,7 @@ func (m *Mux) send(id uint32, typ byte, pri uint8, payload []byte) error {
 	}
 	// send is asynchronous after start. The caller may reuse its buffer
 	// as soon as we return (notably SendFile's chunk buffer).
-	f := Frame{StreamID: id, Type: typ, Priority: pri, Payload: append([]byte(nil), payload...)}
+	f := Frame{StreamID: id, Type: typ, Priority: pri}
 	select {
 	case <-m.closed:
 		return io.ErrClosedPipe
@@ -333,11 +335,37 @@ func (m *Mux) send(id uint32, typ byte, pri uint8, payload []byte) error {
 	default:
 	}
 	if !m.started {
+		f.Payload = payload
 		return writeFrame(m.conn, f)
 	}
 	if int(pri) >= len(m.pending) {
 		pri = PriBulk
 	}
+	needed := 0
+	// Backpressure bounds memory for slow viewers or large transfers.
+	for {
+		needed = headerLen + len(payload)
+		if typ == msgData && !m.opened[id] {
+			needed += headerLen + 2
+		}
+		if m.queuedBytes+needed <= maxQueuedBytes {
+			break
+		}
+		select {
+		case <-m.closed:
+			return io.ErrClosedPipe
+		default:
+		}
+		m.cond.Wait()
+	}
+	select {
+	case <-m.closed:
+		return io.ErrClosedPipe
+	default:
+	}
+	f.Priority = pri
+	f.Payload = append([]byte(nil), payload...)
+	m.queuedBytes += needed
 	// Implicit OPEN on first send: OPEN is how the peer learns the
 	// stream exists, so DATA on a fresh stream is preceded by one.
 	if typ == msgData && !m.opened[id] {
@@ -373,15 +401,27 @@ func (m *Mux) writeLoop() {
 	}
 }
 
-// popLocked returns the queued frame with the lowest priority class,
-// FIFO within a class.
+// maxQueuedBytes bounds queued wire frames, excluding one in-flight write.
+const maxQueuedBytes = 16 << 20
+
+// Weighted round robin favors input and screen traffic without letting a
+// continuous screen stream starve chat or file completion indefinitely.
+var drainOrder = [...]int{0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 3}
+
+// popLocked preserves FIFO within each class and bounds starvation.
 func (m *Mux) popLocked() (Frame, bool) {
-	for p := 0; p < len(m.pending); p++ {
-		if len(m.pending[p]) > 0 {
-			f := m.pending[p][0]
-			m.pending[p] = m.pending[p][1:]
-			return f, true
+	for i := 0; i < len(drainOrder); i++ {
+		p := drainOrder[m.drainSlot]
+		m.drainSlot = (m.drainSlot + 1) % len(drainOrder)
+		if len(m.pending[p]) == 0 {
+			continue
 		}
+		f := m.pending[p][0]
+		m.pending[p][0] = Frame{}
+		m.pending[p] = m.pending[p][1:]
+		m.queuedBytes -= headerLen + len(f.Payload)
+		m.cond.Broadcast()
+		return f, true
 	}
 	return Frame{}, false
 }

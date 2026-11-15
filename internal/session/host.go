@@ -62,9 +62,10 @@ type Host struct {
 	FPS      int
 	Incoming FileReceiver
 
-	hmu    sync.RWMutex
-	onChat func(ChatMessage)
-	onFile func(name string, size int64)
+	workerMu sync.Mutex
+	hmu      sync.RWMutex
+	onChat   func(ChatMessage)
+	onFile   func(name string, size int64)
 
 	rec      *Recorder // optional session recording tap
 	stop     chan struct{}
@@ -140,6 +141,13 @@ func ServeHost(m *Mux, cap Capturer, inj Injector, fps int) *Host {
 }
 
 func (h *Host) handleStream(s Stream) {
+	h.workerMu.Lock()
+	defer h.workerMu.Unlock()
+	select {
+	case <-h.stop:
+		return
+	default:
+	}
 	switch {
 	case s.ID == StreamInput:
 		h.wg.Add(1)
@@ -149,7 +157,10 @@ func (h *Host) handleStream(s Stream) {
 		go h.chatLoop(s)
 	case s.ID >= StreamFile:
 		h.wg.Add(1)
-		go func() { defer h.wg.Done(); h.Incoming.Handle(s) }()
+		h.hmu.RLock()
+		receiver := h.Incoming
+		h.hmu.RUnlock()
+		go func() { defer h.wg.Done(); receiver.Handle(s) }()
 	}
 }
 
@@ -271,7 +282,9 @@ func (h *Host) chatLoop(s Stream) {
 // connection it accepted.
 func (h *Host) Stop() {
 	h.stopOnce.Do(func() {
+		h.workerMu.Lock()
 		close(h.stop)
+		h.workerMu.Unlock()
 		h.Mux.Close()
 		if closer, ok := h.Cap.(io.Closer); ok {
 			_ = closer.Close()

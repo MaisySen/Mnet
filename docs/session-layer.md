@@ -130,3 +130,22 @@ injects Ctrl+V, which pastes any text the tool accepts but clobbers
 the user's clipboard. Frames stream as dirty-tile deltas (64x64 JPEG
 tiles) when only part of the screen changes, with a full keyframe
 every 100 frames; viewers composite tiles onto the base frame.
+
+
+## File reception policy and backpressure
+
+Incoming files are limited to 1GiB each by default (FileReceiver.MaxBytes
+can set a different limit). A destination that already exists is refused;
+rename the source before resending. Path separators, traversal, invalid
+sizes and malformed supplied hashes are refused. Partial transfers stay
+in private temporary files and are removed on failure. Verified complete
+files publish at mode 0600 without replacing an existing destination.
+The receive filesystem must support hard links for atomic publication;
+an unsupported filesystem fails the transfer instead of falling back to
+an unsafe overwrite. This is not a resumable-transfer implementation.
+
+Outbound frames have a 16MiB queue cap, excluding one in-flight write.
+Senders wait for capacity and wake on close. Weighted round-robin drains
+input, screen, chat and file classes so a busy screen cannot indefinitely
+starve file completion. This bounds queued bytes, not the number of
+simultaneously opened streams or all per-session memory.

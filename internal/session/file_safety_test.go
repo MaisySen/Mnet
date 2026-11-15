@@ -1,0 +1,112 @@
+package session
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func TestSafeFileReception(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		offer     string
+		declared  int64
+		payload   []byte
+		existing  bool
+		accepted  bool
+		published bool
+	}{
+		{"complete", "ok.bin", 3, []byte("abc"), false, true, true},
+		{"empty", "empty.bin", 0, nil, false, true, true},
+		{"traversal", "../outside.bin", 3, []byte("abc"), false, false, false},
+		{"windows-traversal", "..\\outside.bin", 3, []byte("abc"), false, false, false},
+		{"negative", "bad.bin", -1, nil, false, false, false},
+		{"too-large", "big.bin", 11, nil, false, false, false},
+		{"short", "short.bin", 4, []byte("abc"), false, true, false},
+		{"overflow", "overflow.bin", 2, []byte("abc"), false, true, false},
+		{"exists", "old.bin", 3, []byte("abc"), true, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client, host := pipe(t)
+			defer client.Close()
+			defer host.Close()
+			dir := t.TempDir()
+			target := filepath.Join(dir, tc.offer)
+			if tc.existing {
+				if err := os.WriteFile(target, []byte("keep me"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			complete := make(chan struct{})
+			host.OnStream(func(s Stream) { defer close(complete); FileReceiver{Mux: host, Dir: dir, MaxBytes: 10}.Handle(s) })
+			digest := sha256.Sum256(tc.payload)
+			s, err := client.Open(PriBulk, FileOffer{Name: tc.offer, Size: tc.declared, SHA256: hex.EncodeToString(digest[:])})
+			if err != nil {
+				t.Fatal(err)
+			}
+			f, err := s.Recv(time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var accept FileAccept
+			if err = json.Unmarshal(f.Payload, &accept); err != nil {
+				t.Fatal(err)
+			}
+			if accept.OK != tc.accepted {
+				t.Fatalf("accept=%+v", accept)
+			}
+			if accept.OK {
+				if err = client.SendBytes(s.ID, PriBulk, tc.payload); err != nil {
+					t.Fatal(err)
+				}
+				if err = client.send(s.ID, msgFin, PriBulk, nil); err != nil {
+					t.Fatal(err)
+				}
+				f, err = s.Recv(time.Second)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var ack FileAck
+				if err = json.Unmarshal(f.Payload, &ack); err != nil {
+					t.Fatal(err)
+				}
+				if ack.OK != tc.published {
+					t.Fatalf("ack=%+v", ack)
+				}
+			}
+			select {
+			case <-complete:
+			case <-time.After(time.Second):
+				t.Fatal("receiver did not finish")
+			}
+			got, err := os.ReadFile(target)
+			switch {
+			case tc.existing:
+				if err != nil || string(got) != "keep me" {
+					t.Fatal("existing destination overwritten")
+				}
+			case tc.published:
+				if err != nil || !bytes.Equal(got, tc.payload) {
+					t.Fatalf("published bytes=%q err=%v", got, err)
+				}
+				info, _ := os.Stat(target)
+				if info.Mode().Perm() != 0600 {
+					t.Fatalf("file mode=%v", info.Mode())
+				}
+			default:
+				if !os.IsNotExist(err) {
+					t.Fatalf("partial/rejected target exists: %v", err)
+				}
+			}
+			leftovers, err := filepath.Glob(filepath.Join(dir, ".mnet-transfer-*"))
+			if err != nil || len(leftovers) != 0 {
+				t.Fatalf("temporary files left: %v %v", leftovers, err)
+			}
+		})
+	}
+}
