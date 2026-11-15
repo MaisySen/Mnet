@@ -4,6 +4,31 @@ Every shipped build, newest first. Runbook format: number, time, commit,
 what changed. Test counts: full suite green at every tag
 (`go test ./...`: bind, control, daemon, dns, stun, mobile all ok).
 
+## 0.6.0 - 2026-11-15
+
+The session layer: TeamViewer-style remote desktop over the mesh.
+Spec in docs/session-layer.md: typed streams (screen/input/chat/file)
+with priority classes multiplexed over one TCP connection between mesh
+IPs on port 5909, no second crypto stack (WireGuard already encrypts
+end to end), host-side consent.
+
+- internal/session: framing, priority-draining mux, handshake, host and
+  viewer logic, sha256-verified file transfer with resume. End to end
+  tested over net.Pipe with -race.
+- mnetd -session-host -session-auto-accept: Linux desktop hosting via
+  X11 capture (JPEG, 1280 long edge) and XTEST input injection.
+- mnet session connect / send: terminal viewer with chat, frame saving
+  and file push.
+- Android: HostSessionService (MediaProjection, consent dialog or
+  auto-accept), MnetAccessibilityService (gesture injection while
+  hosting), ViewerActivity (frames, touch input, chat), MainActivity
+  entries. Key text injection is intentionally out of v1.
+- Full Go suite green; release APK (versionCode 8) and AAB rebuilt.
+
+Known limits: X11 backend not yet exercised on a live desktop; Android
+session UI compiled but not device-tested; Wayland capture needs a
+portal backend; iOS session support is parked with the Apple work.
+
 ## 0.5.2 - 2026-11-15
 
 Commit: 0d3639b. Android: stable view ids (R.id.server_url, network_name,
