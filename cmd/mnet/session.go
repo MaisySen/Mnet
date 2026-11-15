@@ -2,10 +2,12 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"fintex.au/mnet/internal/session"
@@ -13,14 +15,16 @@ import (
 
 // mnet session connect <peer> [--save-frames DIR] [--send-file PATH]
 // mnet session send <peer> <file>
+// mnet session log                 hosted-session audit on this node
 //
 // The CLI viewer: chat in the terminal, screen frames optionally
 // written to disk, file push. Input injection from a terminal is
 // chat and files; the interactive viewer lives in the app.
 func runSession(args []string) {
-	if len(args) < 2 {
+	if len(args) < 1 || (args[0] != "log" && len(args) < 2) {
 		fatal("usage: mnet session connect <peer> [--save-frames DIR] [--send-file PATH]\n" +
-			"       mnet session send <peer> <file>")
+			"       mnet session send <peer> <file>\n" +
+			"       mnet session log")
 	}
 	switch args[0] {
 	case "connect":
@@ -41,6 +45,8 @@ func runSession(args []string) {
 			fatal("usage: mnet session send <peer> <file>")
 		}
 		sessionConnectSend(args[1], args[2])
+	case "log":
+		sessionLog()
 	default:
 		fatal("unknown session subcommand: " + args[0])
 	}
@@ -141,6 +147,37 @@ func sessionConnect(peer, saveDir, sendPath string) {
 				dead = true
 			}
 		}
+	}
+}
+
+// sessionLog prints this node's hosted-session audit (written by
+// mnetd -session-host) newest last.
+func sessionLog() {
+	b, err := os.ReadFile(filepath.Join(stateDir, "sessions.jsonl"))
+	if err != nil {
+		fatal("no session log at " + filepath.Join(stateDir, "sessions.jsonl"))
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+		var ev struct {
+			At       time.Time `json:"at"`
+			Event    string    `json:"event"`
+			Viewer   string    `json:"viewer"`
+			SourceIP string    `json:"source_ip"`
+			Reason   string    `json:"reason,omitempty"`
+			Duration string    `json:"duration,omitempty"`
+		}
+		if json.Unmarshal([]byte(line), &ev) != nil {
+			continue
+		}
+		when := ev.At.Local().Format("2006-01-02 15:04:05")
+		out := fmt.Sprintf("%s  %-7s %-20s %-12s", when, ev.Event, ev.Viewer, ev.SourceIP)
+		if ev.Duration != "" {
+			out += "  " + ev.Duration
+		}
+		if ev.Reason != "" {
+			out += "  " + ev.Reason
+		}
+		fmt.Println(out)
 	}
 }
 
