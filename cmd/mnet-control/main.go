@@ -25,6 +25,7 @@ func main() {
 		oidcID   = flag.String("oidc-client-id", os.Getenv("MNET_OIDC_CLIENT_ID"), "OIDC client id (or MNET_OIDC_CLIENT_ID)")
 		oidcSec  = flag.String("oidc-client-secret", os.Getenv("MNET_OIDC_CLIENT_SECRET"), "OIDC client secret (or MNET_OIDC_CLIENT_SECRET)")
 		showVer  = flag.Bool("version", false, "print version and exit")
+		defNet   = flag.String("default-network", os.Getenv("MNET_DEFAULT_NETWORK"), "create this network when the store starts empty (or MNET_DEFAULT_NETWORK); survives hosts with ephemeral disks")
 	)
 	flag.Parse()
 	if *showVer {
@@ -44,6 +45,12 @@ func main() {
 	srv, generated, err := control.NewServer(store, hub, publicBase, *password)
 	if err != nil {
 		log.Fatalf("server: %v", err)
+	}
+	if *defNet != "" && len(store.Networks()) == 0 {
+		if _, err := store.CreateNetwork(*defNet); err != nil {
+			log.Fatalf("default network: %v", err)
+		}
+		log.Printf("created default network %q (fresh state)", *defNet)
 	}
 	if *oidcIss != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
