@@ -109,7 +109,9 @@ passwords on top of the mesh.
   input injection (done); Wayland needs a portal backend (later)
 - mnet session connect / mnet session send: terminal viewer with
   chat, frame saving, file push (done)
-- Android: host service (MediaProjection + accessibility) and viewer
-  screen (next)
+- Android: HostSessionService (MediaProjection capture, consent
+  dialog or auto-accept), MnetAccessibilityService (gesture
+  injection while hosting), ViewerActivity (frames, touch input,
+  chat) (done; key text injection intentionally out of v1)
 - iOS: viewer only; hosting needs ReplayKit and is parked with the
   Apple account work
