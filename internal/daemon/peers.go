@@ -45,12 +45,42 @@ type peerTrack struct {
 
 // applyMap writes the map into the WireGuard device.
 func (d *Daemon) applyMap(m *netmap.Map) {
+	d.applyMu.Lock()
+	defer d.applyMu.Unlock()
+	d.applyMapLocked(m)
+}
+
+// refreshPaths uses the latest authorized map after taking the apply lock,
+// so a path tick cannot reinstall an older map after peer revocation.
+func (d *Daemon) refreshPaths() {
+	d.applyMu.Lock()
+	defer d.applyMu.Unlock()
+	if m := d.currentMap(); m != nil {
+		d.applyMapLocked(m)
+	}
+}
+
+func (d *Daemon) applyMapLocked(m *netmap.Map) {
 	d.deviceMu.RLock()
 	defer d.deviceMu.RUnlock()
 	if d.dev == nil {
 		return
 	}
 	var conf bytes.Buffer
+	wanted := make(map[string]bool, len(m.Peers))
+	for _, p := range m.Peers {
+		wanted[p.PubKey] = true
+	}
+	d.peersMu.Lock()
+	for key := range d.peers {
+		if !wanted[key] {
+			if raw, err := base64.StdEncoding.DecodeString(key); err == nil && len(raw) == 32 {
+				fmt.Fprintf(&conf, "public_key=%s\nremove=true\n", hex.EncodeToString(raw))
+			}
+			delete(d.peers, key)
+		}
+	}
+	d.peersMu.Unlock()
 	for _, p := range m.Peers {
 		pub, err := base64.StdEncoding.DecodeString(p.PubKey)
 		if err != nil || len(pub) != 32 {
@@ -155,6 +185,9 @@ func (d *Daemon) mapLoop(ctx context.Context) {
 				return
 			}
 			if errors.Is(err, controlclient.ErrUnauthorized) {
+				// Revocation must stop existing dataplane authorization before
+				// waiting for a fresh join/approval.
+				d.applyMap(&netmap.Map{})
 				d.rejoin(ctx)
 				continue
 			}
@@ -362,8 +395,8 @@ func (d *Daemon) pathLoop(ctx context.Context) {
 			}
 		}
 		d.peersMu.Unlock()
-		if m := d.currentMap(); changed && m != nil {
-			d.applyMap(m)
+		if changed {
+			d.refreshPaths()
 		}
 	}
 }
@@ -383,6 +416,9 @@ func (d *Daemon) relayLoop(ctx context.Context) {
 		r, err := d.client().DialRelay(ctx, d.state.PublicKey, d.bind.Inject)
 		if err != nil {
 			if errors.Is(err, controlclient.ErrUnauthorized) {
+				// Revocation must stop existing dataplane authorization before
+				// waiting for a fresh join/approval.
+				d.applyMap(&netmap.Map{})
 				d.rejoin(ctx)
 				continue
 			}

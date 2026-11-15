@@ -8,6 +8,14 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- Relay forwarding is network-scoped and rechecks approval, expiry and
+  pair-level ACL on every packet; expiration detaches current sockets.
+  Expired nodes disappear from new peer maps. Updated daemons now remove
+  revoked WireGuard peers, clear peers on unauthorized control responses,
+  and prevent path refreshes from reinstalling an older map. Both client
+  and server updates are required for the corresponding direct/relay
+  protections; offline/outdated direct clients are not instantly revoked.
+
 - Persistence failures roll back changed live state and enrollment-key
   use. Ten operation-level negative fixtures reproduced old partial-state
   behavior. SSO identity/approval persist together. State saves use private

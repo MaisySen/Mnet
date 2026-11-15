@@ -278,3 +278,24 @@ failure. This avoids following the old predictable `.tmp` path. It is not
 a database transaction across hosts and does not claim directory-entry
 power-loss durability on every filesystem. The entire JSON store is still
 rewritten for each real change; the measured scale limitation remains.
+
+
+### Relay scope and revocation
+
+Relay connections and destinations are scoped to a network, including when
+the same public key exists in more than one network. Each forwarded packet
+rechecks both nodes' current approval/expiry and the current pair-level ACL.
+The destination index is rebuilt after identity changes; routine packet
+checks do not scan the whole fleet. Admin expiration detaches the node's
+current relay connection. Expired peers are omitted from subsequent maps.
+
+Updated daemons remove missing peers from both WireGuard and the path
+selection table, and clear peers before waiting for reauthorization after
+an unauthorized control response. Older daemons did not fully apply peer
+removals and must be updated for direct-path revocation. Relay-only server
+updates cannot remove a key retained by an old client. Already established
+direct paths on offline/outdated clients are not instantaneously revoked
+by the control plane; online updated clients apply a new map, and natural
+expiry is reevaluated during map polling (up to the poll interval). This
+is not per-packet application-port enforcement. Existing ACLs operate at
+peer-pair and advertised-route visibility level.

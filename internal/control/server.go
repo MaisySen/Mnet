@@ -246,6 +246,10 @@ func (s *Server) handleMap(w http.ResponseWriter, r *http.Request) {
 	}
 	m, err := s.store.Map(node.ID)
 	if err != nil {
+		if err == ErrUnauthorized {
+			writeErr(w, http.StatusUnauthorized, "node no longer authorized")
+			return
+		}
 		writeErr(w, http.StatusNotFound, "node gone")
 		return
 	}
@@ -305,7 +309,11 @@ func (s *Server) handleRelayWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.store.Touch(node.ID)
-	s.hub.Attach(node.ID, node.PubKey, ws, nil)
+	s.hub.AttachScoped(node.ID, node.NetworkID, node.PubKey, ws, func(src, dst string, payload []byte) {
+		if s.store.RelayAllowed(node.ID, dst) {
+			s.hub.ForwardScoped(node.NetworkID, src, dst, payload)
+		}
+	})
 }
 
 // Admin auth
@@ -463,6 +471,7 @@ func (s *Server) handleAdminNodeExpire(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, err.Error())
 		return
 	}
+	s.hub.Detach(body.NodeID)
 	s.audit(r, "node_expire", "admin", body.NodeID, true)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

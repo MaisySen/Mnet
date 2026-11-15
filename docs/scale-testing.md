@@ -157,3 +157,14 @@ copy the whole store in addition to the existing JSON rewrite. Real
 changes still serialize and persist the whole file. Sync latency depends
 on the filesystem and host; this does not establish power-loss durability
 or production throughput.
+
+
+## Relay authorization lookup (2026-11-16)
+
+A local single-threaded microbenchmark with 10,000 seeded nodes and a
+prebuilt destination index measures the allowed-pair authorization check at
+about 62-63ns/op and zero allocations in three one-second samples. Raw:
+`docs/benchmarks/relay-authorization-2026-11-16.txt`. This excludes WebSocket
+I/O, packet copies, contention, index rebuilds, WireGuard crypto and ACLs
+with many rules. It is not relay throughput or capacity evidence. Its
+purpose is to verify the routine check does not scan the entire fleet.

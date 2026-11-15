@@ -81,3 +81,32 @@ func TestReplacementWhileForwarding(t *testing.T) {
 		t.Fatalf("relay state leaked: %d %d", len(h.conns), len(h.ByNodeID))
 	}
 }
+
+func TestScopedForwardDoesNotCrossNetworks(t *testing.T) {
+	h := NewHub()
+	src := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
+	dst := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32))
+	a := &conn{send: make(chan []byte, 1), done: make(chan struct{})}
+	b := &conn{send: make(chan []byte, 1), done: make(chan struct{})}
+	h.conns["network-a\x00"+dst] = a
+	h.conns["network-b\x00"+dst] = b
+	if !h.ForwardScoped("network-a", src, dst, []byte("scoped")) {
+		t.Fatal("same-network route denied")
+	}
+	select {
+	case <-a.send:
+	default:
+		t.Fatal("packet not delivered in source scope")
+	}
+	select {
+	case <-b.send:
+		t.Fatal("identical key in different network received packet")
+	default:
+	}
+	if h.ForwardScoped("network-missing", src, dst, []byte("cross-network")) {
+		t.Fatal("packet escaped source scope")
+	}
+	if h.ForwardScoped("network-a", src, dst, make([]byte, MaxPacket+1)) {
+		t.Fatal("oversized packet admitted")
+	}
+}

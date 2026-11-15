@@ -49,6 +49,7 @@ type Daemon struct {
 	state       *State
 	lifecycleMu sync.Mutex
 	loops       sync.WaitGroup
+	applyMu     sync.Mutex // serialize peer replacement and path refresh
 	deviceMu    sync.RWMutex
 
 	mu     sync.Mutex

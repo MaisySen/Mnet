@@ -11,6 +11,7 @@ package relay
 import (
 	"encoding/base64"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -67,7 +68,7 @@ func NewHub() *Hub {
 func (h *Hub) Online(pubkey string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	_, ok := h.conns[pubkey]
+	_, ok := h.conns["\x00"+pubkey]
 	return ok
 }
 
@@ -77,6 +78,9 @@ func (h *Hub) OnlineMap() map[string]bool {
 	defer h.mu.Unlock()
 	out := make(map[string]bool, len(h.conns))
 	for k := range h.conns {
+		if i := strings.IndexByte(k, 0); i >= 0 {
+			k = k[i+1:]
+		}
 		out[k] = true
 	}
 	return out
@@ -85,17 +89,23 @@ func (h *Hub) OnlineMap() map[string]bool {
 // Attach registers a websocket for a node pubkey and pumps it until it
 // dies. nodeID may be empty.
 func (h *Hub) Attach(nodeID, pubkey string, ws *websocket.Conn, onPacket func(src, dst string, payload []byte)) {
+	h.AttachScoped(nodeID, "", pubkey, ws, onPacket)
+}
+
+// AttachScoped isolates identical public keys and destinations by network.
+func (h *Hub) AttachScoped(nodeID, scope, pubkey string, ws *websocket.Conn, onPacket func(src, dst string, payload []byte)) {
+	key := scope + "\x00" + pubkey
 	c := &conn{ws: ws, send: make(chan []byte, 64), done: make(chan struct{}), nodeID: nodeID}
 	h.mu.Lock()
-	if old := h.conns[pubkey]; old != nil {
+	if old := h.conns[key]; old != nil {
 		old.close()
 		if old.nodeID != "" {
 			delete(h.ByNodeID, old.nodeID)
 		}
 	}
-	h.conns[pubkey] = c
+	h.conns[key] = c
 	if nodeID != "" {
-		h.ByNodeID[nodeID] = pubkey
+		h.ByNodeID[nodeID] = key
 	}
 	h.mu.Unlock()
 
@@ -105,8 +115,8 @@ func (h *Hub) Attach(nodeID, pubkey string, ws *websocket.Conn, onPacket func(sr
 		c.close()
 		writer.Wait()
 		h.mu.Lock()
-		if h.conns[pubkey] == c {
-			delete(h.conns, pubkey)
+		if h.conns[key] == c {
+			delete(h.conns, key)
 			if nodeID != "" {
 				delete(h.ByNodeID, nodeID)
 			}
@@ -158,7 +168,7 @@ func (h *Hub) Attach(nodeID, pubkey string, ws *websocket.Conn, onPacket func(sr
 			onPacket(pubkey, dst, payload)
 			continue
 		}
-		h.Forward(pubkey, dst, payload)
+		h.ForwardScoped(scope, pubkey, dst, payload)
 	}
 }
 
@@ -179,8 +189,15 @@ func (h *Hub) Detach(nodeID string) {
 
 // Forward hands a packet from src to dst. False when dst is offline.
 func (h *Hub) Forward(src, dst string, payload []byte) bool {
+	return h.ForwardScoped("", src, dst, payload)
+}
+
+func (h *Hub) ForwardScoped(scope, src, dst string, payload []byte) bool {
+	if len(payload) == 0 || len(payload) > MaxPacket {
+		return false
+	}
 	h.mu.Lock()
-	c := h.conns[dst]
+	c := h.conns[scope+"\x00"+dst]
 	h.mu.Unlock()
 	if c == nil {
 		return false

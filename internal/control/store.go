@@ -40,11 +40,12 @@ type storeData struct {
 
 // Store is the whole control-plane state, persisted as one JSON file.
 type Store struct {
-	mu       sync.Mutex
-	path     string
-	data     storeData
-	version  int64
-	watchers map[string]map[chan struct{}]bool // network ID -> waiters
+	mu         sync.Mutex
+	path       string
+	data       storeData
+	version    int64
+	relayIndex map[string]string                 // network+public key -> node ID, invalidated on identity changes
+	watchers   map[string]map[chan struct{}]bool // network ID -> waiters
 }
 
 // Open loads or creates the store at path.
@@ -371,6 +372,7 @@ func (s *Store) Join(req netmap.JoinRequest) (*netmap.JoinResponse, error) {
 	}); err != nil {
 		return nil, err
 	}
+	s.relayIndex = nil
 	s.bumpLocked(network.ID)
 	return &netmap.JoinResponse{
 		NodeID:    node.ID,
@@ -533,6 +535,10 @@ func (s *Store) Map(nodeID string) (*netmap.Map, error) {
 		s.mu.Unlock()
 		return nil, ErrNotFound
 	}
+	if !self.Approved || self.KeyExpired() {
+		s.mu.Unlock()
+		return nil, ErrUnauthorized
+	}
 	network := s.data.Networks[self.NetworkID]
 	if network == nil {
 		s.mu.Unlock()
@@ -543,7 +549,7 @@ func (s *Store) Map(nodeID string) (*netmap.Map, error) {
 	// subsequent HTTP encoding work on owned values outside the store lock.
 	peers := make([]netmap.Node, 0, len(s.data.Nodes))
 	for _, n := range s.data.Nodes {
-		if n.NetworkID == self.NetworkID && n.ID != self.ID && n.Approved {
+		if n.NetworkID == self.NetworkID && n.ID != self.ID && n.Approved && !n.KeyExpired() {
 			peers = append(peers, cloneNode(n))
 		}
 	}
@@ -644,6 +650,7 @@ func (s *Store) DeleteNode(nodeID string) error {
 	if err := s.commitLocked(func() { s.data.Nodes[nodeID] = n; s.data.NodeTokens[nodeID] = token }); err != nil {
 		return err
 	}
+	s.relayIndex = nil
 	s.bumpLocked(n.NetworkID)
 	return nil
 }
@@ -724,4 +731,27 @@ func (s *Store) Snapshot() *Snapshot {
 	sort.Slice(snap.Nodes, func(i, j int) bool { return snap.Nodes[i].CreatedAt.Before(snap.Nodes[j].CreatedAt) })
 	sort.Slice(snap.AuthKeys, func(i, j int) bool { return snap.AuthKeys[i].CreatedAt.Before(snap.AuthKeys[j].CreatedAt) })
 	return snap
+}
+
+// RelayAllowed revalidates both identities and current ACL on each packet.
+// A scoped key index avoids a fleet-wide scan on every datagram.
+func (s *Store) RelayAllowed(sourceID, dstKey string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	source := s.data.Nodes[sourceID]
+	if source == nil || !source.Approved || source.KeyExpired() {
+		return false
+	}
+	if s.relayIndex == nil {
+		s.relayIndex = make(map[string]string, len(s.data.Nodes))
+		for id, node := range s.data.Nodes {
+			s.relayIndex[node.NetworkID+"\x00"+node.PubKey] = id
+		}
+	}
+	dst := s.data.Nodes[s.relayIndex[source.NetworkID+"\x00"+dstKey]]
+	if dst == nil || !dst.Approved || dst.KeyExpired() || dst.NetworkID != source.NetworkID {
+		return false
+	}
+	network := s.data.Networks[source.NetworkID]
+	return network != nil && allowsPair(network.ACL, source, dst)
 }

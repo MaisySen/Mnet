@@ -1,0 +1,9 @@
+goos: linux
+goarch: amd64
+pkg: fintex.au/mnet/internal/control
+cpu: AMD EPYC 9655 96-Core Processor                
+BenchmarkRelayAuthorization-2   	19173621	        62.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelayAuthorization-2   	19351887	        62.43 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelayAuthorization-2   	19239141	        62.53 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	fintex.au/mnet/internal/control	3.932s

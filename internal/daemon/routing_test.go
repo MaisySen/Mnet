@@ -121,3 +121,22 @@ func TestApplyMapRoutesAndExitNode(t *testing.T) {
 		}
 	}
 }
+
+func TestApplyMapRemovesRevokedWireGuardPeer(t *testing.T) {
+	d := testDaemon(t)
+	key := pubKeyOf(t, 0x21)
+	d.applyMap(&netmap.Map{Version: 1, Peers: []netmap.Node{{PubKey: key, IPv4: "100.64.0.2"}}})
+	if len(allowedIPsOf(t, d, key)) != 1 {
+		t.Fatal("fixture peer not installed")
+	}
+	d.applyMap(&netmap.Map{Version: 2})
+	if len(allowedIPsOf(t, d, key)) != 0 {
+		t.Fatal("revoked peer remains in WireGuard device")
+	}
+	d.peersMu.Lock()
+	_, exists := d.peers[key]
+	d.peersMu.Unlock()
+	if exists {
+		t.Fatal("revoked peer remains in path-selection table")
+	}
+}
