@@ -205,3 +205,28 @@ func TestDaemonExpiryWithBlockedControlAndRestart(t *testing.T) {
 		t.Fatal("fixture did not block control polls")
 	}
 }
+
+func TestReapprovedMapRestoresRunningStatus(t *testing.T) {
+	for _, initial := range []string{"waiting-approval", "key-expired", "down", "joining"} {
+		t.Run(initial, func(t *testing.T) {
+			d := testDaemon(t)
+			d.status = initial
+			d.approvalURL = "https://approval.invalid/test"
+			key := pubKeyOf(t, 0x47)
+			d.applyMap(&netmap.Map{Version: 1, Self: netmap.Node{Approved: true}, Peers: []netmap.Node{{PubKey: key, IPv4: "100.64.0.2"}}})
+			want := initial
+			if initial == "waiting-approval" || initial == "key-expired" {
+				want = "up"
+			}
+			if got := d.Status().Status; got != want {
+				t.Fatalf("status %q, want %q", got, want)
+			}
+			if want == "up" && d.approvalURL != "" {
+				t.Fatal("reapproved identity retained stale approval URL")
+			}
+			if len(allowedIPsOf(t, d, key)) != 1 {
+				t.Fatal("approved map missing peer authorization")
+			}
+		})
+	}
+}

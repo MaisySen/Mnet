@@ -299,6 +299,7 @@ else:
         if denied.returncode == 0:
             raise RuntimeError('expired subnet remained reachable')
         run(*ns('c', sys.executable, acl_script, tmp / 'control.json', 'approve'))
+        wait_for(lambda: local_api(states['b'])['status'] == 'up' and not local_api(states['b']).get('approval_url'), 'reapproved identity restores up status without stale approval link')
         wait_for(subnet_ready, 'approved identity restores owned subnet route')
         wait_for(both_direct, 'direct paths after expiry and reapproval', timeout=40)
         run(*ns('a', 'ping', '-c', '1', '-W', '2', '10.9.0.1'))

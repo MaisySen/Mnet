@@ -142,11 +142,12 @@ func (d *Daemon) applyMapLocked(m *netmap.Map) {
 	d.peersMu.Unlock()
 	d.mu.Lock()
 	d.lastMap = m
-	if d.status == "up" || d.status == "key-expired" {
+	if d.status == "up" || d.status == "key-expired" || d.status == "waiting-approval" {
 		if m.Self.KeyExpired() {
 			d.status = "key-expired"
-		} else if d.status == "key-expired" && m.Self.Approved {
+		} else if m.Self.Approved {
 			d.status = "up"
+			d.approvalURL = ""
 		}
 	}
 	d.mu.Unlock()
