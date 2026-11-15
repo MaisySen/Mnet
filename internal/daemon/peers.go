@@ -136,6 +136,15 @@ func (d *Daemon) applyMapLocked(m *netmap.Map) {
 		}
 	}
 	d.mu.Unlock()
+	if d.subnets != nil {
+		var routes []string
+		for _, p := range m.Peers {
+			routes = append(routes, p.Routes...)
+		}
+		if err := d.subnets.Sync(routes); err != nil {
+			d.setErr(err)
+		}
+	}
 	if d.dns != nil {
 		d.dns.Update(m)
 	}
@@ -270,14 +279,20 @@ func (d *Daemon) discoverEndpoints(ctx context.Context) {
 	if m := d.currentMap(); m != nil {
 		meshIP = m.Self.IPv4
 	}
-	ifaces, _ := net.InterfaceAddrs()
-	for _, a := range ifaces {
-		ip, _, err := net.ParseCIDR(a.String())
-		if err != nil {
+	ifaces, _ := net.Interfaces()
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
 			continue
 		}
-		if ip4 := ip.To4(); usableUnderlayIP(ip4, meshIP) {
-			eps[fmt.Sprintf("%s:%d", ip4, port)] = true
+		addrs, _ := iface.Addrs()
+		for _, a := range addrs {
+			ip, _, err := net.ParseCIDR(a.String())
+			if err != nil {
+				continue
+			}
+			if ip4 := ip.To4(); usableUnderlayIP(ip4, meshIP) {
+				eps[fmt.Sprintf("%s:%d", ip4, port)] = true
+			}
 		}
 	}
 

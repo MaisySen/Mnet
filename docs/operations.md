@@ -142,12 +142,12 @@ The CLI and maps carry `--advertise-exit-node`, `--advertise-routes` and `--exit
 Current limitations from source review:
 
 - `applyExitNode` skips `ManagedIface=true`, the desktop setting, although its intended behavior is to skip mobile-managed interfaces. This guard needs correction with real route regressions.
-- Selected subnet CIDRs are not installed as owned OS routes by the current interface setup. An allowed IP alone does not route an OS packet into the tunnel.
+- Newer Linux source installs owned RFC1918 IPv4 subnet routes from permitted peer maps. It refuses overlap with existing non-default routes, uses add rather than replace, tags its own routes with protocol 186 and a per-instance metric, rolls back failed additions, and removes owned routes on map withdrawal/expiry/Down. This is being validated in the kernel fixture; no general routing-readiness claim yet. Non-Linux and public/IPv6 subnet OS routes remain unsupported. An allowed IP alone is not OS routing.
 - Linux serving enables IPv4 forwarding and a broad mesh-source MASQUERADE rule; ownership-safe restoration/removal on Down is not implemented. macOS sets forwarding before reporting that a manual pf anchor is needed. Windows reports manual ICS setup.
 - Existing helpers can replace host/default-split routes without recording prior ownership. Safe rollback, control/relay reachability, endpoint changes, selected-peer removal and existing-route preservation need tests before enabling these paths as supported behavior.
 - Mobile VPN APIs own their interface routes, but end-to-end exit/subnet operation on physical mobile devices has not been verified.
 
-The passing Linux kernel fixture covers mesh addresses and mesh-route removal only. It does not close any exit/subnet limitations above. Do not apply manual forwarding/firewall changes to a primary machine based on the old routing claims.
+The established Linux kernel result covers mesh addresses and mesh-route removal. A newer fixture adds advertised-subnet reachability, lifecycle cleanup and unrelated-route preservation; treat that extension as pending until STATUS links its actual result. No exit forwarding or internet-routing proof is established. Do not apply manual forwarding/firewall changes to a primary machine based on the old routing claims.
 
 ## Android
 

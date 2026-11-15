@@ -172,13 +172,16 @@ print(json.dumps(k))
         else:
             raise RuntimeError('control did not listen')
         key = json.loads(run(*ns('c', sys.executable, admin)))['key']
+        run('ip', '-n', spaces['b'], 'addr', 'add', '10.9.0.1/32', 'dev', 'lo')
+        run('ip', '-n', spaces['a'], 'route', 'add', '10.8.0.0/24', 'dev', 'eth0')
         states = {}
         for x in 'ab':
             state = tmp / x; state.mkdir(mode=0o700); states[x] = state
             start(x, [binary_dir / 'mnetd', '-state', state], x)
             wait_for(lambda: local_api(state), 'local API ' + x)
             local_api(state, 'up', {'server': 'http://198.18.10.1:8080', 'network':'kerneltest',
-                                   'name': x, 'auth_key': key})
+                                   'name': x, 'auth_key': key,
+                                   'advertise_routes': ['10.9.0.0/24'] if x == 'b' else []})
             wait_for(lambda: local_api(state)['status'] == 'up', 'kernel TUN up ' + x)
         wait_for(lambda: (s if len(s.get('peers', [])) == 1 else None)
                           if (s := local_api(states['a'])) else None, 'peer map')
@@ -196,6 +199,12 @@ print(json.dumps(k))
         else:
             raise RuntimeError('kernel mesh ping failed')
         print('PASS actual kernel TUN addresses/routes and encrypted mesh ping', flush=True)
+        def subnet_ready():
+            routes = json.loads(run('ip', '-n', spaces['a'], '-j', 'route', 'show', 'exact', '10.9.0.0/24'))
+            return any(r.get('dev') == 'mnet0' and str(r.get('protocol')) == '186' for r in routes)
+        wait_for(subnet_ready, 'owned advertised subnet OS route')
+        run(*ns('a', 'ping', '-c', '2', '-W', '2', '10.9.0.1'))
+        print('PASS advertised subnet has owned OS route and reaches peer loopback over VPN', flush=True)
         # Keep emitting application packets while the selector probes. An
         # existing relay-era handshake alone cannot establish direct UDP.
         def both_direct():
@@ -223,6 +232,12 @@ print(json.dumps(k))
                 links = json.loads(run('ip', '-n', spaces[x], '-j', 'link', 'show'))
                 if any(link['ifname'] == 'mnet0' for link in links):
                     raise RuntimeError('kernel TUN survived lifecycle Down')
+                if x == 'a':
+                    routes = json.loads(run('ip', '-n', spaces[x], '-j', 'route', 'show'))
+                    if any(r.get('dst') == '10.9.0.0/24' for r in routes):
+                        raise RuntimeError('owned subnet route survived Down')
+                    if not any(r.get('dst') == '10.8.0.0/24' and r.get('dev') == 'eth0' for r in routes):
+                        raise RuntimeError('unrelated route removed during Down')
                 local_api(states[x], 'up', {})  # saved credentials, no new enrollment key
                 wait_for(lambda: local_api(states[x])['status'] == 'up', 'saved-state kernel restart')
                 if local_api(states[x])['ipv4'] != ips[x]:
@@ -231,6 +246,8 @@ print(json.dumps(k))
                 if any(identity.get(k) != v for k, v in identities[x].items()):
                     raise RuntimeError('saved node identity changed after restart')
             wait_for(both_direct, 'direct paths after saved-state restart', timeout=40)
+            wait_for(subnet_ready, 'subnet route after saved-state restart')
+            run(*ns('a', 'ping', '-c', '1', '-W', '2', '10.9.0.1'))
             print(f'PASS kernel Down/Up cycle {cycle + 1}: same identity/IP and direct path', flush=True)
         # With the control/relay process dead, transfers cannot silently
         # succeed by falling back to the shared control-plane WebSocket.
@@ -273,9 +290,12 @@ print(json.dumps(k))
             if any(link['ifname'] == 'mnet0' for link in links):
                 raise RuntimeError('kernel interface survived Down')
             routes = json.loads(run('ip', '-n', spaces[x], '-j', 'route', 'show'))
-            if any(r.get('dst') == '100.64.0.0/10' for r in routes):
+            if any(r.get('dst') in ['100.64.0.0/10', '10.9.0.0/24'] for r in routes):
                 raise RuntimeError('mesh route survived Down')
-        print('PASS Down removes actual kernel TUN interfaces and mesh routes', flush=True)
+        routes = json.loads(run('ip', '-n', spaces['a'], '-j', 'route', 'show'))
+        if not any(r.get('dst') == '10.8.0.0/24' and r.get('dev') == 'eth0' for r in routes):
+            raise RuntimeError('unrelated route removed at final teardown')
+        print('PASS Down removes actual TUN/mesh/owned subnet routes and preserves unrelated route', flush=True)
     except Exception:
         for path in tmp.glob('*.log'):
             # Daemon logs can contain fixture approval URLs. Keep diagnostics

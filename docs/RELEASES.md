@@ -4,6 +4,8 @@ Test releases and engineering history. Historical entries record what was claime
 
 ## Unreleased after v0.8.2-test.1
 
+- Bounded Linux RFC1918 subnet-route ownership implementation in progress: tagged add-only routes, conflict refusal, failed-batch rollback and scoped deletion. Unit regressions pass; actual kernel subnet/route-preservation extension is pending. Exit routing remains separate and incomplete.
+
 - Local enforcement of received self/peer expiry timestamps, independent of blocked control polls. WireGuard IPC, renewal/stale-map protection and repeated lifecycle regressions pass on Linux and native Windows/macOS. This cannot learn an unseen offline admin revocation.
 - Direct-path fixes: healthy relay handshakes no longer suppress bounded direct retry; the node's own overlay IP is not advertised as an underlay candidate.
 - Native Windows SCM install/start/stop/restart/crash recovery/remove passes on a disposable runner with an offline fixture. Wintun remains unverified.

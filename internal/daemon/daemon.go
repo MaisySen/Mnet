@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"sync"
 	"time"
 
@@ -57,14 +58,15 @@ type Daemon struct {
 	// joinMu serializes join and rejoin: the control-plane identity
 	// (node id, token, auth key, control client) swaps as one step,
 	// never concurrently from two loops.
-	joinMu sync.Mutex
-	dev    *device.Device
-	tun    tun.Device
-	bind   *bind.Bind
-	cc     *controlclient.Client
-	relay  *controlclient.Relay
-	dns    *dns.Server
-	cancel context.CancelFunc
+	joinMu  sync.Mutex
+	dev     *device.Device
+	tun     tun.Device
+	bind    *bind.Bind
+	cc      *controlclient.Client
+	relay   *controlclient.Relay
+	dns     *dns.Server
+	subnets *ifacectl.SubnetRoutes
+	cancel  context.CancelFunc
 
 	mapChanged  chan struct{} // wake local authorization-expiry guard
 	lastMap     *netmap.Map
@@ -205,6 +207,15 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 			d.setDown()
 			cancel()
 			return fmt.Errorf("configure interface: %w (need root or admin?)", err)
+		}
+	}
+	if d.cfg.ManagedIface && runtime.GOOS == "linux" {
+		d.subnets = ifacectl.NewSubnetRoutes(d.cfg.IfName)
+		if d.subnets == nil {
+			d.stopDevice()
+			d.setDown()
+			cancel()
+			return fmt.Errorf("initialize subnet route owner")
 		}
 	}
 	d.applyMap(m)
@@ -376,6 +387,14 @@ func (d *Daemon) startDevice() error {
 }
 
 func (d *Daemon) stopDevice() {
+	d.applyMu.Lock()
+	defer d.applyMu.Unlock()
+	if d.subnets != nil {
+		if err := d.subnets.Close(); err != nil {
+			d.setErr(fmt.Errorf("subnet cleanup: %w", err))
+		}
+		d.subnets = nil
+	}
 	d.deviceMu.Lock()
 	defer d.deviceMu.Unlock()
 	if d.dev != nil {
