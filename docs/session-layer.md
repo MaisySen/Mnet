@@ -104,9 +104,12 @@ passwords on top of the mesh.
 
 - internal/session: framing, mux, stream types, handshake, host and
   viewer logic, file transfer (done, race-tested)
-- mnetd -session-host -session-auto-accept: desktop host on Linux
-  with X11 capture (JPEG, capped at 1280 on the long edge) and XTEST
-  input injection (done); Wayland needs a portal backend (later)
+- mnetd -session-host -session-auto-accept: desktop host on Linux.
+  X11 sessions capture with XGetImage and inject with XTEST. Wayland
+  sessions capture with grim (wlroots compositors) and inject with
+  ydotool (evdev level, compositor agnostic). GNOME and other
+  compositors without wlr-screencopy need the portal-native D-Bus +
+  PipeWire backend (later).
 - mnet session connect / mnet session send: terminal viewer with
   chat, frame saving, file push (done)
 - Android: HostSessionService (MediaProjection capture, consent
