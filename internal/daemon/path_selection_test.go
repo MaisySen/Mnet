@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"net"
 	"testing"
 	"time"
 
@@ -51,5 +52,18 @@ func TestPathSelectionKeepsHealthyDirectAndRelayWithoutCandidate(t *testing.T) {
 				t.Fatal("unneeded probe timer changed")
 			}
 		})
+	}
+}
+
+func TestUnderlayCandidatesExcludeOverlayAddress(t *testing.T) {
+	for _, tc := range []struct {
+		ip   string
+		want bool
+	}{
+		{"100.64.0.1", false}, {"198.18.10.2", true}, {"192.168.1.2", true}, {"127.0.0.1", false}, {"169.254.1.2", false},
+	} {
+		if got := usableUnderlayIP(net.ParseIP(tc.ip).To4(), "100.64.0.1"); got != tc.want {
+			t.Errorf("%s: %v", tc.ip, got)
+		}
 	}
 }

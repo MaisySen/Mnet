@@ -210,6 +210,8 @@ print(json.dumps(k))
         try:
             wait_for(both_direct, 'verified direct UDP paths', timeout=40)
         except RuntimeError:
+            snapshot = json.loads((tmp / 'control.json').read_text())
+            print('candidate diagnostics: ' + json.dumps([{k: n.get(k) for k in ['name', 'ipv4', 'endpoints']} for n in snapshot['nodes'].values()]), flush=True)
             for x in 'ab':
                 print('path diagnostics ' + x + ': ' + json.dumps(local_api(states[x]).get('peers', [])), flush=True)
             raise

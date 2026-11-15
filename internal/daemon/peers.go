@@ -266,13 +266,17 @@ func (d *Daemon) discoverEndpoints(ctx context.Context) {
 	d.stunMu.Unlock()
 
 	// Local LAN addresses help peers on the same network.
+	meshIP := ""
+	if m := d.currentMap(); m != nil {
+		meshIP = m.Self.IPv4
+	}
 	ifaces, _ := net.InterfaceAddrs()
 	for _, a := range ifaces {
 		ip, _, err := net.ParseCIDR(a.String())
 		if err != nil {
 			continue
 		}
-		if ip4 := ip.To4(); ip4 != nil && !ip4.IsLoopback() && !ip4.IsLinkLocalUnicast() {
+		if ip4 := ip.To4(); usableUnderlayIP(ip4, meshIP) {
 			eps[fmt.Sprintf("%s:%d", ip4, port)] = true
 		}
 	}
@@ -502,4 +506,11 @@ func (d *Daemon) selectPaths(stats map[string]*peerStats, now time.Time) bool {
 	}
 	d.peersMu.Unlock()
 	return changed
+}
+
+// Never advertise our own overlay address as an underlay endpoint. The
+// server sorts endpoints, so a 100.64 address can otherwise win before a
+// working LAN address and send encrypted packets back into the tunnel.
+func usableUnderlayIP(ip net.IP, meshIP string) bool {
+	return ip != nil && !ip.IsLoopback() && !ip.IsLinkLocalUnicast() && !ip.Equal(net.ParseIP(meshIP))
 }
