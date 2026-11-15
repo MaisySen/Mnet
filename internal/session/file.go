@@ -29,6 +29,7 @@ type FileReceiver struct {
 
 // Handle runs one incoming file stream to completion.
 func (r FileReceiver) Handle(s Stream) {
+	defer r.Mux.releaseStream(s.ID)
 	refuse := func(reason string) { _ = r.Mux.SendJSON(s.ID, PriBulk, FileAccept{OK: false, Reason: reason}) }
 	var offer FileOffer
 	if err := json.Unmarshal(s.OpenJSON, &offer); err != nil {
@@ -163,6 +164,7 @@ func SendFile(m *Mux, path string) error {
 	if err != nil {
 		return err
 	}
+	defer m.releaseStream(s.ID)
 	// Wait for the accept.
 	acc, err := s.Recv(30 * time.Second)
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -108,5 +109,65 @@ func TestSafeFileReception(t *testing.T) {
 				t.Fatalf("temporary files left: %v %v", leftovers, err)
 			}
 		})
+	}
+}
+
+func TestRepeatedFileTransfersReleaseStreams(t *testing.T) {
+	client, host := pipe(t)
+	defer client.Close()
+	defer host.Close()
+	dir := t.TempDir()
+	sourceDir := t.TempDir()
+	host.OnStream(func(s Stream) { FileReceiver{Mux: host, Dir: dir}.Handle(s) })
+	for i := 0; i < maxActiveStreams+10; i++ {
+		source := filepath.Join(sourceDir, fmt.Sprintf("file-%d", i))
+		if err := os.WriteFile(source, []byte("payload"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := SendFile(client, source); err != nil {
+			t.Fatalf("transfer %d: %v", i, err)
+		}
+	}
+	client.streamMu.Lock()
+	count := len(client.streams)
+	client.streamMu.Unlock()
+	if count != 0 {
+		t.Fatalf("completed outgoing streams leaked: %d", count)
+	}
+	client.wmu.Lock()
+	opened := len(client.opened)
+	client.wmu.Unlock()
+	if opened > 1 {
+		t.Fatalf("completed outgoing markers leaked: %d", opened)
+	}
+}
+
+func TestResetTransferDoesNotPublish(t *testing.T) {
+	client, host := pipe(t)
+	defer client.Close()
+	defer host.Close()
+	dir := t.TempDir()
+	finished := make(chan struct{})
+	host.OnStream(func(s Stream) { defer close(finished); FileReceiver{Mux: host, Dir: dir}.Handle(s) })
+	s, err := client.Open(PriBulk, FileOffer{Name: "reset.bin", Size: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Recv(time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if err = client.SendBytes(s.ID, PriBulk, []byte("abc")); err != nil {
+		t.Fatal(err)
+	}
+	if err = client.send(s.ID, msgRst, PriBulk, nil); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("reset not observed")
+	}
+	if _, err = os.Stat(filepath.Join(dir, "reset.bin")); !os.IsNotExist(err) {
+		t.Fatal("reset published a file")
 	}
 }

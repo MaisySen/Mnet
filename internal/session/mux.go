@@ -204,9 +204,14 @@ func (m *Mux) Open(priority uint8, openPayload any) (Stream, error) {
 	}
 	s.OpenJSON = raw
 	m.streamMu.Lock()
+	if len(m.streams) >= maxActiveStreams {
+		m.streamMu.Unlock()
+		return Stream{}, fmt.Errorf("session: active stream limit reached")
+	}
 	m.streams[id] = &streamState{ch: s.in, open: raw, handled: true}
 	m.streamMu.Unlock()
 	if err := m.send(id, msgOpen, priority, raw); err != nil {
+		m.releaseStream(id)
 		return Stream{}, err
 	}
 	m.wmu.Lock()
@@ -234,6 +239,9 @@ func (s Stream) Recv(timeout time.Duration) (Frame, error) {
 			if !ok {
 				return Frame{}, io.EOF
 			}
+			if f.Type == msgRst {
+				return Frame{}, ErrStreamReset
+			}
 			return f, nil
 		case <-s.Mux.closed:
 			return Frame{}, io.ErrClosedPipe
@@ -243,6 +251,9 @@ func (s Stream) Recv(timeout time.Duration) (Frame, error) {
 	case f, ok := <-s.in:
 		if !ok {
 			return Frame{}, io.EOF
+		}
+		if f.Type == msgRst {
+			return Frame{}, ErrStreamReset
 		}
 		return f, nil
 	case <-time.After(timeout):
@@ -451,6 +462,11 @@ func (m *Mux) readLoop() {
 		st, ok := m.streams[f.StreamID]
 		if f.Type == msgOpen {
 			if !ok {
+				if len(m.streams) >= maxActiveStreams {
+					m.streamMu.Unlock()
+					m.Close()
+					return
+				}
 				st = &streamState{ch: make(chan Frame, 16), open: json.RawMessage(f.Payload)}
 				if h := m.streamHandler(); h != nil {
 					st.handled = true
@@ -470,6 +486,13 @@ func (m *Mux) readLoop() {
 			continue // DATA for a stream we did not see OPEN: drop
 		}
 		if f.Type == msgFin || f.Type == msgRst {
+			if f.Type == msgRst {
+				select {
+				case st.ch <- f:
+				case <-m.closed:
+					return
+				}
+			}
 			close(st.ch)
 			m.streamMu.Lock()
 			delete(m.streams, f.StreamID)
@@ -483,3 +506,21 @@ func (m *Mux) readLoop() {
 		}
 	}
 }
+
+// maxActiveStreams bounds stream tables and inbound per-stream queues.
+// Well-known channels count too; crossing the inbound cap ends the session.
+const maxActiveStreams = 256
+
+// releaseStream forgets a completed dynamic stream. It does not close
+// the channel: readLoop owns channel delivery/closing and may be in flight.
+func (m *Mux) releaseStream(id uint32) {
+	m.streamMu.Lock()
+	delete(m.streams, id)
+	m.streamMu.Unlock()
+	m.wmu.Lock()
+	delete(m.opened, id)
+	m.wmu.Unlock()
+}
+
+// ErrStreamReset distinguishes peer cancellation from a complete FIN.
+var ErrStreamReset = errors.New("session: stream reset by peer")

@@ -147,5 +147,8 @@ an unsafe overwrite. This is not a resumable-transfer implementation.
 Outbound frames have a 16MiB queue cap, excluding one in-flight write.
 Senders wait for capacity and wake on close. Weighted round-robin drains
 input, screen, chat and file classes so a busy screen cannot indefinitely
-starve file completion. This bounds queued bytes, not the number of
-simultaneously opened streams or all per-session memory.
+starve file completion. Each side also caps active streams at 256, including well-known channels;
+excess incoming streams end the session and excess local opens fail.
+Completed file-transfer entries are released, and a reset is distinct
+from a successful FIN. These limits bound selected queues and tables,
+not all per-session memory or process-wide concurrent connections.

@@ -8,6 +8,12 @@ what changed. Test counts: full suite green at every tag
 
 Live proofs and the fixes they exposed.
 
+- Session stream lifecycle: cap each side at 256 active streams, release
+  completed transfer channel/open-marker entries and distinguish reset
+  from successful end-of-stream so an aborted file cannot publish.
+  Regression sends more than 256 files sequentially, checks state cleanup,
+  enforces the active-stream cap and resets a complete-length transfer.
+
 - Startup ordering: host/viewer option constructors install file paths,
   recording and callbacks before dispatching streams already queued by an
   eager peer. Desktop incoming files now land under the daemon state

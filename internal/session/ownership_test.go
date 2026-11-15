@@ -74,3 +74,19 @@ func TestBulkCannotStarve(t *testing.T) {
 	}
 	t.Fatal("bulk completion starved by screen traffic")
 }
+
+func TestOutgoingStreamCap(t *testing.T) {
+	a, b := net.Pipe()
+	defer b.Close()
+	m := newMux(a, StreamFile)
+	defer m.Close()
+	m.started = true
+	for i := 0; i < maxActiveStreams; i++ {
+		if _, err := m.Open(PriBulk, nil); err != nil {
+			t.Fatalf("stream %d: %v", i, err)
+		}
+	}
+	if _, err := m.Open(PriBulk, nil); err == nil {
+		t.Fatal("unbounded stream creation")
+	}
+}
