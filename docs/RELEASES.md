@@ -4,6 +4,34 @@ Every shipped build, newest first. Runbook format: number, time, commit,
 what changed. Test counts: full suite green at every tag
 (`go test ./...`: bind, control, daemon, dns, stun, mobile all ok).
 
+## Unreleased (0.7.1 draft)
+
+Live proofs and the fixes they exposed.
+
+- Android live mesh proof: Firebase Test Lab run (virtual Medium
+  Phone, API 36) drove the app to State: up with mesh IP 100.64.0.3
+  and a populated peer list against the hosted control plane, on
+  video and in logcat. Three Android bugs fixed to get there:
+  one-time auth keys were presented twice (prepare then Up) and
+  rejected on the second join, with the error hidden by a bare down
+  broadcast (the daemon now retries keyless as a known node and
+  broadcasts the real error); the VpnService lacked the
+  BIND_VPN_SERVICE declaration API 30 enforces; wireguard's
+  CreateTUNFromFile needs netlink and tun ioctls Android never
+  grants apps, replaced by a minimal fd-backed tun device. Plus a
+  pre-existing dns Serve/Close data race caught by the new
+  regression test under -race.
+- Live session proof: mnetd -session-proof joins two in-process
+  nodes to any control plane on userspace netstack tunnels (no root,
+  no kernel TUN; reuses the Prepare/SetTUN flow built for Android)
+  and runs a full session between them through the encrypted mesh:
+  real X11 capture from an Xvfb display, dirty-rect delta delivery
+  of a mid-run wallpaper swap, nonce-verified chat, a hash-checked
+  256 KiB file transfer, and injected text observed reaching the X
+  server. Artifacts (frames, summary.json) land in -proof-dir.
+- File transfer: incoming files were refused when the receive
+  directory did not exist yet; the receiver now creates it.
+
 ## 0.7.0 - 2026-11-15
 
 Session layer performance and platform coverage.
