@@ -54,7 +54,7 @@ type Daemon struct {
 	deviceMu    sync.RWMutex
 
 	mu     sync.Mutex
-	status string // down, joining, waiting-approval, up, key-expired
+	status string // down, preparing, joining, waiting-approval, up, key-expired
 	// joinMu serializes join and rejoin: the control-plane identity
 	// (node id, token, auth key, control client) swaps as one step,
 	// never concurrently from two loops.
@@ -103,7 +103,13 @@ func New(cfg Config) (*Daemon, error) {
 }
 
 // State returns the current persisted state.
-func (d *Daemon) State() State { return *d.state }
+func (d *Daemon) State() State {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	snapshot := *d.state
+	snapshot.AdvertiseRoutes = append([]string(nil), d.state.AdvertiseRoutes...)
+	return snapshot
+}
 
 // SetRouting configures exit-node and subnet-routing roles. advertiseExit
 // offers this node as an exit node, routes are subnet CIDRs it serves,
@@ -116,7 +122,7 @@ func (d *Daemon) SetRouting(advertiseExit bool, routes []string, useExit string)
 		return fmt.Errorf("routing changes apply while down; node is %s", d.status)
 	}
 	d.state.ExitNode = advertiseExit
-	d.state.AdvertiseRoutes = routes
+	d.state.AdvertiseRoutes = append([]string(nil), routes...)
 	d.state.UseExitNode = useExit
 	return d.state.Save(d.cfg.StateDir)
 }
@@ -313,15 +319,16 @@ func (d *Daemon) joinLocked(ctx context.Context, authKey string) error {
 	if err != nil {
 		return fmt.Errorf("join: %w", err)
 	}
+	d.mu.Lock()
 	d.state.NodeID = resp.NodeID
 	d.state.NodeToken = resp.NodeToken
 	if authKey != "" {
 		d.state.AuthKey = authKey
 	}
 	if err := d.state.Save(d.cfg.StateDir); err != nil {
+		d.mu.Unlock()
 		return err
 	}
-	d.mu.Lock()
 	d.cc = &controlclient.Client{
 		Base:   d.state.Server,
 		NodeID: d.state.NodeID,

@@ -32,29 +32,42 @@ func (d *Daemon) SetTUN(t tun.Device) error {
 // before they can establish the tunnel; call Up afterwards. Joining is
 // idempotent, so the later Up re-joins harmlessly.
 func (d *Daemon) Prepare(server, network, nodeName, authKey string) (string, error) {
+	d.lifecycleMu.Lock()
+	defer d.lifecycleMu.Unlock()
 	d.mu.Lock()
 	if d.status != "down" {
 		d.mu.Unlock()
 		return "", fmt.Errorf("already %s", d.status)
 	}
+	d.status = "preparing"
+	d.lastErr = ""
 	d.mu.Unlock()
+	defer d.setDown()
 
-	if err := d.state.EnsureKey(d.cfg.StateDir); err != nil {
-		return "", err
-	}
-	if server != "" {
-		d.state.Server = server
-	}
-	if network != "" {
-		d.state.Network = network
-	}
-	if nodeName != "" {
-		d.state.NodeName = nodeName
-	}
-	if d.state.Server == "" || d.state.Network == "" {
-		return "", fmt.Errorf("need server and network for the first join")
-	}
-	if err := d.state.Save(d.cfg.StateDir); err != nil {
+	if err := func() error {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		if err := d.state.EnsureKey(d.cfg.StateDir); err != nil {
+			return err
+		}
+		if server != "" {
+			d.state.Server = server
+		}
+		if network != "" {
+			d.state.Network = network
+		}
+		if nodeName != "" {
+			d.state.NodeName = nodeName
+		}
+		if d.state.Server == "" || d.state.Network == "" {
+			return fmt.Errorf("need server and network for the first join")
+		}
+		if err := d.state.Save(d.cfg.StateDir); err != nil {
+			return err
+		}
+
+		return nil
+	}(); err != nil {
 		return "", err
 	}
 
