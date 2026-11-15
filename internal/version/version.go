@@ -2,7 +2,7 @@
 package version
 
 // Version of this Mnet build.
-const Version = "0.6.0"
+const Version = "0.8.0"
 
 // Revision identifies the source revision for deployment verification.
 // Release/deployment builds set it with -ldflags -X.

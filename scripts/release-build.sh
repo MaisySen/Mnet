@@ -3,6 +3,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 V=$(grep -o '"[0-9.]*"' internal/version/version.go | tr -d '"')
+REVISION=$(git rev-parse HEAD)
 mkdir -p dist
 rm -f dist/mnet* dist/SHA256SUMS
 for target in linux-amd64 linux-arm64 darwin-arm64 windows-amd64; do
@@ -12,7 +13,7 @@ for target in linux-amd64 linux-arm64 darwin-arm64 windows-amd64; do
     [ "$GOOS" = windows ] && ext=".exe"
     for bin in mnet mnetd mnet-control; do
         echo "building $bin $target"
-        GOOS=$GOOS GOARCH=$GOARCH CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" \
+        GOOS=$GOOS GOARCH=$GOARCH CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X fintex.au/mnet/internal/version.Revision=$REVISION" \
             -o "dist/${bin}-${target}${ext}" "./cmd/$bin"
     done
 done
