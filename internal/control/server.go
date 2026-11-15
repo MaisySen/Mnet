@@ -33,6 +33,11 @@ type Server struct {
 
 	adminPassword string
 	ownPassword   bool // true when generated, so we log it once
+
+	loginLim  *ipLimiters // admin login brute-force protection
+	joinLim   *ipLimiters // join flood protection
+	auditPath string       // append-only audit log, <store>.audit.jsonl
+	auditMu   sync.Mutex
 }
 
 // NewServer builds a server. adminPassword may be empty, in which case a
@@ -55,6 +60,9 @@ func NewServer(store *Store, hub *relay.Hub, publicBase, adminPassword string) (
 		sessions:      map[string]time.Time{},
 		oidcStates:    map[string]oidcState{},
 		adminPassword: adminPassword,
+		loginLim:      newIPLimiters(10, 5),
+		joinLim:       newIPLimiters(60, 20),
+		auditPath:     store.Path() + ".audit.jsonl",
 	}
 	return s, generated, nil
 }
@@ -71,12 +79,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/join/approve", s.handleApprovePage)
 	mux.HandleFunc("/oidc/start", s.handleOIDCStart)
 	mux.HandleFunc("/oidc/callback", s.handleOIDCCallback)
-	mux.HandleFunc("/api/join", s.handleJoin)
+	mux.HandleFunc("/api/join", s.joinLim.limit(s.handleJoin))
 	mux.HandleFunc("/api/join/status", s.handleJoinStatus)
 	mux.HandleFunc("/api/map", s.handleMap)
 	mux.HandleFunc("/api/endpoints", s.handleEndpoints)
 	mux.HandleFunc("/api/relay/ws", s.handleRelayWS)
-	mux.HandleFunc("/admin/api/login", s.handleAdminLogin)
+	mux.HandleFunc("/admin/api/login", s.loginLim.limit(s.handleAdminLogin))
 	mux.HandleFunc("/admin/api/state", s.adminOnly(s.handleAdminState))
 	mux.HandleFunc("/admin/api/networks", s.adminOnly(s.handleAdminNetworks))
 	mux.HandleFunc("/admin/api/authkeys", s.adminOnly(s.handleAdminAuthKeys))
@@ -86,7 +94,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/admin/api/nodes/delete", s.adminOnly(s.handleAdminNodeDelete))
 	mux.HandleFunc("/admin/api/nodes/expire", s.adminOnly(s.handleAdminNodeExpire))
 	mux.HandleFunc("/admin/api/acl", s.adminOnly(s.handleAdminACL))
-	return mux
+	return securityHeaders(mux)
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -135,6 +143,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err := s.store.Join(req)
 	if err != nil {
+		s.audit(r, "join", req.Name, req.Network+": "+err.Error(), false)
 		switch err {
 		case ErrNotFound:
 			writeErr(w, http.StatusNotFound, "network not found")
@@ -147,6 +156,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	s.audit(r, "join", req.Name, req.Network, true)
 	if !resp.Approved {
 		if s.oidcProvider() != nil {
 			// SSO login replaces manual approval.
@@ -263,9 +273,11 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if subtle.ConstantTimeCompare([]byte(body.Password), []byte(s.adminPassword)) != 1 {
+		s.audit(r, "admin_login", "admin", "", false)
 		writeErr(w, http.StatusUnauthorized, "wrong password")
 		return
 	}
+	s.audit(r, "admin_login", "admin", "", true)
 	b := make([]byte, 24)
 	rand.Read(b)
 	tok := base64.RawURLEncoding.EncodeToString(b)
@@ -349,6 +361,7 @@ func (s *Server) handleAdminAuthKeys(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.audit(r, "authkey_create", "admin", body.NetworkID, true)
 	writeJSON(w, http.StatusOK, k)
 }
 
@@ -363,6 +376,7 @@ func (s *Server) handleAdminAuthKeyDelete(w http.ResponseWriter, r *http.Request
 		writeErr(w, http.StatusNotFound, err.Error())
 		return
 	}
+	s.audit(r, "authkey_delete", "admin", body.ID, true)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -377,6 +391,7 @@ func (s *Server) handleAdminNodeApprove(w http.ResponseWriter, r *http.Request) 
 		writeErr(w, http.StatusNotFound, err.Error())
 		return
 	}
+	s.audit(r, "node_approve", "admin", body.NodeID, true)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -397,6 +412,7 @@ func (s *Server) handleAdminNodeExpire(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, err.Error())
 		return
 	}
+	s.audit(r, "node_expire", "admin", body.NodeID, true)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -411,6 +427,7 @@ func (s *Server) handleAdminNodeDelete(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, err.Error())
 		return
 	}
+	s.audit(r, "node_delete", "admin", body.NodeID, true)
 	s.hub.Detach(body.NodeID)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

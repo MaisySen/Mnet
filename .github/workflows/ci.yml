@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: build
+        run: go build ./...
+      - name: vet
+        run: go vet ./...
+      - name: test with race detector
+        run: go test -race ./...
+      - name: secrets and style gate
+        run: sh scripts/check-secrets.sh
+
+  session-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: install Xvfb and ImageMagick
+        run: sudo apt-get update && sudo apt-get install -y xvfb imagemagick
+      - name: live session proof against a local control plane
+        run: sh scripts/session-validation.sh

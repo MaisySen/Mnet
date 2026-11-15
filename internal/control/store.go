@@ -108,6 +108,9 @@ func (s *Store) bumpLocked(networkID string) {
 	}
 }
 
+// Path returns the backing file path.
+func (s *Store) Path() string { return s.path }
+
 // Version returns the current global map version.
 func (s *Store) Version() int64 {
 	s.mu.Lock()
