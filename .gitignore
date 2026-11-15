@@ -11,3 +11,4 @@ mnet-control.json
 /mobile/*-sources.jar
 /android/out/
 /android/debug.keystore
+android/out-aab/

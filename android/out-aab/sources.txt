@@ -1,3 +1,0 @@
-/home/sandbox/mnet/android/app/src/main/java/au/fintex/mnet/MainActivity.java
-/home/sandbox/mnet/android/app/src/main/java/au/fintex/mnet/MnetVpnService.java
-/home/sandbox/mnet/android/out-aab/gen/au/fintex/mnet/R.java

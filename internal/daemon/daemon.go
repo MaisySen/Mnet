@@ -236,9 +236,19 @@ func (d *Daemon) join(ctx context.Context, authKey string) error {
 	}
 	d.state.NodeID = resp.NodeID
 	d.state.NodeToken = resp.NodeToken
+	if authKey != "" {
+		d.state.AuthKey = authKey
+	}
 	if err := d.state.Save(d.cfg.StateDir); err != nil {
 		return err
 	}
+	d.mu.Lock()
+	d.cc = &controlclient.Client{
+		Base:   d.state.Server,
+		NodeID: d.state.NodeID,
+		Token:  d.state.NodeToken,
+	}
+	d.mu.Unlock()
 	if resp.Approved {
 		return nil
 	}
@@ -260,6 +270,23 @@ func (d *Daemon) join(ctx context.Context, authKey string) error {
 		if st.Approved {
 			return nil
 		}
+	}
+}
+
+// rejoin registers the node again after the control plane forgot it
+// (state wipe on the server, deleted node). Uses the saved auth key.
+func (d *Daemon) rejoin(ctx context.Context) {
+	if d.state.AuthKey == "" {
+		log.Printf("mnetd: control plane no longer knows this node and no auth key is saved; re-run `mnetd -up -auth-key ...`")
+		time.Sleep(30 * time.Second)
+		return
+	}
+	log.Printf("mnetd: control plane no longer knows this node; re-joining")
+	d.state.NodeID = ""
+	d.state.NodeToken = ""
+	if err := d.join(ctx, d.state.AuthKey); err != nil {
+		log.Printf("mnetd: rejoin: %v", err)
+		time.Sleep(10 * time.Second)
 	}
 }
 

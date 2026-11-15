@@ -4,7 +4,8 @@
 set -eu
 cd "$(dirname "$0")/.."
 fail=0
-if git grep -nIE 'BEGIN [A-Z ]*PRIVATE KEY|password *= *"[^"]+|token *= *"[a-zA-Z0-9]|\.p8|AIza[0-9A-Za-z_-]{20,}' -- . ':!vendor' ':!*_test.go' ':!docs' | grep -v check-secrets; then
+# .github is excluded: workflows reference secret NAMES, never values.
+if git grep -nIE 'BEGIN [A-Z ]*PRIVATE KEY|password *= *"[^"]+|token *= *"[a-zA-Z0-9]|\.p8|AIza[0-9A-Za-z_-]{20,}' -- . ':!vendor' ':!*_test.go' ':!docs' ':!.github' | grep -v check-secrets; then
     echo "POSSIBLE SECRET ABOVE"
     fail=1
 fi

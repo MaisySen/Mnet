@@ -20,6 +20,10 @@ type State struct {
 	NodeID     string `json:"node_id"`
 	NodeToken  string `json:"node_token"`
 	NodeName   string `json:"node_name"`
+	// AuthKey is the pre-auth key used at join, kept so the node can
+	// re-join by itself when the control plane forgets it (state wipe
+	// on the server). Same sensitivity as the private key beside it.
+	AuthKey string `json:"auth_key,omitempty"`
 
 	ExitNode        bool     `json:"exit_node,omitempty"`        // offer to carry others' internet traffic
 	AdvertiseRoutes []string `json:"advertise_routes,omitempty"` // subnet CIDRs this node serves

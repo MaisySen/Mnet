@@ -411,5 +411,6 @@ func (s *Server) handleAdminNodeDelete(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, err.Error())
 		return
 	}
+	s.hub.Detach(body.NodeID)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

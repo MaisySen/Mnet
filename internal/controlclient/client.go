@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,6 +20,11 @@ import (
 	"fintex.au/mnet/internal/netmap"
 	"fintex.au/mnet/internal/relay"
 )
+
+// ErrUnauthorized marks a 401 from the control plane: the server no
+// longer knows this node (state wiped, node deleted or token rotated).
+// The daemon answers it by re-joining.
+var ErrUnauthorized = errors.New("control: unauthorized")
 
 // Client talks to one control server as one node.
 type Client struct {
@@ -53,7 +59,13 @@ func (c *Client) do(req *http.Request, out any) error {
 	if resp.StatusCode >= 300 {
 		var e netmap.APIError
 		if json.Unmarshal(body, &e) == nil && e.Error != "" {
+			if resp.StatusCode == http.StatusUnauthorized {
+				return fmt.Errorf("%w: %s", ErrUnauthorized, e.Error)
+			}
 			return fmt.Errorf("control: %s", e.Error)
+		}
+		if resp.StatusCode == http.StatusUnauthorized {
+			return ErrUnauthorized
 		}
 		return fmt.Errorf("control: http %d", resp.StatusCode)
 	}
@@ -129,8 +141,11 @@ type Relay struct {
 func (c *Client) DialRelay(ctx context.Context, selfPubkey string, onPacket func(src string, pkt []byte)) (*Relay, error) {
 	q := url.Values{"node_id": {c.NodeID}, "token": {c.Token}}
 	u := strings.Replace(c.url("/api/relay/ws?"+q.Encode()), "http", "ws", 1)
-	ws, _, err := websocket.DefaultDialer.DialContext(ctx, u, nil)
+	ws, resp, err := websocket.DefaultDialer.DialContext(ctx, u, nil)
 	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
+			return nil, ErrUnauthorized
+		}
 		return nil, err
 	}
 	r := &Relay{ws: ws, done: make(chan struct{})}

@@ -142,6 +142,21 @@ func (h *Hub) Attach(nodeID, pubkey string, ws *websocket.Conn, onPacket func(sr
 	}
 }
 
+// Detach drops the relay connection for a node, if any. Used when the
+// node is deleted so a stale socket cannot keep receiving traffic.
+func (h *Hub) Detach(nodeID string) {
+	h.mu.Lock()
+	pubkey, ok := h.ByNodeID[nodeID]
+	var c *conn
+	if ok {
+		c = h.conns[pubkey]
+	}
+	h.mu.Unlock()
+	if c != nil {
+		c.ws.Close()
+	}
+}
+
 // Forward hands a packet from src to dst. False when dst is offline.
 func (h *Hub) Forward(src, dst string, payload []byte) bool {
 	h.mu.Lock()

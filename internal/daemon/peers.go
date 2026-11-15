@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"fintex.au/mnet/internal/bind"
+	"fintex.au/mnet/internal/controlclient"
 	"fintex.au/mnet/internal/ifacectl"
 	"fintex.au/mnet/internal/netmap"
 	"fintex.au/mnet/internal/stun"
@@ -146,6 +148,10 @@ func (d *Daemon) mapLoop(ctx context.Context) {
 		if err != nil {
 			if ctx.Err() != nil {
 				return
+			}
+			if errors.Is(err, controlclient.ErrUnauthorized) {
+				d.rejoin(ctx)
+				continue
 			}
 			time.Sleep(2 * time.Second)
 			continue
@@ -360,6 +366,10 @@ func (d *Daemon) relayLoop(ctx context.Context) {
 		}
 		r, err := d.cc.DialRelay(ctx, d.state.PublicKey, d.bind.Inject)
 		if err != nil {
+			if errors.Is(err, controlclient.ErrUnauthorized) {
+				d.rejoin(ctx)
+				continue
+			}
 			log.Printf("mnetd: relay dial failed: %v (retrying)", err)
 			time.Sleep(3 * time.Second)
 			continue
