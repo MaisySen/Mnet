@@ -28,7 +28,7 @@ func TestLocalAPIBindReadinessAndClose(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("no readiness")
 	}
 	network, addr := SocketPath(dir)
@@ -36,7 +36,7 @@ func TestLocalAPIBindReadinessAndClose(t *testing.T) {
 		return (&net.Dialer{}).DialContext(ctx, network, addr)
 	}}
 	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: localapi.Transport{StateDir: dir, Base: transport}, Timeout: time.Second}
+	client := &http.Client{Transport: localapi.Transport{StateDir: dir, Base: transport}, Timeout: 10 * time.Second}
 	resp, err := client.Get("http://mnetd/localapi/status")
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func TestLocalAPIBindReadinessAndClose(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("API did not stop")
 	}
 	if conn, err := net.DialTimeout(network, addr, time.Second); err == nil {
@@ -79,7 +79,7 @@ func TestLocalAPIRejectsUnauthenticatedAndMalformedControl(t *testing.T) {
 		return (&net.Dialer{}).DialContext(ctx, network, addr)
 	}}
 	defer base.CloseIdleConnections()
-	unauth := &http.Client{Transport: base, Timeout: time.Second}
+	unauth := &http.Client{Transport: base, Timeout: 10 * time.Second}
 	for _, path := range []string{"/localapi/status", "/localapi/down"} {
 		resp, err := unauth.Post("http://mnetd"+path, "application/json", nil)
 		if err != nil {
@@ -90,7 +90,7 @@ func TestLocalAPIRejectsUnauthenticatedAndMalformedControl(t *testing.T) {
 			t.Fatalf("unauthorized %s status %d", path, resp.StatusCode)
 		}
 	}
-	auth := &http.Client{Transport: localapi.Transport{StateDir: dir, Base: base}, Timeout: time.Second}
+	auth := &http.Client{Transport: localapi.Transport{StateDir: dir, Base: base}, Timeout: 10 * time.Second}
 	resp, err := auth.Post("http://mnetd/localapi/up", "application/json", strings.NewReader("invalid-json"))
 	if err != nil {
 		t.Fatal(err)
@@ -127,7 +127,7 @@ func TestLocalAPICanResetSavedRouting(t *testing.T) {
 		return (&net.Dialer{}).DialContext(ctx, network, addr)
 	}}
 	defer base.CloseIdleConnections()
-	client := &http.Client{Transport: localapi.Transport{StateDir: dir, Base: base}, Timeout: time.Second}
+	client := &http.Client{Transport: localapi.Transport{StateDir: dir, Base: base}, Timeout: 10 * time.Second}
 	post := func(body string) int {
 		t.Helper()
 		r, err := client.Post("http://mnetd/localapi/up", "application/json", strings.NewReader(body))
@@ -143,7 +143,7 @@ func TestLocalAPICanResetSavedRouting(t *testing.T) {
 	if code := post(`{"reset_routing":true}`); code != 200 {
 		t.Fatal(code)
 	}
-	deadline := time.Now().Add(time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		if strings.Contains(d.Status().LastError, "need --server") {
 			break

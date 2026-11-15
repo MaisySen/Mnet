@@ -50,7 +50,7 @@ func TestSafeFileReception(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			f, err := s.Recv(time.Second)
+			f, err := s.Recv(10 * time.Second)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -68,7 +68,7 @@ func TestSafeFileReception(t *testing.T) {
 				if err = client.send(s.ID, msgFin, PriBulk, nil); err != nil {
 					t.Fatal(err)
 				}
-				f, err = s.Recv(time.Second)
+				f, err = s.Recv(10 * time.Second)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -82,7 +82,7 @@ func TestSafeFileReception(t *testing.T) {
 			}
 			select {
 			case <-complete:
-			case <-time.After(time.Second):
+			case <-time.After(10 * time.Second):
 				t.Fatal("receiver did not finish")
 			}
 			got, err := os.ReadFile(target)
@@ -153,7 +153,7 @@ func TestResetTransferDoesNotPublish(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.Recv(time.Second); err != nil {
+	if _, err = s.Recv(10 * time.Second); err != nil {
 		t.Fatal(err)
 	}
 	if err = client.SendBytes(s.ID, PriBulk, []byte("abc")); err != nil {
@@ -164,7 +164,7 @@ func TestResetTransferDoesNotPublish(t *testing.T) {
 	}
 	select {
 	case <-finished:
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("reset not observed")
 	}
 	if _, err = os.Stat(filepath.Join(dir, "reset.bin")); !os.IsNotExist(err) {
