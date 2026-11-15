@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"fintex.au/mnet/internal/privatefs"
 	"golang.org/x/crypto/curve25519"
 )
 
@@ -34,6 +35,16 @@ func statePath(dir string) string { return filepath.Join(dir, "state.json") }
 
 // LoadState reads the state file, or returns an empty state.
 func LoadState(dir string) (*State, error) {
+	if _, err := os.Lstat(statePath(dir)); err == nil {
+		if err = privatefs.EnsureDir(dir); err != nil {
+			return nil, err
+		}
+		if err = privatefs.ProtectFile(statePath(dir)); err != nil {
+			return nil, err
+		}
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
 	b, err := os.ReadFile(statePath(dir))
 	if errors.Is(err, os.ErrNotExist) {
 		return &State{}, nil
@@ -50,14 +61,14 @@ func LoadState(dir string) (*State, error) {
 
 // Save writes the state file, owner readable only.
 func (s *State) Save(dir string) error {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := privatefs.EnsureDir(dir); err != nil {
 		return err
 	}
 	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(statePath(dir), b, 0o600)
+	return privatefs.WriteFile(statePath(dir), b)
 }
 
 // EnsureKey generates and saves a WireGuard identity if we have none.

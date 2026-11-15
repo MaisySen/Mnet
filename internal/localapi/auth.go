@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
+	"fintex.au/mnet/internal/privatefs"
 	"fmt"
 	"net/http"
 	"os"
@@ -38,7 +39,13 @@ func ReadToken(dir string) (string, error) {
 
 // EnsureToken creates a stable, owner-only capability for the daemon and CLI.
 func EnsureToken(dir string) (string, error) {
+	if err := privatefs.EnsureDir(dir); err != nil {
+		return "", err
+	}
 	if _, err := os.Lstat(tokenPath(dir)); err == nil {
+		if err := privatefs.ProtectFile(tokenPath(dir)); err != nil {
+			return "", err
+		}
 		return ReadToken(dir)
 	} else if !os.IsNotExist(err) {
 		return "", err

@@ -56,3 +56,21 @@ jobs:
             /tmp/mnet-session.*/proof/summary.json
             /tmp/mnet-session.*/xvfb.log
             /tmp/mnet-session.*/swap.log
+
+  native-platform:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: native build
+        run: go build ./...
+      - name: native private state and local API lifecycle
+        run: go test -race -count=1 -timeout=5m ./internal/privatefs ./internal/localapi
+      - name: native OS TCP session and file transfer
+        run: go test -race -count=3 -timeout=5m ./internal/session -run 'TestSessionOverTCP|TestQueuedFileSeesStartupOptions|TestRepeatedFileTransfersReleaseStreams'

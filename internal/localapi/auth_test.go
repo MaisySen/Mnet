@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -25,7 +26,7 @@ func TestPrivateTokenPersistsAndRejectsUnsafeFiles(t *testing.T) {
 		t.Fatal("token not readable")
 	}
 	info, err := os.Stat(tokenPath(dir))
-	if err != nil || info.Mode().Perm() != 0600 {
+	if err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0600) {
 		t.Fatal("token not private")
 	}
 	if err = os.WriteFile(tokenPath(dir), []byte("invalid"), 0600); err != nil {
