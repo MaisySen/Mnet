@@ -230,4 +230,4 @@ The member page now validates the entire list and each ID/name/address field bef
 
 ## Committed account logout with a lost response (browser extension)
 
-The actual signed-provider fixture signs in again, commits server-side account logout and drops only the response. The UI must retain uncertainty with private rows cleared; old-token replay must fail, and an idempotent actual logout retry must confirm sign-out even though the first logout removed its cookie/session. Local real Chrome passes. CI pending. This is test-only, not a new live account action.
+The actual signed-provider fixture signs in again, commits server-side account logout and drops only the response. The UI must retain uncertainty with private rows cleared; old-token replay must fail, and an idempotent actual logout retry must confirm sign-out even though the first logout removed its cookie/session. All five jobs passed in [ec2892d CI](https://github.com/MaisySen/Mnet/actions/runs/43830783982), including the actual account browser step, native tests and three full kernel regressions with 139/155/142 later loss-profile drops. This is test-only, not a new live account action.
