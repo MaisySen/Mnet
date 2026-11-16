@@ -51,6 +51,8 @@ jobs:
           java -cp "$RUNNER_TEMP/mnet-android-policy" au.fintex.mnet.VpnWorkerGateTest
           javac -d "$RUNNER_TEMP/mnet-android-policy" android/app/src/main/java/au/fintex/mnet/ViewerGate.java android/tests/au/fintex/mnet/ViewerGateTest.java
           java -cp "$RUNNER_TEMP/mnet-android-policy" au.fintex.mnet.ViewerGateTest
+          javac -d "$RUNNER_TEMP/mnet-android-policy" android/app/src/main/java/au/fintex/mnet/SessionConsent.java android/tests/au/fintex/mnet/SessionConsentTest.java
+          java -cp "$RUNNER_TEMP/mnet-android-policy" au.fintex.mnet.SessionConsentTest
       - name: Android API compatibility matrix (JVM fakes and source only)
         run: python3 scripts/test-android-api-compat.py
       - name: Android projection stop policy (JVM fakes and source only)

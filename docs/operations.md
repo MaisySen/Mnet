@@ -543,3 +543,7 @@ Node Stop/Close now close their pending and active viewer transports. Close refu
 ### Leaving the Android viewer (new source)
 
 Activity source now closes its current viewer and permanently invalidates the attempt on destruction. Late connection results are closed, stale callbacks ignored and reconnect timers deduplicated. An in-flight connect can wait for the Go handshake deadline before returning; Activity destruction alone does not interrupt that call. Local JVM/source/Java/dex checks pass; Android runtime and physical reconnect remain unverified. Published APK unchanged.
+
+### Session consent request identity (new source)
+
+Each Android host prompt now carries its own request ID. Allow/refuse/cancel affects only that pending request; stale dialogs cannot answer a newer peer and stopped workers cannot clear its prompt. No dialog response still refuses after 60 seconds. Explicit auto-accept behavior is unchanged. JVM/source/Java/dex checks pass locally; real Android dialogs and physical consent/capture remain unverified. Published APK unchanged.

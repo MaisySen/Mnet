@@ -23,7 +23,6 @@ import android.view.WindowManager;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -40,22 +39,20 @@ public class HostSessionService extends Service implements HostCallbacks {
     public static final String EXTRA_LOG = "log";
     public static final String ACTION_ASK = "au.fintex.mnet.SESSION_ASK";
     public static final String EXTRA_PEER = "peer";
+    public static final String EXTRA_REQUEST = "consent_request";
 
     private static final String CHANNEL = "session";
     private static final int NOTIF_ID = 2;
 
     // Set by HostingActivity.
     public static final AtomicBoolean autoAccept = new AtomicBoolean(false);
-    private static volatile Boolean pendingAnswer;
-    private static volatile CountDownLatch pendingLatch;
+    private static final SessionConsent CONSENT = new SessionConsent();
 
-    // answerSession is called by HostingActivity's consent dialog.
-    public static void answerSession(boolean accept) {
-        CountDownLatch l = pendingLatch;
-        if (l != null) {
-            pendingAnswer = accept;
-            l.countDown();
-        }
+    public static void answerSession(String requestId, boolean accept) {
+        CONSENT.answer(requestId, accept);
+    }
+    public static boolean consentPending(String requestId) {
+        return CONSENT.pending(requestId);
     }
 
     private Node node;
@@ -246,16 +243,20 @@ public class HostSessionService extends Service implements HostCallbacks {
             log("accepted session from " + peerNodeName + " (auto-accept)");
             return true;
         }
-        pendingLatch = new CountDownLatch(1);
-        pendingAnswer = null;
-        Intent ask = new Intent(ACTION_ASK).putExtra(EXTRA_PEER, peerNodeName);
+        SessionConsent.Request request;
+        synchronized (hostLifecycle) {
+            if (!running) return false;
+            request = CONSENT.begin(this);
+        }
+        if (request == null) return false;
+        Intent ask = new Intent(ACTION_ASK).putExtra(EXTRA_PEER, peerNodeName)
+                .putExtra(EXTRA_REQUEST, request.id);
         ask.setPackage(getPackageName());
         sendBroadcast(ask);
         try {
-            if (pendingLatch.await(60, TimeUnit.SECONDS)) {
-                return running && Boolean.TRUE.equals(pendingAnswer);
-            }
+            return CONSENT.await(request, 60, TimeUnit.SECONDS) && running;
         } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
         }
         return false;
     }
@@ -296,9 +297,7 @@ public class HostSessionService extends Service implements HostCallbacks {
             MnetAccessibilityService.setHosting(false);
             latestJpeg = null;
             latestSeq = servedSeq = 0;
-            pendingAnswer = false;
-            CountDownLatch pending = pendingLatch;
-            if (pending != null) pending.countDown();
+            CONSENT.cancel(this);
             stopping = true;
             if (hostStarted) { stoppingNode = node; hostStarted = false; }
         }

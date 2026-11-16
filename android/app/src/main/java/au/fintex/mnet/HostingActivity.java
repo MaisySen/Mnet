@@ -31,12 +31,14 @@ public class HostingActivity extends Activity {
                 append(intent.getStringExtra(HostSessionService.EXTRA_LOG));
             } else if (HostSessionService.ACTION_ASK.equals(intent.getAction())) {
                 String peer = intent.getStringExtra(HostSessionService.EXTRA_PEER);
+                String requestId = intent.getStringExtra(HostSessionService.EXTRA_REQUEST);
+                if (!HostSessionService.consentPending(requestId)) return;
                 new AlertDialog.Builder(HostingActivity.this)
                         .setTitle("Session request")
                         .setMessage(peer + " wants to view and control this phone. Allow?")
-                        .setPositiveButton("Allow", (d, w) -> HostSessionService.answerSession(true))
-                        .setNegativeButton("Refuse", (d, w) -> HostSessionService.answerSession(false))
-                        .setOnCancelListener(d -> HostSessionService.answerSession(false))
+                        .setPositiveButton("Allow", (d, w) -> HostSessionService.answerSession(requestId, true))
+                        .setNegativeButton("Refuse", (d, w) -> HostSessionService.answerSession(requestId, false))
+                        .setOnCancelListener(d -> HostSessionService.answerSession(requestId, false))
                         .show();
             }
         }
