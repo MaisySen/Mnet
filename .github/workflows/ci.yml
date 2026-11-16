@@ -17,12 +17,12 @@ jobs:
         run: go build ./...
       - name: read-only Linux saved-state systemd unit verification
         run: |
-          go test -race -count=3 ./cmd/mnetd -run 'TestLinuxService|TestLinuxDaemonState'
+          go test -race -count=3 ./cmd/mnetd -run 'TestLinuxService|TestUnixDaemonState'
           go build -o "$RUNNER_TEMP/mnetd-unit" ./cmd/mnetd
           "$RUNNER_TEMP/mnetd-unit" -state /var/lib/mnet-fixture -service print-unit > "$RUNNER_TEMP/mnetd.service"
           systemd-analyze verify "$RUNNER_TEMP/mnetd.service"
           python3 scripts/check-linux-unit.py "$RUNNER_TEMP/mnetd-unit"
-          python3 scripts/check-linux-daemon-ownership.py "$RUNNER_TEMP/mnetd-unit"
+          python3 scripts/check-daemon-ownership.py "$RUNNER_TEMP/mnetd-unit"
       - name: cross-compile Windows and Darwin daemons
         run: |
           GOOS=windows go build ./...
@@ -109,6 +109,11 @@ jobs:
           go test -race -count=10 -timeout=3m ./cmd/mnetd -run '^TestDarwinServicePlist'
           go build -o "$RUNNER_TEMP/mnetd-plist" ./cmd/mnetd
           python3 scripts/check-darwin-plist.py "$RUNNER_TEMP/mnetd-plist"
+      - name: native macOS state ownership and actual-process duplicate/crash release
+        if: runner.os == 'macOS'
+        run: |
+          go test -race -count=30 -timeout=3m ./cmd/mnetd -run '^TestUnixDaemonState'
+          python3 scripts/check-daemon-ownership.py "$RUNNER_TEMP/mnetd-plist"
       - name: native macOS actual launchd offline lifecycle (disposable runner)
         if: runner.os == 'macOS'
         run: sudo env GITHUB_ACTIONS=true python3 scripts/darwin-launchd-validation.py "$RUNNER_TEMP/mnetd-plist"

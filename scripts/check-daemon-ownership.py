@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fresh-process Linux singleton, active API preservation and crash release."""
+"""Fresh-process Linux/macOS singleton, active API preservation and crash release."""
 import http.client
 import os
 from pathlib import Path
@@ -40,7 +40,7 @@ def ready(state, process):
         time.sleep(.02)
     raise AssertionError('daemon API did not become ready')
 
-with tempfile.TemporaryDirectory(prefix='mnet-owner-check-') as root:
+with tempfile.TemporaryDirectory(prefix='mnet-owner-check-', dir='/private/tmp' if sys.platform == 'darwin' else None) as root:
     state = Path(root)
     processes = []
     def start():
@@ -95,7 +95,7 @@ with tempfile.TemporaryDirectory(prefix='mnet-owner-check-') as root:
             winner.terminate()
             winner.communicate(timeout=5)
             assert winner.returncode == 0 and not (race_state / 'mnetd.sock').exists()
-        print('actual Linux processes: duplicate owners rejected; API/token preserved; clean stop and crash release permit restart')
+        print('actual native processes: duplicate owners rejected; API/token preserved; clean stop and crash release permit restart')
     finally:
         for process in processes:
             if process.poll() is None:

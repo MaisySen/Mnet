@@ -293,9 +293,13 @@ Reject duplicate Linux `mnetd` processes for the same private state directory be
 
 Add `-service print-plist` on Darwin, generating exact saved-state argv with an explicit canonical `utunN`, RunAtLoad, failure-only KeepAlive, throttling and decimal umask 63. Shared conservative path/override validation keeps secrets/enrollment/routing/session arguments out of both generated service formats. Repeated local XML/generator tests, full race/vet/cross-builds pass. All five jobs passed in [f2862f7 CI](https://github.com/MaisySen/Mnet/actions/runs/43851053165), including actual native CLI/exact plist/plutil/no-state-write checks and three full kernel regressions (170/142/156 loss drops). No install/load/start effects, no actual launchd/VPN/boot proof.
 
-## Actual macOS launchd offline lifecycle (test extension, CI pending)
+## Actual macOS launchd offline lifecycle (verified)
 
-Disposable native root CI generates a unique-label system job with unchanged production argv/settings, then checks actual launchd offline authenticated API startup, automatic SIGKILL recovery/new PID/same token, unload/reload/final process/socket/job cleanup. No production label or persistent enable/disable configuration touched. Python/source checks pass locally; native execution pending. This is offline service-manager proof only, not enrollment, actual VPN or OS boot/reboot.
+Disposable native root CI generates a unique-label system job with unchanged production argv/settings, then checks actual launchd offline authenticated API startup, automatic SIGKILL recovery/new PID/same token, unload/reload/final process/socket/job cleanup. No production label or persistent enable/disable configuration touched. All five jobs passed in [586062e CI](https://github.com/MaisySen/Mnet/actions/runs/43852789042), with explicit native lifecycle logs and three full Linux kernel regressions (152/133/129 later drops). This is offline service-manager proof only, not enrollment, actual VPN or OS boot/reboot.
+
+## macOS daemon state ownership (new source, native CI pending)
+
+Extend the stable private no-follow regular-file flock guard from Linux to macOS before console/service identity/API setup. Native repeated lock/alias and actual-process duplicate/API-preservation/crash-release tests added, followed by launchd lifecycle with the guard. Full local race/vet/cross-builds and Linux process script pass. No native macOS ownership claim until CI; Windows/mobile unaffected.
 
 ## v0.8.2-test.1 - 2026-11-16
 

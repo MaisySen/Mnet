@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux || darwin
 
 package main
 
@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestLinuxDaemonStateOwnership(t *testing.T) {
+func TestUnixDaemonStateOwnership(t *testing.T) {
 	dir := t.TempDir()
 	release, err := lockDaemonState(dir)
 	if err != nil {
@@ -42,7 +42,7 @@ func TestLinuxDaemonStateOwnership(t *testing.T) {
 	}
 }
 
-func TestLinuxDaemonStateLockRejectsAliases(t *testing.T) {
+func TestUnixDaemonStateLockRejectsAliases(t *testing.T) {
 	for _, kind := range []string{"symlink", "hardlink", "directory", "fifo"} {
 		t.Run(kind, func(t *testing.T) {
 			dir := t.TempDir()
