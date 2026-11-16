@@ -240,7 +240,7 @@ async function loadMembers(){
     if(!r.ok) throw new Error('read failed');
     const j=await r.json();
     if(generation!==viewGeneration || request!==memberRequest || signingOut || $('#memberNet').value!==id) return;
-    if(!Array.isArray(j.memberships)) throw new Error('invalid response');
+    if(!j || !Array.isArray(j.memberships) || !j.memberships.every(member=>member && member.network_id===id && typeof member.issuer==='string' && member.issuer.length>0 && typeof member.subject==='string' && member.subject.length>0)) throw new Error('invalid response');
     const rows=j.memberships.map(member=>{
       const row=document.createElement('tr');
       for(const value of [member.issuer,member.subject]){

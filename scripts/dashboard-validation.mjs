@@ -34,6 +34,20 @@ try{
  await until(()=>js(`document.querySelector('#members tbody').textContent.includes('<img src=x onerror=alert(1)>')`),'actual explicit grant rendered');
  if(!await js(`document.querySelectorAll('#members tbody tr').length===1 && !document.querySelector('#members tbody img')`))throw new Error('private grant did not render as text');
  await shot('dashboard-memberships');
+ // Browser-local edge responses test safe failure/retry presentation; initial
+ // login, grant creation and the successful inspection above use the server.
+ await js(`(async()=>{window.edgeFetch=window.fetch;window.fetch=(input,options)=>String(input).startsWith('/admin/api/memberships?')?Promise.reject(new Error('private transport details')):edgeFetch(input,options);await loadMembers();window.fetch=edgeFetch;})()`);
+ if(!await js(`!document.querySelector('#members tbody').textContent && document.querySelector('#memberMsg').textContent==='Could not read grants. Try again.'`))throw new Error('failed membership read retained private rows or transport text');
+ await js(`document.querySelector('#memberRead').click()`);
+ await until(()=>js(`document.querySelector('#members tbody').textContent.includes('<img')`),'actual retry after failed membership read');
+ // Two reads of the same selection complete in reverse order. Only the most
+ // recent can render, even if the earlier response was valid on arrival.
+ await js(`(async()=>{window.reverseFetch=window.fetch;window.memberReleases=[];window.fetch=(input,options)=>String(input).startsWith('/admin/api/memberships?')?new Promise(resolve=>memberReleases.push(body=>resolve(new Response(JSON.stringify(body),{status:200,headers:{'Content-Type':'application/json'}})))):reverseFetch(input,options);window.firstMember=loadMembers();window.secondMember=loadMembers();memberReleases[1]({memberships:[{network_id:memberNetwork,issuer:'https://issuer.example',subject:'latest-request'}]});await secondMember;memberReleases[0]({memberships:[{network_id:memberNetwork,issuer:'https://issuer.example',subject:'stale-request'}]});await firstMember;window.fetch=reverseFetch;})()`);
+ if(!await js(`document.querySelectorAll('#members tbody tr').length===1 && document.querySelector('#members tbody').textContent.includes('latest-request') && !document.querySelector('#members tbody').textContent.includes('stale-request')`))throw new Error('old same-network read replaced a newer result');
+ for(const body of ['{invalid JSON','{}','null',JSON.stringify({memberships:[null]}),JSON.stringify({memberships:[{}]}),JSON.stringify({memberships:[{network_id:'wrong-network',issuer:'https://issuer.example',subject:'private-outsider'}]})]){
+  await js(`(async()=>{window.badFetch=window.fetch;window.fetch=(input,options)=>String(input).startsWith('/admin/api/memberships?')?Promise.resolve(new Response(${JSON.stringify(body)},{status:200,headers:{'Content-Type':'application/json'}})):badFetch(input,options);await loadMembers();window.fetch=badFetch;})()`);
+  if(!await js(`!document.querySelector('#members tbody').textContent && document.querySelector('#memberMsg').textContent==='Could not read grants. Try again.'`))throw new Error('invalid successful membership response was treated as grants');
+ }
  // A second network has no grants. Switching clears old private rows immediately.
  await js(`(async()=>{window.otherNetwork=await api('/admin/api/networks',{name:'empty-membership-network'});await load();document.querySelector('#memberNet').value=otherNetwork.id;document.querySelector('#memberNet').dispatchEvent(new Event('change'));})()`);
  if(!await js(`!document.querySelector('#members tbody').textContent`))throw new Error('network switch retained previous grants');
@@ -66,5 +80,5 @@ try{
  const replay=await fetch(base+'/admin/api/state',{headers:{Cookie:'mnet_admin='+token}});if(replay.status!==401)throw new Error('logged-out cookie replay accepted');
  const remaining=(await cdp('Network.getCookies',{urls:[base]})).cookies;if(remaining.some(c=>c.name==='mnet_admin'))throw new Error('logout cookie not cleared');
  await shot('dashboard-signed-out');
- console.log('PASS real Chrome dashboard: login visibility, same-origin sign-in, network/key render, actual scoped membership reads, HTML-as-text, empty grants, network-switch/logout late-result suppression, expiry boundaries, sign-out, cleared populated private UI, delayed-refresh suppression and logged-out token replay');
+ console.log('PASS real Chrome dashboard: login visibility, same-origin sign-in, network/key render, actual scoped membership reads, HTML-as-text, empty grants, failed-read clear/retry, invalid-response handling, same-network out-of-order reads, network-switch/logout late-result suppression, expiry boundaries, sign-out, cleared populated private UI, delayed-refresh suppression and logged-out token replay');
 }finally{ws?.close();chrome?.kill();control?.kill();await delay(150);rmSync(dir,{recursive:true,force:true});}

@@ -110,6 +110,8 @@ A new real-Chrome scope extension lists two devices for the signed-in principal 
 
 New source lets an authenticated operator GET explicit membership grants for one exact network via `/admin/api/memberships?network_id=...`. It is a private principal listing, not a member/device route or an inferred grant. Scope/copy/auth/revocation and native tests pass. A new read-only dashboard section makes those grants inspectable on demand, clears them when the network changes or sign-out begins and rejects late responses after either. Local real-Chrome tests cover actual granted/empty networks, HTML-as-text and held responses; the screenshot was inspected. All five jobs passed in [e25b70d CI](https://github.com/MaisySen/Mnet/actions/runs/43819448319), including actual-Chrome inspection and native operator/account separation tests. See [membership inspection](operations.md#operator-membership-inspection).
 
+The next source extension also rejects malformed or wrong-network membership-list responses before rendering any private row. Local actual-Chrome retries recover after a simulated read failure; browser-local malformed-response and reversed same-network completion tests pass. Extended CI is pending. The successful grant/read path still uses the actual disposable service.
+
 ## Important open work
 
 - Account/organization ownership, enrollment and device management beyond the read-only member login and explicit operator membership gate.
