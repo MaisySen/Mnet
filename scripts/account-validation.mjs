@@ -27,6 +27,9 @@ try{
  await shot('account-signed-out');
  await js(`document.querySelector('#network').value=${JSON.stringify(network)};document.querySelector('#loginForm').requestSubmit()`);
  await until(()=>js(`document.querySelector('#devices') && !document.querySelector('#devices').hidden && document.querySelector('#deviceRows').textContent.includes('personal-laptop')`),'signed-provider member device render');
+ if(!await js(`document.querySelector('#deviceRows').rows.length===2 && document.querySelector('#deviceRows').textContent.includes('personal-phone') && !/same-email-outsider|other-network-device|other-issuer-device|expired-owned-device/.test(document.querySelector('#deviceRows').textContent)`))throw new Error('multi-device ownership scope leaked or omitted devices');
+ const actual=await js(`(async()=>{const r=await fetch('/account/api/devices?network_id=other&subject=different-user');return {status:r.status,body:await r.json()};})()`);
+ if(actual.status!==200||actual.body.devices.length!==2||actual.body.devices.some(d=>Object.keys(d).some(k=>!['ID','Name','IPv4'].includes(k))))throw new Error('account response scope or summary fields wrong');
  if(!await js(`document.body.textContent.includes('not a live online-status check')`))throw new Error('device list implies online proof');
  await shot('account-signed-in');
  // Rendering boundary: untrusted names must be text, never executable HTML.
@@ -65,5 +68,5 @@ try{
  await js(`document.querySelector('a[href="/account/"]').click()`);
  await until(()=>js(`document.querySelector('#login') && !document.querySelector('#login').hidden`),'return from failed sign-in');
 
- console.log('PASS real Chrome account: signed-provider login, explicit member own-device render, HTML-as-text, empty/denied states, narrow layout, failed logout, private UI cleanup, delayed-refresh suppression and logout replay denial');
+ console.log('PASS real Chrome account: signed-provider login, explicit member two-device scoped render, HTML-as-text, empty/denied states, narrow layout, failed logout, private UI cleanup, delayed-refresh suppression and logout replay denial');
 }finally{ws?.close();chrome?.kill();await delay(150);rmSync(dir,{recursive:true,force:true});}

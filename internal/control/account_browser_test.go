@@ -29,6 +29,35 @@ func TestAccountRealChrome(t *testing.T) {
 	if err := store.SetNetworkMember(network.ID, fake.srv.URL, "user-1", true); err != nil {
 		t.Fatal(err)
 	}
+	// Multiple owned identities plus look-alike outsiders exercise the real
+	// HTTP response and DOM, not only a mocked table response.
+	other, err := store.CreateNetwork("other-account-network")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, fixture := range []struct {
+		name, network, issuer, subject string
+		expire                         bool
+	}{
+		{"personal-phone", network.ID, fake.srv.URL, "user-1", false},
+		{"same-email-outsider", network.ID, fake.srv.URL, "different-user", false},
+		{"other-network-device", other.ID, fake.srv.URL, "user-1", false},
+		{"other-issuer-device", network.ID, "https://different-issuer.example", "user-1", false},
+		{"expired-owned-device", network.ID, fake.srv.URL, "user-1", true},
+	} {
+		node, err := store.Join(netmap.JoinRequest{Network: fixture.network, Name: fixture.name, PubKey: fakePubKey(byte(0x66 + i))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.ApproveNodeIdentity(node.NodeID, "display@fintex.au", fixture.issuer, fixture.subject); err != nil {
+			t.Fatal(err)
+		}
+		if fixture.expire {
+			if err := store.ExpireNode(node.NodeID); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	cmd := exec.Command("node", "../../scripts/account-validation.mjs")
 	cmd.Env = append(os.Environ(), "MNET_ACCOUNT_BASE="+ts.URL, "MNET_ACCOUNT_NETWORK="+network.ID)
 	output, err := cmd.CombinedOutput()

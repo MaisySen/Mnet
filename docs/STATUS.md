@@ -8,7 +8,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 | --- | --- | --- |
 | Published test artifacts | v0.8.2-test.1, source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11; Android 0.8.2/code 14. | [Release](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1). Sixteen assets verified at release. Update CLI and daemon together. |
 | Hosted test control plane | Last verified 2026-11-16 at 07:12 AEDT on `2bb55f4`. | Dated deployment check, not a current availability promise. Free-host ephemeral disk/restart state loss remains a limitation. |
-| Newer verified source | `b455910`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43815622508). New source below is not in those downloads or that last verified deployment. |
+| Newer verified source | `fa00aca`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43816760633). New source below is not in those downloads or that last verified deployment. |
 
 ## What is implemented and tested
 
@@ -22,7 +22,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 - Route-only ACL withdrawal/restoration and admin expiry/reapproval block and restore access as expected. Reapproval clears stale approval status/link. Known expiry is enforced locally even if later control polling is blocked; unseen offline admin changes cannot be discovered.
 - `mnet up --reset-routing`, while down, clears saved roles without deleting identity. Ordinary saved-state Up preserves routing. Fresh attempts clear old setup errors, preserving errors raised during the new attempt.
 
-The latest verified [b455910 CI](https://github.com/MaisySen/Mnet/actions/runs/43815622508) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 135/136/153. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
+The latest verified [fa00aca CI](https://github.com/MaisySen/Mnet/actions/runs/43816760633) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 118/108/144. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
 
 Exit-node selection/advertising is explicitly rejected before enrollment/device creation. Unsafe dormant host/default-route replacement helpers were removed, not enabled. Exit internet routing remains unsupported.
 
@@ -106,7 +106,9 @@ The member page explains that approval is not live connectivity and sign-out doe
 
 New source permanently clears account sessions and pending logins when the configured provider changes or is disabled, preventing revival if the previous provider object is later restored. Issue/read/start operations serialize against that change. All five jobs passed in [b455910 CI](https://github.com/MaisySen/Mnet/actions/runs/43815622508), including native account tests and the real-Chrome member step. No live provider was changed.
 
-New source gives failed/expired account callbacks a private generic recovery page with a return-to-sign-in link, without echoing codes/state/provider errors or claiming a prior session was signed out. Local HTTP/real-Chrome recovery checks pass and the screenshot was inspected; full/native/browser CI is pending.
+New source gives failed/expired account callbacks a private generic recovery page with a return-to-sign-in link, without echoing codes/state/provider errors or claiming a prior session was signed out. All five jobs passed in [fa00aca CI](https://github.com/MaisySen/Mnet/actions/runs/43816760633), including native checks and the real-Chrome return-navigation proof; the screenshot was inspected.
+
+A new real-Chrome scope extension lists two devices for the signed-in principal while excluding same-email/different-subject, different-network, different-issuer and expired device records from both the actual API response and DOM. Local signed-provider browser proof passed and desktop/narrow screenshots were inspected; extended CI is pending. These are control records, not two newly running physical VPN devices.
 
 ## Important open work
 

@@ -195,3 +195,7 @@ All five jobs passed in [229c0a3 CI](https://github.com/MaisySen/Mnet/actions/ru
 ## Provider-change revocation (verified source)
 
 All five jobs passed in [b455910 CI](https://github.com/MaisySen/Mnet/actions/runs/43815622508), including native permanent session/pending-login invalidation tests and the real Chrome member step. Full kernel VPN regression fixtures passed with 135/136/153 later loss-profile drops. Reinstalling the old provider cannot revive cleared sessions; keeping the same provider leaves them alone. This is not a live provider change.
+
+## Sign-in failure recovery (verified browser source)
+
+All five jobs passed in [fa00aca CI](https://github.com/MaisySen/Mnet/actions/runs/43816760633), including native account checks and real Chrome rejection-page/return-navigation validation without private callback echo. Three full kernel VPN regression fixtures passed with 118/108/144 later loss-profile drops. The failure screenshot was inspected. No live provider/account was changed.
