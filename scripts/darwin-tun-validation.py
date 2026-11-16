@@ -137,7 +137,7 @@ try:
     peer_config = root / 'peer-config.json'
     peer_config.write_text(json.dumps({'Server': base, 'Network': 'native-utun', 'Key': key, 'Root': str(root)}))
     os.chmod(peer_config, 0o600)
-    start([peer_binary, '-test.run=^TestNativeKernelPeerFixture$', '-test.timeout=5m'], 'userspace-peer',
+    start([peer_binary, '-test.run=^TestNativeKernelPeerFixture$', '-test.timeout=8m'], 'userspace-peer',
           {**os.environ, 'MNET_NATIVE_PEER_CONFIG': str(peer_config)})
     def peer_ready():
         path = root / 'peer-ready.json'
@@ -256,6 +256,43 @@ try:
     wait_for(transfer, 'kernel peer TCP after launchd reload', 60)
     print('PASS actual macOS utun OS TCP 4MiB hash/ACK restored after Down/Up, saved process restart and launchd bootstrap/crash/reload against same-host proof peer')
     print('PASS bidirectional actual macOS utun OS TCP 4MiB each way with both receiver SHA256 ACKs after all recovery stages')
+    # Stop the disposable control before editing its private snapshot. Force
+    # a received authorization denial without changing saved device secrets.
+    control.terminate()
+    control.wait(timeout=10)
+    snapshot_path = root / 'control.json'
+    snapshot = json.loads(snapshot_path.read_text())
+    node = next(n for n in snapshot['nodes'].values() if n['id'] == identity['node_id'])
+    node['approved'] = False
+    snapshot_path.write_text(json.dumps(snapshot))
+    control = start([control_binary, '-listen', '127.0.0.1:' + str(port), '-base-url', base,
+                     '-data', snapshot_path, '-admin-password', 'native-tun-fixture-only'], 'control-denied')
+    def denied():
+        value = api()
+        return value['status'] == 'waiting-approval' and not value.get('peers')
+    wait_for(denied, 'received denial withdraws actual macOS kernel peers', 60)
+    # Connection failure, not only status text, is required before reapproval.
+    for _ in range(3):
+        try:
+            conn = socket.create_connection((peer['ipv4'], peer['port']), timeout=2)
+        except OSError:
+            continue
+        conn.close()
+        raise RuntimeError('received denial left fresh kernel TCP connection reachable')
+    current = json.loads((state / 'state.json').read_text())
+    assert all(current[k] == v for k, v in identity.items()), 'denial changed native identity'
+    assert (state / 'local-api-token').read_bytes() == token
+    admin('/admin/api/login', {'password': 'native-tun-fixture-only'})
+    admin('/admin/api/nodes/approve', {'node_id': identity['node_id']})
+    def reapproved():
+        value = api()
+        return value['status'] == 'up' and not value.get('approval_url') and len(value.get('peers', [])) == 1
+    wait_for(reapproved, 'reapproval restores native kernel peer without stale approval link', 60)
+    wait_for(transfer, 'bidirectional kernel TCP after received denial and reapproval', 60)
+    current = json.loads((state / 'state.json').read_text())
+    assert all(current[k] == v for k, v in identity.items()), 'reapproval changed native identity'
+    assert api()['ipv4'] == address and (state / 'local-api-token').read_bytes() == token
+    print('PASS received control denial removes actual macOS kernel peers and blocks three fresh TCP connects; reapproval restores bidirectional 4MiB hash/ACK with same identity/IP/token')
     def direct():
         transfer()
         peers = api().get('peers', [])

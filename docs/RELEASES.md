@@ -313,9 +313,13 @@ Extend real single-node utun validation through the generated saved-state launch
 
 Add a proof-only userspace WireGuard peer with no OS TCP listener. Native OS TCP through real utun must deliver 4MiB with receiver SHA256 ACK initially and after Down/Up, saved process restart and launchd bootstrap/crash/reload. Same-host hybrid fixture only; no two-kernel-host/public-internet/physical-boot or direct/offline-control claim. All five jobs passed in [a4ac5de CI](https://github.com/MaisySen/Mnet/actions/runs/43860049583), with native kernel peer TCP and full Linux regressions (150/144/137 drops).
 
-## macOS bidirectional direct TCP (fixture extension, CI pending)
+## macOS bidirectional direct TCP (verified fixture extension)
 
-Require 4MiB both ways with both receiver SHA256 ACKs at every recovery stage. Assert a live non-relay endpoint, stop/await disposable control/relay and require three fresh bidirectional TCP transfers without it. Local repeated protocol race tests cover success, truncation and reverse-hash refusal; actual native extension pending. Same-host hybrid kernel/userspace only, not two kernel hosts/public internet/NAT traversal/long-offline or boot proof.
+Require 4MiB both ways with both receiver SHA256 ACKs at every recovery stage. Assert a live non-relay endpoint, stop/await disposable control/relay and require three fresh bidirectional TCP transfers without it. All five jobs passed in [e64d449 CI](https://github.com/MaisySen/Mnet/actions/runs/43861794260), including native bidirectional/offline-control transfer logs and three Linux kernel regressions (134/142/133 drops). Same-host hybrid kernel/userspace only, not two kernel hosts/public internet/NAT traversal/long-offline or boot proof.
+
+## macOS received denial and reapproval (fixture extension, CI pending)
+
+Force received authorization denial using only a stopped disposable control snapshot. Running kernel daemon must withdraw peers, report waiting-approval and fail three fresh TCP connects. Reapproval must restore bidirectional 4MiB hash/ACK, same identity/IP/API token and no stale approval link. Python/source checks pass; actual native extension pending. Not unseen offline revocation or two physical hosts.
 
 ## v0.8.2-test.1 - 2026-11-16
 
