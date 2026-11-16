@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -196,6 +197,9 @@ func TestIdleFileReceiverCleansPartialAndReleasesStream(t *testing.T) {
 	case <-finished:
 	case <-time.After(time.Second):
 		t.Fatal("idle receiver retained partial transfer")
+	}
+	if _, err := stream.Recv(time.Second); !errors.Is(err, ErrStreamReset) {
+		t.Fatalf("sender was not told idle transfer reset: %v", err)
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil || len(entries) != 0 {

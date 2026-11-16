@@ -97,6 +97,7 @@ func (r FileReceiver) Handle(s Stream) {
 	for {
 		remaining := time.Until(progressBy)
 		if remaining <= 0 {
+			_ = r.Mux.send(s.ID, msgRst, PriBulk, nil)
 			return
 		}
 		fr, err := s.Recv(remaining)
@@ -104,6 +105,9 @@ func (r FileReceiver) Handle(s Stream) {
 			break
 		}
 		if err != nil {
+			if !errors.Is(err, ErrStreamReset) && !errors.Is(err, io.ErrClosedPipe) {
+				_ = r.Mux.send(s.ID, msgRst, PriBulk, nil)
+			}
 			return
 		}
 		if fr.Type != msgData {

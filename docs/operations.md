@@ -665,8 +665,14 @@ Incoming file reception now allows60 seconds between data/FIN frames by default.
 
 A short40ms net.Pipe test sends a partial file, waits for idle cleanup and checks empty destination directory, stream release and a still-open mux. Idle/safe-file/reset tests pass30 race repetitions; a fresh full-repository race run passes. All-five [5ff8e90 CI](https://github.com/MaisySen/Mnet/actions/runs/43954473611) passes. No elapsed60-second real network test, device/runtime, new bindings, release APK/AAB or live deployment proof.
 
-## File idle budget requires byte progress (new source, CI pending)
+## File idle budget requires byte progress (061eecb all-five CI verified)
 
 Only a successfully written nonempty data chunk restarts the incoming file idle budget. Empty data or unrelated frame types cannot retain a partial file indefinitely. A FIN still completes an empty offered file. Real chunk progress can continue beyond one budget duration, so this remains an idle timeout, not a total-transfer cap.
 
-The empty-frame regression failed before fixing. Empty-frame refusal, partial cleanup and a progressing transfer lasting longer than its configured budget pass20 race repetitions, followed by fresh full-repository race tests. Accelerated net.Pipe fixtures only, not60-second real-network/device evidence. No new bindings, release artifacts or live deployment.
+The empty-frame regression failed before fixing. Empty-frame refusal, partial cleanup and a progressing transfer lasting longer than its configured budget pass20 race repetitions, followed by fresh full-repository race tests. All-five [061eecb CI](https://github.com/MaisySen/Mnet/actions/runs/43956537225) passes. Accelerated net.Pipe fixtures only, not60-second real-network/device evidence. No new bindings, release artifacts or live deployment.
+
+## Idle transfer stream-reset notification (new source, CI pending)
+
+An incoming file idle expiry now sends a reset on that stream before releasing its local state. The sender sees ErrStreamReset instead of waiting for a later ACK timeout. Peer resets and mux closure do not trigger a reset echo. The reset uses the existing bounded outbound queue; delivery is not guaranteed when the connection is broken or blocked, and this does not add transport cancellation of already queued chunks.
+
+A sender-notification regression failed before the change. Idle/reset/progress tests pass20 race repetitions, followed by fresh full-repository race tests. They also check partial cleanup, stream release and a still-open unrelated mux. These are accelerated net.Pipe fixtures, not60-second real-network or device proof. No fresh bindings, release artifacts or deployment.
