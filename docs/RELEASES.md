@@ -301,9 +301,13 @@ Disposable native root CI generates a unique-label system job with unchanged pro
 
 Extend the stable private no-follow regular-file flock guard from Linux to macOS before console/service identity/API setup. Native repeated lock/alias and actual-process duplicate/API-preservation/crash-release tests added, followed by launchd lifecycle with the guard. Full local race/vet/cross-builds and Linux process script pass. All five jobs passed in [0e4d592 CI](https://github.com/MaisySen/Mnet/actions/runs/43854588310), including native ownership/process and actual launchd lifecycle; three full Linux kernel regressions176/154/159 later drops. Windows/mobile unaffected.
 
-## Actual macOS kernel utun setup (test extension, CI pending)
+## Actual macOS kernel utun setup (verified test extension)
 
-One fresh real utun node against a disposable loopback control plane: assert assigned kernel address/MTU/mesh route, authenticated Up, Down/Up, saved-state process restart and final interface/route/socket cleanup. Absent interface and no preexisting mesh-range route required; defaults unchanged. Python/source checks pass; native execution pending. Not peer VPN traffic, actual two-host networking or OS reboot proof.
+One fresh real utun node against a disposable loopback control plane: assert assigned kernel address/MTU/mesh route, authenticated Up, Down/Up, saved-state process restart and final interface/route/socket cleanup. Absent interface and no preexisting mesh-range route required; defaults unchanged. All five jobs passed in [310bf59 CI](https://github.com/MaisySen/Mnet/actions/runs/43856374974), including explicit native kernel setup/teardown and three full Linux kernel regressions (135/137/143 loss-profile drops). Not peer VPN traffic, actual two-host networking or OS reboot proof.
+
+## Enrolled macOS launchd kernel lifecycle (fixture extension, CI pending)
+
+Extend real single-node utun validation through the generated saved-state launchd job: bootstrap, forced-crash automatic recovery/new PID, unload/reload, stable kernel address/MTU/route/node/key/token/IP and final job/process/socket/interface/route teardown. No persistent host installation/enablement. Strengthen fixture preflight to refuse all parsed overlapping non-default IPv4 mesh routes. Python/source checks pass locally; native execution pending. No encrypted peer traffic or OS boot/reboot claim.
 
 ## v0.8.2-test.1 - 2026-11-16
 

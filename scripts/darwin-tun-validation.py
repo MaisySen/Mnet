@@ -2,9 +2,11 @@
 """Disposable native root macOS CI: real utun setup/cleanup, not peer VPN proof."""
 import http.client
 import http.cookiejar
+import ipaddress
 import json
 import os
 from pathlib import Path
+import plistlib
 import shutil
 import socket
 import subprocess
@@ -12,6 +14,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+import uuid
 
 if sys.platform != 'darwin' or os.geteuid() != 0 or os.environ.get('GITHUB_ACTIONS') != 'true':
     raise RuntimeError('requires root on a disposable native GitHub Actions macOS runner')
@@ -20,6 +23,9 @@ control_binary = Path(sys.argv[2]).resolve()
 root = Path(tempfile.mkdtemp(prefix='mnet-tun-', dir='/private/tmp'))
 state = root / 'state'
 processes, logs = [], []
+label = 'au.fintex.mnet.ci.tun.' + uuid.uuid4().hex
+target = 'system/' + label
+launchd_attempted = False
 
 def run(*args):
     return subprocess.run(args, check=True, capture_output=True, text=True, timeout=15).stdout
@@ -74,7 +80,23 @@ def route_for_mesh():
 # Refuse any existing CGNAT route or selected interface rather than replacing it.
 # A plain default-route lookup is expected; a selected /10-specific entry is not.
 initial_routes = run('/usr/sbin/netstat', '-rn', '-f', 'inet')
-if any(line.split() and (line.split()[0].startswith('100.64') or line.split()[0] == '100.0/10') for line in initial_routes.splitlines()):
+def has_mesh_route(routes):
+    for line in routes.splitlines():
+        fields = line.split()
+        if not fields or not fields[0][0].isdigit():
+            continue
+        destination = fields[0]
+        address, _, prefix = destination.partition('/')
+        address += '.0' * (4 - len(address.split('.')))
+        try:
+            network = ipaddress.ip_network(address + '/' + (prefix or '32'), strict=False)
+        except ValueError:
+            continue
+        if network.prefixlen and network.overlaps(ipaddress.ip_network('100.64.0.0/10')):
+            return True
+    return False
+
+if has_mesh_route(initial_routes):
     raise RuntimeError('refusing preexisting mesh-range route in disposable runner')
 name = next(('utun' + str(i) for i in range(30, 200) if 'utun' + str(i) not in interfaces()), None)
 if name is None:
@@ -128,7 +150,65 @@ try:
     api('down', {})
     wait_for(lambda: name not in interfaces(), 'final native utun cleanup')
     assert 'interface: ' + name not in route_for_mesh()
+    daemon.terminate()
+    assert daemon.wait(timeout=15) == 0
+    assert not (state / 'mnetd.sock').exists()
     print('PASS actual macOS utun Down/Up, clean process restart/saved identity and final interface/route teardown; no peer VPN/boot proof')
+    def pid():
+        expected = ' '.join([str(binary), '-state', str(state), '-ifname', name, '-up'])
+        matches = []
+        for line in run('/bin/ps', '-ww', '-axo', 'pid=,command=').splitlines():
+            parts = line.strip().split(None, 1)
+            if len(parts) == 2 and parts[1] == expected:
+                matches.append(int(parts[0]))
+        return matches[0] if len(matches) == 1 else None
+
+    def kernel_ready():
+        status = up()
+        if not status:
+            return None
+        assert status['ipv4'] == address
+        current = json.loads((state / 'state.json').read_text())
+        assert all(current[k] == v for k, v in identity.items())
+        info = run('/sbin/ifconfig', name)
+        assert 'mtu 1280' in info and 'inet ' + address in info
+        assert 'interface: ' + name in route_for_mesh()
+        return status
+
+    def stopped():
+        return (pid() is None and not (state / 'mnetd.sock').exists()
+                and name not in interfaces() and 'interface: ' + name not in route_for_mesh())
+
+    # Generate unchanged saved-state production argv/recovery settings. Only
+    # the unique test label differs; no /Library or persistent enable setting.
+    config = plistlib.loads(run(str(binary), '-state', str(state), '-ifname', name,
+                               '-service', 'print-plist').encode())
+    config['Label'] = label
+    plist = root / (label + '.plist')
+    plist.write_bytes(plistlib.dumps(config))
+    os.chmod(plist, 0o600)
+    assert subprocess.run(['/bin/launchctl', 'print', target], capture_output=True).returncode != 0
+    token = (state / 'local-api-token').read_bytes()
+    launchd_attempted = True
+    run('/bin/launchctl', 'bootstrap', 'system', str(plist))
+    wait_for(kernel_ready, 'launchd saved-state actual kernel utun Up')
+    first = wait_for(pid, 'launchd enrolled daemon PID')
+    assert (state / 'local-api-token').read_bytes() == token
+    print('PASS actual launchd generated job restores saved one-node kernel utun address/MTU/route and identity')
+    run('/bin/launchctl', 'kill', 'SIGKILL', target)
+    wait_for(lambda: (p if p and p != first else None) if (p := pid()) else None,
+             'launchd utun forced-crash recovery new PID', 60)
+    wait_for(kernel_ready, 'launchd crash recovery actual kernel utun Up')
+    assert (state / 'local-api-token').read_bytes() == token
+    run('/bin/launchctl', 'bootout', target)
+    wait_for(stopped, 'launchd utun unload process/socket/interface/route cleanup')
+    run('/bin/launchctl', 'bootstrap', 'system', str(plist))
+    wait_for(kernel_ready, 'launchd reload actual kernel utun Up')
+    assert (state / 'local-api-token').read_bytes() == token
+    run('/bin/launchctl', 'bootout', target)
+    wait_for(stopped, 'final launchd utun unload cleanup')
+    assert subprocess.run(['/bin/launchctl', 'print', target], capture_output=True).returncode != 0
+    print('PASS actual launchd one-node kernel utun forced-crash recovery/reload/unload; no peer VPN or OS boot proof')
 except Exception:
     # Fixture-only logs may hold enrollment URLs. Keep credential-bearing
     # files local; report safe current daemon error only, never saved state.
@@ -138,6 +218,9 @@ except Exception:
         pass
     raise
 finally:
+    if launchd_attempted and subprocess.run(['/bin/launchctl', 'print', target], capture_output=True).returncode == 0:
+        run('/bin/launchctl', 'bootout', target)
+        wait_for(stopped, 'failure cleanup of launchd utun job')
     for p in reversed(processes):
         if p.poll() is None:
             p.terminate()
