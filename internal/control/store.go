@@ -256,26 +256,45 @@ func (s *Store) findNetworkLocked(idOrName string) *netmap.Network {
 	return nil
 }
 
-// allocIPLocked assigns the next free 100.64.0.0/10 address in the network.
-func (s *Store) allocIPLocked(networkID string) string {
-	base := net.ParseIP(netmap.VPNBase).To4()
-	off := s.data.NextIP[networkID]
+// allocIPLocked assigns within the mesh prefix, wrapping safely when the
+// saved cursor is stale or outside the usable range. Existing node addresses
+// are never moved. Network and broadcast addresses are not assigned.
+func (s *Store) allocIPLocked(networkID string) (string, error) {
 	used := map[string]bool{}
 	for _, n := range s.data.Nodes {
 		if n.NetworkID == networkID {
 			used[n.IPv4] = true
 		}
 	}
-	for {
-		off++
-		v := uint32(base[0])<<24 | uint32(base[1])<<16 | uint32(base[2])<<8 | uint32(base[3])
-		v += uint32(off) - 1
-		ip := net.IPv4(byte(v>>24), byte(v>>16), byte(v>>8), byte(v)).String()
+	offset, ip, err := nextMeshIP(s.data.NextIP[networkID], (1<<22)-2, used)
+	if err != nil {
+		return "", err
+	}
+	s.data.NextIP[networkID] = offset
+	return ip, nil
+}
+
+// A separate bounded chooser permits small-pool exhaustion tests without
+// manufacturing millions of devices. max is the last usable host offset.
+func nextMeshIP(cursor, max int, used map[string]bool) (int, string, error) {
+	if max < 1 || max > (1<<22)-2 {
+		return 0, "", fmt.Errorf("invalid mesh address range")
+	}
+	if cursor < 0 || cursor >= max {
+		cursor = 0
+	}
+	for checked := 0; checked < max; checked++ {
+		cursor++
+		if cursor > max {
+			cursor = 1
+		}
+		value := uint32(0x64400000) + uint32(cursor)
+		ip := net.IPv4(byte(value>>24), byte(value>>16), byte(value>>8), byte(value)).String()
 		if !used[ip] {
-			s.data.NextIP[networkID] = off
-			return ip
+			return cursor, ip, nil
 		}
 	}
+	return 0, "", fmt.Errorf("mesh address space exhausted")
 }
 
 func validPubKey(pk string) bool {
@@ -339,13 +358,20 @@ func (s *Store) Join(req netmap.JoinRequest) (*netmap.JoinResponse, error) {
 		approved = true
 	}
 	if node == nil {
+		ipv4, err := s.allocIPLocked(network.ID)
+		if err != nil {
+			if usedKey != nil {
+				usedKey.Uses = previousUses
+			}
+			return nil, err
+		}
 		expiry := time.Now().UTC().Add(DefaultKeyExpiry)
 		node = &netmap.Node{
 			ID:        newID("node"),
 			NetworkID: network.ID,
 			Name:      s.uniqueNodeNameLocked(network.ID, name),
 			PubKey:    req.PubKey,
-			IPv4:      s.allocIPLocked(network.ID),
+			IPv4:      ipv4,
 			CreatedAt: time.Now().UTC(),
 			KeyExpiry: &expiry,
 		}

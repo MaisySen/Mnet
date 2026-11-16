@@ -57,6 +57,10 @@ See [product scope](product-scope.md) for the account/device/startup target and 
 
 The browser evidence is desktop Chrome on disposable state/profile, not a live-user account or physical mobile proof. Detailed methods, limitations and earlier failures remain in the guides below.
 
+## Mesh address allocator bounds (new source, pending CI)
+
+New device allocation stays inside usable `100.64.0.0/10` host addresses, excludes the prefix network/broadcast address and wraps a stale, negative or excessive saved cursor without moving existing devices. It skips addresses already used in that network and fails if the bounded pool is exhausted rather than overflowing outside the mesh prefix. Tests cover extreme cursors, a small isolated chooser's full-pool behavior, wrap/collision skipping, persistence/reload and exact failed-write rollback. Small-pool exhaustion tests do not prove millions of enrolled or connected devices. Local race/build/vet checks pass; independent CI is pending. Existing saved addresses are not migrated or repaired by this change.
+
 ## Important open work
 
 - Account/organization ownership, user login and device-management experience beyond the explicit operator membership gate.

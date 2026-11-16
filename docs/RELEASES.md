@@ -86,6 +86,10 @@ The admin state now adds `online_by_node`, keyed by node ID rather than public k
 
 Repeated device names now keep the automatic numeric suffix inside the same 32-character validated name bound. A maximum-length request previously grew beyond that bound when another device already used the name. Truncation handles suffix growth past nine collisions and trims an exposed trailing hyphen before appending the suffix. Regression tests enroll fifteen distinct keys with the same maximum-length name, check uniqueness and valid length, keep another network independent, preserve the original name across saved-credential rejoin/reload, and verify failed persistence leaves names/identity/IP allocation unchanged. All five jobs passed in [38bb26f CI](https://github.com/MaisySen/Mnet/actions/runs/43790701519), including the real-Chrome fixture and three complete kernel fixtures with 116/127/145 later loss-profile drops. This is bounded enrollment name correctness, not a fifteen-device running VPN or capacity claim.
 
+## Mesh address allocator bounds (new source, pending CI)
+
+New device allocation stays inside usable `100.64.0.0/10` host addresses, excludes the prefix network/broadcast address and wraps a stale, negative or excessive saved cursor without moving existing devices. It skips addresses already used in that network and fails if the bounded pool is exhausted rather than overflowing outside the mesh prefix. Tests cover extreme cursors, a small isolated chooser's full-pool behavior, wrap/collision skipping, persistence/reload and exact failed-write rollback. Small-pool exhaustion tests do not prove millions of enrolled or connected devices. Local race/build/vet checks pass; independent CI is pending. Existing saved addresses are not migrated or repaired by this change.
+
 ## v0.8.2-test.1 - 2026-11-16
 
 Source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11, Android 0.8.2/code 14. [Release and 16 assets](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1), [exact-source CI](https://github.com/MaisySen/Mnet/actions/runs/43756253912).
