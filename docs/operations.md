@@ -503,3 +503,7 @@ The VPN worker checks saved server/network before creating a node and refuses le
 ### Android VPN log privacy (new source)
 
 General VPN logs use fixed lifecycle/failure messages; detailed status JSON, configuration and exception text stay in the private app status flow rather than logcat. Source checks and Android34 Java compilation pass; actual runtime log capture remains unverified. This does not audit other Android service logs or shipped test APKs.
+
+### Android worker ownership (new source)
+
+A canceled worker retains its process-wide startup ticket until it exits. A second connect while it unwinds is refused with a retry-after-exit message rather than sharing the identity concurrently. This is source/JVM-tested behavior, not physical reconnect verification; a stronger cross-language cancellation boundary is still needed for stop just before a blocking Go call. Android JVM config/log policies passed all-five [d4ba818 CI](https://github.com/MaisySen/Mnet/actions/runs/43876328009).

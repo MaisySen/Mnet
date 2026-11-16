@@ -46,8 +46,9 @@ jobs:
       - name: Android startup configuration policy (JVM only)
         run: |
           mkdir -p "$RUNNER_TEMP/mnet-android-policy"
-          javac -d "$RUNNER_TEMP/mnet-android-policy" android/app/src/main/java/au/fintex/mnet/VpnStartupConfig.java android/tests/au/fintex/mnet/VpnStartupConfigTest.java
+          javac -d "$RUNNER_TEMP/mnet-android-policy" android/app/src/main/java/au/fintex/mnet/VpnStartupConfig.java android/tests/au/fintex/mnet/VpnStartupConfigTest.java android/app/src/main/java/au/fintex/mnet/VpnWorkerGate.java android/tests/au/fintex/mnet/VpnWorkerGateTest.java
           java -cp "$RUNNER_TEMP/mnet-android-policy" au.fintex.mnet.VpnStartupConfigTest
+          java -cp "$RUNNER_TEMP/mnet-android-policy" au.fintex.mnet.VpnWorkerGateTest
       - name: Android VPN fixed-log policy (source checks only)
         run: python3 scripts/check-android-vpn-logs.py
       - name: source gate regression tests

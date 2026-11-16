@@ -337,13 +337,17 @@ Reject malformed managed utun requests in the constructor before saved identity 
 
 Show actual managed interface in ordinary status without inventing one for older daemons or Down. Preserve JSON actual name. Repeated local CLI cases/full race/vet/cross-builds pass; native fixtures now compare actual human/JSON CLI with live kernel name/address after startup/recovery. All five jobs passed in [60e7adc CI](https://github.com/MaisySen/Mnet/actions/runs/43872470943), including both native kernel modes and three Linux regressions (123/141/128 drops). Interface existence alone is not peer readiness.
 
-## Android startup configuration preflight (new source, CI pending)
+## Android startup configuration preflight (verified JVM policy)
 
-Validate an immutable saved configuration before node creation: refuse missing server/network and unsupported legacy exit selection with safe fixed errors. Remove dormant default-route setup. A refused VPN establish now uses full failure cleanup. Local JVM policy tests and Android34 resource/full Java compile against existing bindings pass; JVM CI pending, actual Android runtime/always-on/reboot unverified. No new APK/AAB published.
+Validate an immutable saved configuration before node creation: refuse missing server/network and unsupported legacy exit selection with safe fixed errors. Remove dormant default-route setup. A refused VPN establish now uses full failure cleanup. Local JVM policy tests and Android34 resource/full Java compile against existing bindings pass; [5105980 CI](https://github.com/MaisySen/Mnet/actions/runs/43874486837) passed all five jobs; actual Android runtime/always-on/reboot unverified. No new APK/AAB published.
 
-## Android VPN fixed general logs (new source, CI pending)
+## Android VPN fixed general logs (verified source policy)
 
-Remove private server/network/IP, full status JSON and exception stacks from general VPN logs. Preserve fixed lifecycle logs and detailed private app status. Source-only log policy regression and full Android34 Java compile pass locally; CI pending, not runtime log capture. Preceding5105980 CI remains four jobs successful/native macOS pending, not all-five verified. No new APK/AAB published.
+Remove private server/network/IP, full status JSON and exception stacks from general VPN logs. Preserve fixed lifecycle logs and detailed private app status. Source-only log policy regression and full Android34 Java compile pass locally; [d4ba818 CI](https://github.com/MaisySen/Mnet/actions/runs/43876328009) passed all five jobs, including Android policies and kernel regressions140/126/154. Not runtime log capture. Preceding5105980 also completed all five. No new APK/AAB published.
+
+## Android single-worker ownership (new source, CI pending)
+
+Keep a process-wide worker ticket through cancellation until actual exit. Refuse overlapping replacement, check canceled publication/prepare/establish checkpoints, keep local node references and compare shared-node identity on cleanup. Local JVM stale/canceled ownership plus100 x16 contender tests and Android34 Java compile pass. Cross-language cancellation before a blocking Go call remains open; no physical runtime/always-on claim. CI pending, no APK/AAB published.
 
 ## v0.8.2-test.1 - 2026-11-16
 

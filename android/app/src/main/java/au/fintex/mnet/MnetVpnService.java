@@ -33,7 +33,9 @@ public class MnetVpnService extends VpnService {
         return sharedNode;
     }
 
-    private Node node;
+    private static final VpnWorkerGate WORKERS = new VpnWorkerGate();
+    private VpnWorkerGate.Ticket ticket;
+    private volatile Node node;
     private Thread worker;
     private volatile boolean running;
 
@@ -46,16 +48,33 @@ public class MnetVpnService extends VpnService {
         if (running) {
             return START_STICKY;
         }
+        VpnWorkerGate.Ticket acquired = WORKERS.begin();
+        if (acquired == null) {
+            broadcast("{\"status\":\"down\",\"last_error\":\"Previous VPN worker is still stopping. Retry after it exits.\"}");
+            return START_NOT_STICKY;
+        }
+        ticket = acquired;
         running = true;
-        startForeground(NOTIF_ID, buildNotification(getString(R.string.notification_title)));
-        worker = new Thread(this::runMesh, "mnet-vpn");
-        worker.start();
+        try {
+            startForeground(NOTIF_ID, buildNotification(getString(R.string.notification_title)));
+            worker = new Thread(() -> runMesh(acquired), "mnet-vpn");
+            worker.start();
+        } catch (RuntimeException failure) {
+            WORKERS.cancel(acquired);
+            WORKERS.finish(acquired);
+            running = false;
+            stopForeground(true);
+            stopSelf();
+            Log.e(TAG, "VPN foreground startup failed; details withheld from general logs");
+            return START_NOT_STICKY;
+        }
         return START_STICKY;
     }
 
-    private void runMesh() {
-        SharedPreferences prefs = getSharedPreferences("mnet", MODE_PRIVATE);
+    private void runMesh(VpnWorkerGate.Ticket run) {
+        Node localNode = null;
         try {
+            SharedPreferences prefs = getSharedPreferences("mnet", MODE_PRIVATE);
             VpnStartupConfig config = new VpnStartupConfig(
                     prefs.getString("server", ""), prefs.getString("network", ""),
                     prefs.getString("authkey", ""), prefs.getString("name", android.os.Build.MODEL),
@@ -64,10 +83,16 @@ public class MnetVpnService extends VpnService {
             String network = config.network;
             String authKey = config.authKey;
             String name = config.name;
-            node = Mobile.newNode(getFilesDir() + "/mnet");
-            sharedNode = node;
+            if (!WORKERS.active(run)) return;
+            localNode = Mobile.newNode(getFilesDir() + "/mnet");
+            synchronized (this) {
+                if (!WORKERS.active(run)) return;
+                node = localNode;
+                sharedNode = localNode;
+            }
             Log.i(TAG, "preparing private mesh connection");
-            String ipv4 = node.prepare(server, network, name, authKey);
+            String ipv4 = localNode.prepare(server, network, name, authKey);
+            if (!WORKERS.active(run)) return;
             Log.i(TAG, "mesh preparation complete");
 
             Builder b = new Builder()
@@ -80,22 +105,37 @@ public class MnetVpnService extends VpnService {
             if (pfd == null) {
                 throw new IllegalStateException("System refused the VPN interface. Check VPN consent in Android settings.");
             }
+            if (!WORKERS.active(run)) {
+                pfd.close();
+                return;
+            }
             int fd = pfd.detachFd(); // the Go side owns it now
             Log.i(TAG, "interface established, starting node");
-            node.start(fd, server, network, name, authKey);
+            localNode.start(fd, server, network, name, authKey);
             Log.i(TAG, "mesh node started; details stay in private app status");
-            broadcastLoop();
+            if (WORKERS.active(run)) broadcastLoop(run, localNode);
         } catch (Exception e) {
             String msg = e.getMessage() == null ? e.toString() : e.getMessage();
             Log.e(TAG, "mesh failed; details stay in private app status");
-            stopMesh(msg);
+            if (WORKERS.active(run)) stopMesh(msg);
+        } finally {
+            try {
+                if (localNode != null) localNode.stop();
+            } finally {
+                synchronized (this) {
+                    if (node == localNode) node = null;
+                    if (sharedNode == localNode) sharedNode = null;
+                    if (ticket == run) running = false;
+                }
+                WORKERS.finish(run);
+            }
         }
     }
 
     // broadcastLoop pushes status JSON to the activity once a second.
-    private void broadcastLoop() {
-        while (running && node != null) {
-            broadcast(node.status());
+    private void broadcastLoop(VpnWorkerGate.Ticket run, Node localNode) {
+        while (WORKERS.active(run)) {
+            broadcast(localNode.status());
             try {
                 Thread.sleep(1000);
             } catch (InterruptedException ignored) {
@@ -147,12 +187,15 @@ public class MnetVpnService extends VpnService {
     // stopMesh tears the tunnel down. A failure reason is kept in the
     // final broadcast so the activity shows it instead of a bare down.
     private void stopMesh(String lastError) {
-        running = false;
-        sharedNode = null;
-        if (node != null) {
-            node.stop();
+        Node stopping;
+        synchronized (this) {
+            WORKERS.cancel(ticket);
+            running = false;
+            stopping = node;
+            if (sharedNode == stopping) sharedNode = null;
             node = null;
         }
+        if (stopping != null) stopping.stop();
         stopForeground(true);
         stopSelf();
         if (lastError != null) {
