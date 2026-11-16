@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"net"
 	"testing"
 	"time"
 )
@@ -242,5 +243,39 @@ func TestViewerWireMalformedJSONBreaksDeltaChain(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("valid keyframe did not recover")
+	}
+}
+
+func TestViewerScreenExitReleasesFrameBase(t *testing.T) {
+	for _, reason := range []string{"fin", "reset", "mux-close"} {
+		t.Run(reason, func(t *testing.T) {
+			a, b := net.Pipe()
+			defer b.Close()
+			m := newMux(a, StreamFile)
+			defer m.Close()
+			v := &Viewer{Mux: m, base: solid(16, 16, color.RGBA{R: 100, A: 255})}
+			in := make(chan Frame, 1)
+			switch reason {
+			case "fin":
+				close(in)
+			case "reset":
+				in <- Frame{Type: msgRst}
+			case "mux-close":
+				m.Close()
+			}
+			done := make(chan struct{})
+			go func() { defer close(done); v.screenLoop(Stream{Mux: m, ID: StreamScreen, in: in}) }()
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+				t.Fatal("screen loop did not exit")
+			}
+			v.frameMu.Lock()
+			retained := v.base != nil
+			v.frameMu.Unlock()
+			if retained {
+				t.Fatal("screen exit retained decoded pixels")
+			}
+		})
 	}
 }

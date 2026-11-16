@@ -611,8 +611,15 @@ The full local gate bundle passed again with the branch-test additions: build, W
 No APK/AAB signed or published, hosted deployment or live device state changed. Build/simulation is not installation, JNI loading/execution, physical capture/input, Android UI pixels or reboot proof. No real recording file was repaired or altered by these tests.
 
 
-## Malformed viewer screen JSON breaks the delta chain (new source, CI pending)
+## Malformed viewer screen JSON breaks the delta chain (ded8d94 all-five CI verified)
 
 The viewer screen loop now clears its stored frame base when screen-message JSON cannot be decoded. Previously, it skipped that message before resolveFrame ran, leaving earlier pixels available to a later delta. A valid keyframe is required before delta playback resumes. Valid known frame behavior and callbacks remain unchanged.
 
 An actual mux/viewer-loop net.Pipe regression sends a valid keyframe, malformed JSON, a delta and a recovery keyframe in wire order. It failed before fixing by delivering the stale-base delta. It now observes the recovery keyframe as the next callback. Viewer tests pass 50 race repetitions, followed by a fresh full-repository race run. Synthetic JPEG/wire fixtures only, not real capture/display/UI proof. This does not add sequence-gap detection, reject every semantic JSON ambiguity or change the host recorder's typed-frame path. All-five [e291bd8 CI](https://github.com/MaisySen/Mnet/actions/runs/43973623419) is verified; fresh bindings still name e110af8, before this viewer source change. No release or deployment changed.
+
+
+## Viewer screen-loop exit releases decoded pixels (new source, CI pending)
+
+The viewer screen loop clears its decoded pixel base under the existing frame mutex when it exits. A reachable Viewer no longer retains that base after its loop observes FIN, peer reset or mux closure. This cleanup does not erase JPEG bytes or image copies an application callback retained, clear the geometry descriptor or interrupt a callback that blocks instead of returning. It is loop-exit cleanup, not a new Close API or hard memory-lifetime guarantee.
+
+Direct screen-loop fixtures for FIN/reset/closed mux all failed before fixing by retaining pixels. The fixtures now observe loop exit and an empty base. Viewer checks pass 50 race repetitions, followed by fresh full-repository race tests. These tests use a synthetic pixel base and controlled channel/pipe state, not Android/desktop display or real-device memory measurements. All-five [ded8d94 CI](https://github.com/MaisySen/Mnet/actions/runs/43975421785) is verified. Current four-ABI binding build still names e110af8, before the two viewer source changes. No release, deployment or user-device state changed.

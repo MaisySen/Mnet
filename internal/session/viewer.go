@@ -100,6 +100,11 @@ func (v *Viewer) SendChat(from, text string) error {
 }
 
 func (v *Viewer) screenLoop(s Stream) {
+	defer func() {
+		v.frameMu.Lock()
+		v.base = nil
+		v.frameMu.Unlock()
+	}()
 	for {
 		f, err := s.Recv(0)
 		if err != nil {
