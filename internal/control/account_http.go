@@ -48,12 +48,22 @@ func (s *Server) handleAccountLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 404, "account login is not configured")
 		return
 	}
-	var input struct {
-		NetworkID string `json:"network_id"`
-	}
+	// Exactly one case-sensitive field avoids duplicate-key / alternate-case
+	// selectors being interpreted differently by clients and this service.
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
-	dec.DisallowUnknownFields()
-	if dec.Decode(&input) != nil || input.NetworkID == "" || dec.Decode(&struct{}{}) != io.EOF {
+	start, err := dec.Token()
+	if err != nil || start != json.Delim('{') {
+		writeErr(w, 400, "one network_id required")
+		return
+	}
+	field, err := dec.Token()
+	var networkID string
+	if err != nil || field != "network_id" || dec.Decode(&networkID) != nil || networkID == "" || dec.More() {
+		writeErr(w, 400, "one network_id required")
+		return
+	}
+	end, err := dec.Token()
+	if err != nil || end != json.Delim('}') || dec.Decode(&struct{}{}) != io.EOF {
 		writeErr(w, 400, "one network_id required")
 		return
 	}
@@ -75,7 +85,7 @@ func (s *Server) handleAccountLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 429, "too many pending account logins")
 		return
 	}
-	s.accounts.pending[state] = accountLogin{NetworkID: input.NetworkID, Provider: p, BrowserHash: sha256.Sum256([]byte(browser)), Expires: now.Add(10 * time.Minute)}
+	s.accounts.pending[state] = accountLogin{NetworkID: networkID, Provider: p, BrowserHash: sha256.Sum256([]byte(browser)), Expires: now.Add(10 * time.Minute)}
 	s.accounts.mu.Unlock()
 	s.accountCookie(w, "mnet_account_login", browser, now.Add(10*time.Minute), 600)
 	writeJSON(w, 200, map[string]string{"authorization_url": p.AuthURL(state, s.publicURL("/account/oidc/callback"))})

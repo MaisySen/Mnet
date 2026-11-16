@@ -234,4 +234,8 @@ The actual signed-provider fixture signs in again, commits server-side account l
 
 ## Account login input non-allocation (fixture extension)
 
-New local three-repetition race tests send missing/null/wrong-type network IDs, unknown principal fields, trailing JSON and oversized bodies through the actual handler. Each must reject without allocating pending state, account sessions or cookies. Known and unknown network IDs with valid input shape both start pending logins without issuing an account session, preserving the existing network-existence boundary. Full local race/vet checks pass; native/full CI pending. No production behavior or live accounts changed.
+New local three-repetition race tests send missing/null/wrong-type network IDs, unknown principal fields, trailing JSON and oversized bodies through the actual handler. Each must reject without allocating pending state, account sessions or cookies. Known and unknown network IDs with valid input shape both start pending logins without issuing an account session, preserving the existing network-existence boundary. All five jobs passed in [371c558 CI](https://github.com/MaisySen/Mnet/actions/runs/43832312077), including native three-repetition account cases, both actual browser steps and three full kernel regressions with 163/141/169 later loss-profile drops. No production behavior or live accounts changed.
+
+## Unambiguous account login selector (new source)
+
+Account login start now parses exactly one case-sensitive `network_id` field. Duplicate identical/conflicting keys, alternate-case keys and mixed-case duplicates reject before pending state/cookies/session allocation. Local three-repetition signed HTTP/state tests, actual account Chrome and full race/vet pass. Native/full CI pending. No live changes or new membership authority.

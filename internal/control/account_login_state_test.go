@@ -66,7 +66,7 @@ func TestAccountLoginStateExpiryProviderAndCapacity(t *testing.T) {
 
 func TestAccountLoginStateRejectedInputDoesNotAllocate(t *testing.T) {
 	app, _, network, _ := accountFixture(t)
-	for _, body := range []string{"", `null`, `{}`, `{"network_id":null}`, `{"network_id":7}`, `{"network_id":""}`, `{"network_id":"unknown","subject":"owner"}`, `{"network_id":"unknown"}{}`, `{"network_id":"` + strings.Repeat("x", 4096) + `"}`} {
+	for _, body := range []string{"", `null`, `{}`, `{"network_id":null}`, `{"network_id":7}`, `{"network_id":"first","network_id":"second"}`, `{"network_id":"same","network_id":"same"}`, `{"NETWORK_ID":"unknown"}`, `{"network_id":"first","NETWORK_ID":"second"}`, `{"network_id":""}`, `{"network_id":"unknown","subject":"owner"}`, `{"network_id":"unknown"}{}`, `{"network_id":"` + strings.Repeat("x", 4096) + `"}`} {
 		req := httptest.NewRequest("POST", "https://control.example/account/api/login", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()

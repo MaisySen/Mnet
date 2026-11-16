@@ -238,7 +238,11 @@ Local actual Chrome now signs in again, commits the real fixture logout but drop
 
 ## Account login rejected-input allocation proof (fixture extension)
 
-Local repeated handler tests verify malformed/missing/null/wrong-type/unknown-field/trailing/oversized input allocates no pending flow, session or cookie. Valid-shaped known/unknown network IDs share start behavior and create only pending flows, not account sessions. Full race/vet checks pass; CI pending. No production/live account changes.
+Local repeated handler tests verify malformed/missing/null/wrong-type/unknown-field/trailing/oversized input allocates no pending flow, session or cookie. Valid-shaped known/unknown network IDs share start behavior and create only pending flows, not account sessions. All five jobs passed in [371c558 CI](https://github.com/MaisySen/Mnet/actions/runs/43832312077), including native account cases and three kernel regressions with 163/141/169 later loss-profile drops. No production/live account changes.
+
+## Unambiguous account login selector (new source)
+
+Require exactly one case-sensitive `network_id` field rather than accepting JSON duplicate or alternate-case selectors. Reject before any state/cookie/session allocation. Local repeated signed HTTP/state, actual-Chrome and full race/vet checks pass; CI pending. No live/provider changes.
 
 ## v0.8.2-test.1 - 2026-11-16
 
