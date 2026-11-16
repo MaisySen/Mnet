@@ -107,7 +107,7 @@ def main():
     tmp = Path(tempfile.mkdtemp(prefix='mnet-kernel-'))
     os.chmod(tmp, 0o700)
     tag = uuid.uuid4().hex[:7]
-    spaces = {x: 'mn' + tag + x for x in 'cabd'}
+    spaces = {x: 'mn' + tag + x for x in 'cabde'}
     processes, logs, created, host_links, configs = [], [], [], [], []
 
     def ns(which, *args):
@@ -124,13 +124,13 @@ def main():
         # Build without changing root's Go environment: binaries are supplied
         # by CI before sudo, and only these temporary files are executed.
         binary_dir = Path(os.environ['MNET_KERNEL_BIN']).resolve()
-        for x in 'cabd':
+        for x in 'cabde':
             run('ip', 'netns', 'add', spaces[x]); created.append(spaces[x])
             run('ip', '-n', spaces[x], 'link', 'set', 'lo', 'up')
         run('ip', '-n', spaces['c'], 'link', 'add', 'br0', 'type', 'bridge')
         run('ip', '-n', spaces['c'], 'addr', 'add', '198.18.10.1/24', 'dev', 'br0')
         run('ip', '-n', spaces['c'], 'link', 'set', 'br0', 'up')
-        for index, x in enumerate('ab', 2):
+        for index, x in enumerate('abe', 2):
             left, right = 'v' + tag + x, 'p' + tag + x
             run('ip', 'link', 'add', left, 'type', 'veth', 'peer', 'name', right)
             host_links.extend([left, right])
@@ -330,7 +330,10 @@ call('/admin/api/login',{'password':'kernel-ci-fixture-only'})
 snapshot=json.loads(Path(sys.argv[1]).read_text())
 network=next(iter(snapshot['networks']))
 node=next(n for n in snapshot['nodes'].values() if n['name']=='b')
-if sys.argv[2]=='expire':
+if sys.argv[2]=='remove-third':
+ third=next(n for n in snapshot['nodes'].values() if n['name']=='e')
+ call('/admin/api/nodes/delete',{'node_id':third['id']})
+elif sys.argv[2]=='expire':
  for key in snapshot['auth_keys'].values(): call('/admin/api/authkeys/delete',{'id':key['id']})
  call('/admin/api/nodes/expire',{'node_id':node['id']})
 elif sys.argv[2]=='approve':
@@ -339,6 +342,41 @@ else:
  rules=[{'src':'a','dst':'b'}] if sys.argv[2]=='deny-route' else []
  call('/admin/api/acl',{'network_id':network,'rules':rules},'PUT')
 ''')
+        # Three independent kernel VPN devices join one network, not three
+        # synthetic control records or a cloned device identity.
+        third_state = tmp / 'e'; third_state.mkdir(mode=0o700)
+        third = start('e', [binary_dir / 'mnetd', '-state', third_state], 'e')
+        wait_for(lambda: local_api(third_state), 'third device local API')
+        local_api(third_state, 'up', {'server': 'http://198.18.10.1:8080', 'network': 'kerneltest', 'name': 'e', 'auth_key': key})
+        wait_for(lambda: local_api(third_state)['status'] == 'up', 'third kernel VPN device Up')
+        active = {**states, 'e': third_state}
+        wait_for(lambda: all(len(local_api(state).get('peers', [])) == 2 for state in active.values()), 'all three devices see two peers')
+        mesh_ips = {x: local_api(state)['ipv4'] for x, state in active.items()}
+        public_keys = {local_api(state)['public_key'] for state in active.values()}
+        if len(set(mesh_ips.values())) != 3 or len(public_keys) != 3:
+            raise RuntimeError('third device reused mesh IP or key')
+        for source in active:
+            for target in active:
+                if source == target:
+                    continue
+                def pair_ready():
+                    return subprocess.run(ns(source, 'ping', '-c', '1', '-W', '1', mesh_ips[target]), capture_output=True, timeout=3).returncode == 0
+                wait_for(pair_ready, 'three-device mesh ' + source + ' to ' + target, timeout=30)
+        ready = tmp / 'ready-third'
+        third_receiver = start('b', [sys.executable, '-c', SERVER, ips['b'], ready], 'third-tcp')
+        wait_for(ready.exists, 'third-device TCP receiver')
+        for _ in range(3):
+            result = json.loads(run(*ns('e', sys.executable, '-c', CLIENT, ips['b'])))
+            if result != {'bytes': len(PAYLOAD), 'sha256': DIGEST}:
+                raise RuntimeError('third-device TCP hash mismatch')
+        if third_receiver.wait(timeout=5) != 0:
+            raise RuntimeError('third-device TCP receiver failed')
+        print('PASS three distinct kernel VPN devices in one network: six directed mesh pings and third-device OS TCP 3 x 4MiB hash/ACK', flush=True)
+        local_api(third_state, 'down', {})
+        third.terminate(); third.wait(timeout=10)
+        run(*ns('c', sys.executable, acl_script, tmp / 'control.json', 'remove-third'))
+        wait_for(lambda: all(len(local_api(state).get('peers', [])) == 1 for state in states.values()), 'third device removal preserves original mesh')
+        wait_for(both_direct, 'original direct paths after third-device removal', timeout=40)
         run(*ns('c', sys.executable, acl_script, tmp / 'control.json', 'deny-route'))
         def subnet_absent():
             return not json.loads(run('ip', '-n', spaces['a'], '-N', '-j', 'route', 'show', 'exact', '10.9.0.0/24'))
