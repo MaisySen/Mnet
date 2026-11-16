@@ -471,6 +471,15 @@ else:
             raise RuntimeError('received denial left mesh reachability')
         if lan_reachable():
             raise RuntimeError('received denial left subnet reachability')
+        wait_denied = subprocess.run(ns('b', binary_dir / 'mnet', '--state', states['b'],
+                                       'wait', '--timeout', '1s'), capture_output=True, timeout=5)
+        if wait_denied.returncode == 0:
+            raise RuntimeError('CLI wait accepted denied authorization')
+        if local_api(states['b'])['status'] != 'waiting-approval':
+            raise RuntimeError('CLI wait timeout changed denied daemon state')
+        saved_denied = json.loads((states['b'] / 'state.json').read_text())
+        if any(saved_denied.get(k) != v for k, v in identities['b'].items()):
+            raise RuntimeError('CLI wait timeout changed denied saved identity')
         # The server restart invalidated admin sessions, not node credentials.
         # Reauthenticate privately, approve exactly b and save the new cookie.
         reapprove = tmp / 'reapprove.py'
@@ -494,6 +503,11 @@ jar.save(ignore_discard=True);os.chmod(jar.filename,0o600)
             saved = json.loads((states[x] / 'state.json').read_text())
             if any(saved.get(k) != v for k, v in identities[x].items()):
                 raise RuntimeError('received denial/approval changed saved identity')
+        cli_restored = run(*ns('b', binary_dir / 'mnet', '--state', states['b'],
+                               'wait', '--timeout', '10s'))
+        if not cli_restored.startswith('up: '):
+            raise RuntimeError('CLI wait did not accept reapproved daemon')
+        print('PASS CLI wait times out during denied authorization without changing daemon/identity, then succeeds after approval', flush=True)
         print('PASS received 403 clears kernel VPN peers and denies mesh/LAN until approval; same identities recover', flush=True)
         # With the control/relay process dead, transfers cannot silently
         # succeed by falling back to the shared control-plane WebSocket.
