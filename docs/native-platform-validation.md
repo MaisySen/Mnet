@@ -183,3 +183,7 @@ All five jobs passed in [fcf0605 CI](https://github.com/MaisySen/Mnet/actions/ru
 ## Account HTTP plumbing (verified source)
 
 All five jobs passed in [c86ac3b CI](https://github.com/MaisySen/Mnet/actions/runs/43812377082), including native Windows/macOS signed-provider account HTTP/browser-binding/session tests. The full kernel suite passed with 155/128/145 later loss-profile drops, as VPN regression coverage, not account UI proof. The newer member page has separate real Chrome validation pending CI. No live provider or deployment was changed.
+
+## Member account page (verified browser source)
+
+All five jobs passed in [031be71 CI](https://github.com/MaisySen/Mnet/actions/runs/43813517063). The Go job ran an isolated real Chrome flow against the signed fake provider and real disposable control server with explicit membership: sign-in, own-device render, populated sign-out, delayed valid response suppression and server-side token replay denial. Screenshots were inspected locally. Native HTTP/session checks and three kernel VPN regression fixtures also passed, with 159/153/173 later loss-profile drops. The kernel suite is not account UI proof; no live provider/deployment changed.

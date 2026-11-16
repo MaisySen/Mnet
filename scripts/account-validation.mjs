@@ -29,6 +29,26 @@ try{
  await until(()=>js(`document.querySelector('#devices') && !document.querySelector('#devices').hidden && document.querySelector('#deviceRows').textContent.includes('personal-laptop')`),'signed-provider member device render');
  if(!await js(`document.body.textContent.includes('not a live online-status check')`))throw new Error('device list implies online proof');
  await shot('account-signed-in');
+ // Rendering boundary: untrusted names must be text, never executable HTML.
+ await js(`(async()=>{window.originalFetch=fetch;window.injected=false;window.fetch=(input,options)=>input==='/account/api/devices'?Promise.resolve(new Response(JSON.stringify({devices:[{Name:'<img src=x onerror="window.injected=true">',IPv4:'100.64.0.9'}]}),{status:200,headers:{'Content-Type':'application/json'}})):originalFetch(input,options);await load();})()`);
+ if(!await js(`!window.injected && !document.querySelector('#deviceRows img') && document.querySelector('#deviceRows').textContent.includes('<img')`))throw new Error('device name parsed as HTML');
+ await js(`(async()=>{window.fetch=(input,options)=>input==='/account/api/devices'?Promise.resolve(new Response(JSON.stringify({devices:[]}),{status:200,headers:{'Content-Type':'application/json'}})):originalFetch(input,options);await load();})()`);
+ if(!await js(`!document.querySelector('#empty').hidden && !document.querySelector('#deviceRows').textContent`))throw new Error('empty member state incorrect');
+ await shot('account-empty');
+ await js(`(async()=>{window.fetch=(input,options)=>input==='/account/api/devices'?Promise.resolve(new Response('{}',{status:401})):originalFetch(input,options);await load();})()`);
+ if(!await js(`document.querySelector('#devices').hidden && !document.querySelector('#deviceRows').textContent && !document.querySelector('#login').hidden`))throw new Error('denied session left private UI');
+ await js(`window.fetch=originalFetch;load()`);
+ await until(()=>js(`document.querySelector('#deviceRows').textContent.includes('personal-laptop')`),'real device restored after display fixtures');
+ await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+ if(!await js(`document.documentElement.scrollWidth<=390`))throw new Error('member page overflows narrow viewport');
+ await shot('account-mobile');
+ await cdp('Emulation.clearDeviceMetricsOverride');
+ // A failed logout must not say signed out or restore the previous rows.
+ await js(`window.fetch=(input,options)=>input==='/account/api/logout'?Promise.resolve(new Response('{}',{status:503})):originalFetch(input,options);document.querySelector('#logout').click()`);
+ await until(()=>js(`document.querySelector('#message').textContent.includes('Could not confirm sign-out')`),'failed sign-out accurately reported');
+ if(!await js(`!document.querySelector('#deviceRows').textContent && document.querySelector('#login').hidden`))throw new Error('failed sign-out restored private rows or pretended signed out');
+ await js(`window.fetch=originalFetch`);
+
  const cookie=(await cdp('Network.getCookies',{urls:[base+'/account/']})).cookies.find(c=>c.name==='mnet_account');if(!cookie)throw new Error('account cookie absent');
  // A valid response already in flight cannot repaint private devices after logout.
  await js(`(async()=>{window.savedFetch=fetch;window.held=await(await savedFetch('/account/api/devices')).text();window.releaseHeld=null;window.fetch=(input,options)=>input==='/account/api/devices'?new Promise(resolve=>{window.releaseHeld=()=>resolve(new Response(held,{status:200,headers:{'Content-Type':'application/json'}}));}):savedFetch(input,options);window.pendingLoad=load();})()`);
@@ -38,5 +58,5 @@ try{
  if(!await js(`document.querySelector('#devices').hidden && !document.querySelector('#login').hidden && !document.querySelector('#deviceRows').textContent && !document.querySelector('#network').value`))throw new Error('private device data survived sign-out or late refresh');
  const replay=await fetch(base+'/account/api/devices',{headers:{Cookie:'mnet_account='+cookie.value}});if(replay.status!==401)throw new Error('account session replay after logout accepted');
  await shot('account-after-logout');
- console.log('PASS real Chrome account: signed-provider login, explicit member own-device render, private UI cleanup, delayed-refresh suppression and logout replay denial');
+ console.log('PASS real Chrome account: signed-provider login, explicit member own-device render, HTML-as-text, empty/denied states, narrow layout, failed logout, private UI cleanup, delayed-refresh suppression and logout replay denial');
 }finally{ws?.close();chrome?.kill();await delay(150);rmSync(dir,{recursive:true,force:true});}
