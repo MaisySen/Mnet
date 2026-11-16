@@ -187,3 +187,7 @@ All five jobs passed in [c86ac3b CI](https://github.com/MaisySen/Mnet/actions/ru
 ## Member account page (verified browser source)
 
 All five jobs passed in [031be71 CI](https://github.com/MaisySen/Mnet/actions/runs/43813517063). The Go job ran an isolated real Chrome flow against the signed fake provider and real disposable control server with explicit membership: sign-in, own-device render, populated sign-out, delayed valid response suppression and server-side token replay denial. Screenshots were inspected locally. Native HTTP/session checks and three kernel VPN regression fixtures also passed, with 159/153/173 later loss-profile drops. The kernel suite is not account UI proof; no live provider/deployment changed.
+
+## Member edge-state Chrome proof (verified extension)
+
+All five jobs passed in [229c0a3 CI](https://github.com/MaisySen/Mnet/actions/runs/43814532649), including the real Chrome member step. It adds literal HTML-like names, empty/denied display, failed logout and 390px no-overflow checks through isolated browser response fixtures, then completes the real isolated-server logout/replay test. Narrow/empty screenshots were inspected. Full kernel VPN regression fixtures passed with 138/142/127 later loss-profile drops. This is not physical mobile proof or a live account test.

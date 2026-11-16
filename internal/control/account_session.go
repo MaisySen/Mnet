@@ -23,10 +23,12 @@ type accountSessions struct {
 	pending map[string]accountLogin
 }
 
-// No public HTTP route issues/accepts these tokens yet. Caller claims must be
+// Only the verified account OIDC callback issues tokens. Caller claims must be
 // verified by the exact current provider, not supplied by JSON or display email.
 func (s *Server) newAccountSession(networkID string, p *OIDCProvider, claims *OIDCClaims) (string, error) {
-	if p == nil || p != s.oidcProvider() || claims == nil || claims.Subject == "" {
+	s.oidcMu.Lock()
+	defer s.oidcMu.Unlock()
+	if p == nil || p != s.oidc || claims == nil || claims.Subject == "" {
 		return "", ErrUnauthorized
 	}
 	if _, err := s.store.IdentityDevices(networkID, p.cfg.Issuer, claims.Subject); err != nil {
@@ -55,6 +57,8 @@ func (s *Server) accountDevices(token string) ([]IdentityDevice, error) {
 	if token == "" {
 		return nil, ErrUnauthorized
 	}
+	s.oidcMu.Lock()
+	defer s.oidcMu.Unlock()
 	s.accounts.mu.Lock()
 	session, ok := s.accounts.byToken[token]
 	if ok && !time.Now().Before(session.Expires) {
@@ -62,7 +66,7 @@ func (s *Server) accountDevices(token string) ([]IdentityDevice, error) {
 		ok = false
 	}
 	s.accounts.mu.Unlock()
-	if !ok || session.Provider != s.oidcProvider() || session.Provider == nil || session.Issuer != session.Provider.cfg.Issuer {
+	if !ok || session.Provider != s.oidc || session.Provider == nil || session.Issuer != session.Provider.cfg.Issuer {
 		return nil, ErrUnauthorized
 	}
 	// Every query checks the current explicit membership, not a cached grant.

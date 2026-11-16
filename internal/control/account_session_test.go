@@ -103,6 +103,13 @@ func TestAccountSessionProviderExpiryCapacity(t *testing.T) {
 		t.Fatal("stale provider issued session")
 	}
 	app.SetOIDC(p)
+	if _, err := app.accountDevices(token); !errors.Is(err, ErrUnauthorized) {
+		t.Fatal("restoring old provider revived revoked account session")
+	}
+	token, err = app.newAccountSession(network, p, &OIDCClaims{Subject: "owner"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	app.accounts.byToken[token] = accountSession{Expires: time.Now()}
 	if _, err := app.accountDevices(token); !errors.Is(err, ErrUnauthorized) {
 		t.Fatal("expiry equality accepted")
@@ -124,5 +131,29 @@ func TestAccountSessionProviderExpiryCapacity(t *testing.T) {
 		if _, err := app.newAccountSession(network, p, claims); !errors.Is(err, ErrUnauthorized) {
 			t.Fatal("unverified principal accepted")
 		}
+	}
+}
+
+func TestAccountSessionProviderChangeClearsPendingAndLive(t *testing.T) {
+	app, p, network, _ := accountFixture(t)
+	token, err := app.newAccountSession(network, p, &OIDCClaims{Subject: "owner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.accounts.pending = map[string]accountLogin{"pending": {Provider: p, Expires: time.Now().Add(time.Minute)}}
+	app.SetOIDC(p)
+	if len(app.accounts.pending) != 1 {
+		t.Fatal("same provider unnecessarily discarded pending login")
+	}
+	if _, err := app.accountDevices(token); err != nil {
+		t.Fatal("same provider revoked active session")
+	}
+	app.SetOIDC(nil)
+	if len(app.accounts.pending) != 0 || len(app.accounts.byToken) != 0 {
+		t.Fatal("provider disable left account credentials")
+	}
+	app.SetOIDC(p)
+	if _, err := app.accountDevices(token); !errors.Is(err, ErrUnauthorized) {
+		t.Fatal("reenabling provider revived old session")
 	}
 }

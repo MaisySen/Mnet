@@ -20,6 +20,15 @@ const maxPendingOIDCStates = 1024
 // through the provider instead of waiting for manual approval.
 func (s *Server) SetOIDC(p *OIDCProvider) {
 	s.oidcMu.Lock()
+	if s.oidc != p {
+		// Provider replacement is a permanent revocation boundary. Merely
+		// comparing pointers on reads would revive old sessions if the old
+		// provider object were installed again later.
+		s.accounts.mu.Lock()
+		s.accounts.byToken = nil
+		s.accounts.pending = nil
+		s.accounts.mu.Unlock()
+	}
 	s.oidc = p
 	s.oidcMu.Unlock()
 }

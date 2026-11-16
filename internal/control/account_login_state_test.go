@@ -19,16 +19,17 @@ func TestAccountLoginStateExpiryProviderAndCapacity(t *testing.T) {
 		return rec
 	}
 	for _, mode := range []string{"expired", "provider", "denied"} {
+
+		if mode == "provider" {
+			app.SetOIDC(&OIDCProvider{cfg: p.cfg})
+		} else {
+			app.SetOIDC(p)
+		}
 		app.accounts.pending = map[string]accountLogin{"fixture": {NetworkID: network, Provider: p, BrowserHash: sha256.Sum256([]byte("browser")), Expires: time.Now().Add(time.Minute)}}
 		if mode == "expired" {
 			v := app.accounts.pending["fixture"]
 			v.Expires = time.Now()
 			app.accounts.pending["fixture"] = v
-		}
-		if mode == "provider" {
-			app.SetOIDC(&OIDCProvider{cfg: p.cfg})
-		} else {
-			app.SetOIDC(p)
 		}
 		if rec := callback("fixture", "other-browser"); rec.Code != 400 || len(app.accounts.pending) != 1 {
 			t.Fatal("wrong browser consumed pending state")

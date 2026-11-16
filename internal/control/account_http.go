@@ -41,7 +41,9 @@ func (s *Server) handleAccountLogin(w http.ResponseWriter, r *http.Request) {
 	if !accountMethod(w, r, "POST") || !s.requireAdminJSON(w, r) {
 		return
 	}
-	p := s.oidcProvider()
+	s.oidcMu.Lock()
+	defer s.oidcMu.Unlock()
+	p := s.oidc
 	if p == nil {
 		writeErr(w, 404, "account login is not configured")
 		return
