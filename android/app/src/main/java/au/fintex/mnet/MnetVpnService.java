@@ -1,7 +1,6 @@
 package au.fintex.mnet;
 
 import android.app.Notification;
-import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -161,14 +160,8 @@ public class MnetVpnService extends VpnService {
     }
 
     private Notification buildNotification(String text) {
-        NotificationManager nm = getSystemService(NotificationManager.class);
-        if (nm.getNotificationChannel(CHANNEL) == null) {
-            nm.createNotificationChannel(new NotificationChannel(
-                    CHANNEL, getString(R.string.notification_channel),
-                    NotificationManager.IMPORTANCE_LOW));
-        }
         Intent stop = new Intent(this, MnetVpnService.class).setAction("disconnect");
-        return new Notification.Builder(this, CHANNEL)
+        return VpnPlatform.notification(this, CHANNEL, getString(R.string.notification_channel))
                 .setContentTitle(getString(R.string.app_name))
                 .setContentText(text)
                 .setSmallIcon(R.drawable.ic_mnet)

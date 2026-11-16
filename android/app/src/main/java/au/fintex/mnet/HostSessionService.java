@@ -1,8 +1,6 @@
 package au.fintex.mnet;
 
 import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
@@ -103,12 +101,7 @@ public class HostSessionService extends Service implements HostCallbacks {
     }
 
     private void startFg() {
-        NotificationManager nm = getSystemService(NotificationManager.class);
-        if (nm != null && nm.getNotificationChannel(CHANNEL) == null) {
-            nm.createNotificationChannel(new NotificationChannel(
-                    CHANNEL, "Mnet sessions", NotificationManager.IMPORTANCE_LOW));
-        }
-        Notification n = new Notification.Builder(this, CHANNEL)
+        Notification n = VpnPlatform.notification(this, CHANNEL, "Mnet sessions")
                 .setContentTitle("Mnet session hosting")
                 .setContentText("This phone can be viewed and controlled over the mesh")
                 .setSmallIcon(android.R.drawable.presence_video_online)

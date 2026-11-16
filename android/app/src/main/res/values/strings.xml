@@ -12,4 +12,6 @@
     <string name="notification_title">Mnet is connected</string>
     <string name="notification_channel">Mesh status</string>
     <string name="accessibility_desc">Mnet session control: while you host a session, a connected peer you approved can tap and scroll on this phone. Only active during a hosted session.</string>
+    <string name="private_status_permission_label">Mnet private status</string>
+    <string name="private_status_permission_description">Send private Mnet status updates. Restricted to apps signed with the Mnet signing certificate.</string>
 </resources>

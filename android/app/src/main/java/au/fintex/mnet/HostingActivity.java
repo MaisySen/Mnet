@@ -126,7 +126,7 @@ public class HostingActivity extends Activity {
         IntentFilter f = new IntentFilter();
         f.addAction(HostSessionService.ACTION_LOG);
         f.addAction(HostSessionService.ACTION_ASK);
-        registerReceiver(receiver, f, Context.RECEIVER_NOT_EXPORTED);
+        VpnPlatform.registerPrivateReceiver(this, receiver, f);
     }
 
     @Override

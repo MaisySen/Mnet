@@ -353,9 +353,18 @@ Keep a process-wide worker ticket through cancellation until actual exit. Refuse
 
 Add shared/mobile Close that cannot be revived by later Prepare/Up/tunnel injection; recheck disposal before Up context publication. Android worker stop/finally uses Close; rejected mobile start paths close consumed tunnel adapters. Repeated local cancellation/restart/FD tests and fresh arm64 AAR/full Android34 Java compile pass, not published artifacts or physical runtime. All five jobs passed in [3932c31 CI](https://github.com/MaisySen/Mnet/actions/runs/43880900442), including native cancellation and kernel regressions120/138/154. Stop/Down remain reusable.
 
-## Pending injected tunnel ownership (new source, CI pending)
+## Pending injected tunnel ownership (verified native source)
 
-Fix two reproduced leaks: Close before Up left an injected tunnel open, and another injection silently replaced it. Serialize with lifecycle, refuse nil/pending replacement, transfer ownership at device creation, close pending on Down/Close and allow a new injection after Down. Repeated local race/full suite/vet/cross-builds pass; native extension pending. No APK/AAB published.
+Fix two reproduced leaks: Close before Up left an injected tunnel open, and another injection silently replaced it. Serialize with lifecycle, refuse nil/pending replacement, transfer ownership at device creation, close pending on Down/Close and allow a new injection after Down. Repeated local race/full suite/vet/cross-builds pass; all five jobs passed in [7ddee3f CI](https://github.com/MaisySen/Mnet/actions/runs/43883114265), including ten native macOS/Windows repetitions and kernel loss runs159/139/125. No APK/AAB published.
+
+
+## Android API-level entry points (new source, CI pending)
+
+The app declares minSdk24 but used API26 notification-channel calls and the flags receiver overload without lower-version paths. A shared helper now uses legacy low-priority notifications on API24/25 and creates/reuses channels on API26+. Both VPN and session-host notifications use it. Both activity status receivers use a signature-only app permission on every version; API33+ additionally uses RECEIVER_NOT_EXPORTED. The legacy path is not an unprotected receiver.
+
+The real helper passes an API24-36 branch matrix compiled against API-checking JVM fakes. Source checks require both receiver/notification call sites and the manifest permission. This is fake/source coverage, not framework execution. A freshly rebuilt current-source arm64 Go AAR, every Java source/resource against Android34, and min-api24 dex compilation pass locally. Other ABIs, actual Android24/25 startup, current Android VPN/session behavior, consent, always-on and reboot remain unverified. No APK/AAB published.
+
+API basis: [Notification.Builder constructors](https://developer.android.com/reference/android/app/Notification.Builder), [Context receiver overloads](https://developer.android.com/reference/android/content/Context) and [signature permissions](https://developer.android.com/guide/topics/permissions/defining).
 
 ## v0.8.2-test.1 - 2026-11-16
 

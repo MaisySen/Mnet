@@ -208,7 +208,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         IntentFilter f = new IntentFilter(MnetVpnService.ACTION_STATUS);
-        registerReceiver(statusReceiver, f, Context.RECEIVER_NOT_EXPORTED);
+        VpnPlatform.registerPrivateReceiver(this, statusReceiver, f);
     }
 
     @Override
