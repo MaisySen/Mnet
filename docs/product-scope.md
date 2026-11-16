@@ -14,7 +14,7 @@ Implemented: a network contains separately keyed devices, each with its own iden
 
 Not finished: a consumer account/organization ownership and membership model that lets one login safely manage all the user's devices. A stored approving identity is not that model. The current Network type has no account-owner/membership fields.
 
-Verified kernel fixtures exercise two active VPN nodes plus a separate LAN host. A new three-device kernel-mesh extension is pending independent CI. Synthetic control-plane scale fixtures are not evidence of an active-device fleet.
+Three fresh [799f3a1 kernel fixtures](https://github.com/MaisySen/Mnet/actions/runs/43778473220) exercise three independently keyed VPN devices in one network, all six directed mesh pings and third-device OS TCP, plus a separate LAN host. A further second-network isolation extension is pending independent CI. Synthetic control-plane scale fixtures are not evidence of an active-device fleet.
 
 ## Startup by platform
 

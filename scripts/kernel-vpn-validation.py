@@ -328,9 +328,12 @@ def call(path,data,method='POST'):
  return json.load(opener.open(req,timeout=3))
 call('/admin/api/login',{'password':'kernel-ci-fixture-only'})
 snapshot=json.loads(Path(sys.argv[1]).read_text())
-network=next(iter(snapshot['networks']))
+network=next(n['id'] for n in snapshot['networks'].values() if n['name']=='kerneltest')
 node=next(n for n in snapshot['nodes'].values() if n['name']=='b')
-if sys.argv[2]=='remove-third':
+if sys.argv[2]=='isolated-network':
+ isolated=call('/admin/api/networks',{'name':'isolatedtest'})
+ print(json.dumps(call('/admin/api/authkeys',{'network_id':isolated['id'],'reusable':True})))
+elif sys.argv[2]=='remove-third':
  third=next(n for n in snapshot['nodes'].values() if n['name']=='e')
  call('/admin/api/nodes/delete',{'node_id':third['id']})
 elif sys.argv[2]=='expire':
@@ -377,6 +380,28 @@ else:
         run(*ns('c', sys.executable, acl_script, tmp / 'control.json', 'remove-third'))
         wait_for(lambda: all(len(local_api(state).get('peers', [])) == 1 for state in states.values()), 'third device removal preserves original mesh')
         wait_for(both_direct, 'original direct paths after third-device removal', timeout=40)
+        # The same control service must not turn two networks into one
+        # trust boundary. Use a fresh identity on the third device namespace.
+        isolated_key = json.loads(run(*ns('c', sys.executable, acl_script, tmp / 'control.json', 'isolated-network')))['key']
+        isolated_state = tmp / 'isolated'; isolated_state.mkdir(mode=0o700)
+        isolated = start('e', [binary_dir / 'mnetd', '-state', isolated_state], 'isolated')
+        wait_for(lambda: local_api(isolated_state), 'isolated-network local API')
+        local_api(isolated_state, 'up', {'server':'http://198.18.10.1:8080', 'network':'isolatedtest', 'name':'outsider', 'auth_key':isolated_key})
+        wait_for(lambda: local_api(isolated_state)['status']=='up', 'isolated-network device Up')
+        time.sleep(2)
+        if local_api(isolated_state).get('peers'):
+            raise RuntimeError('different-network device received original mesh peers')
+        for state in states.values():
+            peers=local_api(state).get('peers', [])
+            if len(peers)!=1 or any(peer.get('name')=='outsider' for peer in peers):
+                raise RuntimeError('original mesh disclosed different-network peer')
+        for target in ips.values():
+            attempt=subprocess.run(ns('e','ping','-c','1','-W','1',target),capture_output=True,timeout=3)
+            if attempt.returncode==0:
+                raise RuntimeError('different-network device reached original mesh IP')
+        local_api(isolated_state,'down',{})
+        isolated.terminate();isolated.wait(timeout=10)
+        print('PASS separate-network device has no original peers and cannot reach either original mesh IP',flush=True)
         run(*ns('c', sys.executable, acl_script, tmp / 'control.json', 'deny-route'))
         def subnet_absent():
             return not json.loads(run('ip', '-n', spaces['a'], '-N', '-j', 'route', 'show', 'exact', '10.9.0.0/24'))
