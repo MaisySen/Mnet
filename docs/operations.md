@@ -563,3 +563,7 @@ Capture source now protects image acquisition/close and explicitly recycles temp
 ### Capture row buffers (new source)
 
 Encoding copies only visible RGBA row bytes, without requiring final-row padding or changing the plane buffer cursor. Synthetic direct-buffer tests pass omitted padding/nonzero offsets; physical ImageReader/color/crop/orientation is unverified. Published APK unchanged.
+
+### Android viewer taps (new source)
+
+A completed stationary single-finger tap now emits one host click, not one on down plus another on up. Canceled/multitouch/drag/letterbox gestures are suppressed. Drag/scroll forwarding is not implemented by this change. JVM/source/build checks pass; physical remote-control gesture behavior remains unverified. Published APK unchanged.

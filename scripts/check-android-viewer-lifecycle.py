@@ -36,3 +36,8 @@ assert 'if (img != null) img.close();' in host
 encoder = (Path(__file__).resolve().parents[1] / 'android/app/src/main/java/au/fintex/mnet/CaptureEncoder.java').read_text()
 assert 'finally {' in encoder and 'pixels.duplicate()' in encoder and 'frame.recycle()' in encoder
 print('PASS capture acquire/close and temporary bitmap release wiring source checks; not real ImageReader/memory-pressure proof')
+
+assert 'ev.getActionMasked()' in text and 'taps.up(ev.getX(), ev.getY(), slop)' in text
+assert 'taps.move(ev.getX(), ev.getY(), slop)' in text and 'ev.getPointerCount() != 1' in text
+assert '"down".equals(action)' not in text
+print('PASS viewer completed-tap/move/cancel/multitouch wiring source checks; no MotionEvent/device execution')

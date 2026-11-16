@@ -25,6 +25,7 @@ public class ViewerActivity extends Activity {
     private TextView chat;
     private EditText chatIn;
     private final ViewerGate<SessionViewer> viewers = new ViewerGate<>();
+    private final ViewerTap taps = new ViewerTap();
     private volatile int frameW = 1, frameH = 1;
 
     @Override
@@ -78,36 +79,39 @@ public class ViewerActivity extends Activity {
 
         screen.setOnTouchListener((v, ev) -> {
             SessionViewer viewer = viewers.current();
-            if (viewer == null) {
-                return true;
-            }
+            if (viewer == null) { taps.cancel(); return true; }
+            float slop = android.view.ViewConfiguration.get(this).getScaledTouchSlop();
+            if (ev.getPointerCount() != 1) { taps.cancel(); return true; }
             // Map view coordinates into frame coordinates. FIT_CENTER
             // letterboxes the frame, so scale by the fitted rect, not
             // the raw view.
             float vw = v.getWidth(), vh = v.getHeight();
             float fit = Math.min(vw / frameW, vh / frameH);
+            if (!(fit > 0) || Float.isInfinite(fit)) { taps.cancel(); return true; }
             float offX = (vw - frameW * fit) / 2f;
             float offY = (vh - frameH * fit) / 2f;
             float sx = (ev.getX() - offX) / fit;
             float sy = (ev.getY() - offY) / fit;
             if (sx < 0 || sy < 0 || sx >= frameW || sy >= frameH) {
+                taps.cancel();
                 return true; // touch in the letterbox margin
             }
-            String action;
-            switch (ev.getAction()) {
+            switch (ev.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
-                    action = "down";
-                    break;
+                    taps.down(ev.getX(), ev.getY());
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    taps.move(ev.getX(), ev.getY(), slop);
+                    return true;
                 case MotionEvent.ACTION_UP:
-                    action = "up";
+                    if (!taps.up(ev.getX(), ev.getY(), slop)) return true;
                     break;
                 default:
-                    action = "move";
+                    taps.cancel();
+                    return true;
             }
-            // Taps become clicks; drags send move while held.
-            if ("down".equals(action) || "up".equals(action)) {
-                action = "click";
-            }
+            // Only a completed tap is supported; never inject on finger-down.
+            String action = "click";
             String json = String.format(java.util.Locale.US,
                     "{\"kind\":\"pointer\",\"x\":%d,\"y\":%d,\"button\":\"left\",\"action\":\"%s\"}",
                     (int) sx, (int) sy, action);
@@ -223,6 +227,7 @@ public class ViewerActivity extends Activity {
     @Override
     protected void onDestroy() {
         userClosed = true;
+        taps.cancel();
         reconnects.removeCallbacks(retryTask);
         closeViewer(viewers.close());
         super.onDestroy();

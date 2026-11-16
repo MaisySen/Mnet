@@ -53,6 +53,8 @@ jobs:
           java -cp "$RUNNER_TEMP/mnet-android-policy" au.fintex.mnet.ViewerGateTest
           javac -d "$RUNNER_TEMP/mnet-android-policy" android/app/src/main/java/au/fintex/mnet/SessionConsent.java android/tests/au/fintex/mnet/SessionConsentTest.java
           java -cp "$RUNNER_TEMP/mnet-android-policy" au.fintex.mnet.SessionConsentTest
+          javac -d "$RUNNER_TEMP/mnet-android-policy" android/app/src/main/java/au/fintex/mnet/ViewerTap.java android/tests/au/fintex/mnet/ViewerTapTest.java
+          java -cp "$RUNNER_TEMP/mnet-android-policy" au.fintex.mnet.ViewerTapTest
       - name: Android selected-service framework simulation (no device/JNI)
         run: sh scripts/test-android-framework.sh
       - name: Android API compatibility matrix (JVM fakes and source only)
