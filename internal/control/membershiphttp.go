@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 )
 
 // handleAdminMembership is explicit operator management, not identity login or
@@ -12,12 +13,13 @@ import (
 // authentication for the caller. adminOnly must wrap this handler.
 func (s *Server) handleAdminMembership(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		network := r.URL.Query().Get("network_id")
-		if network == "" {
-			writeErr(w, 400, "network_id required")
+		query, err := url.ParseQuery(r.URL.RawQuery)
+		networks := query["network_id"]
+		if err != nil || len(query) != 1 || len(networks) != 1 || networks[0] == "" {
+			writeErr(w, 400, "one network_id required")
 			return
 		}
-		members, err := s.store.OperatorMemberships(network)
+		members, err := s.store.OperatorMemberships(networks[0])
 		if err != nil {
 			writeErr(w, 404, "unknown network")
 			return

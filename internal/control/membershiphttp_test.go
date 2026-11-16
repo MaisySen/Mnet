@@ -231,3 +231,17 @@ func TestAdminMembershipReadCredentialSeparationAndEmpty(t *testing.T) {
 		}
 	}
 }
+
+func TestAdminMembershipReadUnambiguousQuery(t *testing.T) {
+	app, _, network, _ := accountFixture(t)
+	app.sessions["operator"] = time.Now().Add(time.Hour)
+	for _, query := range []string{"network_id=" + network + "&network_id=" + network, "network_id=" + network + "&network_id=other", "NETWORK_ID=" + network, "network_id=" + network + "&subject=owner", "network_id=" + network + "&bad=%ZZ", "network_id=" + network + ";ignored=1"} {
+		req := httptest.NewRequest("GET", "https://control.example/admin/api/memberships?"+query, nil)
+		req.AddCookie(&http.Cookie{Name: "mnet_admin", Value: "operator"})
+		rec := httptest.NewRecorder()
+		app.Handler().ServeHTTP(rec, req)
+		if rec.Code != 400 || rec.Header().Get("Cache-Control") != "no-store" || strings.Contains(rec.Body.String(), "owner") {
+			t.Fatal("ambiguous query returned private grants", rec.Code)
+		}
+	}
+}

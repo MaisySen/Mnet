@@ -242,4 +242,8 @@ Account login start now parses exactly one case-sensitive `network_id` field. Du
 
 ## Unambiguous operator membership writes (new source)
 
-The guarded operator POST now parses each exact case-sensitive field once. Tests reject duplicate decision, same-subject duplicate, conflicting network/issuer and alternate/mixed-case principal/decision fields without changing membership. Existing strict body/size/trailing/type checks and real-Chrome operator removal remain intact. Local three-repetition membership/signed HTTP tests, actual dashboard Chrome and full race/vet pass. Native/full CI pending. No live changes.
+The guarded operator POST now parses each exact case-sensitive field once. Tests reject duplicate decision, same-subject duplicate, conflicting network/issuer and alternate/mixed-case principal/decision fields without changing membership. Existing strict body/size/trailing/type checks and real-Chrome operator removal remain intact. Local three-repetition membership/signed HTTP tests, actual dashboard Chrome and full race/vet pass. All five jobs passed in [4804938 CI](https://github.com/MaisySen/Mnet/actions/runs/43835322107), including native membership cases, both actual browser steps and three complete kernel regressions with 140/172/149 later loss-profile drops. No live changes.
+
+## Unambiguous private membership reads (new source)
+
+Private grant reads now require exactly one case-sensitive network selector and reject malformed query encoding. Native-targeted tests reject duplicate identical/conflicting network IDs, alternate-case/unknown fields and invalid escape/semicolon queries with no private grant output. Local three-repetition membership tests, actual dashboard Chrome and full race/vet pass. CI pending. No live changes.

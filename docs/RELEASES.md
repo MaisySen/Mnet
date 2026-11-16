@@ -246,7 +246,11 @@ Require exactly one case-sensitive `network_id` field rather than accepting JSON
 
 ## Unambiguous membership mutation selectors (new source)
 
-Require the four exact case-sensitive membership POST fields once each. Reject duplicate or alternate-case principal/network/decision input before mutation, keeping existing type/body-size/trailing checks. Local repeated HTTP/race and actual dashboard Chrome checks pass; full CI pending. No live membership changes or new authority.
+Require the four exact case-sensitive membership POST fields once each. Reject duplicate or alternate-case principal/network/decision input before mutation, keeping existing type/body-size/trailing checks. All five jobs passed in [4804938 CI](https://github.com/MaisySen/Mnet/actions/runs/43835322107), including native membership cases and three complete kernel regressions with 140/172/149 later loss-profile drops. No live membership changes or new authority.
+
+## Unambiguous private membership query (new source)
+
+Require one exact `network_id` query field for private operator grant reads. Reject duplicate/unknown/alternate-case selectors and malformed encoding before listing grants. Local repeated tests, dashboard Chrome and full race/vet pass; CI pending. No live changes.
 
 ## v0.8.2-test.1 - 2026-11-16
 
