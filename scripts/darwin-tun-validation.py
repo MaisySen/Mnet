@@ -108,7 +108,7 @@ try:
         probe.bind(('127.0.0.1', 0))
         port = probe.getsockname()[1]
     base = 'http://127.0.0.1:' + str(port)
-    start([control_binary, '-listen', '127.0.0.1:' + str(port), '-base-url', base,
+    control = start([control_binary, '-listen', '127.0.0.1:' + str(port), '-base-url', base,
            '-data', root / 'control.json', '-admin-password', 'native-tun-fixture-only'], 'control')
     wait_for(lambda: urllib.request.urlopen(base + '/healthz', timeout=2).status == 200, 'disposable control health')
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
@@ -158,6 +158,22 @@ try:
                     break
                 received += chunk
             assert received == digest, 'encrypted peer receiver hash ACK mismatch'
+            reverse = bytearray()
+            while len(reverse) < len(payload):
+                chunk = conn.recv(min(65536, len(payload) - len(reverse)))
+                if not chunk:
+                    raise RuntimeError('truncated reverse kernel TCP payload')
+                reverse.extend(chunk)
+            expected_reverse = (b'reverse-native-peer-proof' * (len(payload) // 25 + 1))[:len(payload)]
+            assert reverse == expected_reverse, 'reverse kernel TCP payload mismatch'
+            conn.sendall(hashlib.sha256(reverse).digest())
+            ack = b''
+            while len(ack) < 2:
+                chunk = conn.recv(2 - len(ack))
+                if not chunk:
+                    break
+                ack += chunk
+            assert ack == b'OK', 'reverse kernel receiver hash not acknowledged'
         return True
     wait_for(transfer, 'native OS TCP over actual utun to encrypted userspace peer', 60)
     print('PASS actual macOS kernel utun OS TCP 4MiB receiver SHA256 ACK to proof-only userspace WireGuard peer; same host, not two-kernel-host proof')
@@ -239,6 +255,19 @@ try:
     wait_for(kernel_ready, 'launchd reload actual kernel utun Up')
     wait_for(transfer, 'kernel peer TCP after launchd reload', 60)
     print('PASS actual macOS utun OS TCP 4MiB hash/ACK restored after Down/Up, saved process restart and launchd bootstrap/crash/reload against same-host proof peer')
+    print('PASS bidirectional actual macOS utun OS TCP 4MiB each way with both receiver SHA256 ACKs after all recovery stages')
+    def direct():
+        transfer()
+        peers = api().get('peers', [])
+        return (len(peers) == 1 and peers[0].get('online') and not peers[0].get('relay')
+                and peers[0].get('endpoint') and not peers[0]['endpoint'].startswith('relay'))
+    wait_for(direct, 'actual native peer direct UDP path before stopping control/relay', 60)
+    control.terminate()
+    control.wait(timeout=10)
+    # Fresh sockets after the process exits cannot use its WebSocket relay.
+    for _ in range(3):
+        transfer()
+    print('PASS actual macOS kernel bidirectional TCP 3 x 4MiB each way hash/ACK with control/relay process stopped; same-host direct UDP fixture only')
     assert (state / 'local-api-token').read_bytes() == token
     run('/bin/launchctl', 'bootout', target)
     wait_for(stopped, 'final launchd utun unload cleanup')

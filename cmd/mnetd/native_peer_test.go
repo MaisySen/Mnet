@@ -62,13 +62,30 @@ func TestNativeKernelPeerFixture(t *testing.T) {
 	<-done
 }
 
+func nativePeerResponse() []byte {
+	return bytes.Repeat([]byte("reverse-native-peer-proof"), (4<<20)/25+1)[:4<<20]
+}
+
 func serveNativePeerHash(conn net.Conn) {
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 	hash := sha256.New()
-	if _, err := io.CopyN(hash, conn, 4<<20); err == nil {
-		_, _ = conn.Write(hash.Sum(nil))
+	if _, err := io.CopyN(hash, conn, 4<<20); err != nil {
+		return
 	}
+	if _, err := conn.Write(hash.Sum(nil)); err != nil {
+		return
+	}
+	response := nativePeerResponse()
+	if _, err := io.Copy(conn, bytes.NewReader(response)); err != nil {
+		return
+	}
+	got := make([]byte, sha256.Size)
+	expected := sha256.Sum256(response)
+	if _, err := io.ReadFull(conn, got); err != nil || !bytes.Equal(got, expected[:]) {
+		return
+	}
+	_, _ = conn.Write([]byte("OK"))
 }
 
 func TestNativePeerHashProtocol(t *testing.T) {
@@ -89,6 +106,21 @@ func TestNativePeerHashProtocol(t *testing.T) {
 		if !bytes.Equal(got, expected[:]) {
 			t.Fatal("receiver hash differs")
 		}
+		response := make([]byte, 4<<20)
+		if _, err := io.ReadFull(client, response); err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(response, nativePeerResponse()) {
+			t.Fatal("reverse payload differs")
+		}
+		reverseHash := sha256.Sum256(response)
+		if _, err := client.Write(reverseHash[:]); err != nil {
+			t.Fatal(err)
+		}
+		ack := make([]byte, 2)
+		if _, err := io.ReadFull(client, ack); err != nil || string(ack) != "OK" {
+			t.Fatal("reverse receiver hash not acknowledged")
+		}
 	})
 	t.Run("truncated payload does not acknowledge", func(t *testing.T) {
 		client, server := net.Pipe()
@@ -105,4 +137,24 @@ func TestNativePeerHashProtocol(t *testing.T) {
 			t.Fatal("truncated receiver leaked")
 		}
 	})
+}
+
+func TestNativePeerHashRejectsReverseMismatch(t *testing.T) {
+	client, server := net.Pipe()
+	defer client.Close()
+	go serveNativePeerHash(server)
+	_ = client.SetDeadline(time.Now().Add(10 * time.Second))
+	if _, err := io.CopyN(client, bytes.NewReader(make([]byte, 4<<20)), 4<<20); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.CopyN(io.Discard, client, sha256.Size+(4<<20)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Write(make([]byte, sha256.Size)); err != nil {
+		t.Fatal(err)
+	}
+	ack := make([]byte, 2)
+	if n, err := client.Read(ack); n != 0 || err == nil {
+		t.Fatal("invalid reverse receiver hash accepted")
+	}
 }
