@@ -38,6 +38,7 @@ type ApprovalIdentity struct {
 }
 
 type storeData struct {
+	Memberships        map[string]NetworkMember    `json:"memberships,omitempty"`
 	ApprovalIdentities map[string]ApprovalIdentity `json:"approval_identities,omitempty"`
 	Networks           map[string]*netmap.Network  `json:"networks"`
 	Nodes              map[string]*netmap.Node     `json:"nodes"`

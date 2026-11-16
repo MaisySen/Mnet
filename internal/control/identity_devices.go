@@ -27,6 +27,10 @@ func (s *Store) ApprovedDevicesForIdentity(networkID, issuer, subject string) ([
 	if s.data.Networks[networkID] == nil {
 		return nil, ErrNotFound
 	}
+	return s.approvedDevicesForIdentityLocked(networkID, issuer, subject), nil
+}
+
+func (s *Store) approvedDevicesForIdentityLocked(networkID, issuer, subject string) []IdentityDevice {
 	now := time.Now()
 	var result []IdentityDevice
 	for id, identity := range s.data.ApprovalIdentities {
@@ -40,5 +44,5 @@ func (s *Store) ApprovedDevicesForIdentity(networkID, issuer, subject string) ([
 		result = append(result, IdentityDevice{ID: node.ID, Name: node.Name, IPv4: node.IPv4})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
-	return result, nil
+	return result
 }
