@@ -55,17 +55,17 @@ public class MnetVpnService extends VpnService {
 
     private void runMesh() {
         SharedPreferences prefs = getSharedPreferences("mnet", MODE_PRIVATE);
-        String server = prefs.getString("server", "");
-        String network = prefs.getString("network", "");
-        String authKey = prefs.getString("authkey", "");
-        String name = prefs.getString("name", android.os.Build.MODEL);
         try {
+            VpnStartupConfig config = new VpnStartupConfig(
+                    prefs.getString("server", ""), prefs.getString("network", ""),
+                    prefs.getString("authkey", ""), prefs.getString("name", android.os.Build.MODEL),
+                    prefs.getString("exitnode", ""));
+            String server = config.server;
+            String network = config.network;
+            String authKey = config.authKey;
+            String name = config.name;
             node = Mobile.newNode(getFilesDir() + "/mnet");
             sharedNode = node;
-            String exitNode = prefs.getString("exitnode", "");
-            if (!exitNode.isEmpty()) {
-                node.setUseExitNode(exitNode);
-            }
             Log.i(TAG, "prepare: joining " + network + " on " + server);
             String ipv4 = node.prepare(server, network, name, authKey);
             Log.i(TAG, "prepare ok: mesh ip " + ipv4);
@@ -76,16 +76,9 @@ public class MnetVpnService extends VpnService {
                     .addAddress(ipv4, 32)
                     .addRoute("100.64.0.0", 10)
                     .addDnsServer(ipv4);
-            if (!exitNode.isEmpty()) {
-                // Whole internet into the tunnel; allowed IPs steer it to
-                // the exit node. The VPN API excludes the tunnel itself.
-                b.addRoute("0.0.0.0", 0);
-            }
             ParcelFileDescriptor pfd = b.establish();
             if (pfd == null) {
-                broadcast("error: system refused the VPN interface");
-                stopSelf();
-                return;
+                throw new IllegalStateException("System refused the VPN interface. Check VPN consent in Android settings.");
             }
             int fd = pfd.detachFd(); // the Go side owns it now
             Log.i(TAG, "interface established, starting node");

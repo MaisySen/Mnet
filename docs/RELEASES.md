@@ -333,9 +333,13 @@ Use Darwin default utun, resolve/validate the actual assigned kernel name before
 
 Reject malformed managed utun requests in the constructor before saved identity loading or enrollment. Keep unmanaged mobile/proof and non-Darwin behavior. Repeated local validation race tests/full race/vet/cross-builds pass. Native constructor and actual process tests require no identity/token/socket creation; [e1ce7fc CI](https://github.com/MaisySen/Mnet/actions/runs/43868888841) passed new native refusal checks and both valid kernel modes but failed the old offline teardown test due to hardcoded Linux mnet0 on Darwin. Correct that test to the platform default and surface early exits; thirty local race repetitions pass. Corrected [43190c8 CI](https://github.com/MaisySen/Mnet/actions/runs/43870595932) passed all five jobs, including thirty native clean-stop repetitions and both full kernel modes; Linux regressions135/156/150 drops. The earlier run remains failed.
 
-## Human status actual interface (new source, CI pending)
+## Human status actual interface (verified source)
 
-Show actual managed interface in ordinary status without inventing one for older daemons or Down. Preserve JSON actual name. Repeated local CLI cases/full race/vet/cross-builds pass; native fixtures now compare actual human/JSON CLI with live kernel name/address after startup/recovery. Native extension pending, not peer-readiness solely from interface existence.
+Show actual managed interface in ordinary status without inventing one for older daemons or Down. Preserve JSON actual name. Repeated local CLI cases/full race/vet/cross-builds pass; native fixtures now compare actual human/JSON CLI with live kernel name/address after startup/recovery. All five jobs passed in [60e7adc CI](https://github.com/MaisySen/Mnet/actions/runs/43872470943), including both native kernel modes and three Linux regressions (123/141/128 drops). Interface existence alone is not peer readiness.
+
+## Android startup configuration preflight (new source, CI pending)
+
+Validate an immutable saved configuration before node creation: refuse missing server/network and unsupported legacy exit selection with safe fixed errors. Remove dormant default-route setup. A refused VPN establish now uses full failure cleanup. Local JVM policy tests and Android34 resource/full Java compile against existing bindings pass; JVM CI pending, actual Android runtime/always-on/reboot unverified. No new APK/AAB published.
 
 ## v0.8.2-test.1 - 2026-11-16
 

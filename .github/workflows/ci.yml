@@ -39,6 +39,15 @@ jobs:
         run: MNET_MESH_STRESS=1 go test -race -count=1 -timeout=2m ./cmd/mnetd -run '^TestMeshFileStress$'
       - name: proof-only userspace burst loss recovery
         run: MNET_MESH_STRESS=1 MNET_MESH_LOSS=burst go test -race -count=1 -timeout=2m ./cmd/mnetd -run '^TestMeshFileStress$'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android startup configuration policy (JVM only)
+        run: |
+          mkdir -p "$RUNNER_TEMP/mnet-android-policy"
+          javac -d "$RUNNER_TEMP/mnet-android-policy" android/app/src/main/java/au/fintex/mnet/VpnStartupConfig.java android/tests/au/fintex/mnet/VpnStartupConfigTest.java
+          java -cp "$RUNNER_TEMP/mnet-android-policy" au.fintex.mnet.VpnStartupConfigTest
       - name: source gate regression tests
         run: python3 scripts/test-source-gate.py
       - uses: actions/setup-node@v4

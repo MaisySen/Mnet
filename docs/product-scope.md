@@ -1,6 +1,6 @@
 # Product scope and current gaps
 
-Updated 2026-11-16, Australia/Sydney. This page records the desired experience separately from implementation. See [STATUS](STATUS.md) for exact verification and source versus download/deployment state.
+Updated 2026-11-17, Australia/Sydney. This page records the desired experience separately from implementation. See [STATUS](STATUS.md) for exact verification and source versus download/deployment state.
 
 ## Desired experience
 
@@ -22,8 +22,8 @@ Three fresh [799f3a1 kernel fixtures](https://github.com/MaisySen/Mnet/actions/r
 | --- | --- | --- |
 | Windows | Automatic-start SCM service uses saved state and requests crash recovery. | Native install/start/API/stop/restart/forced-crash recovery/remove pass. Actual Wintun VPN reconnection and real reboot are not verified. |
 | Linux | Daemon accepts saved-state `-up`; a systemd unit is documented. New source adds read-only `-service print-unit` generation ([c3caba0 CI](https://github.com/MaisySen/Mnet/actions/runs/43846988647), all five jobs passed), not installation/enabling. | Kernel saved Down/Up cycles pass. Three kernel fixtures passed fresh-process saved-state `-up`, stable identity and restored direct VPN/LAN in [c33c6c5 CI](https://github.com/MaisySen/Mnet/actions/runs/43775496938). The later [64eb696 CI](https://github.com/MaisySen/Mnet/actions/runs/43776218766) passed all five jobs and three complete fixtures after test-only deadline adjustments. Actual runtime systemd start/stop/crash recovery with saved identity, direct VPN and LAN passed in [6fc9839 CI](https://github.com/MaisySen/Mnet/actions/runs/43847999930). Automatic installation/enabling and OS boot/reboot are not tested. |
-| macOS | Daemon/manual startup; new read-only `-service print-plist` for saved-state launchd setup requires explicit `utunN` ([f2862f7 CI](https://github.com/MaisySen/Mnet/actions/runs/43851053165), all five jobs passed). | Native CLI/plist/plutil/no-state-write checks pass. Actual disposable launchd offline API start/crash/reload/cleanup passed in [586062e CI](https://github.com/MaisySen/Mnet/actions/runs/43852789042). No automatic installation, actual macOS VPN or reboot proof. |
-| Android | Foreground VpnService uses saved preferences and START_STICKY. | No boot receiver is implemented. Automatic reboot startup/OS always-on behavior and physical-device reconnect remain unverified. Prior virtual Test Lab join is not a startup proof. |
+| macOS | Automatic utun selection uses actual kernel name; saved-state console and read-only generated launchd configuration. | [60e7adc CI](https://github.com/MaisySen/Mnet/actions/runs/43872470943) passed both explicit/automatic native kernel fixtures: actual address/MTU/route, human/JSON CLI, bidirectional TCP to a same-host proof-only userspace WireGuard peer, console/launchd crash/reload recovery, received denial/reapproval and known-expiry enforcement with control/relay offline. No automatic host install, two kernel hosts, public internet/NAT or physical reboot proof. |
+| Android | Foreground VpnService uses saved preferences and START_STICKY. | OS-managed always-on/reboot and physical reconnect remain unverified. No boot receiver is implemented; Android guidance prefers system-managed always-on, not an app boot receiver. Startup configuration preflight is new pending source, not automatic-startup proof. Prior virtual Test Lab join is not a startup proof. |
 | iOS | Network Extension source starts a tunnel manually. | On-demand/automatic startup is not implemented or physically verified. Signed app delivery remains open. |
 
 A desktop service reporting running means its local API is available, not that its VPN has joined. Sleep/wake, loss of connectivity, credential expiry and boot ordering need dedicated end-to-end validation.
@@ -31,3 +31,7 @@ A desktop service reporting running means its local API is available, not that i
 ## Boundaries
 
 Current builds remain test-only. The bounded Linux LAN fixture requires operator-enabled forwarding and permissive forwarding policy. Exit internet routing is unsupported. Account isolation, real-device validation, durable hosted storage, recovery and independent security review remain work, not implied guarantees.
+
+## Android startup follow-up
+
+[Android VPN guidance](https://developer.android.com/develop/connectivity/vpn) says always-on can start the VPN at boot, must reuse saved configuration and requires adapting disconnect controls. [VpnService reference](https://developer.android.com/reference/android/net/VpnService) says the always-on metadata defaults true when absent, with isAlwaysOn available from API29. [Enterprise guidance](https://developer.android.com/work/dpc/network-telephony) explicitly recommends the system lifecycle rather than an app boot receiver. The current manifest does not opt out; that is not verification that all always-on UX/reconnect paths work. Do not claim boot support from START_STICKY. Follow-up includes disconnect-control behavior, cancellation/race-safe startup and physical always-on/reboot testing.
