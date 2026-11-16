@@ -48,6 +48,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/mnet-android-policy"
           javac -d "$RUNNER_TEMP/mnet-android-policy" android/app/src/main/java/au/fintex/mnet/VpnStartupConfig.java android/tests/au/fintex/mnet/VpnStartupConfigTest.java
           java -cp "$RUNNER_TEMP/mnet-android-policy" au.fintex.mnet.VpnStartupConfigTest
+      - name: Android VPN fixed-log policy (source checks only)
+        run: python3 scripts/check-android-vpn-logs.py
       - name: source gate regression tests
         run: python3 scripts/test-source-gate.py
       - uses: actions/setup-node@v4

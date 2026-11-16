@@ -499,3 +499,7 @@ Removal uncertainty includes a committed POST whose response is lost. Inspect gr
 ### Android startup configuration boundary (new source)
 
 The VPN worker checks saved server/network before creating a node and refuses legacy nonempty exit-node settings, since exit routing is unsupported. Clear the saved exit-node field and reconnect for mesh-only access. The source no longer adds a default internet route. A refused Android VPN establish enters common cleanup. Local JVM policy and Android34 resource/Java compilation pass; actual runtime/always-on/reboot behavior remains unverified. Android always-on startup should be system-managed, not an added boot receiver; see [startup scope and source references](product-scope.md). This is newer source, not in the published APK.
+
+### Android VPN log privacy (new source)
+
+General VPN logs use fixed lifecycle/failure messages; detailed status JSON, configuration and exception text stay in the private app status flow rather than logcat. Source checks and Android34 Java compilation pass; actual runtime log capture remains unverified. This does not audit other Android service logs or shipped test APKs.

@@ -341,6 +341,10 @@ Show actual managed interface in ordinary status without inventing one for older
 
 Validate an immutable saved configuration before node creation: refuse missing server/network and unsupported legacy exit selection with safe fixed errors. Remove dormant default-route setup. A refused VPN establish now uses full failure cleanup. Local JVM policy tests and Android34 resource/full Java compile against existing bindings pass; JVM CI pending, actual Android runtime/always-on/reboot unverified. No new APK/AAB published.
 
+## Android VPN fixed general logs (new source, CI pending)
+
+Remove private server/network/IP, full status JSON and exception stacks from general VPN logs. Preserve fixed lifecycle logs and detailed private app status. Source-only log policy regression and full Android34 Java compile pass locally; CI pending, not runtime log capture. Preceding5105980 CI remains four jobs successful/native macOS pending, not all-five verified. No new APK/AAB published.
+
 ## v0.8.2-test.1 - 2026-11-16
 
 Source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11, Android 0.8.2/code 14. [Release and 16 assets](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1), [exact-source CI](https://github.com/MaisySen/Mnet/actions/runs/43756253912).

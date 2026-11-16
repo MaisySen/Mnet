@@ -66,9 +66,9 @@ public class MnetVpnService extends VpnService {
             String name = config.name;
             node = Mobile.newNode(getFilesDir() + "/mnet");
             sharedNode = node;
-            Log.i(TAG, "prepare: joining " + network + " on " + server);
+            Log.i(TAG, "preparing private mesh connection");
             String ipv4 = node.prepare(server, network, name, authKey);
-            Log.i(TAG, "prepare ok: mesh ip " + ipv4);
+            Log.i(TAG, "mesh preparation complete");
 
             Builder b = new Builder()
                     .setSession("Mnet")
@@ -83,11 +83,11 @@ public class MnetVpnService extends VpnService {
             int fd = pfd.detachFd(); // the Go side owns it now
             Log.i(TAG, "interface established, starting node");
             node.start(fd, server, network, name, authKey);
-            Log.i(TAG, "node up: " + node.status());
+            Log.i(TAG, "mesh node started; details stay in private app status");
             broadcastLoop();
         } catch (Exception e) {
             String msg = e.getMessage() == null ? e.toString() : e.getMessage();
-            Log.e(TAG, "mesh failed: " + msg, e);
+            Log.e(TAG, "mesh failed; details stay in private app status");
             stopMesh(msg);
         }
     }
