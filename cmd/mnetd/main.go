@@ -134,8 +134,13 @@ func runDaemon(o options, stop <-chan struct{}) error {
 		return nil
 	}
 
+	releaseState, err := lockDaemonState(o.stateDir)
+	if err != nil {
+		return err
+	}
+	defer releaseState()
+
 	var d *daemon.Daemon
-	var err error
 	var got chan []byte
 	var ct *tuntest.ChannelTUN
 	if o.fakeTun {

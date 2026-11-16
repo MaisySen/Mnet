@@ -17,11 +17,12 @@ jobs:
         run: go build ./...
       - name: read-only Linux saved-state systemd unit verification
         run: |
-          go test -race -count=3 ./cmd/mnetd -run 'TestLinuxService'
+          go test -race -count=3 ./cmd/mnetd -run 'TestLinuxService|TestLinuxDaemonState'
           go build -o "$RUNNER_TEMP/mnetd-unit" ./cmd/mnetd
           "$RUNNER_TEMP/mnetd-unit" -state /var/lib/mnet-fixture -service print-unit > "$RUNNER_TEMP/mnetd.service"
           systemd-analyze verify "$RUNNER_TEMP/mnetd.service"
           python3 scripts/check-linux-unit.py "$RUNNER_TEMP/mnetd-unit"
+          python3 scripts/check-linux-daemon-ownership.py "$RUNNER_TEMP/mnetd-unit"
       - name: cross-compile Windows and Darwin daemons
         run: |
           GOOS=windows go build ./...

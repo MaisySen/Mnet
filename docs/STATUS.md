@@ -8,7 +8,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 | --- | --- | --- |
 | Published test artifacts | v0.8.2-test.1, source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11; Android 0.8.2/code 14. | [Release](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1). Sixteen assets verified at release. Update CLI and daemon together. |
 | Hosted test control plane | Last verified 2026-11-16 at 07:12 AEDT on `2bb55f4`. | Dated deployment check, not a current availability promise. Free-host ephemeral disk/restart state loss remains a limitation. |
-| Newer verified source | `c3caba0`, all five jobs passed, including read-only Linux unit generation/syntax and both browser flows. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43846988647). New source below is not in those downloads or that last verified deployment. |
+| Newer verified source | `6fc9839`, all five jobs passed, including actual disposable Linux systemd VPN start/stop/crash recovery. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43847999930). New source below is not in those downloads or that last verified deployment. |
 
 ## What is implemented and tested
 
@@ -22,14 +22,15 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 - Route-only ACL withdrawal/restoration and admin expiry/reapproval block and restore access as expected. Reapproval clears stale approval status/link. Known expiry is enforced locally even if later control polling is blocked; unseen offline admin changes cannot be discovered.
 - `mnet up --reset-routing`, while down, clears saved roles without deleting identity. Ordinary saved-state Up preserves routing. Fresh attempts clear old setup errors, preserving errors raised during the new attempt.
 
-The latest verified [c3caba0 CI](https://github.com/MaisySen/Mnet/actions/runs/43846988647) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 117/139/135. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
+The latest verified [6fc9839 CI](https://github.com/MaisySen/Mnet/actions/runs/43847999930) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 141/134/136. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
 
 Exit-node selection/advertising is explicitly rejected before enrollment/device creation. Unsafe dormant host/default-route replacement helpers were removed, not enabled. Exit internet routing remains unsupported.
 
 ### Platforms and sessions
 
 - Linux startup setup ([c3caba0 CI](https://github.com/MaisySen/Mnet/actions/runs/43846988647), all five jobs passed): read-only `mnetd -service print-unit` emits a saved-state systemd unit with private umask/restart-on-failure. Actual CLI no-state-write checks and systemd syntax verification pass locally and in CI, along with full race/vet/cross-builds. Unsupported/secret overrides reject. No live-host installation, enablement or boot/reboot proof.
-- Linux lifecycle follow-up (new source, CI pending): an optional disposable CI kernel extension will check the generated runtime unit through actual systemd start/stop/crash recovery with saved identity and VPN/LAN restoration; execution is pending. This next source also fixes reproduced clean process shutdown returning before the API listener finished closing; repeated local race and actual-process checks pass, native CI pending.
+- Linux service lifecycle ([6fc9839 CI](https://github.com/MaisySen/Mnet/actions/runs/43847999930), all five jobs passed): an actual runtime systemd unit uses the generated production ExecStart plus fixture-only namespace/hosts isolation. Saved identity/IP, authenticated Up, direct VPN and LAN return after start, clean stop/start and forced-crash restart with a new PID. Clean shutdown now waits for API teardown; native macOS repeated teardown and Windows SCM checks pass too. No unit enablement or OS boot/reboot proof.
+- Linux process ownership (new source, CI pending): reject a second `mnetd` for the same state directory before identity/API setup. Local repeated lock tests and actual-process checks preserve the first API/socket/token, reject aliases and allow restart after clean stop or crash. Other platforms/mobile do not gain this flock guard.
 
 - Windows: native protected-DACL/private-state, local API, expiry, preparation/cancellation and loopback OS TCP regressions. Actual SCM install/start/stop/restart, forced-crash recovery and removal pass on a disposable runner. No Wintun VPN or physical reboot claim.
 - macOS: native build/private-state/local-API, preparation/cancellation, expiry and loopback sessions. Actual VPN, physical capture/input, consent and launchd boot remain unverified.

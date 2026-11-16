@@ -276,14 +276,18 @@ Start without membership, create it through the reviewed operator form, follow t
 
 Add `mnetd -service print-unit` on Linux: generate only a reviewed systemd unit from a stable executable path, explicit dedicated absolute state directory and literal interface name. Reject unsafe expansion/paths and enrollment/secret/routing/session overrides; no install/enable/start or identity writes. Local repeated generator tests, actual CLI output plus `systemd-analyze verify`, full race/vet and cross-builds pass. All five jobs passed in [c3caba0 CI](https://github.com/MaisySen/Mnet/actions/runs/43846988647), with three full kernel regressions (117/139/135 loss-profile drops). Not boot/reboot or actual systemd VPN proof.
 
-## Linux systemd saved-state VPN lifecycle (test extension, CI pending)
+## Linux systemd saved-state VPN lifecycle (verified)
 
-The first kernel CI repetition opts into a unique runtime systemd test unit generated from the saved enrollment. Require authenticated readiness, unchanged identity/IP, direct VPN and separate LAN reachability after start, clean stop/start and forced-crash recovery. Production ExecStart stays unchanged; network namespace and hosts-file mounts are fixture-only. Unit cleanup precedes namespace teardown. Python/source checks pass locally; systemd execution awaits CI. No boot/reboot or enabled/live-host installation claim.
+The first kernel CI repetition opts into a unique runtime systemd test unit generated from the saved enrollment. Require authenticated readiness, unchanged identity/IP, direct VPN and separate LAN reachability after start, clean stop/start and forced-crash recovery. Production ExecStart stays unchanged; network namespace and hosts-file mounts are fixture-only. Unit cleanup precedes namespace teardown. All five jobs passed in [6fc9839 CI](https://github.com/MaisySen/Mnet/actions/runs/43847999930), with both actual systemd stages and three full kernel regressions (141/134/136 later loss-profile drops). No boot/reboot or enabled/live-host installation claim.
 
 ### Clean process shutdown listener completion (new source)
 
-Preparing actual systemd validation reproduced a clean-exit ordering bug: a stopped offline daemon returned zero but left its Unix socket file in 30/30 fresh-process checks. The new in-process regression failed before the fix. Console/service shutdown now waits for the local API goroutine after cancellation and Down. Thirty race-test repetitions (ten lifecycles each) and 30 fresh actual process checks pass locally with no socket remnants; full source/native CI pending. This is clean process shutdown proof, not forced-crash file cleanup or physical boot proof.
+Preparing actual systemd validation reproduced a clean-exit ordering bug: a stopped offline daemon returned zero but left its Unix socket file in 30/30 fresh-process checks. The new in-process regression failed before the fix. Console/service shutdown now waits for the local API goroutine after cancellation and Down. Thirty race-test repetitions (ten lifecycles each) and 30 fresh actual process checks pass locally with no socket remnants; full source/native checks passed in [6fc9839 CI](https://github.com/MaisySen/Mnet/actions/runs/43847999930), including 30 macOS repetitions and Windows SCM lifecycle. This is clean process shutdown proof, not forced-crash file cleanup or physical boot proof.
 
+
+## Linux daemon state ownership (new source, CI pending)
+
+Reject duplicate Linux `mnetd` processes for the same private state directory before identity/API setup. Stable private no-follow regular-file flock rejects aliases; descriptor close/crash releases ownership without deleting the lock inode. Repeated race and actual-process checks preserve the first API/socket/token and allow clean/crash restart; full local race/vet/cross-builds pass. Other platforms/mobile do not gain the guard. No live device state changed.
 
 ## v0.8.2-test.1 - 2026-11-16
 
