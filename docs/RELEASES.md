@@ -242,7 +242,11 @@ Local repeated handler tests verify malformed/missing/null/wrong-type/unknown-fi
 
 ## Unambiguous account login selector (new source)
 
-Require exactly one case-sensitive `network_id` field rather than accepting JSON duplicate or alternate-case selectors. Reject before any state/cookie/session allocation. Local repeated signed HTTP/state, actual-Chrome and full race/vet checks pass; CI pending. No live/provider changes.
+Require exactly one case-sensitive `network_id` field rather than accepting JSON duplicate or alternate-case selectors. Reject before any state/cookie/session allocation. All five jobs passed in [43538fc CI](https://github.com/MaisySen/Mnet/actions/runs/43833820901), including native account/state tests and three kernel regressions with 155/172/141 later loss-profile drops. No live/provider changes.
+
+## Unambiguous membership mutation selectors (new source)
+
+Require the four exact case-sensitive membership POST fields once each. Reject duplicate or alternate-case principal/network/decision input before mutation, keeping existing type/body-size/trailing checks. Local repeated HTTP/race and actual dashboard Chrome checks pass; full CI pending. No live membership changes or new authority.
 
 ## v0.8.2-test.1 - 2026-11-16
 

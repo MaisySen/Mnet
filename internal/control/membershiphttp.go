@@ -33,21 +33,9 @@ func (s *Server) handleAdminMembership(w http.ResponseWriter, r *http.Request) {
 	if !s.requireAdminJSON(w, r) {
 		return
 	}
-	var body struct {
-		NetworkID string `json:"network_id"`
-		Issuer    string `json:"issuer"`
-		Subject   string `json:"subject"`
-		Allow     *bool  `json:"allow"`
-	}
 	defer r.Body.Close()
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&body); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid membership request")
-		return
-	}
-	var extra any
-	if dec.Decode(&extra) != io.EOF || body.Allow == nil || body.NetworkID == "" || body.Issuer == "" || body.Subject == "" {
+	body, err := decodeMembershipRequest(json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)))
+	if err != nil {
 		writeErr(w, http.StatusBadRequest, "network_id, issuer, subject and explicit allow required")
 		return
 	}
@@ -55,7 +43,7 @@ func (s *Server) handleAdminMembership(w http.ResponseWriter, r *http.Request) {
 	if *body.Allow {
 		event = "membership_grant"
 	}
-	err := s.store.SetNetworkMember(body.NetworkID, body.Issuer, body.Subject, *body.Allow)
+	err = s.store.SetNetworkMember(body.NetworkID, body.Issuer, body.Subject, *body.Allow)
 	s.audit(r, event, "admin", body.NetworkID, err == nil)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -66,4 +54,52 @@ func (s *Server) handleAdminMembership(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+type membershipRequest struct {
+	NetworkID string
+	Issuer    string
+	Subject   string
+	Allow     *bool
+}
+
+// Principal mutations accept exact field names once each, not JSON's default
+// last-key-wins or case-insensitive matching of struct fields.
+func decodeMembershipRequest(dec *json.Decoder) (membershipRequest, error) {
+	var body membershipRequest
+	invalid := errors.New("invalid membership request")
+	start, err := dec.Token()
+	if err != nil || start != json.Delim('{') {
+		return body, invalid
+	}
+	seen := map[string]bool{}
+	for dec.More() {
+		token, err := dec.Token()
+		field, ok := token.(string)
+		if err != nil || !ok || seen[field] {
+			return body, invalid
+		}
+		seen[field] = true
+		var target any
+		switch field {
+		case "network_id":
+			target = &body.NetworkID
+		case "issuer":
+			target = &body.Issuer
+		case "subject":
+			target = &body.Subject
+		case "allow":
+			target = &body.Allow
+		default:
+			return body, invalid
+		}
+		if err := dec.Decode(target); err != nil {
+			return body, invalid
+		}
+	}
+	end, err := dec.Token()
+	if err != nil || end != json.Delim('}') || dec.Decode(&struct{}{}) != io.EOF || body.Allow == nil || body.NetworkID == "" || body.Issuer == "" || body.Subject == "" {
+		return body, invalid
+	}
+	return body, nil
 }

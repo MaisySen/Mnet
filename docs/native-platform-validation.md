@@ -238,4 +238,8 @@ New local three-repetition race tests send missing/null/wrong-type network IDs, 
 
 ## Unambiguous account login selector (new source)
 
-Account login start now parses exactly one case-sensitive `network_id` field. Duplicate identical/conflicting keys, alternate-case keys and mixed-case duplicates reject before pending state/cookies/session allocation. Local three-repetition signed HTTP/state tests, actual account Chrome and full race/vet pass. Native/full CI pending. No live changes or new membership authority.
+Account login start now parses exactly one case-sensitive `network_id` field. Duplicate identical/conflicting keys, alternate-case keys and mixed-case duplicates reject before pending state/cookies/session allocation. Local three-repetition signed HTTP/state tests, actual account Chrome and full race/vet pass. All five jobs passed in [43538fc CI](https://github.com/MaisySen/Mnet/actions/runs/43833820901), including native account/state tests, both actual browser steps and three full kernel regressions with 155/172/141 later loss-profile drops. No live changes or new membership authority.
+
+## Unambiguous operator membership writes (new source)
+
+The guarded operator POST now parses each exact case-sensitive field once. Tests reject duplicate decision, same-subject duplicate, conflicting network/issuer and alternate/mixed-case principal/decision fields without changing membership. Existing strict body/size/trailing/type checks and real-Chrome operator removal remain intact. Local three-repetition membership/signed HTTP tests, actual dashboard Chrome and full race/vet pass. Native/full CI pending. No live changes.
