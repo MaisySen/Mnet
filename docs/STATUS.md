@@ -8,7 +8,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 | --- | --- | --- |
 | Published test artifacts | v0.8.2-test.1, source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11; Android 0.8.2/code 14. | [Release](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1). Sixteen assets verified at release. Update CLI and daemon together. |
 | Hosted test control plane | Last verified 2026-11-16 at 07:12 AEDT on `2bb55f4`. | Dated deployment check, not a current availability promise. Free-host ephemeral disk/restart state loss remains a limitation. |
-| Newer verified source | `e25b70d`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43819448319). New source below is not in those downloads or that last verified deployment. |
+| Newer verified source | `c834830`, all five jobs passed; separate trace-race follow-up is pending. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43820460941). New source below is not in those downloads or that last verified deployment. |
 
 ## What is implemented and tested
 
@@ -22,7 +22,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 - Route-only ACL withdrawal/restoration and admin expiry/reapproval block and restore access as expected. Reapproval clears stale approval status/link. Known expiry is enforced locally even if later control polling is blocked; unseen offline admin changes cannot be discovered.
 - `mnet up --reset-routing`, while down, clears saved roles without deleting identity. Ordinary saved-state Up preserves routing. Fresh attempts clear old setup errors, preserving errors raised during the new attempt.
 
-The latest verified [e25b70d CI](https://github.com/MaisySen/Mnet/actions/runs/43819448319) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 163/127/153. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
+The latest verified [c834830 CI](https://github.com/MaisySen/Mnet/actions/runs/43820460941) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 157/134/143. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
 
 Exit-node selection/advertising is explicitly rejected before enrollment/device creation. Unsafe dormant host/default-route replacement helpers were removed, not enabled. Exit internet routing remains unsupported.
 
@@ -110,7 +110,7 @@ A new real-Chrome scope extension lists two devices for the signed-in principal 
 
 New source lets an authenticated operator GET explicit membership grants for one exact network via `/admin/api/memberships?network_id=...`. It is a private principal listing, not a member/device route or an inferred grant. Scope/copy/auth/revocation and native tests pass. A new read-only dashboard section makes those grants inspectable on demand, clears them when the network changes or sign-out begins and rejects late responses after either. Local real-Chrome tests cover actual granted/empty networks, HTML-as-text and held responses; the screenshot was inspected. All five jobs passed in [e25b70d CI](https://github.com/MaisySen/Mnet/actions/runs/43819448319), including actual-Chrome inspection and native operator/account separation tests. See [membership inspection](operations.md#operator-membership-inspection).
 
-The next source extension also rejects malformed or wrong-network membership-list responses before rendering any private row. Local actual-Chrome retries recover after a simulated read failure; browser-local malformed-response and reversed same-network completion tests pass. Extended CI is pending. The successful grant/read path still uses the actual disposable service.
+The next source extension also rejects malformed or wrong-network membership-list responses before rendering any private row. Local actual-Chrome retries recover after a simulated read failure; browser-local malformed-response and reversed same-network completion tests pass. All five jobs passed in [c834830 CI](https://github.com/MaisySen/Mnet/actions/runs/43820460941); the initial 90f633b run instead failed a separate shared trace-test race described below. The successful grant/read path still uses the actual disposable service.
 
 ## Important open work
 
@@ -121,3 +121,7 @@ The next source extension also rejects malformed or wrong-network membership-lis
 - Durable hosted storage, recovery practice, independent security review and store-policy/data-disclosure review. Store copy remains a draft.
 
 Methods and earlier failures: [native validation](native-platform-validation.md), [reliability](session-reliability.md), [operations](operations.md), [release history](RELEASES.md) and [synthetic scale measurements](scale-testing.md).
+
+## Trace test isolation follow-up (pending CI)
+
+The full race suite on [90f633b](https://github.com/MaisySen/Mnet/actions/runs/43820313703) detected a metadata-trace test mutating a global flag while a previous TCP test's writer still read it. The subsequent green run does not close that race. New source captures trace enablement per session before loops start and tests modify only their own unstarted fixture. Thirty local race repetitions of trace/TCP cases and a fresh full race suite/vet pass. Extended CI is pending. Tracing remains opt-in, metadata-only and bounded; this is not a new transport or live deployment.

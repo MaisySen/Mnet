@@ -9,13 +9,11 @@ import (
 )
 
 func TestFrameTraceBoundedMetadataOnly(t *testing.T) {
-	old := traceFrames
-	traceFrames = true
-	defer func() { traceFrames = old }()
 	a, b := net.Pipe()
 	defer a.Close()
 	defer b.Close()
 	m := newMux(a, StreamFile)
+	m.traceEnabled = true
 	for i := 0; i < len(m.traceEvents)+20; i++ {
 		m.traceFrame("test", Frame{StreamID: uint32(i), Type: msgData, Payload: []byte("DO-NOT-RETAIN-PAYLOAD")})
 	}
@@ -37,15 +35,28 @@ func TestFrameTraceBoundedMetadataOnly(t *testing.T) {
 }
 
 func TestTraceDisabledDoesNotRecord(t *testing.T) {
-	old := traceFrames
-	traceFrames = false
-	defer func() { traceFrames = old }()
 	a, b := net.Pipe()
 	defer a.Close()
 	defer b.Close()
 	m := newMux(a, StreamFile)
+	m.traceEnabled = false
 	m.traceFrame("test", Frame{Payload: bytes.Repeat([]byte("x"), 100)})
 	if m.traceNext != 0 {
 		t.Fatal("disabled trace recorded an event")
+	}
+}
+
+func TestTraceSettingCapturedPerMux(t *testing.T) {
+	a, b := net.Pipe()
+	defer a.Close()
+	defer b.Close()
+	t.Setenv("MNET_SESSION_TRACE", "1")
+	enabled := newMux(a, StreamFile)
+	t.Setenv("MNET_SESSION_TRACE", "0")
+	disabled := newMux(b, StreamFile)
+	enabled.traceFrame("test", Frame{Type: msgData})
+	disabled.traceFrame("test", Frame{Type: msgData})
+	if enabled.traceNext != 1 || disabled.traceNext != 0 {
+		t.Fatal("trace setting not captured per session")
 	}
 }

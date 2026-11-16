@@ -33,11 +33,12 @@ type HelloReply struct {
 // Frames are written with priority draining; reads dispatch to
 // per-stream handlers registered with OnStream.
 type Mux struct {
-	conn        net.Conn
-	traceMu     sync.Mutex
-	traceEvents [512]frameEvent
-	traceNext   uint64
-	wmu         sync.Mutex
+	conn         net.Conn
+	traceEnabled bool // fixed before loops start; never a process-wide test toggle
+	traceMu      sync.Mutex
+	traceEvents  [512]frameEvent
+	traceNext    uint64
+	wmu          sync.Mutex
 	// pending[priority] holds queued DATA/OPEN frames per class.
 	pending     [4][]Frame
 	queuedBytes int
@@ -147,7 +148,7 @@ func Listen(ln net.Listener, nodeName string, accept func(Hello, net.Addr) (bool
 }
 
 func newMux(conn net.Conn, firstDynamic uint32) *Mux {
-	m := &Mux{conn: conn, closed: make(chan struct{}), nextID: firstDynamic,
+	m := &Mux{conn: conn, traceEnabled: os.Getenv("MNET_SESSION_TRACE") == "1", closed: make(chan struct{}), nextID: firstDynamic,
 		opened: map[uint32]bool{StreamControl: true}, streams: map[uint32]*streamState{}}
 	m.cond = sync.NewCond(&m.wmu)
 	return m
@@ -447,7 +448,7 @@ func (m *Mux) popLocked() (Frame, bool) {
 
 // Metadata-only tracing is opt-in for diagnosing stalled sessions. It never
 // logs payloads, peer credentials, file names or file contents.
-var traceFrames = os.Getenv("MNET_SESSION_TRACE") == "1"
+// The setting is captured for each new Mux, before its goroutines start.
 
 type frameEvent struct {
 	at    time.Time
@@ -458,7 +459,7 @@ type frameEvent struct {
 }
 
 func (m *Mux) traceFrame(stage string, f Frame) {
-	if !traceFrames {
+	if !m.traceEnabled {
 		return
 	}
 	m.traceMu.Lock()
@@ -468,7 +469,7 @@ func (m *Mux) traceFrame(stage string, f Frame) {
 }
 
 func (m *Mux) dumpTrace() {
-	if !traceFrames {
+	if !m.traceEnabled {
 		return
 	}
 	m.traceMu.Lock()
