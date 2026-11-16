@@ -593,10 +593,19 @@ NewRecorder creates a new mode-0600 file with O_EXCL rather than truncating an e
 Before-fix tests reproduced existing-file truncation and symlink-target truncation. Existing bytes/mode and final-symlink preservation, 12 concurrent creators with exactly one owner, and recorder codec/lifecycle tests pass 50 race repetitions. The symlink test can skip when the platform lacks symlink rights; it executed locally. Fresh full-repository race tests pass. O_EXCL protects the final destination, not attacker-controlled parent-directory substitution or recording write failures/disk exhaustion. This is local file/concurrency evidence, not physical playback/capture or a live-file repair. The latest all-five source is c8bdaa4; header-refusal5b58ea5 has four successful jobs/macOS pending at this check. Current bindings remain fe877fa. No release artifact, deployment or existing user recording changed.
 
 
-## Recording output failure retention (new source, CI pending)
+## Recording output failure retention (e110af8 all-five CI verified)
 
 A recorder now stops on its first output error, closes the writer, releases its pixel base and ignores late frames. It counts only complete successful frame writes. A short write without an error is converted to io.ErrShortWrite. Close preserves the first write error across repeated calls; if writing succeeded, a close error is retained instead. The daemon checks Close and logs recording incomplete at session end before its existing path/frame-count log. Hosting is not ended, partial recording bytes are not deleted and no automatic retry is attempted.
 
 A read-only-file-handle regression failed before fixing because the recorder retained writer/pixels and lost the write error at Close. It now verifies zero recorded frames, released resources, unchanged fixture bytes, repeated-close error retention and ignored late callbacks. This is deterministic invalid-handle failure injection, not actual disk exhaustion, fsync/durability or partial-write filesystem proof. Recorder/create/concurrency checks pass 50 race repetitions; fresh full-repository race tests pass. Error reporting remains at session end, not an immediate UI alert. Bindings still name fe877fa, before this work. No release or live deployment changed.
 
 Prior source verification: all five [5b58ea5 CI jobs](https://github.com/MaisySen/Mnet/actions/runs/43967596216) and [c5bf4c8 CI jobs](https://github.com/MaisySen/Mnet/actions/runs/43969548449) passed.
+
+
+## Recorder error branches and current four-ABI build (e110af8 source)
+
+Additional tests inject a failed output handle after a valid keyframe, then attempt a delta: the first completed frame remains counted, the failed delta is not counted, resources are released and Close reports the write failure. A separately preclosed output handle checks close-error retention over repeated Close calls. Recorder/create/concurrency checks pass 50 race repetitions. These are controlled invalid-handle tests, not disk-full, silent-short-write or fsync/durability proof.
+
+The full local gate bundle passed again with the branch-test additions: build, Windows/macOS cross-build, vet, vulnerability scan, uncached full race suite, normal/burst mesh-file stress, source-gate tests and secret scan. Fresh e110af8 bindings include header refusal and recording changes for armeabi-v7a, arm64-v8a, x86 and x86_64 at minimum API 24. Archive/ELF inspection and Android 34 resources/all app Java/min-api-24 dex compilation passed. AAR SHA256: `c367be1a63128ced90995debf2b275eeadbc7f70f96aafd2cc224a61e5efa5f8`. Fresh framework simulation passed 64 cases, zero failures/errors/skips. All five [e110af8 CI jobs](https://github.com/MaisySen/Mnet/actions/runs/43971473662) passed; the additional-test/documentation revision has not yet completed CI.
+
+No APK/AAB signed or published, hosted deployment or live device state changed. Build/simulation is not installation, JNI loading/execution, physical capture/input, Android UI pixels or reboot proof. No real recording file was repaired or altered by these tests.

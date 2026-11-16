@@ -10,7 +10,7 @@ The harness uses Robolectric4.18. Its AAR extraction is limited to pinned Androi
 
 ## Current coverage
 
-64 cases pass in a fresh local run at `fe877fa`. All five jobs passed in [that revision's CI](https://github.com/MaisySen/Mnet/actions/runs/43963449817).
+64 cases pass in a fresh local run at `e110af8`. All five jobs passed in [that revision's CI](https://github.com/MaisySen/Mnet/actions/runs/43971473662).
 
 | Actual application source | Simulated API levels | Cases | Checks |
 | --- | --- | --- | --- |
@@ -33,4 +33,4 @@ Service tests use reflection to set capture/running state rather than start a va
 
 ## Build evidence is separate
 
-At `fe877fa`, a fresh local current-Go Android AAR built with minimum API24 for armeabi-v7a, arm64-v8a, x86 and x86_64. Full Android34 resource generation/application Java and min-api24 dex compilation against that AAR passed. These build checks do not execute JNI or validate a signed APK, installation or device behavior. No new APK/AAB or release was published.
+At `e110af8`, a fresh local current-Go Android AAR built with minimum API24 for armeabi-v7a, arm64-v8a, x86 and x86_64. Full Android34 resource generation/application Java and min-api24 dex compilation against that AAR passed. These build checks do not execute JNI or validate a signed APK, installation or device behavior. No new APK/AAB or release was published.

@@ -294,3 +294,60 @@ func TestRecorderWriteFailureStopsAndSurvivesRepeatedClose(t *testing.T) {
 		t.Fatalf("fixture content changed: %q %v", content, err)
 	}
 }
+
+func TestRecorderDeltaWriteFailureRetainsCompletedFrameCount(t *testing.T) {
+	r, err := NewRecorder(t.TempDir() + "/delta.mjpeg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	img := solid(16, 16, color.RGBA{R: 100, A: 255})
+	r.OnFrame(ScreenFrame{Full: true, Image: jpegBytes(t, img)})
+	if r.Frames() != 1 {
+		t.Fatal("missing initial frame")
+	}
+	// Replace the output with a read-only handle after a valid base exists.
+	if err := r.w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	path := t.TempDir() + "/readonly"
+	if err := os.WriteFile(path, []byte("unchanged"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.w = f
+	tiles, err := EncodeTiles(img, []Rect{{W: 8, H: 8}}, 80)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.OnFrame(ScreenFrame{Tiles: tiles})
+	if r.Frames() != 1 || r.w != nil || r.base != nil {
+		t.Fatal("failed delta counted or retained resources")
+	}
+	if err := r.Close(); err == nil {
+		t.Fatal("failed delta lost output error")
+	}
+}
+
+func TestRecorderCloseErrorIsSticky(t *testing.T) {
+	r, err := NewRecorder(t.TempDir() + "/close.mjpeg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	first := r.Close()
+	if first == nil {
+		t.Fatal("close error lost")
+	}
+	if again := r.Close(); again == nil || again.Error() != first.Error() {
+		t.Fatalf("repeated close lost error: %v", again)
+	}
+	if r.w != nil || r.base != nil {
+		t.Fatal("close retained resources")
+	}
+}
