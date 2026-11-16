@@ -487,3 +487,7 @@ discovery confirmed live.
 
 Tag v0.1.0. First working mesh: control plane, daemon, CLI, relay,
 Magic DNS, end-to-end tests green.
+
+## Control API redirect refusal (new source)
+
+The daemon HTTP control client no longer follows redirects. A two-server regression reproduced the old behavior forwarding custom node credential headers and, for 307/308, replaying the enrollment body. New local race tests cover 301/302/303/307/308, same-origin/cross-origin destinations, default/supplied clients, zero requests to redirect destinations, preservation of supplied client configuration and successful direct requests. All redirects now fail, so operators must set the final base URL directly. This is a source finding, not evidence of a live attack. CI/native checks are pending; downloads and hosted deployment are unchanged.

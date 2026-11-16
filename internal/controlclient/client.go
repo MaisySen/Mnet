@@ -47,7 +47,15 @@ func (c *Client) do(req *http.Request, out any) error {
 	if hc == nil {
 		hc = &http.Client{Timeout: 70 * time.Second}
 	}
-	resp, err := hc.Do(req)
+	// Control replies may not select a new credential destination. Go's
+	// default redirect policy copies custom X-Node-* headers, and 307/308
+	// can replay the enrollment body (including an auth key). Clone a
+	// caller-supplied client rather than mutating shared configuration.
+	requestClient := *hc
+	requestClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	resp, err := requestClient.Do(req)
 	if err != nil {
 		return err
 	}

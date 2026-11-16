@@ -35,6 +35,10 @@ WantedBy=multi-user.target
 The dashboard is at https://control.example.com/admin. The state file is
 the only thing to back up.
 
+## Control API destination
+
+New source refuses every HTTP redirect from the daemon control API, including same-origin redirects and requests made with a supplied HTTP client. Configure the final control base URL directly. An HTTP-to-HTTPS or path redirect is an error, not an automatic credential handoff. This protects node credential headers and enrollment/approval credentials in request bodies or URLs. It does not make plaintext HTTP safe; use HTTPS outside isolated local fixtures. Dashboard browser navigation is separate.
+
 ## Nodes
 
 Linux with systemd:

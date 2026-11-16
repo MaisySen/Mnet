@@ -70,6 +70,10 @@ The browser evidence is desktop Chrome on disposable state/profile, not a live-u
 
 These checks do not make ephemeral hosting durable. Keep state in a trusted private path, preserve recovery copies and distinguish a missing volume from a verified new installation. No storage migration or hosted account changes were made for this work.
 
+## Control credential destination follow-up
+
+New source refuses all daemon HTTP control API redirects, including same-origin redirects and supplied HTTP clients. A local two-server race regression covers all five redirect codes and proves the redirect destination receives no request; direct requests still work. Use the final base URL directly. Native/full CI verification is pending. This is not a live incident report or a deployment change. See [operations](operations.md#control-api-destination).
+
 ## Important open work
 
 - Account/organization ownership, user login and device-management experience beyond the explicit operator membership gate.
