@@ -250,4 +250,8 @@ Private grant reads now require exactly one case-sensitive network selector and 
 
 ## Authenticated member network context (new source)
 
-The device-summary response includes only its authorized session network ID, beside existing summaries. The member page renders it as text and clears it with private state. HTTP tests attempt query widening and assert the original network; internal tests deny missing/revoked credentials without any context. Actual Chrome checks the signed-in network and its sign-out cleanup. Local checks pass; full/native CI pending. No principal/role fields or new membership permissions.
+The device-summary response includes only its authorized session network ID, beside existing summaries. The member page renders it as text and clears it with private state. HTTP tests attempt query widening and assert the original network; internal tests deny missing/revoked credentials without any context. Actual Chrome checks the signed-in network and its sign-out cleanup. All five jobs passed in [a19afcf CI](https://github.com/MaisySen/Mnet/actions/runs/43838497515), including native account tests, actual Chrome and three full kernel regressions with 141/135/152 later loss-profile drops. No principal/role fields or new membership permissions.
+
+## Member context cleanup edges (browser extension)
+
+Local actual Chrome now explicitly checks the network ID is cleared alongside device rows after denied/malformed reads, failed logout and committed logout with a lost response. Missing/null/wrong-type/empty network context rejects rather than producing a signed-in view. These response edges are browser-local; real login/logout and initial session reads remain server-backed. CI pending.

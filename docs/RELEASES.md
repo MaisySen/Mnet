@@ -254,7 +254,11 @@ Require one exact `network_id` query field for private operator grant reads. Rej
 
 ## Member network context (new source)
 
-Show the authenticated session's exact network ID beside its device list and include it in the same authorized summary response. It is not chosen from query/form input and clears on denial/sign-out. Tests cover query widening, revoked credentials revealing no context and actual browser display/cleanup. Local checks pass; CI pending. No principal/role disclosure or live changes.
+Show the authenticated session's exact network ID beside its device list and include it in the same authorized summary response. It is not chosen from query/form input and clears on denial/sign-out. Tests cover query widening, revoked credentials revealing no context and actual browser display/cleanup. All five jobs passed in [a19afcf CI](https://github.com/MaisySen/Mnet/actions/runs/43838497515), including native account tests, actual Chrome and three kernel regressions with 141/135/152 later loss-profile drops. No principal/role disclosure or live changes.
+
+## Member context cleanup edge checks (fixture extension)
+
+Check network context clears with private rows on denied/malformed responses and uncertain logout, and missing/null/wrong-type/empty network IDs cannot render a signed-in member view. Local actual Chrome passes; CI pending. Edge responses are browser-local fixtures, not a live account change.
 
 ## v0.8.2-test.1 - 2026-11-16
 

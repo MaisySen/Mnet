@@ -44,9 +44,9 @@ try{
  await js(`(async()=>{window.originalFetch=fetch;window.injected=false;window.fetch=(input,options)=>input==='/account/api/devices'?Promise.resolve(new Response(JSON.stringify({network_id:${JSON.stringify(network)},devices:[{ID:'fixture-render-only',Name:'<img src=x onerror="window.injected=true">',IPv4:'100.64.0.9'}]}),{status:200,headers:{'Content-Type':'application/json'}})):originalFetch(input,options);await load();})()`);
  if(!await js(`!window.injected && !document.querySelector('#deviceRows img') && document.querySelector('#deviceRows').textContent.includes('<img')`))throw new Error('device name parsed as HTML');
  // Reject the entire response before rendering if any row has wrong shape.
- for(const body of ['null','{}',JSON.stringify({network_id:network,devices:[null]}),JSON.stringify({network_id:network,devices:[{ID:'partial',Name:'would-be-partial',IPv4:'100.64.0.8'},{}]}),JSON.stringify({network_id:network,devices:[{ID:7,Name:'bad',IPv4:'100.64.0.8'}]}),JSON.stringify({network_id:network,devices:[{ID:'bad',Name:{private:'details'},IPv4:'100.64.0.8'}]})]){
+ for(const body of ['null','{}',JSON.stringify({devices:[]}),JSON.stringify({network_id:null,devices:[]}),JSON.stringify({network_id:7,devices:[]}),JSON.stringify({network_id:'',devices:[]}),JSON.stringify({network_id:network,devices:[null]}),JSON.stringify({network_id:network,devices:[{ID:'partial',Name:'would-be-partial',IPv4:'100.64.0.8'},{}]}),JSON.stringify({network_id:network,devices:[{ID:7,Name:'bad',IPv4:'100.64.0.8'}]}),JSON.stringify({network_id:network,devices:[{ID:'bad',Name:{private:'details'},IPv4:'100.64.0.8'}]})]){
   await js(`(async()=>{window.fetch=(input,options)=>input==='/account/api/devices'?Promise.resolve(new Response(${JSON.stringify(body)},{status:200,headers:{'Content-Type':'application/json'}})):originalFetch(input,options);await load();})()`);
-  if(!await js(`!document.querySelector('#deviceRows').textContent && document.querySelector('#devices').hidden && !document.querySelector('#login').hidden && document.querySelector('#message').textContent==='Could not read your devices. Try again.'`))throw new Error('malformed member response rendered partial private rows or empty-success state');
+  if(!await js(`!document.querySelector('#deviceRows').textContent && !document.querySelector('#currentNetwork').textContent && document.querySelector('#devices').hidden && !document.querySelector('#login').hidden && document.querySelector('#message').textContent==='Could not read your devices. Try again.'`))throw new Error('malformed member response rendered partial private rows or empty-success state');
  }
  // The latest refresh wins when two reads finish in reverse order.
  await js(`(async()=>{window.deviceReleases=[];window.fetch=(input,options)=>input==='/account/api/devices'?new Promise(resolve=>deviceReleases.push(name=>resolve(new Response(JSON.stringify({network_id:${JSON.stringify(network)},devices:[{ID:'fixture',Name:name,IPv4:'100.64.0.8'}]}),{status:200,headers:{'Content-Type':'application/json'}})))):originalFetch(input,options);window.olderLoad=load();window.newerLoad=load();deviceReleases[1]('latest-device');await newerLoad;deviceReleases[0]('stale-device');await olderLoad;})()`);
@@ -55,7 +55,7 @@ try{
  if(!await js(`!document.querySelector('#empty').hidden && !document.querySelector('#deviceRows').textContent`))throw new Error('empty member state incorrect');
  await shot('account-empty');
  await js(`(async()=>{window.fetch=(input,options)=>input==='/account/api/devices'?Promise.resolve(new Response('{}',{status:401})):originalFetch(input,options);await load();})()`);
- if(!await js(`document.querySelector('#devices').hidden && !document.querySelector('#deviceRows').textContent && !document.querySelector('#login').hidden`))throw new Error('denied session left private UI');
+ if(!await js(`document.querySelector('#devices').hidden && !document.querySelector('#deviceRows').textContent && !document.querySelector('#currentNetwork').textContent && !document.querySelector('#login').hidden`))throw new Error('denied session left private UI');
  await js(`window.fetch=originalFetch;load()`);
  await until(()=>js(`document.querySelector('#deviceRows').textContent.includes('personal-laptop')`),'real device restored after display fixtures');
  await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
@@ -65,7 +65,7 @@ try{
  // A failed logout must not say signed out or restore the previous rows.
  await js(`window.fetch=(input,options)=>input==='/account/api/logout'?Promise.resolve(new Response('{}',{status:503})):originalFetch(input,options);document.querySelector('#logout').click()`);
  await until(()=>js(`document.querySelector('#message').textContent.includes('Could not confirm sign-out')`),'failed sign-out accurately reported');
- if(!await js(`!document.querySelector('#deviceRows').textContent && document.querySelector('#login').hidden`))throw new Error('failed sign-out restored private rows or pretended signed out');
+ if(!await js(`!document.querySelector('#deviceRows').textContent && !document.querySelector('#currentNetwork').textContent && document.querySelector('#login').hidden`))throw new Error('failed sign-out restored private rows or pretended signed out');
  await js(`window.fetch=originalFetch`);
 
  const cookie=(await cdp('Network.getCookies',{urls:[base+'/account/']})).cookies.find(c=>c.name==='mnet_account');if(!cookie)throw new Error('account cookie absent');
@@ -84,7 +84,7 @@ try{
  const lostCookie=(await cdp('Network.getCookies',{urls:[base+'/account/']})).cookies.find(c=>c.name==='mnet_account');if(!lostCookie)throw new Error('second account cookie absent');
  await js(`window.logoutFetch=window.fetch;window.fetch=async(input,options)=>{if(input==='/account/api/logout'){const response=await logoutFetch(input,options);if(!response.ok)throw new Error('fixture logout failed');throw new Error('fixture lost committed logout response');}return logoutFetch(input,options);};document.querySelector('#logout').click()`);
  await until(()=>js(`document.querySelector('#message').textContent.includes('Could not confirm sign-out')`),'lost committed logout kept uncertain');
- if(!await js(`!document.querySelector('#deviceRows').textContent && document.querySelector('#login').hidden`))throw new Error('lost logout response restored private rows or claimed signed out');
+ if(!await js(`!document.querySelector('#deviceRows').textContent && !document.querySelector('#currentNetwork').textContent && document.querySelector('#login').hidden`))throw new Error('lost logout response restored private rows or claimed signed out');
  const lostReplay=await fetch(base+'/account/api/devices',{headers:{Cookie:'mnet_account='+lostCookie.value}});if(lostReplay.status!==401)throw new Error('committed logout token remained usable');
  await js(`window.fetch=logoutFetch;document.querySelector('#logout').click()`);
  await until(()=>js(`document.querySelector('#message').textContent==='Signed out.' && document.querySelector('#devices').hidden`),'idempotent logout retry confirmed');
