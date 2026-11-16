@@ -83,6 +83,17 @@ public class ServiceTest{
    assertNotNull(decoded);assertEquals(width,decoded.getWidth());assertEquals(height,decoded.getHeight());decoded.recycle();
   }
  }
+ @Test public void captureLastRowNeedsNoTrailingPadding() {
+  int width=16,height=8,stride=72;
+  java.nio.ByteBuffer pixels=java.nio.ByteBuffer.allocateDirect(stride*(height-1)+width*4);
+  while(pixels.hasRemaining())pixels.put((byte)0x7f);pixels.rewind();
+  int position=pixels.position(),limit=pixels.limit();
+  byte[] encoded=CaptureEncoder.jpeg(pixels,width,height,4,stride);
+  assertTrue(encoded.length>0);assertEquals(position,pixels.position());assertEquals(limit,pixels.limit());
+  java.nio.ByteBuffer offset=java.nio.ByteBuffer.allocateDirect(7+stride*(height-1)+width*4);
+  offset.position(7);
+  assertTrue(CaptureEncoder.jpeg(offset,width,height,4,stride).length>0);assertEquals(7,offset.position());
+ }
  @Test public void captureEncoderRefusesInvalidLayouts() {
   for(int[] layout:new int[][]{{0,8,4,64},{16,8,2,64},{16,8,4,60},{16,8,4,65}}){
    try{CaptureEncoder.jpeg(java.nio.ByteBuffer.allocate(1024),layout[0],layout[1],layout[2],layout[3]);fail("invalid layout accepted");}catch(IllegalArgumentException expected){}

@@ -554,8 +554,12 @@ The switch configures the next hosting start only, and resets after the capture-
 
 ### Selected Android framework check
 
-Run `sh scripts/test-android-framework.sh` with JDK17, Python3 and Maven. It runs40 selected service/helper/encoder cases across five simulated API levels with Go/VPN/accessibility fakes and no manifest. Thirty service cases passed5db95ec CI;10 encoder cases pass locally and await CI. This is not an emulator/device, live VPN, valid capture, permission-enforcement or UI proof. See [harness limits](../android/framework-tests/README.md).
+Run `sh scripts/test-android-framework.sh` with JDK17, Python3 and Maven. It runs45 selected service/helper/encoder cases across five simulated API levels with Go/VPN/accessibility fakes and no manifest. Forty cases passed8c6478e CI;5 final-row cases pass locally and await CI. This is not an emulator/device, live VPN, valid capture, permission-enforcement or UI proof. See [harness limits](../android/framework-tests/README.md).
 
 ### Capture frame temporary storage (new source)
 
 Capture source now protects image acquisition/close and explicitly recycles temporary encoding Bitmaps. Unsupported row layouts/short frames are dropped rather than published. Simulated encode dimensions/error tests and Java/dex checks pass; actual ImageReader/native-memory pressure/color/orientation and physical capture remain unverified. Published APK unchanged.
+
+### Capture row buffers (new source)
+
+Encoding copies only visible RGBA row bytes, without requiring final-row padding or changing the plane buffer cursor. Synthetic direct-buffer tests pass omitted padding/nonzero offsets; physical ImageReader/color/crop/orientation is unverified. Published APK unchanged.
