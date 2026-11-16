@@ -468,8 +468,14 @@ The Go viewer rejects undecodable full JPEGs and clears its old composition base
 
 New stale-keyframe and invalid-tile regressions failed before fixing. Recovery, malformed-delta, nil-base, out-of-bounds/overflow and header/rectangle mismatch tests pass. Targeted race checks passed30 repeats; fresh session/mobile and full-repository race tests pass. All-five [3ef11c8 CI](https://github.com/MaisySen/Mnet/actions/runs/43929346383) passes. Three pre-existing transport tests had placeholder image bytes, now replaced with real synthetic JPEGs; the TCP case retains120000-byte payloads using trailing padding to test segmentation. These are local Go tests, not physical screen capture or GUI pixels. No fresh Android bindings, APK/AAB, release or live deployment were produced for this change; prior Java/dex checks apply only to their named earlier source.
 
-## Recorder invalid-chain and close cleanup (new source, CI pending)
+## Recorder invalid-chain and close cleanup (3b959e2 all-five CI verified)
 
 Session recording now clears the composition base after an empty/invalid keyframe or failed delta, matching the viewer's wait-for-valid-keyframe recovery. Close releases retained frame pixels, and late frame callbacks return without decoding or changing recorder state. Frame/close ownership remains under the recorder mutex.
 
-Before-fix tests reproduced stale-base/delta recording and retained pixels after close. All recorder tests, including concurrent close/frame callbacks and valid-keyframe recovery, pass30 race-enabled repetitions. A fresh full-repository race test run also passes. This is local Go file/codec/concurrency evidence, not actual device recording or playback UI proof. No new Android bindings, APK/AAB, published release or live deployment.
+Before-fix tests reproduced stale-base/delta recording and retained pixels after close. All recorder tests, including concurrent close/frame callbacks and valid-keyframe recovery, pass30 race-enabled repetitions. A fresh full-repository race test run also passes, and all-five [3b959e2 CI](https://github.com/MaisySen/Mnet/actions/runs/43931473995) is green. This is Go file/codec/concurrency evidence, not actual device recording or playback UI proof. No new Android bindings, APK/AAB, published release or live deployment.
+
+## Current-source Android build refresh (3b959e2 source)
+
+A fresh Android arm64 AAR from current Go3b959e2 source built with minimum API24. SHA256: `23cd2ba5860558715aa65cea64e0e951013dad65985d5aff30c6ae8b870b81c1`. Full Android34 resources/application Java and min-api24 dex compile against those bindings. The selected framework simulation reran64 cases successfully; the harness guide is consolidated into current coverage, explicit replacements and known gaps rather than stale pending extensions.
+
+This supersedes the earlier current-binding build gap for3ef11c8/3b959e2. It is arm64 build evidence only, not all-ABI packaging, JNI execution, install/boot, valid projection, real input, actual Android UI pixels or device/emulator proof. The64 simulation cases still use fake Go/VPN/accessibility endpoints and synthetic frames. No APK/AAB was signed or published and the existing release/live deployment is unchanged.

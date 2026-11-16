@@ -1,28 +1,34 @@
 # Selected Android framework simulation
 
-Run `sh scripts/test-android-framework.sh` with JDK17, Python3, Maven and network access to Maven Central/Google Maven. `MVN` can name the Maven executable; `MNET_MAVEN_REPO` can select its local dependency cache. The script copies production sources to a fresh temporary project, resolves pinned dependencies and runs tests. It removes the temporary project afterward.
+## Run
 
-## What executes
+Run `sh scripts/test-android-framework.sh` with JDK17, Python3, Maven and network access to Maven Central/Google Maven. `MVN` can name the Maven executable; `MNET_MAVEN_REPO` selects the dependency cache. The script copies current production sources into a fresh temporary project, resolves pinned dependencies, runs tests and removes the temporary project.
 
-The real `HostSessionService`, `SessionConsent`, `ProjectionGuard` and `VpnPlatform` Java sources run on Robolectric4.18 simulated API24,25,26,33,34. Nine tests per API cover notification construction/channel lookup and receiver registration, non-sticky restart/stop, invalid-consent cleanup and stop unblocking an actual service consent waiter. Forty-five cases pass locally. All49 cases, including the Activity extension below, passed [904a1af CI](https://github.com/MaisySen/Mnet/actions/runs/43919715270), all five jobs. Final-row cases include direct buffers without trailing padding and nonzero offsets. Encoder cases check padded/exact row decoding dimensions and invalid layouts/buffers, not device colors or heap pressure. Added cases exercise service broadcast/exact-answer isolation and instance-local auto-accept/stop reset, using reflected service state rather than starting a valid projection.
+The harness uses Robolectric4.18. Its AAR extraction is limited to pinned AndroidX monitor1.8.0 and espresso-idling-resource3.7.0 classes jars. It does not change application builds or release outputs.
 
-## What is replaced or not covered
+## Current coverage
 
-- `mobile.Node`, `MnetVpnService.currentNode()` and the accessibility entry are explicit test fakes. No Go JNI, active VPN or injected input runs.
-- The manifest is disabled. Receiver registration execution is not proof of actual Android signature-permission enforcement.
-- No valid projection, captured frame, real consent dialog, actual Activity pixels, device screen content, device/emulator, rotation, reboot or physical network runs.
-- SDK simulation is not a declaration that the complete application supports those OS versions.
+64 cases pass locally and in all-five [3b959e2 CI](https://github.com/MaisySen/Mnet/actions/runs/43931473995).
 
-The Maven AAR runtime extraction in the script is limited to the pinned AndroidX monitor1.8.0 and espresso-idling-resource3.7.0 classes jars required by Robolectric. Main app builds and release outputs are untouched.
+| Actual application source | Simulated API levels | Cases | Checks |
+| --- | --- | --- | --- |
+| HostSessionService, SessionConsent, ProjectionGuard, VpnPlatform, CaptureEncoder |24,25,26,33,34|60 (12 per API)|Notification/channel construction, receiver registration, nonsticky restart/stop, missing-consent cleanup, blocking consent cancellation/exact-answer isolation, instance-local auto-accept/reset, synthetic RGBA-to-JPEG row bounds, host input geometry refusal and pointer validation|
+| ViewerActivity, ViewerGate, ViewerTap |24,25,26,33|4 (one per API)|Actual asynchronous connection publication, simulated down/up/cancel/drag dispatch, synthetic JPEG callback, no input before a decoded frame, resize cancellation, disconnect clearing and destruction|
 
-## Viewer Activity simulation extension
+Service tests use reflection to set capture/running state rather than start a valid projection. The geometry-refusal latch resets in actual capture setup according to source checks; that restart path is not executed here. Pointer checks preserve omitted-zero coordinates and reject malformed/unsupported/out-of-frame values.
 
-The actual ViewerActivity/ViewerGate/ViewerTap run with a fake Go SessionViewer. Four extra cases on API24/25/26/33 exercise actual Activity async publication, simulated MotionEvents and destruction. New local assertions use encoded synthetic bitmaps through the real frame callback and require no input before a decoded frame, cancellation across frame resize and no stale dimensions/display after disconnect. API34 Activity creation is excluded because Robolectric4.18 reports a missing VirtualDeviceManager listener class; this is a test-platform gap, not a passing API34 Activity check. Service/encoder tests still include API34. Total49 cases passed904a1af CI. New frame-boundary assertions pass locally, CI pending. No actual UI pixels or accessibility injection are checked.
+## Explicit replacements
 
-## Host geometry refusal extension
+`mobile.Node`, `SessionViewer`, `MnetVpnService.currentNode()` and the accessibility endpoint are test fakes. No Go JNI, real VPN or injected accessibility gesture executes. Viewer frame bytes are synthetic JPEGs, not device screen content. Encoder inputs are synthetic RGBA buffers, not an actual ImageReader. The manifest is disabled, so receiver registration execution is not proof of signature-permission enforcement.
 
-Two new service tests per simulated API24/25/26/33/34 use reflected capture dimensions/rotation with a fake accessibility sink. They verify no forwarding for uninitialized dimensions, changed width/height/rotation and a latched refusal until a new capture setup. The reset in actual capture setup is source-checked, not executed in these tests.59 total cases pass locally, CI pending. Previous49 passed all-five [2420ae9 CI](https://github.com/MaisySen/Mnet/actions/runs/43922014681). No dynamic rotation, actual accessibility input, valid projection or device execution is proven.
+## Known gaps
 
-## Pointer validation extension
+- API34 Activity creation reports a missing VirtualDeviceManager listener class in Robolectric4.18. Activity tests explicitly omit API34; service/encoder tests retain it.
+- No valid projection, real consent dialog, physical display rotation, actual Android UI pixels, device/emulator, reboot or physical network runs.
+- Real accessibility finite checks and removal of down/up-as-click have source/build checks only, not runtime dispatch proof.
+- Synthetic JPEG decoding confirms code paths and dimensions, not device color, orientation, heap pressure or playback appearance.
+- Simulated API coverage does not declare complete application support for those OS versions.
 
-One extra service test per simulated API24/25/26/33/34 exercises supported completed click/scroll payloads, Go omitted-zero compatibility and rejection of malformed/unsupported/out-of-frame coordinates.64 local cases pass, CI pending. The sink is a fake, not real accessibility. Real endpoint finite checks and removal of down/up-as-click have source/build checks only. Previous59 cases passed all-five [a1b761c CI](https://github.com/MaisySen/Mnet/actions/runs/43924405581).
+## Build evidence is separate
+
+At3b959e2, a fresh local current-Go Android arm64 AAR built with minimum API24. Full Android34 resource generation/application Java and min-api24 dex compilation against that AAR passed. These build checks do not execute JNI or validate a signed APK, all ABIs, installation or device behavior. No new APK/AAB or release was published.
