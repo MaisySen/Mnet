@@ -76,6 +76,17 @@ try{
  if(!await js(`document.querySelector('#devices').hidden && !document.querySelector('#login').hidden && !document.querySelector('#deviceRows').textContent && !document.querySelector('#network').value`))throw new Error('private device data survived sign-out or late refresh');
  const replay=await fetch(base+'/account/api/devices',{headers:{Cookie:'mnet_account='+cookie.value}});if(replay.status!==401)throw new Error('account session replay after logout accepted');
  await shot('account-after-logout');
+ // A logout may commit while only its response is lost. Keep the UI honest,
+ // clear private rows, deny old-token replay and let an idempotent retry finish.
+ await js(`document.querySelector('#network').value=${JSON.stringify(network)};document.querySelector('#loginForm').requestSubmit()`);
+ await until(()=>js(`document.querySelector('#deviceRows').textContent.includes('personal-laptop')`),'second real login before lost logout response');
+ const lostCookie=(await cdp('Network.getCookies',{urls:[base+'/account/']})).cookies.find(c=>c.name==='mnet_account');if(!lostCookie)throw new Error('second account cookie absent');
+ await js(`window.logoutFetch=window.fetch;window.fetch=async(input,options)=>{if(input==='/account/api/logout'){const response=await logoutFetch(input,options);if(!response.ok)throw new Error('fixture logout failed');throw new Error('fixture lost committed logout response');}return logoutFetch(input,options);};document.querySelector('#logout').click()`);
+ await until(()=>js(`document.querySelector('#message').textContent.includes('Could not confirm sign-out')`),'lost committed logout kept uncertain');
+ if(!await js(`!document.querySelector('#deviceRows').textContent && document.querySelector('#login').hidden`))throw new Error('lost logout response restored private rows or claimed signed out');
+ const lostReplay=await fetch(base+'/account/api/devices',{headers:{Cookie:'mnet_account='+lostCookie.value}});if(lostReplay.status!==401)throw new Error('committed logout token remained usable');
+ await js(`window.fetch=logoutFetch;document.querySelector('#logout').click()`);
+ await until(()=>js(`document.querySelector('#message').textContent==='Signed out.' && document.querySelector('#devices').hidden`),'idempotent logout retry confirmed');
  await cdp('Page.navigate',{url:base+'/account/oidc/callback?state=private-fixture-state&code=private-fixture-code&error=private-provider-error'});
  await until(()=>js(`document.body.textContent.includes('Sign-in was not completed')`),'safe sign-in recovery page');
  if(!await js(`!document.body.textContent.includes('private-fixture') && !document.body.textContent.includes('private-provider-error') && document.querySelector('a[href="/account/"]')`))throw new Error('callback recovery echoed private data or lost return path');

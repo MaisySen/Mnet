@@ -8,7 +8,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 | --- | --- | --- |
 | Published test artifacts | v0.8.2-test.1, source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11; Android 0.8.2/code 14. | [Release](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1). Sixteen assets verified at release. Update CLI and daemon together. |
 | Hosted test control plane | Last verified 2026-11-16 at 07:12 AEDT on `2bb55f4`. | Dated deployment check, not a current availability promise. Free-host ephemeral disk/restart state loss remains a limitation. |
-| Newer verified source | `302e0a6`, all five jobs passed, including landing-to-member sign-in. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43826840257). New source below is not in those downloads or that last verified deployment. |
+| Newer verified source | `f1e98c1`, all five jobs passed, including complete member-response validation. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43829486186). New source below is not in those downloads or that last verified deployment. |
 
 ## What is implemented and tested
 
@@ -22,7 +22,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 - Route-only ACL withdrawal/restoration and admin expiry/reapproval block and restore access as expected. Reapproval clears stale approval status/link. Known expiry is enforced locally even if later control polling is blocked; unseen offline admin changes cannot be discovered.
 - `mnet up --reset-routing`, while down, clears saved roles without deleting identity. Ordinary saved-state Up preserves routing. Fresh attempts clear old setup errors, preserving errors raised during the new attempt.
 
-The latest verified [302e0a6 CI](https://github.com/MaisySen/Mnet/actions/runs/43826840257) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 157/157/150. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
+The latest verified [f1e98c1 CI](https://github.com/MaisySen/Mnet/actions/runs/43829486186) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 135/134/142. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
 
 Exit-node selection/advertising is explicitly rejected before enrollment/device creation. Unsafe dormant host/default-route replacement helpers were removed, not enabled. Exit internet routing remains unsupported.
 
@@ -118,7 +118,9 @@ A signed-provider HTTP extension now checks operator removal against an already 
 
 The landing page now links members to their separate account view and operators to the admin dashboard, with clear enrollment/membership/connectivity limits. The real-Chrome account fixture starts there and follows the member link before signed-provider login. All five jobs passed in [302e0a6 CI](https://github.com/MaisySen/Mnet/actions/runs/43826840257), including the actual-Chrome landing-to-member flow.
 
-New source validates the whole member device-summary list before rendering, rejecting malformed/null/wrong-type rows instead of showing partial output or false empty success. Local Chrome also tests two refreshes completing in reverse order; the latest result wins. These edge responses are browser-local fixtures, while initial signed-provider login and actual device reads remain server-backed. Full local race/vet checks pass. Its first CI run failed dashboard Chrome startup before this account step; native/session/kernel jobs passed. A fixture-only startup diagnostic/budget follow-up is pending. See [validation](native-platform-validation.md#isolated-chrome-startup-failure-and-diagnostics).
+New source validates the whole member device-summary list before rendering, rejecting malformed/null/wrong-type rows instead of showing partial output or false empty success. Local Chrome also tests two refreshes completing in reverse order; the latest result wins. These edge responses are browser-local fixtures, while initial signed-provider login and actual device reads remain server-backed. Full local race/vet checks pass. Its first CI run failed dashboard Chrome startup before this account step; native/session/kernel jobs passed. A fixture-only startup diagnostic/budget follow-up passed all five jobs in [f1e98c1 CI](https://github.com/MaisySen/Mnet/actions/runs/43829486186), including the actual member browser step. See [validation](native-platform-validation.md#isolated-chrome-startup-failure-and-diagnostics).
+
+A new browser fixture commits actual account logout but drops its response. Private rows stay cleared, the UI does not falsely claim confirmation, the old token is denied and an idempotent actual logout retry confirms sign-out. Local signed-provider Chrome proof passes; extended CI pending. This changes tests, not logout semantics or a live account.
 
 ## Important open work
 
