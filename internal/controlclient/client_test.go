@@ -3,6 +3,7 @@ package controlclient
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -133,5 +134,51 @@ func TestTransportFailureDoesNotPrintCredentialURL(t *testing.T) {
 	_, err = c.JoinStatus(context.Background(), "fixture-node", "fixture-token")
 	if !errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "fixture-token") {
 		t.Fatal("cancellation classification or privacy lost")
+	}
+}
+
+func TestControlResponseBodyLimit(t *testing.T) {
+	for _, extra := range []int{0, 1, 1024} {
+		t.Run(fmt.Sprint(extra), func(t *testing.T) {
+			const valid = `{"node_id":"fixture-id","node_token":"fixture-token","approved":true}`
+			body := valid + strings.Repeat(" ", (4<<20)-len(valid)+extra)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
+			defer srv.Close()
+			c := &Client{Base: srv.URL}
+			resp, err := c.Join(context.Background(), netmap.JoinRequest{})
+			if extra == 0 && (err != nil || resp == nil) {
+				t.Fatalf("limit-sized body refused: %v", err)
+			}
+			if extra > 0 && (err == nil || resp != nil) {
+				t.Fatal("oversized response silently truncated and accepted")
+			}
+		})
+	}
+}
+
+type errorBody struct {
+	cause  error
+	closed bool
+}
+
+func (b *errorBody) Read([]byte) (int, error) { return 0, b.cause }
+func (b *errorBody) Close() error             { b.closed = true; return nil }
+
+type responseTransport struct{ body io.ReadCloser }
+
+func (tr responseTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{StatusCode: 200, Body: tr.body, Header: make(http.Header)}, nil
+}
+
+func TestControlResponseReadFailurePrivacy(t *testing.T) {
+	cause := errors.New("reader failed at token=fixture-secret")
+	body := &errorBody{cause: cause}
+	c := &Client{Base: "https://control.example", HTTP: &http.Client{Transport: responseTransport{body: body}}}
+	_, err := c.Join(context.Background(), netmap.JoinRequest{})
+	if err == nil || !errors.Is(err, cause) || strings.Contains(err.Error(), "fixture-secret") {
+		t.Fatal("response reader error privacy or cause matching failed")
+	}
+	if !body.closed {
+		t.Fatal("failed response body not closed")
 	}
 }

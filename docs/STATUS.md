@@ -8,7 +8,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 | --- | --- | --- |
 | Published test artifacts | v0.8.2-test.1, source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11; Android 0.8.2/code 14. | [Release](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1). Sixteen assets verified at release. Update CLI and daemon together. |
 | Hosted test control plane | Last verified 2026-11-16 at 07:12 AEDT on `2bb55f4`. | Dated deployment check, not a current availability promise. Free-host ephemeral disk/restart state loss remains a limitation. |
-| Newer verified source | `c8ff4bb`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43800305333). New source below is not in those downloads or that last verified deployment. |
+| Newer verified source | `c9f1197`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43801230914). New source below is not in those downloads or that last verified deployment. |
 
 ## What is implemented and tested
 
@@ -22,7 +22,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 - Route-only ACL withdrawal/restoration and admin expiry/reapproval block and restore access as expected. Reapproval clears stale approval status/link. Known expiry is enforced locally even if later control polling is blocked; unseen offline admin changes cannot be discovered.
 - `mnet up --reset-routing`, while down, clears saved roles without deleting identity. Ordinary saved-state Up preserves routing. Fresh attempts clear old setup errors, preserving errors raised during the new attempt.
 
-The latest verified [c8ff4bb CI](https://github.com/MaisySen/Mnet/actions/runs/43800305333) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 152/145/136. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
+The latest verified [c9f1197 CI](https://github.com/MaisySen/Mnet/actions/runs/43801230914) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 154/142/140. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
 
 Exit-node selection/advertising is explicitly rejected before enrollment/device creation. Unsafe dormant host/default-route replacement helpers were removed, not enabled. Exit internet routing remains unsupported.
 
@@ -70,15 +70,18 @@ The browser evidence is desktop Chrome on disposable state/profile, not a live-u
 
 These checks do not make ephemeral hosting durable. Keep state in a trusted private path, preserve recovery copies and distinguish a missing volume from a verified new installation. No storage migration or hosted account changes were made for this work.
 
-## Control credential destination follow-up
+## Control credentials and enrollment
 
-New source refuses all daemon HTTP control API redirects, including same-origin redirects and supplied HTTP clients. A local two-server race regression covers all five redirect codes and proves the redirect destination receives no request; direct requests still work. Use the final base URL directly. All five jobs passed in [9d6c03d CI](https://github.com/MaisySen/Mnet/actions/runs/43799181639), including native Windows/macOS. This is not a live incident report or a deployment change. See [operations](operations.md#control-api-destination).
+| Boundary | Verified behavior | Evidence and limits |
+| --- | --- | --- |
+| Redirects | All control HTTP redirects fail before forwarding, including same-origin redirects and supplied clients. | [Redirect CI](https://github.com/MaisySen/Mnet/actions/runs/43799181639). Set the final base URL directly. |
+| Enrolled target | Up/Prepare reject server/network changes before requests or saves. The original target remains usable. | [Target CI](https://github.com/MaisySen/Mnet/actions/runs/43799335015). Exact network selector; separate state directory for another identity, not account switching. |
+| Enrollment response | Incomplete credentials cannot replace saved identity. Accepted credentials survive an in-process failed-save retry; no new client before persistence. | [Recovery CI](https://github.com/MaisySen/Mnet/actions/runs/43800305333). Does not undo remote enrollment or guarantee recovery after process exit. |
+| Diagnostics | Printable transport errors and approval-wait logs omit credential URLs. Authenticated local status retains the approval action. | [Diagnostic CI](https://github.com/MaisySen/Mnet/actions/runs/43801230914). Historical/proxy logs are not scrubbed; no live exposure is established. |
 
-New source also rejects server/network changes for an enrolled saved credential in both Up and mobile Prepare. Local race tests verify rejection before requests or saved-state changes and a retry reaching the original server. Use the saved target or a separate state directory for a new identity. Network selectors compare exactly; this is not account switching or remote migration. All five jobs passed in [c632d45 CI](https://github.com/MaisySen/Mnet/actions/runs/43799335015), including native Windows/macOS. See [target handling](operations.md#enrolled-target-changes).
+Each run passed all five jobs, including native Windows/macOS and three full kernel fixtures. These are source changes, not deployment changes. See [destination setup](operations.md#control-api-destination), [target handling](operations.md#enrolled-target-changes), [enrollment recovery](operations.md#enrollment-response-and-local-save-recovery) and [diagnostics](operations.md#credential-safe-diagnostics) before changing an installed node.
 
-New source rejects incomplete enrollment credentials before replacing saved identity. An accepted enrollment whose local save fails retains its credential for a same-process retry, with an explicit diagnostic; it does not undo remote enrollment or guarantee recovery after process exit. Local race regressions check unchanged prior disk state and successful durable retry. All five jobs passed in [c8ff4bb CI](https://github.com/MaisySen/Mnet/actions/runs/43800305333), including native Windows/macOS. See [enrollment recovery](operations.md#enrollment-response-and-local-save-recovery).
-
-New source keeps token-bearing approval URLs and verbose transport-error URLs out of daemon logs/status errors while preserving the authenticated local approval action and programmatic cause matching. Local regressions pass; full/native CI is pending. Historical/proxy logs are not scrubbed. See [diagnostics](operations.md#credential-safe-diagnostics).
+New source also explicitly rejects responses exceeding the existing 4 MiB control-body limit and keeps body-read failure details out of printed diagnostics. Local boundary/cleanup regressions pass; full/native CI is pending. This is not a fleet-capacity claim. See [response limits](operations.md#response-size-boundary).
 
 ## Important open work
 

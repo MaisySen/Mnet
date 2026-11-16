@@ -51,6 +51,10 @@ New source refuses a join response without both a non-blank node ID and token, b
 
 New source hides transport-error text when it could contain a complete credential-bearing request URL. Programmatic error matching is retained, but printed status/logs use a generic transport failure. The approval wait log no longer prints its URL, because OIDC approval links contain a device token. Open the approval link from authenticated local status instead. Keep status/identity files private. This does not scrub historical logs, reverse-proxy URL access logs or external service records, and is not an incident report.
 
+## Response size boundary
+
+New source explicitly rejects control responses larger than the existing 4 MiB limit, rather than parsing a silently truncated prefix. Exactly limit-sized valid replies still work. This is not a fleet-capacity claim: a deployment returning larger maps needs a separately designed pagination/size plan. Response-body read failures use credential-safe printed diagnostics and retain their programmatic cause.
+
 ## Nodes
 
 Linux with systemd:

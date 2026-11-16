@@ -143,3 +143,7 @@ The HTTP control client refuses 301/302/303/307/308 redirects before forwarding 
 ## Enrollment-response and save-retry boundary (verified source)
 
 Missing/blank join credentials are rejected before replacing local identity. A valid accepted remote enrollment whose local save fails keeps its credential for an in-process retry while the old disk state stays unchanged; no new control client is published until saving succeeds. A retry test checks the accepted credential is sent and the same key pair reloads. All five jobs passed in [c8ff4bb CI](https://github.com/MaisySen/Mnet/actions/runs/43800305333), including native Windows/macOS and three full kernel fixtures with 152/145/136 later loss-profile drops. This is same-process recovery, not a crash-durable transaction. Remote node creation/one-time-key use is not undone, and process exit before saving can lose the accepted credential.
+
+## Credential-safe printed diagnostics (verified source)
+
+Verbose transport failures and approval-wait logs no longer print credential-bearing URLs. Tests retain error cause/cancellation matching and the authenticated local approval URL while checking no token is logged. All five jobs passed in [c9f1197 CI](https://github.com/MaisySen/Mnet/actions/runs/43801230914), including native Windows/macOS and three full kernel fixtures with 154/142/140 later loss-profile drops. No historical/proxy log scrubbing or live incident claim.

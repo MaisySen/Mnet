@@ -70,9 +70,13 @@ func (c *Client) do(req *http.Request, out any) error {
 		return transportError{cause: err}
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	const maxResponseBytes = 4 << 20
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
-		return err
+		return transportError{cause: err}
+	}
+	if len(body) > maxResponseBytes {
+		return fmt.Errorf("control: response exceeds the 4 MiB limit")
 	}
 	if resp.StatusCode >= 300 {
 		var e netmap.APIError
