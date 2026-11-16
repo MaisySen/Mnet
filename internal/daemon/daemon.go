@@ -121,10 +121,15 @@ func (d *Daemon) SetRouting(advertiseExit bool, routes []string, useExit string)
 	if d.status != "down" {
 		return fmt.Errorf("routing changes apply while down; node is %s", d.status)
 	}
+	previousExit, previousRoutes, previousUse := d.state.ExitNode, d.state.AdvertiseRoutes, d.state.UseExitNode
 	d.state.ExitNode = advertiseExit
 	d.state.AdvertiseRoutes = append([]string(nil), routes...)
 	d.state.UseExitNode = useExit
-	return d.state.Save(d.cfg.StateDir)
+	if err := d.state.Save(d.cfg.StateDir); err != nil {
+		d.state.ExitNode, d.state.AdvertiseRoutes, d.state.UseExitNode = previousExit, previousRoutes, previousUse
+		return err
+	}
+	return nil
 }
 
 // Up brings the mesh up. server, network and authKey are only needed on the

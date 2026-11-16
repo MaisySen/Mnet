@@ -118,3 +118,71 @@ func TestStateGeneratedIdentityReloadAndMetadataCompatibility(t *testing.T) {
 		t.Fatal("metadata compatibility failed")
 	}
 }
+
+func TestIdentityGenerationFailedSaveRollsBackAndRetries(t *testing.T) {
+	dir := t.TempDir()
+	// A directory at the file destination fails after first-run generation.
+	if err := os.Mkdir(statePath(dir), 0700); err != nil {
+		t.Fatal(err)
+	}
+	st := &State{NodeName: "fixture"}
+	if err := st.EnsureKey(dir); err == nil {
+		t.Fatal("generation save unexpectedly succeeded")
+	}
+	if st.PrivateKey != "" || st.PublicKey != "" || st.NodeName != "fixture" {
+		t.Fatal("failed generation left unpublished identity")
+	}
+	if err := os.Remove(statePath(dir)); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.EnsureKey(dir); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadState(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.PrivateKey != st.PrivateKey || loaded.PublicKey != st.PublicKey || loaded.NodeName != "fixture" {
+		t.Fatal("retry did not publish its identity")
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 1 {
+		t.Fatal("generation retry leaked temporary state")
+	}
+}
+
+func TestRoutingFailedSaveRestoresLiveAndDiskState(t *testing.T) {
+	dir := t.TempDir()
+	d, err := New(Config{StateDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SetRouting(false, []string{"10.1.0.0/24"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(statePath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Keep the actual saved file intact while making the next destination fail.
+	d.cfg.StateDir = filepath.Join(statePath(dir), "invalid-child")
+	if err := d.SetRouting(true, []string{"10.2.0.0/24"}, "exit-candidate"); err == nil {
+		t.Fatal("routing save unexpectedly succeeded")
+	}
+	got := d.State()
+	if got.ExitNode || got.UseExitNode != "" || len(got.AdvertiseRoutes) != 1 || got.AdvertiseRoutes[0] != "10.1.0.0/24" {
+		t.Fatal("failed routing save changed live settings")
+	}
+	after, err := os.ReadFile(statePath(dir))
+	if err != nil || string(before) != string(after) {
+		t.Fatal("failed routing save changed disk state")
+	}
+	d.cfg.StateDir = dir
+	if err := d.SetRouting(false, []string{"10.3.0.0/24"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadState(dir)
+	if err != nil || len(loaded.AdvertiseRoutes) != 1 || loaded.AdvertiseRoutes[0] != "10.3.0.0/24" {
+		t.Fatal("routing retry failed", err)
+	}
+}

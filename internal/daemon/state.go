@@ -100,7 +100,14 @@ func (s *State) EnsureKey(dir string) error {
 	}
 	s.PrivateKey = base64.StdEncoding.EncodeToString(priv[:])
 	s.PublicKey = base64.StdEncoding.EncodeToString(pub)
-	return s.Save(dir)
+	if err := s.Save(dir); err != nil {
+		// A retry must not mistake an unpublished in-memory identity for a
+		// durable saved pair and skip the write after disk failure.
+		s.PrivateKey = ""
+		s.PublicKey = ""
+		return err
+	}
+	return nil
 }
 
 // Validate existing key material instead of treating a broken identity as a
