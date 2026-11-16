@@ -36,13 +36,14 @@ func NewRecorder(path string) (*Recorder, error) {
 func (r *Recorder) OnFrame(fr ScreenFrame) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.w == nil {
+		return
+	}
 	if fr.Full || len(fr.Tiles) == 0 {
-		if len(fr.Image) == 0 {
-			return
-		}
 		if img, err := jpeg.Decode(bytes.NewReader(fr.Image)); err == nil {
 			r.base = imageToRGBA(img)
 		} else {
+			r.base = nil // A broken keyframe invalidates following deltas.
 			return
 		}
 		if _, err := r.w.Write(fr.Image); err == nil {
@@ -55,6 +56,7 @@ func (r *Recorder) OnFrame(fr ScreenFrame) {
 	}
 	merged, err := CompositeTiles(r.base, fr.Tiles)
 	if err != nil {
+		r.base = nil // Do not composite later deltas on an older frame.
 		return
 	}
 	r.base = merged
@@ -77,6 +79,7 @@ func (r *Recorder) Frames() int {
 func (r *Recorder) Close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.base = nil
 	if r.w == nil {
 		return nil
 	}

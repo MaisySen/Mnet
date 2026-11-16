@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/jpeg"
 	"os"
+	"sync"
 	"testing"
 )
 
@@ -100,5 +101,81 @@ func TestRecorderSkipsBaselessDelta(t *testing.T) {
 	r.OnFrame(ScreenFrame{Seq: 1, Tiles: []Tile{{Rect: Rect{X: 0, Y: 0, W: 1, H: 1}, Image: []byte{1, 2, 3}}}})
 	if r.Frames() != 0 {
 		t.Fatal("delta before keyframe must be skipped")
+	}
+}
+
+func TestRecorderBrokenFrameRequiresRecoveryKeyframe(t *testing.T) {
+	good := ScreenFrame{Full: true, Image: jpegBytes(t, solid(16, 16, color.RGBA{R: 99, A: 255}))}
+	tile := Tile{Rect: Rect{W: 8, H: 8}, Image: jpegBytes(t, solid(8, 8, color.RGBA{G: 99, A: 255}))}
+	for _, broken := range []ScreenFrame{{Full: true}, {Full: true, Image: []byte("broken")}, {Tiles: []Tile{{Rect: Rect{W: 8, H: 8}, Image: []byte("broken")}}}} {
+		r, err := NewRecorder(t.TempDir() + "/record.mjpeg")
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.OnFrame(good)
+		r.OnFrame(broken)
+		if r.base != nil {
+			t.Error("broken frame left stale recording base")
+		}
+		r.OnFrame(ScreenFrame{Tiles: []Tile{tile}})
+		if r.Frames() != 1 {
+			t.Error("recorded a delta from a broken chain")
+		}
+		r.OnFrame(good)
+		r.OnFrame(ScreenFrame{Tiles: []Tile{tile}})
+		if r.Frames() != 3 {
+			t.Error("valid keyframe did not recover recording")
+		}
+		if err := r.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestRecorderLateFrameAfterCloseIsIgnored(t *testing.T) {
+	r, err := NewRecorder(t.TempDir() + "/record.mjpeg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	good := ScreenFrame{Full: true, Image: jpegBytes(t, solid(16, 16, color.RGBA{R: 99, A: 255}))}
+	r.OnFrame(good)
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r.OnFrame(good)
+	if r.Frames() != 1 {
+		t.Fatal("late frame recorded")
+	}
+	if r.base != nil {
+		t.Fatal("closed recorder retains frame pixels")
+	}
+}
+
+func TestRecorderCloseSerializesWithFrames(t *testing.T) {
+	r, err := NewRecorder(t.TempDir() + "/record.mjpeg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	good := ScreenFrame{Full: true, Image: jpegBytes(t, solid(16, 16, color.RGBA{R: 99, A: 255}))}
+	var workers sync.WaitGroup
+	workers.Add(2)
+	go func() {
+		defer workers.Done()
+		for i := 0; i < 20; i++ {
+			r.OnFrame(good)
+		}
+	}()
+	go func() {
+		defer workers.Done()
+		if err := r.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	workers.Wait()
+	if r.base != nil || r.w != nil {
+		t.Fatal("closed recorder retains resources")
+	}
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
