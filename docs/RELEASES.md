@@ -506,6 +506,13 @@ A fresh Android arm64 AAR from current Go3b959e2 source built with minimum API24
 
 This supersedes the earlier current-binding build gap for3ef11c8/3b959e2. It is arm64 build evidence only, not all-ABI packaging, JNI execution, install/boot, valid projection, real input, actual Android UI pixels or device/emulator proof. The64 simulation cases still use fake Go/VPN/accessibility endpoints and synthetic frames. No APK/AAB was signed or published and the existing release/live deployment is unchanged.
 
+
+## JPEG pixel-allocation policy (new source, CI pending)
+
+Go viewers and recorders check JPEG headers before full-image decoding. Each dimension must be positive and at most8192, and their product must be at most16,777,216 pixels. The division-based check avoids integer overflow.4K3840x2160 fits;8K7680x4320 does not. Tile headers and the composition base use the same dimension policy. An oversized keyframe is rejected and invalidates its old delta chain.
+
+A tiny JPEG fixture with rewritten65535x65535 header dimensions tests refusal without allocating that pixel image. Boundary/overflow tests, viewer/recorder rejection and existing recovery tests pass30 race-enabled repetitions. A fresh full-repository race run passes. This bounds a decoded image's pixel dimensions, not codec CPU, all decoder overhead, concurrent sessions or aggregate heap; compositing/callbacks can keep multiple images. No current-source Android binding rebuild, APK/AAB publication, device/capture/UI/JNI proof or live deployment for this change.
+
 ## v0.8.2-test.1 - 2026-11-16
 
 Source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11, Android 0.8.2/code 14. [Release and 16 assets](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1), [exact-source CI](https://github.com/MaisySen/Mnet/actions/runs/43756253912).

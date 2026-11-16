@@ -71,6 +71,9 @@ func CompositeTiles(base *image.RGBA, tiles []Tile) (*image.RGBA, error) {
 		return nil, fmt.Errorf("delta has no base")
 	}
 	bounds := base.Bounds()
+	if !screenDimensionsAllowed(bounds.Dx(), bounds.Dy()) {
+		return nil, fmt.Errorf("base dimensions exceed screen policy")
+	}
 	// Validate every rectangle/header before decoding or painting any tile.
 	// Subtraction avoids overflow in attacker-controlled X+W / Y+H.
 	for _, tile := range tiles {
@@ -80,7 +83,7 @@ func CompositeTiles(base *image.RGBA, tiles []Tile) (*image.RGBA, error) {
 			r.W > bounds.Max.X-r.X || r.H > bounds.Max.Y-r.Y {
 			return nil, fmt.Errorf("tile rectangle outside base")
 		}
-		config, err := jpeg.DecodeConfig(bytes.NewReader(tile.Image))
+		config, err := screenJPEGConfig(tile.Image)
 		if err != nil {
 			return nil, err
 		}

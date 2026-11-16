@@ -128,7 +128,7 @@ func (v *Viewer) resolveFrame(fr *ScreenFrame) bool {
 	v.frameMu.Lock()
 	defer v.frameMu.Unlock()
 	if fr.Full || len(fr.Tiles) == 0 {
-		img, err := jpeg.Decode(bytes.NewReader(fr.Image))
+		img, err := decodeScreenJPEG(fr.Image)
 		if err != nil {
 			v.base = nil // Deltas after a broken keyframe cannot use an older base.
 			return false

@@ -40,7 +40,7 @@ func (r *Recorder) OnFrame(fr ScreenFrame) {
 		return
 	}
 	if fr.Full || len(fr.Tiles) == 0 {
-		if img, err := jpeg.Decode(bytes.NewReader(fr.Image)); err == nil {
+		if img, err := decodeScreenJPEG(fr.Image); err == nil {
 			r.base = imageToRGBA(img)
 		} else {
 			r.base = nil // A broken keyframe invalidates following deltas.

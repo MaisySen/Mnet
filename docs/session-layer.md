@@ -143,3 +143,9 @@ Go viewers and recorders reject invalid full JPEGs and failed deltas, discard th
 Android sends one click on a completed stationary release after a decoded frame is available. Drag/multitouch/held-pointer control is not implemented. Host-side validation accepts completed click/fixed scroll events with finite integer coordinates inside capture bounds, preserving Go omitted-zero coordinates. It rejects down/up rather than reinterpreting each as a click. A host display width/height/rotation mismatch disables input until capture is restarted. This is a fail-closed limit, not dynamic rotation support.
 
 See [current framework coverage](../android/framework-tests/README.md) for source versus fake endpoints and simulated API limits. No physical capture/input or JNI runtime proof is implied.
+
+## JPEG pixel-allocation policy (new source, CI pending)
+
+Go viewers and recorders check JPEG headers before full-image decoding. Each dimension must be positive and at most8192, and their product must be at most16,777,216 pixels. The division-based check avoids integer overflow.4K3840x2160 fits;8K7680x4320 does not. Tile headers and the composition base use the same dimension policy. An oversized keyframe is rejected and invalidates its old delta chain.
+
+A tiny JPEG fixture with rewritten65535x65535 header dimensions tests refusal without allocating that pixel image. Boundary/overflow tests, viewer/recorder rejection and existing recovery tests pass30 race-enabled repetitions. A fresh full-repository race run passes. This bounds a decoded image's pixel dimensions, not codec CPU, all decoder overhead, concurrent sessions or aggregate heap; compositing/callbacks can keep multiple images. No current-source Android binding rebuild, APK/AAB publication, device/capture/UI/JNI proof or live deployment for this change.

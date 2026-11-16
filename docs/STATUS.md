@@ -10,14 +10,14 @@ Updated 2026-11-17, Australia/Sydney. Development/testing only. No production-re
 | Hosted test control plane | Last verified 2026-11-16 at 07:12 AEDT on `2bb55f4`. | Dated deployment check, not a current availability promise. Free-host ephemeral disk/restart state loss remains a limitation. |
 | Newer verified source | `3b959e2`, all five jobs passed, including64 selected Android framework cases. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43931473995). Native/kernel controlled fixtures, not physical Android runtime/boot proof. |
 | Current Android build check | Fresh3b959e2 arm64 Go bindings (minimum API24), Android34 resources/application Java and min-api24 dex compile;64 local framework cases pass. | Build and simulation only. No JNI/device/all-ABI/install proof or new APK/AAB. [Framework guide](../android/framework-tests/README.md). |
-| Later documentation revision | `68983c4`: framework coverage guide and current-binding evidence. | [CI](https://github.com/MaisySen/Mnet/actions/runs/43933608231): Go/kernel/Windows/session passed, macOS still running at2026-11-17 06:04 AEDT. Not yet an all-five result. |
+| Later documentation revision | `68983c4`: framework coverage guide and current-binding evidence. | [All-five CI](https://github.com/MaisySen/Mnet/actions/runs/43933608231) passed; later25c0564 documentation [CI](https://github.com/MaisySen/Mnet/actions/runs/43935608356) also passed all five. |
 
 ### Current mobile/session summary
 
 - Mobile nodes own pending/active tunnels and session connections; disposal rejects reuse. Host consent answers are tied to one exact request, and auto-accept is opt-in for one hosting run.
 - Android viewer input requires a decoded frame. Completed stationary release sends one click; cancel, drag, multitouch, letterbox touches and frame-size changes do not become clicks. Held-pointer/drag control is unsupported.
 - Android host refuses malformed/unsupported/out-of-frame pointer input. Display width/height/rotation mismatch latches control off until hosting restarts. This is not dynamic rotation support.
-- Go viewers and recordings drop broken frame chains until a valid keyframe. Tile bounds/header dimensions are checked; this is not a general image-memory cap. Closing a recorder releases its frame base and ignores late callbacks.
+- Go viewers and recordings drop broken frame chains until a valid keyframe. Tile bounds/header dimensions are checked. New source adds a pre-decode8192-side/16Mi-pixel JPEG limit, local race tests pass, CI pending. This is not a total session-memory cap. Closing a recorder releases its frame base and ignores late callbacks.
 - The64-case Android simulation uses fake Go/VPN/accessibility endpoints and synthetic image content. Services run on simulated API24/25/26/33/34; Activity runs24/25/26/33. API34 Activity creation is excluded for a test-platform class mismatch. Real capture, JNI, accessibility dispatch, Android UI pixels and reboot remain unverified.
 
 Detailed implementation-stage results remain in [native validation](native-platform-validation.md) and [development history](RELEASES.md). Historical canceled runs are not counted as all-five; later verified revisions include their source.
