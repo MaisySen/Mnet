@@ -108,6 +108,12 @@ func newFakeOIDC(t *testing.T, evil bool) *fakeOIDC {
 
 func testEnvOIDC(t *testing.T, fake *fakeOIDC) (*httptest.Server, string) {
 	t.Helper()
+	ts, pw, _ := testEnvOIDCStore(t, fake)
+	return ts, pw
+}
+
+func testEnvOIDCStore(t *testing.T, fake *fakeOIDC) (*httptest.Server, string, *control.Store) {
+	t.Helper()
 	store, err := control.Open(t.TempDir() + "/state.json")
 	if err != nil {
 		t.Fatal(err)
@@ -126,7 +132,7 @@ func testEnvOIDC(t *testing.T, fake *fakeOIDC) (*httptest.Server, string) {
 	srv.SetOIDC(p)
 	ts.Config.Handler = srv.Handler()
 	ts.Start()
-	return ts, "test-admin-pw"
+	return ts, "test-admin-pw", store
 }
 
 // followLogin drives the browser: join approval URL through oidc/start,
@@ -159,7 +165,7 @@ func followLogin(t *testing.T, startURL string) (int, string) {
 // the user identity.
 func TestOIDCJoinFlow(t *testing.T) {
 	fake := newFakeOIDC(t, false)
-	ts, pw := testEnvOIDC(t, fake)
+	ts, pw, store := testEnvOIDCStore(t, fake)
 	base := ts.URL
 	cookie := adminLogin(t, base, pw)
 	post(t, base+"/admin/api/networks", map[string]string{"name": "sso"}, map[string]string{"Cookie": cookie.String()})
@@ -187,6 +193,15 @@ func TestOIDCJoinFlow(t *testing.T) {
 	}
 	if m.Self.User != "dev@fintex.au" {
 		t.Fatalf("user not recorded: %+v", m.Self)
+	}
+
+	identity, ok := store.NodeApprovalIdentity(jr.NodeID)
+	if !ok || identity.Issuer != fake.srv.URL || identity.Subject != "user-1" {
+		t.Fatalf("callback did not bind verified issuer/subject: %+v", identity)
+	}
+	mapped, _ := json.Marshal(m)
+	if strings.Contains(string(mapped), "approval_identities") || strings.Contains(string(mapped), "user-1") {
+		t.Fatal("private OIDC principal disclosed in map")
 	}
 
 	// Without the node token the start endpoint refuses the login.

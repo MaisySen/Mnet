@@ -9,7 +9,7 @@ One process stores networks, identities and policies in a JSON file. Changes use
 - `/api/*`: enrollment, credential-authenticated rejoin, approval polling, map polling, endpoint reports and relay WebSocket.
 - `/admin/api/*`: password-session administration of networks, nodes, keys, ACLs, metrics and audit.
 - `/admin`: embedded dashboard.
-- OIDC: configured issuer and explicit subject/verified-email admission policy, signed-token checks and nonce binding. Tests use a local signed provider; live-issuer certification is not claimed.
+- OIDC: configured issuer and explicit subject/verified-email admission policy, signed-token checks and nonce binding. Verified issuer/subject approval provenance is stored privately, separately from the node display label; it is not an account/membership model. Tests use a local signed provider; live-issuer certification is not claimed.
 
 Maps contain approved, non-expired peers permitted by the current pair/route policy. Long polls carry changes; local clients cannot learn unseen server policy changes while disconnected. Newer source also enforces known map expiry timestamps locally.
 
@@ -38,4 +38,4 @@ There is no second session encryption layer; confidentiality depends on WireGuar
 - Local administrators/SYSTEM and the private state owner remain trusted. A compromised endpoint can see its own plaintext.
 - HTTPS termination must sit in front of the plain HTTP control listener for non-loopback deployment.
 - Pair-level ACLs are not per-application-port rules. Known expiry is different from discovering an offline admin revocation.
-- Exit/subnet routing is incomplete; map/allowed-IP fields do not establish complete OS route setup or ownership-safe cleanup. See [operations](operations.md#exit-nodes-and-subnet-routes).
+- Managed Linux RFC1918 subnet routing/serving has bounded route/NAT ownership and separate-LAN kernel proof with operator-enabled forwarding. Non-Linux/IPv6/public subnet routes and exit internet routing remain unsupported. See [operations](operations.md#exit-nodes-and-subnet-routes).

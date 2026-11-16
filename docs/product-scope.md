@@ -10,7 +10,7 @@ An architecture blueprint shared as reference on 2026-11-16 describes personal/b
 
 ## Multiple devices and one account
 
-Implemented: a network contains separately keyed devices, each with its own identity and mesh IP. Approved, unexpired peers and relay traffic are scoped to that network. Enrollment uses a server URL, network and enrollment key or individual approval. Optional OIDC records the approving display identity on the device. Newer source also preserves the verified issuer/subject privately as approval provenance, without inferring it from old email labels or exposing it in peer maps; that addition is pending independent CI.
+Implemented: a network contains separately keyed devices, each with its own identity and mesh IP. Approved, unexpired peers and relay traffic are scoped to that network. Enrollment uses a server URL, network and enrollment key or individual approval. Optional OIDC records the approving display identity on the device. Newer source also preserves the verified issuer/subject privately as approval provenance, without inferring it from old email labels or exposing it in peer maps; that addition passed [c2fe64c CI](https://github.com/MaisySen/Mnet/actions/runs/43780929040).
 
 Not finished: a consumer account/organization ownership and membership model that lets one login safely manage all the user's devices. A stored approving identity is not that model. The current Network type has no account-owner/membership fields.
 

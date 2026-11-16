@@ -2,66 +2,50 @@
 
 Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-readiness, parity, security-certification or supported fleet-size claim.
 
-## Source, downloads and deployment are different
+## Source, downloads and deployment
 
 | Layer | Recorded state | Evidence / limit |
 | --- | --- | --- |
-| Published test artifacts | v0.8.2-test.1, source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11; Android 0.8.2/code 14. | [Release](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1). Sixteen assets were verified at release. Update CLI and daemon together. |
-| Hosted test control plane | Last verified 2026-11-16 at 07:12 AEDT on the same `2bb55f4` source. | This is a dated deployment check, not a live availability promise. Free-host ephemeral disk/restart state loss remains a limitation. |
-| Newer source | Known local expiry enforcement, direct-path fixes and bounded Linux subnet-route ownership; development continues beyond the verified commits below. | [Five-job CI](https://github.com/MaisySen/Mnet/actions/runs/43770289687). These newer changes are not in the v0.8.2 downloads or that last verified deployment. |
+| Published test artifacts | v0.8.2-test.1, source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11; Android 0.8.2/code 14. | [Release](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1). Sixteen assets verified at release. Update CLI and daemon together. |
+| Hosted test control plane | Last verified 2026-11-16 at 07:12 AEDT on `2bb55f4`. | Dated deployment check, not a current availability promise. Free-host ephemeral disk/restart state loss remains a limitation. |
+| Newer verified source | `c2fe64c`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43780929040). New source below is not in those downloads or that last verified deployment. |
 
-## Evidence by layer
+## What is implemented and tested
 
-- Local expiry: real WireGuard IPC verifies removal at known self/peer deadlines, stale-map/path-refresh protection, renewal and repeated lifecycle under blocked control polling. These tests use in-memory TUNs. Offline clients cannot discover an unseen admin revocation.
-- Windows: native protected-DACL inspection and private state replacement, local API, expiry, OS-loopback sessions; actual SCM install/start/stop/restart, crash recovery and uninstall on a disposable runner. No Wintun/physical-device claim.
-- macOS: native build/private-state/local-API/expiry and loopback-session tests. Actual VPN interface, physical capture/input and consent remain unverified.
-- Linux kernel lifecycle: [1d57a88 CI](https://github.com/MaisySen/Mnet/actions/runs/43763017036) also passed two saved-state Down/Up cycles with stable identity/IP and returned direct paths, then 148 actual drops in the transfer profile.
-- Linux kernel: two real TUN interfaces in isolated namespaces; mesh addressing/ping; both peers on direct WireGuard UDP; control/relay process stopped before transfers. OS TCP passed 3 x 4MiB normally and 3 x 4MiB with 1% loss plus 20ms delay; receiver hash and sender ACK checked. That run observed 132 underlay packet drops. Down removed interfaces and mesh routes. Controlled CI, not a public-internet soak.
-- Proof rig: isolated X11 changed-frame/chat/hash/ACK checks and bounded userspace stress/loss profiles. Its gVisor recovery configuration is proof-only; production sessions use OS TCP.
-- Android: signed test artifacts and a prior virtual Firebase Test Lab join proof. Physical VPN/capture/input/reconnect validation remains open.
-- iOS: source and shared Go test coverage, not a signed TestFlight or physical-device result.
+### Mesh, routing and recovery
 
-## Recent source verification
+- Three independently keyed Linux kernel VPN devices in one network: unique IPs/keys, two peers per device, six directed mesh pings and third-device OS TCP 3 x 4MiB with receiver hash/sender ACK. Removing that device preserves the original mesh.
+- A fresh device in a second network on the same control service sees no original peers, is absent from original maps, and cannot reach distinct original mesh IPs. Network address spaces can overlap; its own IP is excluded from this test.
+- Bounded authenticated direct probes and filtering of mesh/advertised-prefix underlay candidates address reproduced convergence/recursive-routing hazards. Direct paths are asserted, not inferred from healthy relay traffic.
+- Managed Linux RFC1918 IPv4 subnet routes and destination-scoped NAT have explicit ownership, rollback and cleanup. The separate LAN host has no mesh return route. Serving requires operator-enabled forwarding; Mnet never changes that shared sysctl. Unrelated NAT/routes and the operator LAN route are preserved. Older broad NAT rules are not adopted or deleted.
+- With forwarding disabled, serving setup ends Down without a TUN/NAT leak or unrelated changes. Retry succeeds after the fixture enables forwarding. Saved Down/Up cycles and a fresh daemon process using saved state and `-up` restore identity, direct VPN and LAN access.
+- Route-only ACL withdrawal/restoration and admin expiry/reapproval block and restore access as expected. Reapproval clears stale approval status/link. Known expiry is enforced locally even if later control polling is blocked; unseen offline admin changes cannot be discovered.
+- `mnet up --reset-routing`, while down, clears saved roles without deleting identity. Ordinary saved-state Up preserves routing. Fresh attempts clear old setup errors, preserving errors raised during the new attempt.
 
-- Direct convergence: an intermittent CI failure was reproduced and addressed with bounded authenticated probes. Three fresh [2d23b6a fixtures](https://github.com/MaisySen/Mnet/actions/runs/43765976816) passed. This closes that bounded reproduction, not arbitrary NAT or production reliability.
-- Expiry and reapproval: [e6ab28d CI](https://github.com/MaisySen/Mnet/actions/runs/43767516777) passed all five jobs and three fresh kernel fixtures. Peer/client-route removal blocks reachability until explicit reapproval; a reproduced stale waiting-approval status/link is corrected and asserted.
-- Separate LAN forwarding: [6735500 CI](https://github.com/MaisySen/Mnet/actions/runs/43770289687) passed all five jobs and three fresh fixtures with a fourth namespace. Its LAN host has no mesh return route. Control-off VPN-to-LAN OS TCP passed 3 x 4MiB with receiver hash/sender ACK in each fixture. Later mesh loss profiles observed 154/120/114 drops. Two saved Down/Up cycles, route-only ACL changes, expiry/reapproval, owned NAT cleanup and operator LAN route/unrelated NAT/forwarding preservation passed.
-- Serving safety: managed Linux RFC1918 IPv4 serving requires operator-enabled forwarding, owns unique destination-scoped NAT rules, and fails Up on setup errors. It never changes shared forwarding settings or adopts/deletes older broad rules. Local ownership/rollback tests pass. The disabled-forwarding failure path passed three fresh [fcbddd1 fixtures](https://github.com/MaisySen/Mnet/actions/runs/43771745649): setup ends Down, with no TUN/NAT leak, unchanged disabled sysctl/unrelated NAT, then successful retry after the fixture enables forwarding. Later loss profiles observed 147/154/110 drops.
-- Exit routing: newer source explicitly rejects selecting or advertising an exit node before enrollment/device changes. The inverted desktop guard and unsafe unowned host/default-route replacement helpers were removed rather than enabled. Rejection regressions and all five jobs passed in [fcbddd1 CI](https://github.com/MaisySen/Mnet/actions/runs/43771745649). Exit internet routing remains unsupported.
+The latest [c2fe64c CI](https://github.com/MaisySen/Mnet/actions/runs/43780929040) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 131/144/138. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
 
-### Recovery and status
+Exit-node selection/advertising is explicitly rejected before enrollment/device creation. Unsafe dormant host/default-route replacement helpers were removed, not enabled. Exit internet routing remains unsupported.
 
-A later local regression reproduced stale last_error after a successful retry. New source clears errors when a fresh Up attempt starts, preserving errors raised during that attempt. The stronger kernel retry assertion and native regression passed all five jobs and three fresh [4127209 fixtures](https://github.com/MaisySen/Mnet/actions/runs/43772484156), including 140/186/158 later loss-profile drops.
+### Platforms and sessions
 
-New source adds `mnet up --reset-routing` (while down) to clear saved serving/exit roles without deleting identity. Ordinary saved-state Up keeps its previous routing configuration. Reset cannot be combined with new routing roles. A local API regression reproduced the missing recovery path before this change; local API tests pass, including 20 race-detector repetitions. A bounded 30-second startup reachability assertion and explicit saved-identity comparison passed all five jobs and three fresh [85c2f79 fixtures](https://github.com/MaisySen/Mnet/actions/runs/43774062502), including 123/157/150 observed later loss-profile drops. This is bounded startup convergence, not arbitrary network readiness.
+- Windows: native protected-DACL/private-state, local API, expiry, preparation/cancellation and loopback OS TCP regressions. Actual SCM install/start/stop/restart, forced-crash recovery and removal pass on a disposable runner. No Wintun VPN or physical reboot claim.
+- macOS: native build/private-state/local-API, preparation/cancellation, expiry and loopback sessions. Actual VPN, physical capture/input, consent and launchd boot remain unverified.
+- Shared mobile lifecycle: Prepare reports preparing, serializes with Up/Down, publishes identity under a lock and is cancellable by Down. State snapshots do not share mutable route slices. Local race regressions and native CI pass, not physical mobile proof.
+- Android: signed test artifacts and a prior virtual Firebase Test Lab join. Physical VPN/capture/input/reconnect and reboot startup remain open. iOS has source/shared Go coverage, not signed TestFlight or physical-device proof.
+- Sessions: isolated X11 changed-frame/chat/hash/ACK and bounded stress/loss proofs. Production sessions use OS TCP; the attributed gVisor adapter is proof-only.
 
-## Mobile preparation lifecycle (new source)
+## Account groundwork, not a finished account product
 
-A fresh regression found that mobile Prepare still reported Down while enrollment was running, allowing other lifecycle operations to overlap. New source serializes Prepare with Up/Down, reports preparing, publishes initial and joined identity under the status lock, and returns independent routing slices from State/SetRouting. Prepare/API regressions passed 20 local race-detector repetitions and the full race suite passed locally. All five jobs passed in [718f74e CI](https://github.com/MaisySen/Mnet/actions/runs/43776983336), including native Windows/macOS preparation regressions and three full kernel fixtures with 152/152/152 later loss-profile drops. This is not physical mobile or automatic boot proof.
+Same-network multi-device connectivity is verified. A single login owning/managing all devices is not finished. Verified OIDC issuer/subject is stored as private approval provenance, separately from display email; no identity is inferred from historical email labels or disclosed in peer maps. Persistence, deletion, failed-write rollback and non-disclosure regressions pass in c2fe64c. A stronger signed-provider callback assertion is pending independent CI.
 
-Preparation cancellation follow-up: the first serialization regression deliberately released a blocked join before Down could finish. A new regression showed Down could instead wait for the full preparation timeout. Prepare now publishes its cancellation function while entering preparing, so Down cancels blocked enrollment before joining the lifecycle lock. Blocked-Prepare cancellation and identity/status regressions passed 20 local race-detector repetitions; the full race suite/build/vet pass. All five jobs passed in [973a7e1 CI](https://github.com/MaisySen/Mnet/actions/runs/43777723099), including native cancellation regressions and three full kernel fixtures with 152/132/152 later loss-profile drops.
-
+See [product scope](product-scope.md) for the user's account/device/startup target and platform gaps. The shared architecture blueprint is reference, not an adopted stack, budget or migration plan.
 
 ## Important open work
 
-- Wider subnet compatibility, restrictive host firewall policies, non-Linux/IPv6/public subnet OS routes, owned exit routing and public-internet/production soak. The bounded LAN fixture explicitly enables forwarding and permits forwarded traffic; it is not an arbitrary host compatibility guarantee.
-- Real Windows Wintun and macOS VPN interfaces, second-user Windows access tests, physical capture/input/permission flows, GNOME portal and physical mobile behavior.
-- Larger/cancelled transfers, bandwidth limits, long sessions, sleep/wake, sustained churn and fleet/relay capacity.
-- Persistent production storage, recovery practice and independent security review.
-- Store-policy/data-disclosure review before any publication. Store copy is a draft.
+- Account/organization ownership, membership and management experience.
+- Wider subnet/firewall compatibility, non-Linux/IPv6/public subnet OS routes and owned exit routing.
+- Real Windows Wintun/macOS VPN, second-user access, physical capture/input/permissions, mobile and actual OS boot/reboot.
+- Larger/cancelled transfers, long sessions, sleep/wake, sustained churn and fleet/relay capacity.
+- Durable hosted storage, recovery practice, independent security review and store-policy/data-disclosure review. Store copy remains a draft.
 
-See [native validation](native-platform-validation.md), [reliability](session-reliability.md), [operations](operations.md) and [scale measurements](scale-testing.md) for methods and exact limits.
-
-A newer kernel extension gracefully stops the serving daemon process and starts a fresh process with saved state and `-up`, asserting unchanged identity and restored direct VPN/LAN. The first fresh-process restart passed, but the later one-shot LAN ping after ACL restoration failed in [b4046ed CI](https://github.com/MaisySen/Mnet/actions/runs/43774744281). Diagnostics also exposed a candidate inside an advertised subnet, which can route the tunnel endpoint back into itself. New source filters mesh/advertised-prefix endpoint candidates and uses bounded LAN convergence after route restoration; the kernel job passed three fresh full fixtures in [c33c6c5 CI](https://github.com/MaisySen/Mnet/actions/runs/43775496938), including fresh-process saved-state startup and 141/129/123 later loss-profile drops. The overall run was not green: the Go job failed one-second local API readiness and safe-file receive timeouts during the parallel race suite. Test-only readiness/receive budgets are now ten seconds; protocol/content/cleanup assertions and production timeouts are unchanged. All five jobs and three fresh full fixtures passed in [64eb696 CI](https://github.com/MaisySen/Mnet/actions/runs/43776218766), including 124/123/152 later loss-profile drops. The bounded process-startup batch is independently green. This is not a real reboot, systemd/launchd boot or forced-crash cleanup proof.
-
-## Three-device kernel mesh
-
-A new fixture adds a third independently keyed kernel VPN device to the same network, requires unique keys/IPs, two visible peers per device, all six directed mesh pings and third-device OS TCP 3 x 4MiB hash/ACK. It then removes that device and requires the original direct mesh to recover before the existing ACL/reapproval/control-off tests. All five jobs and three fresh fixtures passed in [799f3a1 CI](https://github.com/MaisySen/Mnet/actions/runs/43778473220), with 130/150/164 later loss-profile drops. Third-device transfers used an available control service; only later original-pair/LAN transfers were control-off. This does not implement a single-account ownership/login model or establish fleet capacity.
-
-## Cross-network kernel isolation extension (pending)
-
-A fresh identity joins a second network on the same disposable control service. The new fixture requires no original peers on that device, no outsider in the original pair maps, and failed access to distinct original mesh IPs. Independent network address spaces can overlap, so the isolated device's own IP is not treated as a cross-network target. The first run passed those assertions but failed a later reapproval helper in [b650b3e CI](https://github.com/MaisySen/Mnet/actions/runs/43779251604). The extended fixture repeatedly logged in instead of reusing its session; the observed failure is consistent with its login burst exceeding the existing limiter. The fixture now reuses its private temporary admin cookie rather than weakening the production limit. All five jobs and three complete fixtures then passed in [e0a8f84 CI](https://github.com/MaisySen/Mnet/actions/runs/43780009817), including the three-device mesh, cross-network isolation and later control-off profiles with 135/140/168 drops. Network-scoped transport isolation is not account ownership, organization membership or a multi-tenant security certification.
-
-## OIDC approval provenance (new source, pending CI)
-
-Verified OIDC approval now stores issuer and subject separately from the display email in private control state. No principal is inferred for historical email-only approvals. Identity provenance persists atomically with approval, rolls back on save failure and is removed with the device. It is not added to peer-facing node maps. Local persistence, legacy-unknown, issuer-distinction, non-disclosure and failed-write regressions pass. This is account groundwork, not account ownership, membership, authorization based on email, a login dashboard or automatic device grouping. Independent CI is pending.
+Methods and earlier failures: [native validation](native-platform-validation.md), [reliability](session-reliability.md), [operations](operations.md), [release history](RELEASES.md) and [synthetic scale measurements](scale-testing.md).
