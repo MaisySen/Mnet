@@ -289,9 +289,13 @@ Preparing actual systemd validation reproduced a clean-exit ordering bug: a stop
 
 Reject duplicate Linux `mnetd` processes for the same private state directory before identity/API setup. Stable private no-follow regular-file flock rejects aliases; descriptor close/crash releases ownership without deleting the lock inode. Repeated race and actual-process checks preserve the first API/socket/token and allow clean/crash restart; all five jobs passed in [9b6c459 CI](https://github.com/MaisySen/Mnet/actions/runs/43849057244), including actual process/active API preservation and systemd VPN recovery, plus three full kernel regressions (158/157/148 drops). Other platforms/mobile do not gain the guard. No live device state changed.
 
-## Read-only macOS launchd configuration (new source, native CI pending)
+## Read-only macOS launchd configuration (verified)
 
-Add `-service print-plist` on Darwin, generating exact saved-state argv with an explicit canonical `utunN`, RunAtLoad, failure-only KeepAlive, throttling and decimal umask 63. Shared conservative path/override validation keeps secrets/enrollment/routing/session arguments out of both generated service formats. Repeated local XML/generator tests, full race/vet/cross-builds pass. Native actual CLI/plutil checks pending. No install/load/start effects, no actual launchd/VPN/boot proof.
+Add `-service print-plist` on Darwin, generating exact saved-state argv with an explicit canonical `utunN`, RunAtLoad, failure-only KeepAlive, throttling and decimal umask 63. Shared conservative path/override validation keeps secrets/enrollment/routing/session arguments out of both generated service formats. Repeated local XML/generator tests, full race/vet/cross-builds pass. All five jobs passed in [f2862f7 CI](https://github.com/MaisySen/Mnet/actions/runs/43851053165), including actual native CLI/exact plist/plutil/no-state-write checks and three full kernel regressions (170/142/156 loss drops). No install/load/start effects, no actual launchd/VPN/boot proof.
+
+## Actual macOS launchd offline lifecycle (test extension, CI pending)
+
+Disposable native root CI generates a unique-label system job with unchanged production argv/settings, then checks actual launchd offline authenticated API startup, automatic SIGKILL recovery/new PID/same token, unload/reload/final process/socket/job cleanup. No production label or persistent enable/disable configuration touched. Python/source checks pass locally; native execution pending. This is offline service-manager proof only, not enrollment, actual VPN or OS boot/reboot.
 
 ## v0.8.2-test.1 - 2026-11-16
 
