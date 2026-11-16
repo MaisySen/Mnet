@@ -174,8 +174,14 @@ CLI session connect/reconnect and file-send now allow70 seconds for hello/host c
 
 Short-budget silent-host and successful deadline-clear net.Pipe tests pass30 race repetitions. Fresh full-repository race tests pass. These use an accelerated fixture timeout, not an elapsed70-second real host/device test. All-five [4f93413 CI](https://github.com/MaisySen/Mnet/actions/runs/43950358961) passes. No mobile source, bindings, release artifacts or live deployment changed.
 
-## Headless desktop host hello budget (new source, CI pending)
+## Headless desktop host hello budget (d55f4d3 all-five CI verified)
 
 The desktop session host bounds accepted-socket hello/reply I/O to15 seconds, then clears the deadline before starting capture. A silent peer no longer occupies the serial accept/hello loop indefinitely. Headless authorization remains immediate and unchanged; mobile's separate consent allowance is unchanged. This is a deadline, not a per-peer admission/connection-rate limit.
 
-An accelerated40ms real OS-loopback test accepts a silent connection, verifies timeout, accepts a subsequent approved viewer and measures a successful keepalive round trip after the original handshake deadline.30 race repetitions and a fresh full-repository race run pass. No physical host, public-internet timing,15-second elapsed run, capture/input or device proof. No bindings, release artifacts or live deployment changed.
+An accelerated40ms real OS-loopback test accepts a silent connection, verifies timeout, accepts a subsequent approved viewer and measures a successful keepalive round trip after the original handshake deadline.30 race repetitions and a fresh full-repository race run pass. No physical host, public-internet timing,15-second elapsed run, capture/input or device proof. All-five [d55f4d3 CI](https://github.com/MaisySen/Mnet/actions/runs/43952410300) passes. No bindings, release artifacts or live deployment changed.
+
+## File receiver idle cleanup (new source, CI pending)
+
+Incoming file reception now allows60 seconds between data/FIN frames by default. A silent incomplete stream returns, closes/removes its private temporary file and releases its stream entry without closing unrelated session channels. FileReceiver.IdleTimeout can select a different positive budget; nonpositive uses the default. Active progress restarts the per-receive wait, so this is not a total-transfer deadline or resumable-transfer feature. A sender paused past the budget must retry the file.
+
+A short40ms net.Pipe test sends a partial file, waits for idle cleanup and checks empty destination directory, stream release and a still-open mux. Idle/safe-file/reset tests pass30 race repetitions; a fresh full-repository race run passes. No elapsed60-second real network test, device/runtime, new bindings, release APK/AAB or live deployment proof.

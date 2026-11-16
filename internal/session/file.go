@@ -18,13 +18,17 @@ const fileChunk = 256 * 1024
 // DefaultMaxFileBytes bounds one incoming transfer unless explicitly raised.
 const DefaultMaxFileBytes int64 = 1 << 30
 
+// DefaultFileIdleTimeout bounds silence between incoming data/FIN frames.
+const DefaultFileIdleTimeout = 60 * time.Second
+
 // FileReceiver handles incoming file transfer streams. Files land in
 // Dir (default: current directory) under their offered base name.
 type FileReceiver struct {
-	Mux      *Mux
-	Dir      string
-	MaxBytes int64 // <=0 uses DefaultMaxFileBytes
-	OnDone   func(name string, size int64)
+	Mux         *Mux
+	Dir         string
+	MaxBytes    int64         // <=0 uses DefaultMaxFileBytes
+	IdleTimeout time.Duration // <=0 uses DefaultFileIdleTimeout
+	OnDone      func(name string, size int64)
 }
 
 // Handle runs one incoming file stream to completion.
@@ -83,10 +87,14 @@ func (r FileReceiver) Handle(s Stream) {
 		return
 	}
 	ack := func(ok bool, digest string) { _ = r.Mux.SendJSON(s.ID, PriBulk, FileAck{OK: ok, SHA256: digest}) }
+	idle := r.IdleTimeout
+	if idle <= 0 {
+		idle = DefaultFileIdleTimeout
+	}
 	h := sha256.New()
 	var n int64
 	for {
-		fr, err := s.Recv(0)
+		fr, err := s.Recv(idle)
 		if errors.Is(err, io.EOF) {
 			break
 		}

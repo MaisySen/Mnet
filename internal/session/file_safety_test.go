@@ -171,3 +171,45 @@ func TestResetTransferDoesNotPublish(t *testing.T) {
 		t.Fatal("reset published a file")
 	}
 }
+
+func TestIdleFileReceiverCleansPartialAndReleasesStream(t *testing.T) {
+	client, host := pipe(t)
+	defer client.Close()
+	defer host.Close()
+	dir := t.TempDir()
+	finished := make(chan struct{})
+	host.OnStream(func(s Stream) {
+		defer close(finished)
+		FileReceiver{Mux: host, Dir: dir, IdleTimeout: 40 * time.Millisecond}.Handle(s)
+	})
+	stream, err := client.Open(PriBulk, FileOffer{Name: "unfinished.bin", Size: 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stream.Recv(time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.SendBytes(stream.ID, PriBulk, []byte("abc")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("idle receiver retained partial transfer")
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("partial files remain: %v %v", entries, err)
+	}
+	host.streamMu.Lock()
+	_, retained := host.streams[stream.ID]
+	host.streamMu.Unlock()
+	if retained {
+		t.Fatal("idle receiver retained stream")
+	}
+	select {
+	case <-host.Closed():
+		t.Fatal("idle file closed unrelated session")
+	default:
+	}
+}
