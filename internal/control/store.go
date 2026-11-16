@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -401,7 +402,15 @@ func (s *Store) uniqueNodeNameLocked(networkID, want string) string {
 		return want
 	}
 	for i := 2; ; i++ {
-		cand := fmt.Sprintf("%s-%d", want, i)
+		suffix := fmt.Sprintf("-%d", i)
+		stem := want
+		// cleanName bounds the requested ASCII label to 32 bytes. Keep the
+		// automatic collision suffix within that same public name contract.
+		if len(stem)+len(suffix) > 32 {
+			stem = stem[:32-len(suffix)]
+		}
+		stem = strings.TrimRight(stem, "-")
+		cand := stem + suffix
 		if !taken[cand] {
 			return cand
 		}
