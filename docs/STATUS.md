@@ -36,9 +36,13 @@ Exit-node selection/advertising is explicitly rejected before enrollment/device 
 
 ## Account groundwork, not a finished account product
 
-Same-network multi-device connectivity is verified. A single login owning/managing all devices is not finished. Verified OIDC issuer/subject is stored as private approval provenance, separately from display email; no identity is inferred from historical email labels or disclosed in peer maps. Persistence, deletion, failed-write rollback and non-disclosure regressions pass in c2fe64c. A stronger signed-provider callback assertion is pending independent CI.
+Same-network multi-device connectivity is verified. A single login owning/managing all devices is not finished. Verified OIDC issuer/subject is stored as private approval provenance, separately from display email; no identity is inferred from historical email labels or disclosed in peer maps. Persistence, deletion, failed-write rollback and non-disclosure regressions pass in c2fe64c. The signed-provider callback assertion also passed all five jobs in [471f537 CI](https://github.com/MaisySen/Mnet/actions/runs/43781793743), with 149/143/176 later kernel loss-profile drops.
 
 See [product scope](product-scope.md) for the user's account/device/startup target and platform gaps. The shared architecture blueprint is reference, not an adopted stack, budget or migration plan.
+
+## Private identity-device query (new source, pending CI)
+
+An internal helper can list approved, unexpired device summaries for an exact network + verified issuer + subject. It excludes same-email/different-subject identities, identical subjects at other issuers, other networks, legacy email-only approvals and expired devices. Returned summaries contain no keys/tokens/endpoints and do not alias stored state. Local race regressions cover persistence, scope, unknown inputs and expiry. No HTTP route exposes this helper; any future caller must authenticate the principal and separately authorize network access. This is not ownership, membership, a login UI or an authorization grant. Independent CI is pending.
 
 ## Important open work
 
