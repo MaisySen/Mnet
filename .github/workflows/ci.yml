@@ -25,6 +25,8 @@ jobs:
         run: go tool govulncheck ./...
       - name: test with race detector
         run: go test -race -count=1 -timeout=5m ./...
+      - name: metadata trace and OS TCP race isolation (30 repetitions)
+        run: go test -race -count=30 -timeout=3m ./internal/session -run 'TestFrameTraceBoundedMetadataOnly|TestTrace|TestSessionOverTCP'
       - name: userspace mesh file burst regression (100 transfers)
         run: MNET_MESH_STRESS=1 go test -race -count=1 -timeout=2m ./cmd/mnetd -run '^TestMeshFileStress$'
       - name: proof-only userspace burst loss recovery
@@ -92,7 +94,7 @@ jobs:
       - name: native local key expiry and daemon restart
         run: go test -race -count=3 -timeout=5m ./internal/daemon -run 'TestMapAuthorizationDenialWithdrawsAndRecovers|TestApplyMapRejectsExpiredAuthorization|TestLocalExpiryWithoutControlResponse|TestExpiryGuardRenewsAndWakesFromNoDeadline|TestExpiryEqualityAndNoDeadlineCompatibility|TestDaemonExpiryWithBlockedControlAndRestart|TestReapprovedMapRestoresRunningStatus|TestSuccessfulRetryClearsPreviousError|TestUnsupportedRoutingFailsBeforeControlOrDevice|TestPrepareSerializesIdentityAndPublishesStatus|TestDownCancelsBlockedPrepare'
       - name: native OS TCP session and file transfer
-        run: go test -race -count=3 -timeout=5m ./internal/session -run 'TestSessionOverTCP|TestQueuedFileSeesStartupOptions|TestRepeatedFileTransfersReleaseStreams'
+        run: go test -race -count=3 -timeout=5m ./internal/session -run 'TestSessionOverTCP|TestQueuedFileSeesStartupOptions|TestRepeatedFileTransfersReleaseStreams|TestFrameTraceBoundedMetadataOnly|TestTrace'
       - name: native Windows SCM lifecycle (offline fixture, no Wintun)
         if: runner.os == 'Windows'
         shell: pwsh
