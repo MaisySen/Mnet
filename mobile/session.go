@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"fintex.au/mnet/internal/session"
 )
@@ -69,12 +70,13 @@ type SessionViewer struct {
 }
 
 type sessionHostRun struct {
-	owner    *Node
-	listener net.Listener
-	pending  net.Conn
-	active   *SessionHost
-	stopped  bool
-	done     chan struct{}
+	owner        *Node
+	listener     net.Listener
+	pending      net.Conn
+	active       *SessionHost
+	stopped      bool
+	done         chan struct{}
+	helloTimeout time.Duration
 }
 
 var (
@@ -94,6 +96,10 @@ func (r *sessionHostRun) Accept() (net.Conn, error) {
 	if r.stopped {
 		conn.Close()
 		return nil, net.ErrClosed
+	}
+	if err := conn.SetDeadline(time.Now().Add(r.helloTimeout)); err != nil {
+		conn.Close()
+		return nil, err
 	}
 	r.pending = conn
 	return conn, nil
@@ -116,6 +122,9 @@ func (n *Node) StartSessionHost(cb HostCallbacks) error {
 }
 
 func (n *Node) startSessionHost(ln net.Listener, name string, cb HostCallbacks) error {
+	return n.startSessionHostTimeout(ln, name, cb, 15*time.Second)
+}
+func (n *Node) startSessionHostTimeout(ln net.Listener, name string, cb HostCallbacks, helloTimeout time.Duration) error {
 	if cb == nil {
 		ln.Close()
 		return errors.New("session callbacks required")
@@ -131,7 +140,7 @@ func (n *Node) startSessionHost(ln net.Listener, name string, cb HostCallbacks) 
 		ln.Close()
 		return errors.New("session host already running")
 	}
-	run := &sessionHostRun{owner: n, listener: ln, done: make(chan struct{})}
+	run := &sessionHostRun{owner: n, listener: ln, done: make(chan struct{}), helloTimeout: helloTimeout}
 	hosting = run
 	sessMu.Unlock()
 	go run.serve(name, cb)
@@ -147,6 +156,14 @@ func (r *sessionHostRun) serve(name string, cb HostCallbacks) {
 			valid := !r.stopped && hosting == r
 			sessMu.Unlock()
 			if !valid {
+				return false, "host stopped"
+			}
+			// Android's consent UI waits up to60 seconds. Give its reply a
+			// separate bounded write window after the initial hello deadline.
+			sessMu.Lock()
+			conn := r.pending
+			sessMu.Unlock()
+			if conn == nil || conn.SetDeadline(time.Now().Add(70*time.Second)) != nil {
 				return false, "host stopped"
 			}
 			accepted := cb.AcceptSession(h.NodeName)
@@ -181,6 +198,11 @@ func (r *sessionHostRun) serve(name string, cb HostCallbacks) {
 			sessMu.Unlock()
 			m.Close()
 			return
+		}
+		if err := pending.SetDeadline(time.Time{}); err != nil {
+			sessMu.Unlock()
+			m.Close()
+			continue
 		}
 		h := session.ServeHostWithOptions(m, &appCapturer{cb: cb}, &appInjector{cb: cb}, 8, session.HostOptions{
 			OnChat: func(cm session.ChatMessage) { b, _ := json.Marshal(cm); cb.OnChat(string(b)) },

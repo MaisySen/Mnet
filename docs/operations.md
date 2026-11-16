@@ -528,6 +528,10 @@ Session-host source registers projection onStop before creating a virtual displa
 
 StopSessionHost affects only the calling node's current host. Node Stop/Close stop that owned host too; Close refuses a later host. Pending accepted connections are closed during stop, and late consent/old cleanup cannot take over a replacement. An already blocked application consent callback returns on its application's schedule; the transport is closed immediately. Local loopback/race and fresh arm64 AAR/Java/dex checks pass, native ownership checks passed in [5647bf6 CI](https://github.com/MaisySen/Mnet/actions/runs/43890650925). This does not verify the Android framework/consent/capture teardown.
 
-### Refusing a viewer (new source)
+### Refusing a viewer (verified native loopback)
 
 Refusing a viewer or receiving a malformed peer handshake should close that connection without ending hosting. Local loopback regression now covers refused/malformed/approved sequence on one listener; native extension pending. There is not yet a handshake deadline for a connected silent peer. Framework/physical Android behavior is unverified; published APK unchanged.
+
+### Mobile hello timeout (new source)
+
+Accepted mobile-host connections get15 seconds for their hello and then70 seconds for consent/reply transport I/O. The active-session deadline is cleared after approval. Timeout closes the peer, not the listener. The existing Android consent prompt waits60 seconds; arbitrary blocked callbacks cannot be forcibly interrupted. Local short-deadline loopback/race tests pass, native extension pending. Public-internet load and physical Android are unverified.

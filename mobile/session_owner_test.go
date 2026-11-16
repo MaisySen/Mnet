@@ -249,3 +249,47 @@ func TestSessionHostSurvivesRefusedAndMalformedPeer(t *testing.T) {
 		t.Fatal("unexpected consent count", cb.decisions.Load())
 	}
 }
+
+func TestSessionSilentPeerDeadlineAndApprovedRecovery(t *testing.T) {
+	owner := &Node{}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cb := &retryCallbacks{}
+	cb.decisions.Store(1)
+	if err := owner.startSessionHostTimeout(ln, "fixture", cb, 40*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	defer owner.StopSessionHost()
+	silent, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer silent.Close()
+	silent.SetReadDeadline(time.Now().Add(time.Second))
+	if _, err := silent.Read(make([]byte, 1)); err == nil {
+		t.Fatal("silent peer remained open")
+	} else if ne, ok := err.(net.Error); ok && ne.Timeout() {
+		t.Fatal("server did not enforce handshake deadline")
+	}
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	conn.SetDeadline(time.Now().Add(time.Second))
+	m, err := session.Dial(conn, "approved")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	// The short initial deadline must not leak into the active mux.
+	time.Sleep(100 * time.Millisecond)
+	select {
+	case <-m.Closed():
+		t.Fatal("handshake deadline leaked into active session")
+	default:
+	}
+	owner.StopSessionHost()
+}
