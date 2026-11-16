@@ -217,5 +217,7 @@ func runDaemon(o options, stop <-chan struct{}) error {
 	log.Printf("mnetd: shutting down")
 	cancelAPI()
 	d.Down()
-	return nil
+	// Do not exit the process before the API goroutine has closed/unlinked
+	// its listener. A clean service stop must complete that teardown.
+	return <-apiDone
 }

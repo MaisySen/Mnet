@@ -104,11 +104,16 @@ def main():
             raise RuntimeError(f'required command missing: {command}')
     if not Path('/dev/net/tun').exists():
         raise RuntimeError('kernel TUN unavailable')
+    systemd_fixture = os.environ.get('MNET_KERNEL_SYSTEMD') == '1'
+    if systemd_fixture and (not Path('/run/systemd/system').is_dir() or
+                            Path('/proc/1/comm').read_text().strip() != 'systemd'):
+        raise RuntimeError('systemd fixture requires a disposable systemd-booted runner')
     tmp = Path(tempfile.mkdtemp(prefix='mnet-kernel-'))
     os.chmod(tmp, 0o700)
     tag = uuid.uuid4().hex[:7]
     spaces = {x: 'mn' + tag + x for x in 'cabde'}
     processes, logs, created, host_links, configs = [], [], [], [], []
+    systemd_unit = None
 
     def ns(which, *args):
         return ('ip', 'netns', 'exec', spaces[which], *map(str, args))
@@ -333,6 +338,60 @@ print(json.dumps(k))
         wait_for(lan_reachable, 'LAN reachability after daemon process restart', timeout=30)
         serving_state(True)
         print('PASS fresh daemon -up uses saved identity and restores direct VPN/LAN after graceful process restart', flush=True)
+        if systemd_fixture:
+            # Runtime-only, unique test unit. Use the generated production argv
+            # unchanged. Namespace/mount directives are disposable fixture
+            # isolation, not additions to the production unit.
+            daemon_processes['a'].terminate()
+            if daemon_processes['a'].wait(timeout=10) != 0:
+                raise RuntimeError('pre-service client stop failed')
+            candidate = Path('/run/systemd/system') / ('mnet-ci-' + tag + '.service')
+            unit = run(binary_dir / 'mnetd', '-state', states['a'], '-service', 'print-unit')
+            unit += ('\n[Service]\nNetworkNamespacePath=/run/netns/' + spaces['a'] +
+                     '\nBindReadOnlyPaths=/etc/netns/' + spaces['a'] + '/hosts:/etc/hosts\n')
+            with candidate.open('x') as handle:
+                systemd_unit = candidate
+                handle.write(unit)
+            run('systemd-analyze', 'verify', str(systemd_unit))
+            run('systemctl', 'daemon-reload')
+
+            def service_ready():
+                status = local_api(states['a'])
+                if status['status'] != 'up' or status['ipv4'] != ips['a']:
+                    return False
+                identity = json.loads((states['a'] / 'state.json').read_text())
+                if any(identity.get(k) != v for k, v in identities['a'].items()):
+                    raise RuntimeError('systemd service changed saved client identity')
+                return True
+
+            def check_service_vpn():
+                wait_for(service_ready, 'systemd saved-state VPN Up', timeout=40)
+                wait_for(both_direct, 'systemd restored direct VPN', timeout=40)
+                wait_for(subnet_ready, 'systemd restored subnet client route')
+                wait_for(lan_reachable, 'systemd restored LAN traffic')
+                if run('systemctl', 'show', '-p', 'UMask', '--value', systemd_unit.name).strip() != '0077':
+                    raise RuntimeError('systemd did not apply private umask')
+
+            run('systemctl', 'start', systemd_unit.name)
+            check_service_vpn()
+            print('PASS actual systemd generated unit starts saved identity and restores kernel direct VPN/LAN', flush=True)
+            run('systemctl', 'stop', systemd_unit.name)
+            if (states['a'] / 'mnetd.sock').exists():
+                raise RuntimeError('systemd stop left local API socket')
+            if any(link['ifname'] == 'mnet0' for link in json.loads(run('ip', '-n', spaces['a'], '-j', 'link', 'show'))):
+                raise RuntimeError('systemd stop left client TUN')
+            run('systemctl', 'start', systemd_unit.name)
+            check_service_vpn()
+            before = run('systemctl', 'show', '-p', 'MainPID', '--value', systemd_unit.name).strip()
+            if not before.isdigit() or int(before) <= 1:
+                raise RuntimeError('systemd service has no valid main PID')
+            run('systemctl', 'kill', '--kill-who=main', '--signal=SIGKILL', systemd_unit.name)
+            def new_pid():
+                pid = run('systemctl', 'show', '-p', 'MainPID', '--value', systemd_unit.name).strip()
+                return pid.isdigit() and int(pid) > 1 and pid != before
+            wait_for(new_pid, 'systemd restart-on-failure new PID', timeout=40)
+            check_service_vpn()
+            print('PASS actual systemd stop/start and forced-crash restart recover same identity, direct VPN and LAN; not OS reboot proof', flush=True)
         acl_script = tmp / 'acl.py'
         acl_script.write_text(r'''
 import http.cookiejar,json,sys,urllib.request
@@ -591,12 +650,26 @@ jar.save(ignore_discard=True);os.chmod(jar.filename,0o600)
         serving_state(False)
         print('PASS explicit routing reset preserves identity while clearing saved serving configuration', flush=True)
     except Exception:
+        if systemd_unit is not None:
+            # State-only diagnostics: never dump unit environment, argv,
+            # journal or enrollment files into CI logs.
+            diagnostic = subprocess.run(['systemctl', 'show', '-p', 'ActiveState',
+                '-p', 'SubState', '-p', 'Result', '-p', 'ExecMainCode',
+                '-p', 'ExecMainStatus', systemd_unit.name], capture_output=True, text=True)
+            print('systemd state diagnostics: ' + diagnostic.stdout, file=sys.stderr)
         for path in tmp.glob('*.log'):
             # Daemon logs can contain fixture approval URLs. Keep diagnostics
             # local to this disposable test rather than uploading its state.
             print(f'--- {path.name} ---\n{path.read_text()[-6000:]}', file=sys.stderr)
         raise
     finally:
+        if systemd_unit is not None:
+            # Stop the unit before destroying its private network namespace.
+            # Preserve a cleanup failure rather than claiming host cleanup.
+            run('systemctl', 'stop', systemd_unit.name)
+            systemd_unit.unlink()
+            run('systemctl', 'daemon-reload')
+            subprocess.run(['systemctl', 'reset-failed', systemd_unit.name], capture_output=True)
         for proc in reversed(processes):
             if proc.poll() is None:
                 proc.terminate()

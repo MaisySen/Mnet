@@ -92,7 +92,7 @@ New source adds `mnet status --json`, a single JSON object from authenticated lo
 
 Linux with systemd:
 
-New source offers read-only generation: `/absolute/path/to/mnetd -state /var/lib/mnet -service print-unit > mnetd.service`. It prints a saved-enrollment unit and never installs/enables/starts a service or edits identity. Use a stable final daemon binary path, the same dedicated absolute state directory used during enrollment, and review the generated text before installing it through your host's normal service-management process. Enrollment/routing/session/validation overrides and auth keys are refused rather than silently omitted. Paths use a conservative literal character set; whitespace, systemd expansion characters and non-canonical paths reject. No secrets belong in unit files. Keep the executable and parent directories writable only by trusted administrators. Generated defaults request network-online ordering, private umask and restart on failure; neither boot nor VPN readiness is proven by generation. Local generator tests and `systemd-analyze verify` pass; full CI pending.
+New source offers read-only generation: `/absolute/path/to/mnetd -state /var/lib/mnet -service print-unit > mnetd.service`. It prints a saved-enrollment unit and never installs/enables/starts a service or edits identity. Use a stable final daemon binary path, the same dedicated absolute state directory used during enrollment, and review the generated text before installing it through your host's normal service-management process. Enrollment/routing/session/validation overrides and auth keys are refused rather than silently omitted. Paths use a conservative literal character set; whitespace, systemd expansion characters and non-canonical paths reject. No secrets belong in unit files. Keep the executable and parent directories writable only by trusted administrators. Generated defaults request network-online ordering, private umask and restart on failure; neither boot nor VPN readiness is proven by generation. Generator tests, actual CLI no-state-write checks and `systemd-analyze verify` pass in [c3caba0 CI](https://github.com/MaisySen/Mnet/actions/runs/43846988647), all five jobs passed.
 
 The manual example below remains supported:
 
@@ -100,12 +100,15 @@ The manual example below remains supported:
 # /etc/systemd/system/mnetd.service
 [Unit]
 Description=Mnet node
+Wants=network-online.target
 After=network-online.target
 
 [Service]
-ExecStart=/usr/local/bin/mnetd --state /var/lib/mnet --up \
-  --server https://control.example.com --network home
-Restart=always
+Type=simple
+UMask=0077
+ExecStart=/usr/local/bin/mnetd -state /var/lib/mnet -ifname mnet0 -up
+Restart=on-failure
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target

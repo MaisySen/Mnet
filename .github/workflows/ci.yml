@@ -102,6 +102,9 @@ jobs:
         run: go test -race -count=3 -timeout=5m ./internal/daemon -run 'TestMapAuthorizationDenialWithdrawsAndRecovers|TestApplyMapRejectsExpiredAuthorization|TestLocalExpiryWithoutControlResponse|TestExpiryGuardRenewsAndWakesFromNoDeadline|TestExpiryEqualityAndNoDeadlineCompatibility|TestDaemonExpiryWithBlockedControlAndRestart|TestReapprovedMapRestoresRunningStatus|TestSuccessfulRetryClearsPreviousError|TestUnsupportedRoutingFailsBeforeControlOrDevice|TestPrepareSerializesIdentityAndPublishesStatus|TestDownCancelsBlockedPrepare'
       - name: native OS TCP session and file transfer
         run: go test -race -count=3 -timeout=5m ./internal/session -run 'TestSessionOverTCP|TestQueuedFileSeesStartupOptions|TestRepeatedFileTransfersReleaseStreams|TestFrameTraceBoundedMetadataOnly|TestTrace'
+      - name: native macOS daemon clean-stop listener teardown (30 repetitions)
+        if: runner.os == 'macOS'
+        run: go test -race -count=30 -timeout=3m ./cmd/mnetd -run '^TestDaemonCleanStopWaitsForLocalAPITeardown$'
       - name: native Windows SCM lifecycle (offline fixture, no Wintun)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -130,5 +133,7 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             echo "Kernel fixture run $attempt of 3"
-            sudo env MNET_KERNEL_BIN="$RUNNER_TEMP/mnet-kernel-bin" python3 scripts/kernel-vpn-validation.py
+            systemd=0
+            if [ "$attempt" = 1 ]; then systemd=1; fi
+            sudo env MNET_KERNEL_SYSTEMD="$systemd" MNET_KERNEL_BIN="$RUNNER_TEMP/mnet-kernel-bin" python3 scripts/kernel-vpn-validation.py
           done
