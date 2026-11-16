@@ -152,12 +152,15 @@ def main():
         # print the fixture's auth key or retain its store as a CI artifact.
         admin = tmp / 'admin.py'
         admin.write_text(r'''
-import http.cookiejar,json,sys,urllib.request
-opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+import http.cookiejar,json,sys,urllib.request,os
+from pathlib import Path
+jar=http.cookiejar.LWPCookieJar(str(Path(__file__).with_name('admin.cookies')))
+opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
 def post(path,data):
  req=urllib.request.Request('http://198.18.10.1:8080'+path,json.dumps(data).encode(),{'Content-Type':'application/json'})
  return json.load(opener.open(req,timeout=3))
 post('/admin/api/login',{'password':'kernel-ci-fixture-only'})
+jar.save(ignore_discard=True);os.chmod(jar.filename,0o600)
 n=post('/admin/api/networks',{'name':'kerneltest'})
 k=post('/admin/api/authkeys',{'network_id':n['id'],'reusable':True})
 print(json.dumps(k))
@@ -322,11 +325,12 @@ print(json.dumps(k))
         acl_script.write_text(r'''
 import http.cookiejar,json,sys,urllib.request
 from pathlib import Path
-opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+jar=http.cookiejar.LWPCookieJar(str(Path(__file__).with_name('admin.cookies')))
+jar.load(ignore_discard=True)
+opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
 def call(path,data,method='POST'):
  req=urllib.request.Request('http://198.18.10.1:8080'+path,json.dumps(data).encode(),{'Content-Type':'application/json'},method=method)
  return json.load(opener.open(req,timeout=3))
-call('/admin/api/login',{'password':'kernel-ci-fixture-only'})
 snapshot=json.loads(Path(sys.argv[1]).read_text())
 network=next(n['id'] for n in snapshot['networks'].values() if n['name']=='kerneltest')
 node=next(n for n in snapshot['nodes'].values() if n['name']=='b')
