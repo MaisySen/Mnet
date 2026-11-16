@@ -22,9 +22,10 @@ type Recorder struct {
 	frames int
 }
 
-// NewRecorder opens path for writing (0600: recordings are sensitive).
+// NewRecorder creates a new recording (0600: recordings are sensitive).
+// Existing destinations, including final symlinks, are never overwritten.
 func NewRecorder(path string) (*Recorder, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, err
 	}

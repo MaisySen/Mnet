@@ -676,3 +676,8 @@ The empty-frame regression failed before fixing. Empty-frame refusal, partial cl
 An incoming file idle expiry now sends a reset on that stream before releasing its local state. The sender sees ErrStreamReset instead of waiting for a later ACK timeout. Peer resets and mux closure do not trigger a reset echo. The reset uses the existing bounded outbound queue; delivery is not guaranteed when the connection is broken or blocked, and this does not add transport cancellation of already queued chunks.
 
 A sender-notification regression failed before the change. Idle/reset/progress tests pass20 race repetitions, followed by fresh full-repository race tests. They also check partial cleanup, stream release and a still-open unrelated mux. These are accelerated net.Pipe fixtures, not60-second real-network or device proof. No fresh bindings, release artifacts or deployment.
+
+
+### Recording destination collisions
+
+New source requires an unused recording path. Existing files and final symlinks are refused without overwriting their bytes or permissions. The daemon's timestamp-based naming can collide if the same viewer starts twice within one second; recording then reports unavailable while hosting continues. Choose a private, trusted recording directory. This final-path check does not secure attacker-controlled parent directories, guarantee disk space or repair a failed recording. Source/local tests only at this checkpoint; published downloads have not changed.

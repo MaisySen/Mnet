@@ -179,3 +179,82 @@ func TestRecorderCloseSerializesWithFrames(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRecorderRefusesExistingDestinationWithoutChangingIt(t *testing.T) {
+	path := t.TempDir() + "/existing.mjpeg"
+	original := []byte("preserve previous recording")
+	if err := os.WriteFile(path, original, 0644); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := NewRecorder(path)
+	if r != nil {
+		r.Close()
+	}
+	if err == nil {
+		t.Error("recorder overwrote existing destination")
+	}
+	after, readErr := os.ReadFile(path)
+	if readErr != nil || !bytes.Equal(after, original) {
+		t.Fatalf("destination changed: %q %v", after, readErr)
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Mode() != before.Mode() {
+		t.Fatalf("destination permissions changed: %v", err)
+	}
+}
+
+func TestRecorderRefusesFinalSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := dir + "/target"
+	original := []byte("do not truncate")
+	if err := os.WriteFile(target, original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	link := dir + "/record.mjpeg"
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	r, err := NewRecorder(link)
+	if r != nil {
+		r.Close()
+	}
+	if err == nil {
+		t.Error("recorder followed final symlink")
+	}
+	content, readErr := os.ReadFile(target)
+	if readErr != nil || !bytes.Equal(content, original) {
+		t.Fatalf("symlink target changed: %q %v", content, readErr)
+	}
+	info, err := os.Lstat(link)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("symlink changed: %v", err)
+	}
+}
+
+func TestConcurrentRecorderCreationHasOneOwner(t *testing.T) {
+	path := t.TempDir() + "/one.mjpeg"
+	var wg sync.WaitGroup
+	results := make(chan *Recorder, 12)
+	for i := 0; i < cap(results); i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); r, _ := NewRecorder(path); results <- r }()
+	}
+	wg.Wait()
+	close(results)
+	count := 0
+	for r := range results {
+		if r != nil {
+			count++
+			if err := r.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatalf("recording owners: %d", count)
+	}
+}
