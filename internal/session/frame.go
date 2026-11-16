@@ -62,11 +62,16 @@ func writeFrame(w io.Writer, f Frame) error {
 	h[5] = f.Priority
 	binary.BigEndian.PutUint16(h[6:8], 0)
 	binary.BigEndian.PutUint32(h[8:12], uint32(len(f.Payload)))
-	if _, err := w.Write(h[:]); err != nil {
+	if n, err := w.Write(h[:]); err != nil {
 		return err
+	} else if n != len(h) {
+		return io.ErrShortWrite
 	}
 	if len(f.Payload) > 0 {
-		_, err := w.Write(f.Payload)
+		n, err := w.Write(f.Payload)
+		if err == nil && n != len(f.Payload) {
+			return io.ErrShortWrite
+		}
 		return err
 	}
 	return nil

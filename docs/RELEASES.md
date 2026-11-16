@@ -534,6 +534,13 @@ Fresh current-source Go bindings built at minimum Android API24 for armeabi-v7a,
 
 This closes the binding-build gap after the JPEG/delta work changes and extends earlier arm64-only compilation. It is not installation, linker/loading on Android, JNI execution, hardware capture/input, UI pixels, boot or package-store validation. No APK/AAB signed or published and no live service change. Maven cache save is confirmed by b581b89 CI; cache restore needs a later run.
 
+
+## Session truncated-write error detection (new source, CI pending)
+
+Session framing now returns io.ErrShortWrite if a writer reports fewer header or payload bytes without an error. It does not claim success or continue with a payload after an incomplete header; existing transport errors remain unchanged. The mux's existing write-error path closes the session. This protects framing at its io.Writer boundary, including custom adapters that violate the usual short-write error contract; it is not automatic retry or a reproduced kernel TCP failure.
+
+A short-header regression failed before the fix. Header/payload truncation and transport-error preservation tests pass100 race-enabled repetitions; fresh full-repository race tests pass. Synthetic writer evidence only, no live network/device/runtime claim. No new bindings, release APK/AAB or deployment. Separately, [905a401 all-five CI](https://github.com/MaisySen/Mnet/actions/runs/43944038163) confirms Maven cache restoration and64 passing framework cases.
+
 ## v0.8.2-test.1 - 2026-11-16
 
 Source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11, Android 0.8.2/code 14. [Release and 16 assets](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1), [exact-source CI](https://github.com/MaisySen/Mnet/actions/runs/43756253912).
