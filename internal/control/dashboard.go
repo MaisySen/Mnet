@@ -145,7 +145,7 @@ footer{padding:1.5rem;color:#9da7b1;font-size:.8rem}
 </section>
 <section>
 <h2>Nodes</h2>
-<table id="nodes"><thead><tr><th>Name</th><th>Network</th><th>IP</th><th>User</th><th>Status</th><th>Endpoints</th><th>Last seen</th><th>Key expiry</th><th></th></tr></thead><tbody></tbody></table>
+<table id="nodes"><thead><tr><th>Name</th><th>Network</th><th>IP</th><th>User</th><th>Relay connection</th><th>Endpoints</th><th>Last seen</th><th>Key expiry</th><th></th></tr></thead><tbody></tbody></table>
 </section>
 <section>
 <h2>Auth keys</h2>
@@ -203,13 +203,13 @@ async function load(){
 }
 function netName(id){ const n=(state.networks||[]).find(n=>n.id===id); return n?n.name:id; }
 function render(){
-  const nets = state.networks||[], nodes=state.nodes||[], keys=state.auth_keys||[], online=state.online||{};
+  const nets = state.networks||[], nodes=state.nodes||[], keys=state.auth_keys||[], online=state.online_by_node||{};
   $('#nets tbody').innerHTML = nets.map(n=>'<tr><td>'+esc(n.name)+'</td><td><code>'+esc(n.id)+'</code></td><td>'+ago(n.created_at)+'</td></tr>').join('') || '<tr><td colspan="3" class="muted">No networks yet.</td></tr>';
   const pending = nodes.filter(n=>!n.approved);
   $('#noPending').style.display = pending.length? 'none':'block';
   $('#pending tbody').innerHTML = pending.map(n=>'<tr id="pending-'+esc(n.id)+'"><td>'+esc(n.name)+'</td><td><code>'+esc(n.ipv4)+'</code></td><td><code>'+esc(n.pubkey.slice(0,12))+'...</code></td><td>'+ago(n.created_at)+'</td><td><button onclick="approve(\''+esc(n.id)+'\')">Approve</button> <button class="danger" onclick="delNode(\''+esc(n.id)+'\')">Deny</button></td></tr>').join('');
   const approved = nodes.filter(n=>n.approved);
-  $('#nodes tbody').innerHTML = approved.map(n=>'<tr><td>'+esc(n.name)+'</td><td>'+esc(netName(n.network_id))+'</td><td><code>'+esc(n.ipv4)+'</code></td><td>'+esc(n.user||'')+'</td><td>'+(online[n.pubkey]?'<span class="badge on">online</span>':'<span class="badge off">offline</span>')+'</td><td class="muted">'+esc((n.endpoints||[]).join(', '))+'</td><td>'+ago(n.last_seen)+'</td><td>'+expires(n.key_expiry)+'</td><td><button onclick="expireNode(\''+esc(n.id)+'\')">Expire key</button> <button class="danger" onclick="delNode(\''+esc(n.id)+'\')">Remove</button></td></tr>').join('') || '<tr><td colspan="10" class="muted">No approved nodes.</td></tr>';
+  $('#nodes tbody').innerHTML = approved.map(n=>'<tr><td>'+esc(n.name)+'</td><td>'+esc(netName(n.network_id))+'</td><td><code>'+esc(n.ipv4)+'</code></td><td>'+esc(n.user||'')+'</td><td>'+(online[n.id]?'<span class="badge on">connected</span>':'<span class="badge off">not connected</span>')+'</td><td class="muted">'+esc((n.endpoints||[]).join(', '))+'</td><td>'+ago(n.last_seen)+'</td><td>'+expires(n.key_expiry)+'</td><td><button onclick="expireNode(\''+esc(n.id)+'\')">Expire key</button> <button class="danger" onclick="delNode(\''+esc(n.id)+'\')">Remove</button></td></tr>').join('') || '<tr><td colspan="10" class="muted">No approved nodes.</td></tr>';
   $('#keys tbody').innerHTML = keys.map(k=>'<tr><td class="key"><code>'+esc(k.key)+'</code></td><td>'+esc(netName(k.network_id))+'</td><td>'+esc(k.note)+'</td><td>'+(k.reusable?'yes':'no')+'</td><td>'+k.uses+'</td><td>'+expires(k.expires_at)+'</td><td><button class="danger" onclick="delKey(\''+esc(k.id)+'\')">Delete</button></td></tr>').join('') || '<tr><td colspan="7" class="muted">No keys.</td></tr>';
   $('#keyNet').innerHTML = nets.map(n=>'<option value="'+esc(n.id)+'">'+esc(n.name)+'</option>').join('');
   $('#aclNet').innerHTML = $('#keyNet').innerHTML;

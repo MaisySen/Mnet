@@ -47,9 +47,9 @@ func DecodeKey(s string) ([]byte, error) {
 // Hub tracks the live relay connections of every node.
 type Hub struct {
 	mu    sync.Mutex
-	conns map[string]*conn // node pubkey (base64) -> connection
+	conns map[string]*conn // network + NUL + public key -> connection
 	// ByNodeID lets the control server mark presence and clean up on delete.
-	ByNodeID map[string]string // node ID -> pubkey
+	ByNodeID map[string]string // node ID -> scoped connection key
 }
 
 type queuedPacket struct {
@@ -92,6 +92,28 @@ func (h *Hub) OnlineMap() map[string]bool {
 			k = k[i+1:]
 		}
 		out[k] = true
+	}
+	return out
+}
+
+// OnlineNodes returns node-ID presence without collapsing identical public
+// keys belonging to different networks. It describes relay connections only,
+// not direct-path connectivity or a device health check.
+func (h *Hub) OnlineNodes() map[string]bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make(map[string]bool, len(h.ByNodeID))
+	for id, key := range h.ByNodeID {
+		c := h.conns[key]
+		if c == nil || c.nodeID != id {
+			continue
+		}
+		select {
+		case <-c.done:
+			continue
+		default:
+			out[id] = true
+		}
 	}
 	return out
 }

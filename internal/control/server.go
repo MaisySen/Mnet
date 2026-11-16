@@ -416,8 +416,9 @@ func (s *Server) handleAdminState(w http.ResponseWriter, r *http.Request) {
 	snap := s.store.Snapshot()
 	writeJSON(w, http.StatusOK, struct {
 		*Snapshot
-		Online map[string]bool `json:"online"`
-	}{snap, s.hub.OnlineMap()})
+		Online       map[string]bool `json:"online"` // legacy pubkey view
+		OnlineByNode map[string]bool `json:"online_by_node"`
+	}{snap, s.hub.OnlineMap(), s.hub.OnlineNodes()})
 }
 
 func (s *Server) handleAdminNetworks(w http.ResponseWriter, r *http.Request) {
@@ -562,6 +563,6 @@ func (s *Server) handleAdminMetrics(w http.ResponseWriter, r *http.Request) {
 		"networks":         len(snap.Networks),
 		"nodes_approved":   approved,
 		"nodes_pending":    pending,
-		"nodes_online_now": len(s.hub.OnlineMap()),
+		"nodes_online_now": len(s.hub.OnlineNodes()),
 	})
 }
