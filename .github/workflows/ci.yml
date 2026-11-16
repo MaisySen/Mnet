@@ -79,6 +79,8 @@ jobs:
         run: go test -race -count=1 -timeout=5m ./internal/privatefs ./internal/localapi
       - name: native CLI bounded readiness wait
         run: go test -race -count=3 -timeout=5m ./cmd/mnet
+      - name: native account-session scope and revocation boundary
+        run: go test -race -count=3 -timeout=5m ./internal/control -run TestAccountSession
       - name: native control-client credential redirect refusal
         run: go test -race -count=3 -timeout=5m ./internal/controlclient
       - name: native control-state private file and shape checks

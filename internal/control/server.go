@@ -30,6 +30,8 @@ type Server struct {
 	sessions   map[string]time.Time // admin session token -> expiry
 	sessionsMu sync.Mutex
 
+	accounts accountSessions
+
 	oidc         *OIDCProvider // nil: manual approval only
 	oidcMu       sync.Mutex
 	oidcStates   map[string]oidcState // login state -> waiting node

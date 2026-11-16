@@ -175,3 +175,7 @@ All five jobs passed in [7b6e9ad CI](https://github.com/MaisySen/Mnet/actions/ru
 ## CLI approval-timeout kernel extension (verified fixture)
 
 All five jobs passed in [e15f818 CI](https://github.com/MaisySen/Mnet/actions/runs/43809073253). In three fresh full kernel fixtures the actual CLI wait timed out during denied authorization, left waiting-approval and saved identity unchanged, then succeeded after reapproval. Each continued through control-off TCP/loss/cleanup with 131/143/123 later loss-profile drops. Timeout is not cancellation or rollback of the daemon.
+
+## Private machine-readable CLI status (verified source)
+
+All five jobs passed in [fcf0605 CI](https://github.com/MaisySen/Mnet/actions/runs/43810178477), including native Windows/macOS CLI tests and three full kernel fixture checks parsing the actual CLI JSON status and requiring Up/address without saved secret fields. The full suite continued through denial/CLI timeout/reapproval/control-off TCP/loss/cleanup with 153/160/149 later loss-profile drops. Pending approval URLs remain private token-bearing data; JSON output is not share-safe.
