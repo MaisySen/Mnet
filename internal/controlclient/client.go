@@ -36,6 +36,13 @@ func (e transportError) Error() string {
 }
 func (e transportError) Unwrap() error { return e.cause }
 
+type decodeError struct{ cause error }
+
+func (e decodeError) Error() string {
+	return "control: invalid response (details withheld to protect device credentials)"
+}
+func (e decodeError) Unwrap() error { return e.cause }
+
 // Client talks to one control server as one node.
 type Client struct {
 	Base   string // https://control.example.com
@@ -70,6 +77,15 @@ func (c *Client) do(req *http.Request, out any) error {
 		return transportError{cause: err}
 	}
 	defer resp.Body.Close()
+	// A proxy or control error may echo request credentials. Keep the
+	// status and authorization classification, never its arbitrary body.
+	// Classify before reading so an oversized/broken 401 still rejoins.
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if resp.StatusCode == http.StatusUnauthorized {
+			return ErrUnauthorized
+		}
+		return fmt.Errorf("control: http %d", resp.StatusCode)
+	}
 	const maxResponseBytes = 4 << 20
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
@@ -78,21 +94,11 @@ func (c *Client) do(req *http.Request, out any) error {
 	if len(body) > maxResponseBytes {
 		return fmt.Errorf("control: response exceeds the 4 MiB limit")
 	}
-	if resp.StatusCode >= 300 {
-		var e netmap.APIError
-		if json.Unmarshal(body, &e) == nil && e.Error != "" {
-			if resp.StatusCode == http.StatusUnauthorized {
-				return fmt.Errorf("%w: %s", ErrUnauthorized, e.Error)
-			}
-			return fmt.Errorf("control: %s", e.Error)
-		}
-		if resp.StatusCode == http.StatusUnauthorized {
-			return ErrUnauthorized
-		}
-		return fmt.Errorf("control: http %d", resp.StatusCode)
-	}
+
 	if out != nil {
-		return json.Unmarshal(body, out)
+		if err := json.Unmarshal(body, out); err != nil {
+			return decodeError{cause: err}
+		}
 	}
 	return nil
 }

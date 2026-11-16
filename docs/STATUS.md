@@ -8,7 +8,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 | --- | --- | --- |
 | Published test artifacts | v0.8.2-test.1, source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11; Android 0.8.2/code 14. | [Release](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1). Sixteen assets verified at release. Update CLI and daemon together. |
 | Hosted test control plane | Last verified 2026-11-16 at 07:12 AEDT on `2bb55f4`. | Dated deployment check, not a current availability promise. Free-host ephemeral disk/restart state loss remains a limitation. |
-| Newer verified source | `c9f1197`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43801230914). New source below is not in those downloads or that last verified deployment. |
+| Newer verified source | `8fb969a`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43802190586). New source below is not in those downloads or that last verified deployment. |
 
 ## What is implemented and tested
 
@@ -22,7 +22,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 - Route-only ACL withdrawal/restoration and admin expiry/reapproval block and restore access as expected. Reapproval clears stale approval status/link. Known expiry is enforced locally even if later control polling is blocked; unseen offline admin changes cannot be discovered.
 - `mnet up --reset-routing`, while down, clears saved roles without deleting identity. Ordinary saved-state Up preserves routing. Fresh attempts clear old setup errors, preserving errors raised during the new attempt.
 
-The latest verified [c9f1197 CI](https://github.com/MaisySen/Mnet/actions/runs/43801230914) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 154/142/140. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
+The latest verified [8fb969a CI](https://github.com/MaisySen/Mnet/actions/runs/43802190586) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 131/149/132. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
 
 Exit-node selection/advertising is explicitly rejected before enrollment/device creation. Unsafe dormant host/default-route replacement helpers were removed, not enabled. Exit internet routing remains unsupported.
 
@@ -81,7 +81,9 @@ These checks do not make ephemeral hosting durable. Keep state in a trusted priv
 
 Each run passed all five jobs, including native Windows/macOS and three full kernel fixtures. These are source changes, not deployment changes. See [destination setup](operations.md#control-api-destination), [target handling](operations.md#enrolled-target-changes), [enrollment recovery](operations.md#enrollment-response-and-local-save-recovery) and [diagnostics](operations.md#credential-safe-diagnostics) before changing an installed node.
 
-New source also explicitly rejects responses exceeding the existing 4 MiB control-body limit and keeps body-read failure details out of printed diagnostics. Local boundary/cleanup regressions pass; full/native CI is pending. This is not a fleet-capacity claim. See [response limits](operations.md#response-size-boundary).
+New source also explicitly rejects responses exceeding the existing 4 MiB control-body limit and keeps body-read failure details out of printed diagnostics. All five jobs passed in [8fb969a CI](https://github.com/MaisySen/Mnet/actions/runs/43802190586), including native Windows/macOS. This is not a fleet-capacity claim. See [response limits](operations.md#response-size-boundary).
+
+New source prints only HTTP status for rejected control requests, not arbitrary error bodies that can echo credentials. Unauthorized classification survives malformed/oversized bodies; successful-response JSON errors retain a typed cause behind safe printed text. Local regressions pass; full/native CI is pending. See [remote errors](operations.md#remote-error-diagnostics).
 
 ## Important open work
 

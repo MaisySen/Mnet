@@ -2,6 +2,7 @@ package controlclient
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -180,5 +181,43 @@ func TestControlResponseReadFailurePrivacy(t *testing.T) {
 	}
 	if !body.closed {
 		t.Fatal("failed response body not closed")
+	}
+}
+
+func TestControlStatusDoesNotEchoRemoteBody(t *testing.T) {
+	for _, status := range []int{301, 400, 401, 403, 404, 429, 500, 503} {
+		for _, body := range []string{`{"error":"fixture-token=https://private.example/path?token=fixture-secret"}`, strings.Repeat("fixture-secret", 400000)} {
+			t.Run(fmt.Sprint(status)+fmt.Sprint(len(body)), func(t *testing.T) {
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status); w.Write([]byte(body)) }))
+				defer srv.Close()
+				c := &Client{Base: srv.URL}
+				_, err := c.Join(context.Background(), netmap.JoinRequest{})
+				if err == nil || strings.Contains(err.Error(), "fixture-") || strings.Contains(err.Error(), "private.example") {
+					t.Fatal("remote response became printable error")
+				}
+				if (status == 401) != errors.Is(err, ErrUnauthorized) {
+					t.Fatalf("unauthorized classification wrong: %v", err)
+				}
+				if status != 401 && !strings.Contains(err.Error(), fmt.Sprint(status)) {
+					t.Fatalf("HTTP status missing: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestControlDecodeErrorPrivacy(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"node_id":{"fixture-secret":"value"}}`))
+	}))
+	defer srv.Close()
+	c := &Client{Base: srv.URL}
+	_, err := c.Join(context.Background(), netmap.JoinRequest{})
+	if err == nil || strings.Contains(err.Error(), "fixture-secret") || !strings.Contains(err.Error(), "invalid response") {
+		t.Fatalf("unsafe decode diagnostic: %v", err)
+	}
+	var cause *json.UnmarshalTypeError
+	if !errors.As(err, &cause) {
+		t.Fatal("JSON classification lost")
 	}
 }

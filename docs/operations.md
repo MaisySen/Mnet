@@ -55,6 +55,10 @@ New source hides transport-error text when it could contain a complete credentia
 
 New source explicitly rejects control responses larger than the existing 4 MiB limit, rather than parsing a silently truncated prefix. Exactly limit-sized valid replies still work. This is not a fleet-capacity claim: a deployment returning larger maps needs a separately designed pagination/size plan. Response-body read failures use credential-safe printed diagnostics and retain their programmatic cause.
 
+## Remote error diagnostics
+
+New source reports the HTTP status for rejected control requests without printing a server/proxy error body that could echo credentials. A 401 remains programmatically unauthorized even when its body is oversized or malformed, preserving rejoin handling. Non-success bodies are closed without being read. Successful JSON decoding failures use a generic printed diagnostic with the typed cause retained for programmatic checks. For server-side detail, inspect private control/proxy logs with care; this client change does not sanitize those logs.
+
 ## Nodes
 
 Linux with systemd:

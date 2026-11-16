@@ -147,3 +147,7 @@ Missing/blank join credentials are rejected before replacing local identity. A v
 ## Credential-safe printed diagnostics (verified source)
 
 Verbose transport failures and approval-wait logs no longer print credential-bearing URLs. Tests retain error cause/cancellation matching and the authenticated local approval URL while checking no token is logged. All five jobs passed in [c9f1197 CI](https://github.com/MaisySen/Mnet/actions/runs/43801230914), including native Windows/macOS and three full kernel fixtures with 154/142/140 later loss-profile drops. No historical/proxy log scrubbing or live incident claim.
+
+## Explicit response-body bound (verified source)
+
+Control replies beyond the existing 4 MiB limit are explicitly rejected rather than silently truncated. Tests accept an exactly limit-sized valid reply, reject oversized replies and check safe failing-reader diagnostics/cause matching/body close. All five jobs passed in [8fb969a CI](https://github.com/MaisySen/Mnet/actions/runs/43802190586), including native Windows/macOS and three full kernel fixtures with 131/149/132 later loss-profile drops. Not a fleet-capacity claim.
