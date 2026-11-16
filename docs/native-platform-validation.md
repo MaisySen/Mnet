@@ -179,3 +179,7 @@ All five jobs passed in [e15f818 CI](https://github.com/MaisySen/Mnet/actions/ru
 ## Private machine-readable CLI status (verified source)
 
 All five jobs passed in [fcf0605 CI](https://github.com/MaisySen/Mnet/actions/runs/43810178477), including native Windows/macOS CLI tests and three full kernel fixture checks parsing the actual CLI JSON status and requiring Up/address without saved secret fields. The full suite continued through denial/CLI timeout/reapproval/control-off TCP/loss/cleanup with 153/160/149 later loss-profile drops. Pending approval URLs remain private token-bearing data; JSON output is not share-safe.
+
+## Account HTTP plumbing (verified source)
+
+All five jobs passed in [c86ac3b CI](https://github.com/MaisySen/Mnet/actions/runs/43812377082), including native Windows/macOS signed-provider account HTTP/browser-binding/session tests. The full kernel suite passed with 155/128/145 later loss-profile drops, as VPN regression coverage, not account UI proof. The newer member page has separate real Chrome validation pending CI. No live provider or deployment was changed.

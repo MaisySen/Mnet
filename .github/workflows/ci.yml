@@ -36,6 +36,8 @@ jobs:
           node-version: '22'
       - name: isolated real Chrome admin login and logout
         run: node scripts/dashboard-validation.mjs
+      - name: isolated real Chrome member account login and logout
+        run: MNET_ACCOUNT_BROWSER=1 go test -race -count=1 -timeout=2m ./internal/control -run '^TestAccountRealChrome$'
       - name: secrets and style gate
         run: sh scripts/check-secrets.sh
 

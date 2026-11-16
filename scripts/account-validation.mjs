@@ -1,0 +1,42 @@
+// Isolated real-Chrome operator dashboard regression. No user profiles or live
+// control service. Node 22+ and Chrome are required. Screenshots stay local.
+import {spawn, spawnSync} from 'node:child_process';
+import {mkdtempSync, writeFileSync, rmSync, existsSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createServer} from 'node:net';
+import {setTimeout as delay} from 'node:timers/promises';
+const dir=mkdtempSync(join(tmpdir(),'mnet-account-'));
+let chrome,ws;let sequence=0;const pending=new Map();
+async function port(){const s=createServer();await new Promise(r=>s.listen(0,'127.0.0.1',r));const p=s.address().port;await new Promise(r=>s.close(r));return p;}
+async function until(fn,description){const end=Date.now()+15000;let last;while(Date.now()<end){try{const value=await fn();if(value)return value;}catch(e){last=e;}await delay(50);}throw new Error('Timed out: '+description+(last?' '+last.message:''));}
+async function cdp(method,params={}){const id=++sequence;const p=new Promise((resolve,reject)=>pending.set(id,{resolve,reject}));ws.send(JSON.stringify({id,method,params}));return p;}
+async function js(expression){const r=await cdp('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;}
+async function shot(name){if(!process.env.MNET_ACCOUNT_SHOTS)return;const r=await cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});writeFileSync(join(process.env.MNET_ACCOUNT_SHOTS,name+'.png'),Buffer.from(r.data,'base64'));}
+try{
+ const base=process.env.MNET_ACCOUNT_BASE,network=process.env.MNET_ACCOUNT_NETWORK;
+ if(!base||!network)throw new Error('isolated fixture missing');
+ const debugPort=await port();
+ const executable=process.env.CHROME_BIN||['/usr/bin/google-chrome','/usr/bin/chromium','/usr/bin/chromium-browser'].find(existsSync);if(!executable)throw new Error('Chrome missing');
+ chrome=spawn(executable,['--headless','--no-sandbox','--disable-gpu','--remote-debugging-port='+debugPort,'--user-data-dir='+join(dir,'chrome'),'--window-size=1280,1000','about:blank'],{stdio:'ignore'});
+ const target=await until(async()=>{const tabs=await(await fetch('http://127.0.0.1:'+debugPort+'/json')).json();return tabs.find(t=>t.type==='page');},'Chrome target');
+ ws=new WebSocket(target.webSocketDebuggerUrl);await new Promise((r,j)=>{ws.onopen=r;ws.onerror=j;});ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id&&pending.has(m.id)){const p=pending.get(m.id);pending.delete(m.id);m.error?p.reject(new Error(m.error.message)):p.resolve(m.result);}};
+ await cdp('Page.enable');await cdp('Runtime.enable');await cdp('Network.enable');
+ await cdp('Page.navigate',{url:base+'/account/'});
+ await until(()=>js(`document.querySelector('#login') && !document.querySelector('#login').hidden`),'member sign-in visible');
+ await shot('account-signed-out');
+ await js(`document.querySelector('#network').value=${JSON.stringify(network)};document.querySelector('#loginForm').requestSubmit()`);
+ await until(()=>js(`document.querySelector('#devices') && !document.querySelector('#devices').hidden && document.querySelector('#deviceRows').textContent.includes('personal-laptop')`),'signed-provider member device render');
+ if(!await js(`document.body.textContent.includes('not a live online-status check')`))throw new Error('device list implies online proof');
+ await shot('account-signed-in');
+ const cookie=(await cdp('Network.getCookies',{urls:[base+'/account/']})).cookies.find(c=>c.name==='mnet_account');if(!cookie)throw new Error('account cookie absent');
+ // A valid response already in flight cannot repaint private devices after logout.
+ await js(`(async()=>{window.savedFetch=fetch;window.held=await(await savedFetch('/account/api/devices')).text();window.releaseHeld=null;window.fetch=(input,options)=>input==='/account/api/devices'?new Promise(resolve=>{window.releaseHeld=()=>resolve(new Response(held,{status:200,headers:{'Content-Type':'application/json'}}));}):savedFetch(input,options);window.pendingLoad=load();})()`);
+ await js(`document.querySelector('#logout').click()`);
+ await until(()=>js(`document.querySelector('#message').textContent==='Signed out.'`),'account sign-out confirmed');
+ await js(`(async()=>{releaseHeld();await pendingLoad;window.fetch=savedFetch;})()`);
+ if(!await js(`document.querySelector('#devices').hidden && !document.querySelector('#login').hidden && !document.querySelector('#deviceRows').textContent && !document.querySelector('#network').value`))throw new Error('private device data survived sign-out or late refresh');
+ const replay=await fetch(base+'/account/api/devices',{headers:{Cookie:'mnet_account='+cookie.value}});if(replay.status!==401)throw new Error('account session replay after logout accepted');
+ await shot('account-after-logout');
+ console.log('PASS real Chrome account: signed-provider login, explicit member own-device render, private UI cleanup, delayed-refresh suppression and logout replay denial');
+}finally{ws?.close();chrome?.kill();await delay(150);rmSync(dir,{recursive:true,force:true});}

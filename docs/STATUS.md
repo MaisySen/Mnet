@@ -8,7 +8,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 | --- | --- | --- |
 | Published test artifacts | v0.8.2-test.1, source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11; Android 0.8.2/code 14. | [Release](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1). Sixteen assets verified at release. Update CLI and daemon together. |
 | Hosted test control plane | Last verified 2026-11-16 at 07:12 AEDT on `2bb55f4`. | Dated deployment check, not a current availability promise. Free-host ephemeral disk/restart state loss remains a limitation. |
-| Newer verified source | `661c77a`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43811262859). New source below is not in those downloads or that last verified deployment. |
+| Newer verified source | `c86ac3b`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43812377082). New source below is not in those downloads or that last verified deployment. |
 
 ## What is implemented and tested
 
@@ -22,7 +22,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 - Route-only ACL withdrawal/restoration and admin expiry/reapproval block and restore access as expected. Reapproval clears stale approval status/link. Known expiry is enforced locally even if later control polling is blocked; unseen offline admin changes cannot be discovered.
 - `mnet up --reset-routing`, while down, clears saved roles without deleting identity. Ordinary saved-state Up preserves routing. Fresh attempts clear old setup errors, preserving errors raised during the new attempt.
 
-The latest verified [661c77a CI](https://github.com/MaisySen/Mnet/actions/runs/43811262859) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 138/142/150. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
+The latest verified [c86ac3b CI](https://github.com/MaisySen/Mnet/actions/runs/43812377082) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 155/128/145. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
 
 Exit-node selection/advertising is explicitly rejected before enrollment/device creation. Unsafe dormant host/default-route replacement helpers were removed, not enabled. Exit internet routing remains unsupported.
 
@@ -98,9 +98,11 @@ A kernel extension now checks actual CLI timeout during denied authorization lea
 
 New source adds `mnet status --json` for scripts, with the existing authenticated local fields and no human text. Output can include a private approval URL and must not be published. All five jobs passed in [fcf0605 CI](https://github.com/MaisySen/Mnet/actions/runs/43810178477), including native CLI tests and actual kernel CLI JSON checks. See [private JSON status](operations.md#machine-readable-private-status).
 
-New source adds a separate internal account-session boundary, with exact provider/issuer/subject/network binding, explicit membership on every own-device query, expiry/logout/capacity checks and no operator/device-token crossover. Local regressions pass; full/native CI is pending. All five jobs passed in [661c77a CI](https://github.com/MaisySen/Mnet/actions/runs/43811262859). Newer account HTTP plumbing is pending below.
+New source adds a separate internal account-session boundary, with exact provider/issuer/subject/network binding, explicit membership on every own-device query, expiry/logout/capacity checks and no operator/device-token crossover. All five jobs passed in [661c77a CI](https://github.com/MaisySen/Mnet/actions/runs/43811262859). Newer account HTTP plumbing is verified below.
 
-New source connects browser-bound OIDC account login to the separate membership-gated session, own-device list and logout endpoints. It never approves a node or grants membership. Signed-provider HTTP regressions pass locally; full/native CI is pending. There is no account login page yet. See [account HTTP setup](operations.md#account-http-flow).
+New source connects browser-bound OIDC account login to the separate membership-gated session, own-device list and logout endpoints. It never approves a node or grants membership. All five jobs passed in [c86ac3b CI](https://github.com/MaisySen/Mnet/actions/runs/43812377082), including native signed-provider HTTP regressions. A newer member page follows. See [account HTTP setup](operations.md#account-http-flow).
+
+New source adds `/account/`, a member sign-in and private own-device page using the separate verified account flow. Local real Chrome completed signed-provider sign-in, rendered the owned device, signed out, rejected token replay and suppressed a delayed valid pre-logout response. Screenshots were inspected. Full/native/browser CI is pending. This does not enroll devices or grant membership/management rights; live provider setup and deployment are unchanged.
 
 ## Important open work
 

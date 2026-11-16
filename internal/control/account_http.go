@@ -124,7 +124,7 @@ func (s *Server) handleAccountCallback(w http.ResponseWriter, r *http.Request) {
 		s.revokeAccountSession(previous.Value)
 	}
 	s.accountCookie(w, "mnet_account", token, time.Now().Add(accountSessionLifetime), int(accountSessionLifetime.Seconds()))
-	http.Redirect(w, r, "/account/api/devices", http.StatusSeeOther)
+	http.Redirect(w, r, "/account/", http.StatusSeeOther)
 }
 
 func (s *Server) handleAccountDevices(w http.ResponseWriter, r *http.Request) {

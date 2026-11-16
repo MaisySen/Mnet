@@ -115,6 +115,7 @@ func (s *Server) RelayURL() string { return s.relayURL }
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealthz)
+	mux.HandleFunc("/account/", s.handleAccountPage)
 	mux.HandleFunc("/account/api/login", s.handleAccountLogin)
 	mux.HandleFunc("/account/oidc/callback", s.handleAccountCallback)
 	mux.HandleFunc("/account/api/devices", s.handleAccountDevices)
