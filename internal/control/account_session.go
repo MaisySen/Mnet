@@ -20,6 +20,7 @@ type accountSession struct {
 type accountSessions struct {
 	mu      sync.Mutex
 	byToken map[string]accountSession
+	pending map[string]accountLogin
 }
 
 // No public HTTP route issues/accepts these tokens yet. Caller claims must be

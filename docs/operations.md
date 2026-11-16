@@ -443,3 +443,13 @@ If the first identity save fails, EnsureKey now removes the unpublished in-memor
 ## Startup configuration save rollback (verified source)
 
 Up and mobile Prepare now restore the prior server/network/device-name settings if initial validation or saving the replacement configuration fails. A failed call cannot leave a different unsaved destination in memory for a later retry. A successfully saved first key pair is kept; this change does not discard a durable identity. Local race tests exercise both entry points with an existing pair and a failing destination, checking prior live configuration, unchanged disk bytes/keys and Down status. All five jobs passed in [086e99c CI](https://github.com/MaisySen/Mnet/actions/runs/43797515391), including native Windows/macOS startup rollback regressions and three full kernel fixtures with 140/123/128 later loss-profile drops. Enrollment that has already changed remote control state is outside this narrow rollback boundary.
+
+## Account HTTP flow
+
+New source adds separate account endpoints, not an admin-session or device-token shortcut:
+
+1. On the configured origin, POST JSON `{"network_id":"exact-network-id"}` to `/account/api/login`. OIDC must already be configured. The response supplies `authorization_url`; open it in the same browser, retaining the private login cookie. Unknown networks are not distinguished at start.
+2. Register `/account/oidc/callback` as an additional redirect URI with the existing provider before using the flow. The callback validates state, originating browser proof, provider/nonce and explicit network membership. Approval provenance alone is not membership. Operator membership setup remains separate.
+3. The callback sets a private account cookie and redirects to `/account/api/devices`, a JSON list of only that principal's approved/unexpired devices. Query parameters cannot select another principal/network. Every read rechecks membership. POST JSON to `/account/api/logout` to revoke the current account session.
+
+Login/logout require same-origin browser headers and JSON; methods are fixed. Cookies are HttpOnly, SameSite=Lax, scoped to `/account/`, Secure on HTTPS. Responses use no-store/no-referrer. Pending logins are capped at 1,024 for ten minutes; account sessions at 1,024 for eight hours. Sessions are process-local and disappear on restart. Provider replacement invalidates old sessions. This does not create membership, approve/enroll devices, revoke mesh traffic when membership is removed, or offer owner/admin roles. No user-facing account page is built yet. These are new-source endpoints, not a live deployment/configuration change. Do not put account cookies or login URLs in shared logs.

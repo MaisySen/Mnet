@@ -65,7 +65,7 @@ func (s *Store) SetNetworkMember(networkID, issuer, subject string, allow bool) 
 // IdentityDevices requires an existing explicit membership and returns only
 // this principal's approved devices, not every device in the network. The
 // issuer/subject must come from verified authentication, never request JSON.
-// There is no HTTP account endpoint yet.
+// The account endpoint obtains these values from a verified account session.
 func (s *Store) IdentityDevices(networkID, issuer, subject string) ([]IdentityDevice, error) {
 	if networkID == "" || issuer == "" || subject == "" {
 		return nil, ErrUnauthorized

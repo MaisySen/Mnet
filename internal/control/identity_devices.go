@@ -17,7 +17,8 @@ type IdentityDevice struct {
 // ApprovedDevicesForIdentity is internal groundwork for future account flows.
 // The caller must already have authenticated this issuer/subject and must
 // independently authorize the requested network before disclosing results.
-// No HTTP route exposes it. Email labels and legacy approvals never match.
+// HTTP account reads use IdentityDevices instead, with its explicit membership gate.
+// Email labels and legacy approvals never match.
 func (s *Store) ApprovedDevicesForIdentity(networkID, issuer, subject string) ([]IdentityDevice, error) {
 	if networkID == "" || issuer == "" || subject == "" {
 		return nil, fmt.Errorf("network and verified issuer/subject required")
