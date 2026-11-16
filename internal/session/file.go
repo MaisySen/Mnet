@@ -93,8 +93,13 @@ func (r FileReceiver) Handle(s Stream) {
 	}
 	h := sha256.New()
 	var n int64
+	progressBy := time.Now().Add(idle)
 	for {
-		fr, err := s.Recv(idle)
+		remaining := time.Until(progressBy)
+		if remaining <= 0 {
+			return
+		}
+		fr, err := s.Recv(remaining)
 		if errors.Is(err, io.EOF) {
 			break
 		}
@@ -115,6 +120,9 @@ func (r FileReceiver) Handle(s Stream) {
 		}
 		_, _ = h.Write(fr.Payload)
 		n += int64(written)
+		if written > 0 {
+			progressBy = time.Now().Add(idle)
+		}
 	}
 	digest := hex.EncodeToString(h.Sum(nil))
 	if n != offer.Size || (offer.SHA256 != "" && !strings.EqualFold(digest, offer.SHA256)) {

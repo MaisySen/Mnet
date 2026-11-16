@@ -180,8 +180,14 @@ The desktop session host bounds accepted-socket hello/reply I/O to15 seconds, th
 
 An accelerated40ms real OS-loopback test accepts a silent connection, verifies timeout, accepts a subsequent approved viewer and measures a successful keepalive round trip after the original handshake deadline.30 race repetitions and a fresh full-repository race run pass. No physical host, public-internet timing,15-second elapsed run, capture/input or device proof. All-five [d55f4d3 CI](https://github.com/MaisySen/Mnet/actions/runs/43952410300) passes. No bindings, release artifacts or live deployment changed.
 
-## File receiver idle cleanup (new source, CI pending)
+## File receiver idle cleanup (5ff8e90 all-five CI verified)
 
 Incoming file reception now allows60 seconds between data/FIN frames by default. A silent incomplete stream returns, closes/removes its private temporary file and releases its stream entry without closing unrelated session channels. FileReceiver.IdleTimeout can select a different positive budget; nonpositive uses the default. Active progress restarts the per-receive wait, so this is not a total-transfer deadline or resumable-transfer feature. A sender paused past the budget must retry the file.
 
-A short40ms net.Pipe test sends a partial file, waits for idle cleanup and checks empty destination directory, stream release and a still-open mux. Idle/safe-file/reset tests pass30 race repetitions; a fresh full-repository race run passes. No elapsed60-second real network test, device/runtime, new bindings, release APK/AAB or live deployment proof.
+A short40ms net.Pipe test sends a partial file, waits for idle cleanup and checks empty destination directory, stream release and a still-open mux. Idle/safe-file/reset tests pass30 race repetitions; a fresh full-repository race run passes. All-five [5ff8e90 CI](https://github.com/MaisySen/Mnet/actions/runs/43954473611) passes. No elapsed60-second real network test, device/runtime, new bindings, release APK/AAB or live deployment proof.
+
+## File idle budget requires byte progress (new source, CI pending)
+
+Only a successfully written nonempty data chunk restarts the incoming file idle budget. Empty data or unrelated frame types cannot retain a partial file indefinitely. A FIN still completes an empty offered file. Real chunk progress can continue beyond one budget duration, so this remains an idle timeout, not a total-transfer cap.
+
+The empty-frame regression failed before fixing. Empty-frame refusal, partial cleanup and a progressing transfer lasting longer than its configured budget pass20 race repetitions, followed by fresh full-repository race tests. Accelerated net.Pipe fixtures only, not60-second real-network/device evidence. No new bindings, release artifacts or live deployment.

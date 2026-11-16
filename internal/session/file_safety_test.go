@@ -213,3 +213,83 @@ func TestIdleFileReceiverCleansPartialAndReleasesStream(t *testing.T) {
 	default:
 	}
 }
+
+func TestEmptyFileFramesDoNotExtendIdleBudget(t *testing.T) {
+	client, host := pipe(t)
+	defer client.Close()
+	defer host.Close()
+	dir := t.TempDir()
+	finished := make(chan struct{})
+	host.OnStream(func(s Stream) {
+		defer close(finished)
+		FileReceiver{Mux: host, Dir: dir, IdleTimeout: 50 * time.Millisecond}.Handle(s)
+	})
+	stream, err := client.Open(PriBulk, FileOffer{Name: "empty-keepalive.bin", Size: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = stream.Recv(time.Second); err != nil {
+		t.Fatal(err)
+	}
+	tick := time.NewTicker(5 * time.Millisecond)
+	defer tick.Stop()
+	limit := time.NewTimer(300 * time.Millisecond)
+	defer limit.Stop()
+	for {
+		select {
+		case <-finished:
+			entries, err := os.ReadDir(dir)
+			if err != nil || len(entries) != 0 {
+				t.Fatal("partial file retained")
+			}
+			return
+		case <-tick.C:
+			if err = client.SendBytes(stream.ID, PriBulk, nil); err != nil {
+				t.Fatal(err)
+			}
+		case <-limit.C:
+			t.Fatal("empty frames kept file reception alive")
+		}
+	}
+}
+
+func TestFileProgressRestartsIdleBudget(t *testing.T) {
+	client, host := pipe(t)
+	defer client.Close()
+	defer host.Close()
+	dir := t.TempDir()
+	finished := make(chan struct{})
+	host.OnStream(func(s Stream) {
+		defer close(finished)
+		FileReceiver{Mux: host, Dir: dir, IdleTimeout: 200 * time.Millisecond}.Handle(s)
+	})
+	stream, err := client.Open(PriBulk, FileOffer{Name: "progress.bin", Size: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = stream.Recv(time.Second); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		time.Sleep(60 * time.Millisecond)
+		if err = client.SendBytes(stream.ID, PriBulk, []byte("x")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = client.send(stream.ID, msgFin, PriBulk, nil); err != nil {
+		t.Fatal(err)
+	}
+	frame, err := stream.Recv(time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ack FileAck
+	if json.Unmarshal(frame.Payload, &ack) != nil || !ack.OK {
+		t.Fatal("progressing transfer refused")
+	}
+	<-finished
+	data, err := os.ReadFile(filepath.Join(dir, "progress.bin"))
+	if err != nil || string(data) != "xxxxx" {
+		t.Fatal("progress file missing")
+	}
+}
