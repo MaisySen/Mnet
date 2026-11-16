@@ -532,6 +532,10 @@ StopSessionHost affects only the calling node's current host. Node Stop/Close st
 
 Refusing a viewer or receiving a malformed peer handshake should close that connection without ending hosting. Local loopback regression now covers refused/malformed/approved sequence on one listener; native extension pending. There is not yet a handshake deadline for a connected silent peer. Framework/physical Android behavior is unverified; published APK unchanged.
 
-### Mobile hello timeout (new source)
+### Mobile hello timeout (verified native loopback)
 
 Accepted mobile-host connections get15 seconds for their hello and then70 seconds for consent/reply transport I/O. The active-session deadline is cleared after approval. Timeout closes the peer, not the listener. The existing Android consent prompt waits60 seconds; arbitrary blocked callbacks cannot be forcibly interrupted. Local short-deadline loopback/race tests pass, native extension pending. Public-internet load and physical Android are unverified.
+
+### Mobile viewer stop (new source)
+
+Node Stop/Close now close their pending and active viewer transports. Close refuses future viewer publication. TCP dial remains bounded by its existing10-second timeout; after connect the reply window is70 seconds, cleared on acceptance. Failure closes the transport. Local in-memory transport/race tests and fresh Android arm64 build checks pass; native viewer extension and actual Android Activity/reconnect lifecycle remain unverified. Published APK unchanged.

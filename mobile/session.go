@@ -266,25 +266,82 @@ func (h *SessionHost) SendChat(text string) error {
 
 // ConnectSession dials a peer's session host by mesh IP.
 func (n *Node) ConnectSession(peerIP string, cb ViewerCallbacks) (*SessionViewer, error) {
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(peerIP, fmt.Sprint(SessionPort)), 10*1e9)
+	sessMu.Lock()
+	closed := n.sessionClosed
+	sessMu.Unlock()
+	if closed {
+		return nil, errors.New("node is closed")
+	}
+	if cb == nil {
+		return nil, errors.New("viewer callbacks required")
+	}
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(peerIP, fmt.Sprint(SessionPort)), 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
-	m, err := session.Dial(conn, n.d.Status().NodeName)
-	if err != nil {
-		conn.Close()
-		return nil, err
-	}
+	return n.connectSession(conn, n.d.Status().NodeName, cb, 70*time.Second)
+}
 
+func (n *Node) connectSession(conn net.Conn, name string, cb ViewerCallbacks, timeout time.Duration) (*SessionViewer, error) {
+	sessMu.Lock()
+	if n.sessionClosed || cb == nil {
+		sessMu.Unlock()
+		conn.Close()
+		return nil, errors.New("node closed or viewer callbacks missing")
+	}
+	if n.viewers == nil {
+		n.viewers = make(map[net.Conn]struct{})
+	}
+	n.viewers[conn] = struct{}{}
+	sessMu.Unlock()
+	failed := true
+	defer func() {
+		if failed {
+			n.releaseViewer(conn)
+			conn.Close()
+		}
+	}()
+	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+		return nil, err
+	}
+	m, err := session.Dial(conn, name)
+	if err != nil {
+		return nil, err
+	}
+	// Stop removes ownership before closing connections. Check again after a
+	// successful handshake so it cannot publish a late viewer after Stop/Close.
+	sessMu.Lock()
+	_, owned := n.viewers[conn]
+	sessMu.Unlock()
+	if !owned {
+		m.Close()
+		return nil, errors.New("viewer stopped")
+	}
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		m.Close()
+		return nil, err
+	}
 	v := session.ConnectViewerWithOptions(m, session.ViewerOptions{
 		OnFrame: func(fr session.ScreenFrame) { cb.OnFrame(fr.Image) },
 		OnChat:  func(cm session.ChatMessage) { b, _ := json.Marshal(cm); cb.OnChat(string(b)) },
 	})
-	go func() {
-		<-m.Closed()
-		cb.OnClosed()
-	}()
+	failed = false
+	go func() { <-m.Closed(); n.releaseViewer(conn); cb.OnClosed() }()
 	return &SessionViewer{viewer: v, mux: m, node: n}, nil
+}
+
+func (n *Node) releaseViewer(conn net.Conn) { sessMu.Lock(); delete(n.viewers, conn); sessMu.Unlock() }
+func (n *Node) stopViewers(permanent bool) {
+	sessMu.Lock()
+	if permanent {
+		n.sessionClosed = true
+	}
+	connections := n.viewers
+	n.viewers = nil
+	sessMu.Unlock()
+	for conn := range connections {
+		conn.Close()
+	}
 }
 
 // SendInputJSON sends one input event, JSON-encoded session.InputEvent.

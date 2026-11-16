@@ -11,6 +11,7 @@ package mobile
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 
 	"fintex.au/mnet/internal/daemon"
 )
@@ -19,7 +20,8 @@ import (
 // the UI thread; blocking work happens on daemon goroutines.
 type Node struct {
 	d             *daemon.Daemon
-	sessionClosed bool // guarded by sessMu
+	sessionClosed bool                  // guarded by sessMu
+	viewers       map[net.Conn]struct{} // pending and active, guarded by sessMu
 }
 
 // NewNode makes a node that stores keys and join state in stateDir.
@@ -63,6 +65,7 @@ func (n *Node) Status() string {
 
 // Stop tears the mesh down and closes the tunnel handed to Start.
 func (n *Node) Stop() {
+	n.stopViewers(false)
 	n.StopSessionHost()
 	n.d.Down()
 }
@@ -76,9 +79,7 @@ func (n *Node) MeshIPv4() string {
 // Close permanently disposes this node and cancels current startup. Later
 // Prepare/Start/StartFlow cannot revive it; create a new Node for reconnect.
 func (n *Node) Close() {
-	sessMu.Lock()
-	n.sessionClosed = true
-	sessMu.Unlock()
+	n.stopViewers(true)
 	n.StopSessionHost()
 	n.d.Close()
 }

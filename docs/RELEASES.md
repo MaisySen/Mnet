@@ -390,11 +390,18 @@ A fresh real-loopback regression reproduced an ordinary-use failure: refusing on
 Thirty local race repetitions pass a refused peer, malformed peer, then approved session on one listener, plus previous owner/late-consent/active-stop cases. Full fresh race/vet/cross-build and current-source arm64 AAR/full Java/min-api24 dex checks are recorded locally; all five jobs passed in [d721025 CI](https://github.com/MaisySen/Mnet/actions/runs/43892895603), including30 native macOS/Windows mobile repetitions. No Android framework, physical capture, public-internet load or malicious-peer resilience claim. This does not add a handshake timeout or prevent a connected silent peer from waiting for its first frame. No APK/AAB published.
 
 
-## Mobile host hello deadline (new source, CI pending)
+## Mobile host hello deadline (verified native loopback)
 
 Mobile accepted connections now have a15-second initial hello deadline. A valid hello switches to a70-second consent/reply transport window, allowing the Android prompt's existing60-second wait. After an accepted handshake, the deadline is cleared before active-host setup. A silent peer no longer occupies the initial read forever; timeout closes that accepted connection and hosting continues. This bounds transport I/O, not the duration of an already-blocked application callback.
 
-Thirty local real-loopback race repetitions use a short injected hello deadline to require server-side silent-peer closure, later approved-peer recovery and an active mux surviving beyond the short hello deadline. Removing deadline enforcement makes the regression fail. Full fresh race/vet/Darwin/Windows cross-builds pass, with current-source arm64 AAR/full Java/min-api24 dex build checks. Native extension pending. This is not public-internet denial-of-service, concurrent-client fairness or Android framework/capture proof. No new APK/AAB published.
+Thirty local real-loopback race repetitions use a short injected hello deadline to require server-side silent-peer closure, later approved-peer recovery and an active mux surviving beyond the short hello deadline. Removing deadline enforcement makes the regression fail. Full fresh race/vet/Darwin/Windows cross-builds pass, with current-source arm64 AAR/full Java/min-api24 dex build checks. All five jobs passed in [d5522ed CI](https://github.com/MaisySen/Mnet/actions/runs/43895158992), including30 native macOS/Windows mobile repetitions. This is not public-internet denial-of-service, concurrent-client fairness or Android framework/capture proof. No new APK/AAB published.
+
+
+## Mobile viewer transport ownership (new source, CI pending)
+
+After its existing10-second TCP dial, a mobile viewer now gets a70-second session hello/reply I/O deadline. Failure closes the connection and removes its ownership entry. Acceptance clears the deadline before active viewing. A Node tracks its pending and active viewer connections; Stop closes them without permanently disposing the node, while Close also prevents later viewer publication. Another node's stop does not close them. Callback delivery follows mux closure and removes the entry. This does not interrupt a TCP dial already in progress; its existing10-second limit still applies, and a disposed node refuses the returned connection.
+
+Thirty local race repetitions use in-memory full-duplex net.Pipe transports for silent-host timeout/closure, Close during a blocked reply, disposed-node refusal, active deadline clearing, unrelated-node isolation and owner-stop/one close callback. Earlier mobile host tests continue using actual OS loopback TCP. Full fresh race/vet/Darwin/Windows builds and a newly rebuilt current-source arm64 AAR/full Java/min-api24 dex build pass. Native viewer extension pending. This does not test Android Activity destruction/reconnect callbacks, physical viewing, screen decode or framework/VPN lifecycle. No new APK/AAB published.
 
 ## v0.8.2-test.1 - 2026-11-16
 
