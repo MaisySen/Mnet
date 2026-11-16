@@ -258,4 +258,8 @@ Local actual Chrome now explicitly checks the network ID is cleared alongside de
 
 ## Explicit operator grant form (new source)
 
-New source lets an operator manually enter the exact issuer/subject from trusted provider records, acknowledge that check and review the selected network/principal before sending the existing guarded grant POST. No email/approval autofill or inference. Actual local Chrome checks cancel leaves the server unchanged, missing acknowledgement cannot write, confirmed grant appears in the actual list and private input clears. Local full race/vet checks pass; CI pending. Source fixture only, no live grant.
+New source lets an operator manually enter the exact issuer/subject from trusted provider records, acknowledge that check and review the selected network/principal before sending the existing guarded grant POST. No email/approval autofill or inference. Actual local Chrome checks cancel leaves the server unchanged, missing acknowledgement cannot write, confirmed grant appears in the actual list and private input clears. All five jobs passed in [618d602 CI](https://github.com/MaisySen/Mnet/actions/runs/43841705310), including actual dashboard Chrome, native checks and three full kernel regressions with 183/162/136 later loss-profile drops. Source fixture only, no live grant.
+
+## Explicit grant uncertain outcome and private draft cleanup (fixture extension)
+
+Local actual Chrome now invalidates a grant confirmation by changing network context and verifies no write/private draft remains. A separate real fixture grant commits but loses only its response; the UI retains uncertainty and fresh actual inspection reveals the grant, with no automatic retry. A populated issuer/subject/acknowledgement draft also clears on sign-out, even while a stale state response is held. Local Chrome passes; CI pending. No live grants.

@@ -262,7 +262,11 @@ Check network context clears with private rows on denied/malformed responses and
 
 ## Explicit operator membership grant form (new source)
 
-Manual exact issuer/subject entry from trusted provider records, required acknowledgement and full target confirmation before the existing guarded POST. No email/approval inference. Actual local Chrome checks cancellation, unchecked acknowledgement rejection, confirmed grant/list refresh and cleared private fields. Full local race/vet checks pass; CI pending. No live grant or new operator privilege model.
+Manual exact issuer/subject entry from trusted provider records, required acknowledgement and full target confirmation before the existing guarded POST. No email/approval inference. Actual local Chrome checks cancellation, unchecked acknowledgement rejection, confirmed grant/list refresh and cleared private fields. All five jobs passed in [618d602 CI](https://github.com/MaisySen/Mnet/actions/runs/43841705310), including actual dashboard Chrome and three kernel regressions with 183/162/136 later loss-profile drops. No live grant or new operator privilege model.
+
+## Explicit grant uncertain-response proof (fixture extension)
+
+Actual local Chrome checks network-context invalidation prevents a grant after confirmation, a committed grant with a lost response is settled by inspection without another write, and private draft inputs/acknowledgement clear on sign-out. CI pending. Test-only, no live grant.
 
 ## v0.8.2-test.1 - 2026-11-16
 
