@@ -556,15 +556,24 @@ The full local gate bundle passed: Go build, Windows/macOS cross-builds, vet, vu
 Review at b77bf55 confirmed a remaining cleanup limit: idle-expiry reset enqueue uses the ordinary blocking outbound queue. If that queue is full because the peer stops reading, local partial-file cleanup can wait past the idle deadline. The current timeout tests do not exercise that backpressure case. That revision still needs a bounded/nonblocking termination path; the source fix is recorded in the next section.
 
 
-## Idle cleanup without outbound queue waiting (new source, CI pending)
+## Idle cleanup without outbound queue waiting (b4600bc all-five CI verified)
 
 A saturated-queue regression failed before this fix: incoming file idle expiry waited for reset enqueue, retaining the partial file and stream. The receiver now uses a best-effort reset helper that checks available queue capacity and skips notification if full, not started or closed. It never waits for capacity or exceeds the existing byte bound. Other send paths retain ordinary backpressure. No shared session close or queued sender-chunk cancellation is added.
 
 The deterministic fixture uses a started mux without a writer loop, accepts a partial incoming file, then saturates outbound capacity. It checks cleanup, stream release, an unchanged full queue and an open mux. This is a queue-boundary fixture, not a stalled real-socket timing test. Existing available-capacity sender-reset notification, empty-frame refusal and progress tests plus this fixture pass 20 race repetitions. Fresh full-repository race tests pass. Filesystem cleanup/scheduling are not given a hard wall-clock guarantee. The last four-ABI Android build remains b77bf55, before this source change. No release artifacts or live deployment changed.
 
 
-## Releasing a full inbound stream unblocks the read loop (new source, CI pending)
+## Releasing a full inbound stream unblocks the read loop (fe877fa all-five CI verified)
 
 A released dynamic stream now closes a separate local delivery-cancellation signal. The read loop can abandon an in-flight DATA or reset delivery to that stream's full queue and continue processing other streams. It remains the only owner that closes frame queues. Repeated local release is safe. Both locally opened and peer-opened production streams initialize the signal.
 
 A net.Pipe regression fills one stream queue and observes a second frame blocked behind its delivery. Before fixing, releasing the first stream did not resume the second frame: both DATA and reset variants failed on the pipe write deadline. After fixing, both variants pass 50 race repetitions, with unrelated-stream payload delivery and an open mux checked. Fresh full-repository race tests pass. This is a controlled in-process pipe fixture with a short synchronization wait, not physical-network or device proof. It does not remove ordinary head-of-line blocking while an unreleased consumer is slow, discard already buffered frames or cancel outbound queued chunks. No current JNI/device validation, release artifact or hosted deployment is added; the last four-ABI binding build remains b77bf55.
+
+
+## Release-signal constructors and current binding rebuild (fe877fa source)
+
+A new lifecycle test opens streams through the actual Open/OnStream paths in both client-to-host and host-to-client directions. It checks that both local and peer stream states have live delivery-cancellation signals, repeated release closes each signal, and the shared mux remains open. Combined with the full-queue DATA/reset tests, 50 race repetitions pass. This checks construction/release, not end-to-end file transfer or device behavior.
+
+The full local gate bundle passed again with these test additions: build, Windows/macOS cross-build, vet, vulnerability scan, uncached full race suite, normal/burst mesh-file stress, source-gate tests and secret scan. Fresh Android bindings at fe877fa include both queue-cleanup fixes: four ABI libraries extracted/ELF-inspected, Android 34 resources/all app Java and min-api-24 dex compile passed. AAR SHA256: `186647caaf80386e92c822b1d13602850baa689dbd21c57290e4248f0ba3ebc2`. A fresh framework run passed 64 cases with no failures, errors or skips. All five [b4600bc CI jobs](https://github.com/MaisySen/Mnet/actions/runs/43961403091) and [fe877fa CI jobs](https://github.com/MaisySen/Mnet/actions/runs/43963449817) passed; new constructor-test/documentation revision CI is not yet recorded.
+
+No signed APK/AAB, publication, deployment, physical Android installation, JNI loading/execution, real capture/input, Android UI pixels or reboot proof is added. Build artifacts remain local validation outputs. The current source still permits head-of-line blocking for an unreleased slow stream and does not cancel queued outbound file chunks.

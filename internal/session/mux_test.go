@@ -395,3 +395,58 @@ func TestReleasedFullStreamDoesNotBlockOtherInboundStreams(t *testing.T) {
 		})
 	}
 }
+
+func TestProductionStreamReleaseSignalsBothSides(t *testing.T) {
+	client, host := pipe(t)
+	defer client.Close()
+	defer host.Close()
+	for _, pair := range []struct {
+		name        string
+		local, peer *Mux
+	}{
+		{"client-opens", client, host}, {"host-opens", host, client},
+	} {
+		t.Run(pair.name, func(t *testing.T) {
+			incoming := make(chan Stream, 1)
+			pair.peer.OnStream(func(s Stream) { incoming <- s })
+			local, err := pair.local.Open(PriBulk, map[string]string{"kind": "test"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var remote Stream
+			select {
+			case remote = <-incoming:
+			case <-time.After(time.Second):
+				t.Fatal("peer did not receive OPEN")
+			}
+			for _, side := range []struct {
+				m *Mux
+				s Stream
+			}{{pair.local, local}, {pair.peer, remote}} {
+				side.m.streamMu.Lock()
+				st := side.m.streams[side.s.ID]
+				side.m.streamMu.Unlock()
+				if st == nil || st.done == nil {
+					t.Fatal("production stream missing release signal")
+				}
+				select {
+				case <-st.done:
+					t.Fatal("signal closed before release")
+				default:
+				}
+				side.m.releaseStream(side.s.ID)
+				side.m.releaseStream(side.s.ID)
+				select {
+				case <-st.done:
+				case <-time.After(time.Second):
+					t.Fatal("release did not close signal")
+				}
+				select {
+				case <-side.m.Closed():
+					t.Fatal("release closed mux")
+				default:
+				}
+			}
+		})
+	}
+}
