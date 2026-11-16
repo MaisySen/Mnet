@@ -1,0 +1,1 @@
+package mobile;public interface HostCallbacks{byte[] capture();long screenWidth();long screenHeight();void inject(String ev);boolean acceptSession(String peer);void onChat(String json);void onFile(String name,long size);void onSessionEnd();}

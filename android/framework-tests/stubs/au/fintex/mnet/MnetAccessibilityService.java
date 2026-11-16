@@ -1,0 +1,1 @@
+package au.fintex.mnet;public class MnetAccessibilityService{public static boolean hosting;public static void setHosting(boolean v){hosting=v;}public static MnetAccessibilityService instance(){return null;}public void inject(String json,float scale){}}

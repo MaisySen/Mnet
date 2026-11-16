@@ -551,3 +551,7 @@ Each Android host prompt now carries its own request ID. Allow/refuse/cancel aff
 ### Auto-accept is per hosting run (new source)
 
 The switch configures the next hosting start only, and resets after the capture-consent result. Default is false and stop clears the run's setting. Changing the switch does not revoke auto-accept for a running host: stop hosting, then start again with the desired setting. Source/Java/dex checks pass; actual Android label/layout, recreation and consent runtime remain unverified. Published APK unchanged.
+
+### Selected Android framework check
+
+Run `sh scripts/test-android-framework.sh` with JDK17, Python3 and Maven. It runs20 selected service/helper cases across five simulated API levels with Go/VPN/accessibility fakes and no manifest. This is not an emulator/device, live VPN, valid capture, permission-enforcement or UI proof. See [harness limits](../android/framework-tests/README.md).
