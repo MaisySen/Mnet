@@ -297,9 +297,13 @@ Add `-service print-plist` on Darwin, generating exact saved-state argv with an 
 
 Disposable native root CI generates a unique-label system job with unchanged production argv/settings, then checks actual launchd offline authenticated API startup, automatic SIGKILL recovery/new PID/same token, unload/reload/final process/socket/job cleanup. No production label or persistent enable/disable configuration touched. All five jobs passed in [586062e CI](https://github.com/MaisySen/Mnet/actions/runs/43852789042), with explicit native lifecycle logs and three full Linux kernel regressions (152/133/129 later drops). This is offline service-manager proof only, not enrollment, actual VPN or OS boot/reboot.
 
-## macOS daemon state ownership (new source, native CI pending)
+## macOS daemon state ownership (verified)
 
-Extend the stable private no-follow regular-file flock guard from Linux to macOS before console/service identity/API setup. Native repeated lock/alias and actual-process duplicate/API-preservation/crash-release tests added, followed by launchd lifecycle with the guard. Full local race/vet/cross-builds and Linux process script pass. No native macOS ownership claim until CI; Windows/mobile unaffected.
+Extend the stable private no-follow regular-file flock guard from Linux to macOS before console/service identity/API setup. Native repeated lock/alias and actual-process duplicate/API-preservation/crash-release tests added, followed by launchd lifecycle with the guard. Full local race/vet/cross-builds and Linux process script pass. All five jobs passed in [0e4d592 CI](https://github.com/MaisySen/Mnet/actions/runs/43854588310), including native ownership/process and actual launchd lifecycle; three full Linux kernel regressions176/154/159 later drops. Windows/mobile unaffected.
+
+## Actual macOS kernel utun setup (test extension, CI pending)
+
+One fresh real utun node against a disposable loopback control plane: assert assigned kernel address/MTU/mesh route, authenticated Up, Down/Up, saved-state process restart and final interface/route/socket cleanup. Absent interface and no preexisting mesh-range route required; defaults unchanged. Python/source checks pass; native execution pending. Not peer VPN traffic, actual two-host networking or OS reboot proof.
 
 ## v0.8.2-test.1 - 2026-11-16
 
