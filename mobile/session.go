@@ -68,80 +68,162 @@ type SessionViewer struct {
 	node   *Node
 }
 
+type sessionHostRun struct {
+	owner    *Node
+	listener net.Listener
+	pending  net.Conn
+	active   *SessionHost
+	stopped  bool
+	done     chan struct{}
+}
+
 var (
-	sessMu     sync.Mutex
-	hostListen net.Listener
-	hostActive *SessionHost
+	sessMu  sync.Mutex
+	hosting *sessionHostRun
 )
 
-// StartSessionHost begins accepting session requests on the node's
-// mesh IP. One session at a time; a second caller is refused while one
-// is active. cb.AcceptSession decides consent.
+// Accept tracks a connection even while the peer handshake or consent blocks.
+// Closing only the listener would leave that accepted connection alive.
+func (r *sessionHostRun) Accept() (net.Conn, error) {
+	conn, err := r.listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	sessMu.Lock()
+	defer sessMu.Unlock()
+	if r.stopped {
+		conn.Close()
+		return nil, net.ErrClosed
+	}
+	r.pending = conn
+	return conn, nil
+}
+func (r *sessionHostRun) Close() error   { return r.listener.Close() }
+func (r *sessionHostRun) Addr() net.Addr { return r.listener.Addr() }
+
+// StartSessionHost begins accepting on the node's mesh IP. Only this node
+// can stop its host; stale workers/consent cannot replace a newer host.
 func (n *Node) StartSessionHost(cb HostCallbacks) error {
 	ip := n.d.Status().IPv4
 	if ip == "" {
 		return errors.New("not up")
 	}
-	sessMu.Lock()
-	defer sessMu.Unlock()
-	if hostListen != nil {
-		return errors.New("session host already running")
-	}
 	ln, err := net.Listen("tcp", net.JoinHostPort(ip, fmt.Sprint(SessionPort)))
 	if err != nil {
 		return err
 	}
-	hostListen = ln
-	go func() {
-		for {
-			m, err := session.Listen(ln, n.d.Status().NodeName, func(h session.Hello, _ net.Addr) (bool, string) {
-				sessMu.Lock()
-				busy := hostActive != nil
-				sessMu.Unlock()
-				if busy {
-					return false, "another session is active"
-				}
-				if !cb.AcceptSession(h.NodeName) {
-					return false, "refused"
-				}
-				return true, ""
-			})
-			if err != nil {
-				return // listener closed by StopSessionHost
-			}
-			cap := &appCapturer{cb: cb}
-			inj := &appInjector{cb: cb}
+	return n.startSessionHost(ln, n.d.Status().NodeName, cb)
+}
 
-			h := session.ServeHostWithOptions(m, cap, inj, 8, session.HostOptions{
-				OnChat: func(cm session.ChatMessage) { b, _ := json.Marshal(cm); cb.OnChat(string(b)) },
-				OnFile: cb.OnFile,
-			})
-			sh := &SessionHost{host: h, mux: m, nodeName: n.d.Status().NodeName}
-			sessMu.Lock()
-			hostActive = sh
-			sessMu.Unlock()
-			<-m.Closed()
-			h.Stop()
-			cb.OnSessionEnd()
-			sessMu.Lock()
-			hostActive = nil
-			sessMu.Unlock()
-		}
-	}()
+func (n *Node) startSessionHost(ln net.Listener, name string, cb HostCallbacks) error {
+	if cb == nil {
+		ln.Close()
+		return errors.New("session callbacks required")
+	}
+	sessMu.Lock()
+	if n.sessionClosed {
+		sessMu.Unlock()
+		ln.Close()
+		return errors.New("node is closed")
+	}
+	if hosting != nil {
+		sessMu.Unlock()
+		ln.Close()
+		return errors.New("session host already running")
+	}
+	run := &sessionHostRun{owner: n, listener: ln, done: make(chan struct{})}
+	hosting = run
+	sessMu.Unlock()
+	go run.serve(name, cb)
 	return nil
 }
 
-// StopSessionHost ends any active session and stops accepting.
+func (r *sessionHostRun) serve(name string, cb HostCallbacks) {
+	defer close(r.done)
+	defer r.owner.stopSessionRun(r)
+	for {
+		m, err := session.Listen(r, name, func(h session.Hello, _ net.Addr) (bool, string) {
+			sessMu.Lock()
+			valid := !r.stopped && hosting == r
+			sessMu.Unlock()
+			if !valid {
+				return false, "host stopped"
+			}
+			accepted := cb.AcceptSession(h.NodeName)
+			sessMu.Lock()
+			valid = !r.stopped && hosting == r
+			sessMu.Unlock()
+			if !valid {
+				return false, "host stopped"
+			}
+			if !accepted {
+				return false, "refused"
+			}
+			return true, ""
+		})
+		sessMu.Lock()
+		r.pending = nil
+		if err != nil {
+			sessMu.Unlock()
+			return
+		}
+		if r.stopped || hosting != r {
+			sessMu.Unlock()
+			m.Close()
+			return
+		}
+		h := session.ServeHostWithOptions(m, &appCapturer{cb: cb}, &appInjector{cb: cb}, 8, session.HostOptions{
+			OnChat: func(cm session.ChatMessage) { b, _ := json.Marshal(cm); cb.OnChat(string(b)) },
+			OnFile: cb.OnFile,
+		})
+		sh := &SessionHost{host: h, mux: m, nodeName: name}
+		r.active = sh
+		sessMu.Unlock()
+		<-m.Closed()
+		h.Stop()
+		cb.OnSessionEnd()
+		sessMu.Lock()
+		if r.active == sh {
+			r.active = nil
+		}
+		stopped := r.stopped
+		sessMu.Unlock()
+		if stopped {
+			return
+		}
+	}
+}
+
+// StopSessionHost closes only the host this node owns. No callback/worker wait
+// happens under sessMu, since application callbacks also use shared state.
 func (n *Node) StopSessionHost() {
 	sessMu.Lock()
-	defer sessMu.Unlock()
-	if hostActive != nil {
-		hostActive.host.Stop()
-		hostActive = nil
+	r := hosting
+	sessMu.Unlock()
+	if r != nil && r.owner == n {
+		n.stopSessionRun(r)
 	}
-	if hostListen != nil {
-		hostListen.Close()
-		hostListen = nil
+}
+func (n *Node) stopSessionRun(r *sessionHostRun) {
+	sessMu.Lock()
+	if r.owner != n || r.stopped {
+		sessMu.Unlock()
+		return
+	}
+	r.stopped = true
+	if hosting == r {
+		hosting = nil
+	}
+	pending, active := r.pending, r.active
+	r.pending = nil
+	r.active = nil
+	sessMu.Unlock()
+	r.listener.Close()
+	if pending != nil {
+		pending.Close()
+	}
+	if active != nil {
+		active.host.Stop()
 	}
 }
 

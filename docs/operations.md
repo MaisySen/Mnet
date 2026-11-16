@@ -520,6 +520,10 @@ SetTUN now owns at most one unconsumed injected tunnel. Call Down before replaci
 
 Notification channels are used only on API26+; API24/25 use the legacy low-priority builder. Both private status receivers require the Mnet signature permission; API33+ also requests non-exported registration. JVM fakes/source checks and a fresh arm64 AAR/full Java/resource/min-api24 dex build pass locally. These checks do not establish actual Android-version startup, VPN, session or boot support. No new APK/AAB published.
 
-### Screen capture termination (new source)
+### Screen capture termination (verified JVM/source policy)
 
 Session-host source registers projection onStop before creating a virtual display. Android stop/lock or setup failure ends hosting, clears retained frames, disables input and releases capture/foreground state. Duplicate starts are refused and projection hosting is non-sticky; start hosting again for fresh Android consent after termination. Local callback-helper fake tests/source checks and Java/min-api24 dex compilation pass; actual Android capture/stop/lock and Go teardown remain unverified. The shipped APK is unchanged.
+
+### Mobile session-host owner (new source)
+
+StopSessionHost affects only the calling node's current host. Node Stop/Close stop that owned host too; Close refuses a later host. Pending accepted connections are closed during stop, and late consent/old cleanup cannot take over a replacement. An already blocked application consent callback returns on its application's schedule; the transport is closed immediately. Local loopback/race and fresh arm64 AAR/Java/dex checks pass, native extension pending. This does not verify the Android framework/consent/capture teardown.

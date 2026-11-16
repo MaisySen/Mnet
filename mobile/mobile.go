@@ -18,7 +18,8 @@ import (
 // Node is one Mnet node on a phone. All methods are safe to call from
 // the UI thread; blocking work happens on daemon goroutines.
 type Node struct {
-	d *daemon.Daemon
+	d             *daemon.Daemon
+	sessionClosed bool // guarded by sessMu
 }
 
 // NewNode makes a node that stores keys and join state in stateDir.
@@ -62,6 +63,7 @@ func (n *Node) Status() string {
 
 // Stop tears the mesh down and closes the tunnel handed to Start.
 func (n *Node) Stop() {
+	n.StopSessionHost()
 	n.d.Down()
 }
 
@@ -73,4 +75,10 @@ func (n *Node) MeshIPv4() string {
 
 // Close permanently disposes this node and cancels current startup. Later
 // Prepare/Start/StartFlow cannot revive it; create a new Node for reconnect.
-func (n *Node) Close() { n.d.Close() }
+func (n *Node) Close() {
+	sessMu.Lock()
+	n.sessionClosed = true
+	sessMu.Unlock()
+	n.StopSessionHost()
+	n.d.Close()
+}
