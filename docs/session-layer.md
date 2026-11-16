@@ -168,8 +168,14 @@ Dial now explicitly owns its supplied connection: a failed hello write, reply re
 
 Counted net.Pipe regressions failed before the change for bad reply/frame/version/refusal and failed hello write. Error closure and successful mux ownership pass30 race repetitions; fresh full-repository race tests pass. All-five [2e87ce6 CI](https://github.com/MaisySen/Mnet/actions/runs/43948329722) passes. These are local synthetic transport tests, not a reproduced live descriptor leak or device/OS-network proof. No fresh bindings, release APK/AAB or deployment.
 
-## CLI session handshake deadline (new source, CI pending)
+## CLI session handshake deadline (4f93413 all-five CI verified)
 
 CLI session connect/reconnect and file-send now allow70 seconds for hello/host consent after TCP connects, rather than waiting indefinitely for a silent host. The existing TCP connect limit remains10 seconds. A successful handshake clears its deadline before active use; a failure closes the connection through Dial ownership. Expiry can terminate a delayed consent response and requires another attempt; it does not change authorization policy.
 
-Short-budget silent-host and successful deadline-clear net.Pipe tests pass30 race repetitions. Fresh full-repository race tests pass. These use an accelerated fixture timeout, not an elapsed70-second real host/device test. No mobile source, bindings, release artifacts or live deployment changed.
+Short-budget silent-host and successful deadline-clear net.Pipe tests pass30 race repetitions. Fresh full-repository race tests pass. These use an accelerated fixture timeout, not an elapsed70-second real host/device test. All-five [4f93413 CI](https://github.com/MaisySen/Mnet/actions/runs/43950358961) passes. No mobile source, bindings, release artifacts or live deployment changed.
+
+## Headless desktop host hello budget (new source, CI pending)
+
+The desktop session host bounds accepted-socket hello/reply I/O to15 seconds, then clears the deadline before starting capture. A silent peer no longer occupies the serial accept/hello loop indefinitely. Headless authorization remains immediate and unchanged; mobile's separate consent allowance is unchanged. This is a deadline, not a per-peer admission/connection-rate limit.
+
+An accelerated40ms real OS-loopback test accepts a silent connection, verifies timeout, accepts a subsequent approved viewer and measures a successful keepalive round trip after the original handshake deadline.30 race repetitions and a fresh full-repository race run pass. No physical host, public-internet timing,15-second elapsed run, capture/input or device proof. No bindings, release artifacts or live deployment changed.

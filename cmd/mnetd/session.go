@@ -79,6 +79,40 @@ func (l *sessionLogger) log(ev sessionAudit) {
 	f.Write(append(b, '\n'))
 }
 
+// Headless authorization is immediate. Bound untrusted hello/reply I/O so a
+// silent socket cannot occupy the listener loop forever.
+type sessionHelloListener struct {
+	net.Listener
+	budget   time.Duration
+	accepted *net.Conn
+}
+
+func (listener sessionHelloListener) Accept() (net.Conn, error) {
+	conn, err := listener.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	if err := conn.SetDeadline(time.Now().Add(listener.budget)); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	*listener.accepted = conn
+	return conn, nil
+}
+
+func listenHeadlessSession(listener net.Listener, name string, budget time.Duration, accept func(session.Hello, net.Addr) (bool, string)) (*session.Mux, error) {
+	var conn net.Conn
+	mux, err := session.Listen(sessionHelloListener{listener, budget, &conn}, name, accept)
+	if err != nil {
+		return nil, err
+	}
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		mux.Close()
+		return nil, err
+	}
+	return mux, nil
+}
+
 // runSessionHost waits for the mesh to come up, then hosts remote
 // sessions on the node's mesh IP. autoAccept is required: a headless
 // daemon cannot prompt, so hosting without it refuses every session
@@ -107,7 +141,7 @@ func runSessionHost(d *daemon.Daemon, stateDir string, autoAccept bool, allow ma
 	for {
 		start := time.Now()
 		var viewer, viewerIP, refuseWhy string
-		m, err := session.Listen(ln, nodeName, func(h session.Hello, from net.Addr) (bool, string) {
+		m, err := listenHeadlessSession(ln, nodeName, 15*time.Second, func(h session.Hello, from net.Addr) (bool, string) {
 			viewer = h.NodeName
 			refuseWhy = ""
 			if from != nil {
