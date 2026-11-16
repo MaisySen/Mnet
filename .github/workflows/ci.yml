@@ -51,6 +51,8 @@ jobs:
           java -cp "$RUNNER_TEMP/mnet-android-policy" au.fintex.mnet.VpnWorkerGateTest
       - name: Android API compatibility matrix (JVM fakes and source only)
         run: python3 scripts/test-android-api-compat.py
+      - name: Android projection stop policy (JVM fakes and source only)
+        run: python3 scripts/test-android-projection.py
       - name: Android VPN fixed-log policy (source checks only)
         run: python3 scripts/check-android-vpn-logs.py
       - name: source gate regression tests

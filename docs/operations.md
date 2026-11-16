@@ -516,6 +516,10 @@ Use Node.Close when disposing a canceled Android worker; it permanently rejects 
 
 SetTUN now owns at most one unconsumed injected tunnel. Call Down before replacing it; nil and silent replacement are refused. Down/Close close a pending tunnel even when Up has not consumed it, and device creation transfers that ownership to WireGuard. A rejected SetTUN leaves the offered tunnel owned by its caller. Local repeated race tests/full suite pass; all five jobs passed in [7ddee3f CI](https://github.com/MaisySen/Mnet/actions/runs/43883114265), including ten native macOS/Windows repetitions and kernel loss runs159/139/125.
 
-### Android API-level compatibility (new source)
+### Android API-level compatibility (verified JVM/source policy)
 
 Notification channels are used only on API26+; API24/25 use the legacy low-priority builder. Both private status receivers require the Mnet signature permission; API33+ also requests non-exported registration. JVM fakes/source checks and a fresh arm64 AAR/full Java/resource/min-api24 dex build pass locally. These checks do not establish actual Android-version startup, VPN, session or boot support. No new APK/AAB published.
+
+### Screen capture termination (new source)
+
+Session-host source registers projection onStop before creating a virtual display. Android stop/lock or setup failure ends hosting, clears retained frames, disables input and releases capture/foreground state. Duplicate starts are refused and projection hosting is non-sticky; start hosting again for fresh Android consent after termination. Local callback-helper fake tests/source checks and Java/min-api24 dex compilation pass; actual Android capture/stop/lock and Go teardown remain unverified. The shipped APK is unchanged.

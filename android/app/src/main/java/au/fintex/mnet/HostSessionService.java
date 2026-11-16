@@ -17,6 +17,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
+import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.view.WindowManager;
 
@@ -59,6 +60,8 @@ public class HostSessionService extends Service implements HostCallbacks {
 
     private Node node;
     private MediaProjection projection;
+    private ProjectionGuard projectionGuard;
+    private final Object hostLifecycle = new Object();
     private VirtualDisplay display;
     private ImageReader reader;
     private HandlerThread captureThread;
@@ -69,9 +72,19 @@ public class HostSessionService extends Service implements HostCallbacks {
     private volatile long latestSeq;
     private volatile long servedSeq;
     private volatile boolean running;
+    private boolean stopping;
+    private boolean hostStarted;
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null && "stop".equals(intent.getAction())) {
+            stopHosting();
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+        // Never consume another single-use consent token while already hosting.
+        if (running) return START_NOT_STICKY;
+        if (stopping) { stopSelf(); return START_NOT_STICKY; }
         if (intent == null || !intent.hasExtra("resultCode")) {
             stopSelf();
             return START_NOT_STICKY;
@@ -82,22 +95,41 @@ public class HostSessionService extends Service implements HostCallbacks {
             stopSelf();
             return START_NOT_STICKY;
         }
-        startFg();
-        int resultCode = intent.getIntExtra("resultCode", 0);
-        Intent data = intent.getParcelableExtra("data");
-        startCapture(resultCode, data);
-        running = true;
-        MnetAccessibilityService.setHosting(true);
-        new Thread(() -> {
-            try {
-                node.startSessionHost(this);
-                log("hosting on the mesh; waiting for a viewer");
-            } catch (Exception e) {
-                log("host failed: " + e.getMessage());
-                stopSelf();
+        try {
+            startFg();
+            int resultCode = intent.getIntExtra("resultCode", 0);
+            Intent data = intent.getParcelableExtra("data");
+            if (resultCode != android.app.Activity.RESULT_OK || data == null) {
+                throw new IllegalStateException("Screen capture consent is unavailable");
             }
-        }, "session-host").start();
-        return START_STICKY;
+            startCapture(resultCode, data);
+            synchronized (hostLifecycle) {
+                running = true;
+                MnetAccessibilityService.setHosting(true);
+            }
+            new Thread(() -> {
+                try {
+                    synchronized (hostLifecycle) {
+                        if (!running) return;
+                        node.startSessionHost(this);
+                        hostStarted = true;
+                    }
+                    log("hosting on the mesh; waiting for a viewer");
+                } catch (Exception e) {
+                    log("session host failed; start hosting again");
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        stopHosting();
+                        stopSelf();
+                    });
+                }
+            }, "session-host").start();
+        } catch (Exception failure) {
+            log("screen capture setup failed; start hosting again to grant consent");
+            stopHosting();
+            stopSelf();
+        }
+        // Projection consent cannot be replayed after process restart.
+        return START_NOT_STICKY;
     }
 
     private void startFg() {
@@ -133,10 +165,16 @@ public class HostSessionService extends Service implements HostCallbacks {
 
         MediaProjectionManager mpm = getSystemService(MediaProjectionManager.class);
         projection = mpm.getMediaProjection(resultCode, data);
+        projectionGuard = new ProjectionGuard(projection, new Handler(Looper.getMainLooper()), () -> {
+            log("screen sharing stopped by Android");
+            stopHosting();
+            stopSelf();
+        });
         reader = ImageReader.newInstance(frameW, frameH, PixelFormat.RGBA_8888, 2);
         display = projection.createVirtualDisplay("mnet-session", frameW, frameH,
                 dm.densityDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 reader.getSurface(), null, captureHandler);
+        if (display == null) throw new IllegalStateException("Screen capture display unavailable");
         reader.setOnImageAvailableListener(r -> {
             Image img = r.acquireLatestImage();
             if (img == null) {
@@ -154,8 +192,12 @@ public class HostSessionService extends Service implements HostCallbacks {
                 Bitmap cropped = Bitmap.createBitmap(bmp, 0, 0, frameW, frameH);
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
                 cropped.compress(Bitmap.CompressFormat.JPEG, 70, out);
-                latestJpeg = out.toByteArray();
-                latestSeq++;
+                synchronized (hostLifecycle) {
+                    if (running) {
+                        latestJpeg = out.toByteArray();
+                        latestSeq++;
+                    }
+                }
             } catch (Exception ignored) {
             } finally {
                 img.close();
@@ -167,11 +209,11 @@ public class HostSessionService extends Service implements HostCallbacks {
 
     @Override
     public byte[] capture() {
-        if (latestSeq == servedSeq) {
-            return null;
+        synchronized (hostLifecycle) {
+            if (!running || latestSeq == servedSeq) return null;
+            servedSeq = latestSeq;
+            return latestJpeg;
         }
-        servedSeq = latestSeq;
-        return latestJpeg;
     }
 
     @Override
@@ -186,6 +228,7 @@ public class HostSessionService extends Service implements HostCallbacks {
 
     @Override
     public void inject(String evJson) {
+        if (!running) return;
         MnetAccessibilityService svc = MnetAccessibilityService.instance();
         if (svc != null) {
             WindowManager wm = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
@@ -198,6 +241,7 @@ public class HostSessionService extends Service implements HostCallbacks {
 
     @Override
     public boolean acceptSession(String peerNodeName) {
+        if (!running) return false;
         if (autoAccept.get()) {
             log("accepted session from " + peerNodeName + " (auto-accept)");
             return true;
@@ -209,7 +253,7 @@ public class HostSessionService extends Service implements HostCallbacks {
         sendBroadcast(ask);
         try {
             if (pendingLatch.await(60, TimeUnit.SECONDS)) {
-                return Boolean.TRUE.equals(pendingAnswer);
+                return running && Boolean.TRUE.equals(pendingAnswer);
             }
         } catch (InterruptedException ignored) {
         }
@@ -239,27 +283,36 @@ public class HostSessionService extends Service implements HostCallbacks {
 
     @Override
     public void onDestroy() {
-        running = false;
-        MnetAccessibilityService.setHosting(false);
-        if (node != null) {
-            try {
-                node.stopSessionHost();
-            } catch (Exception ignored) {
-            }
-        }
-        if (display != null) {
-            display.release();
-        }
-        if (reader != null) {
-            reader.close();
-        }
-        if (projection != null) {
-            projection.stop();
-        }
-        if (captureThread != null) {
-            captureThread.quitSafely();
-        }
+        stopHosting();
         super.onDestroy();
+    }
+
+    // Called on the main thread, including the projection callback. Stop the
+    // Go listener before releasing capture and serialize against late startup.
+    private void stopHosting() {
+        Node stoppingNode = null;
+        synchronized (hostLifecycle) {
+            running = false;
+            MnetAccessibilityService.setHosting(false);
+            latestJpeg = null;
+            latestSeq = servedSeq = 0;
+            pendingAnswer = false;
+            CountDownLatch pending = pendingLatch;
+            if (pending != null) pending.countDown();
+            stopping = true;
+            if (hostStarted) { stoppingNode = node; hostStarted = false; }
+        }
+        // Stop waits for Go capture workers; do not hold their callback lock.
+        if (stoppingNode != null) {
+            try { stoppingNode.stopSessionHost(); } catch (Exception ignored) { }
+        }
+        if (display != null) { display.release(); display = null; }
+        if (reader != null) { reader.close(); reader = null; }
+        if (projectionGuard != null) { projectionGuard.close(); projectionGuard = null; }
+        else if (projection != null) { projection.stop(); }
+        projection = null;
+        if (captureThread != null) { captureThread.quitSafely(); captureThread = null; }
+        stopForeground(true);
     }
 
     @Override

@@ -358,13 +358,22 @@ Add shared/mobile Close that cannot be revived by later Prepare/Up/tunnel inject
 Fix two reproduced leaks: Close before Up left an injected tunnel open, and another injection silently replaced it. Serialize with lifecycle, refuse nil/pending replacement, transfer ownership at device creation, close pending on Down/Close and allow a new injection after Down. Repeated local race/full suite/vet/cross-builds pass; all five jobs passed in [7ddee3f CI](https://github.com/MaisySen/Mnet/actions/runs/43883114265), including ten native macOS/Windows repetitions and kernel loss runs159/139/125. No APK/AAB published.
 
 
-## Android API-level entry points (new source, CI pending)
+## Android API-level entry points (verified JVM/source policy)
 
 The app declares minSdk24 but used API26 notification-channel calls and the flags receiver overload without lower-version paths. A shared helper now uses legacy low-priority notifications on API24/25 and creates/reuses channels on API26+. Both VPN and session-host notifications use it. Both activity status receivers use a signature-only app permission on every version; API33+ additionally uses RECEIVER_NOT_EXPORTED. The legacy path is not an unprotected receiver.
 
-The real helper passes an API24-36 branch matrix compiled against API-checking JVM fakes. Source checks require both receiver/notification call sites and the manifest permission. This is fake/source coverage, not framework execution. A freshly rebuilt current-source arm64 Go AAR, every Java source/resource against Android34, and min-api24 dex compilation pass locally. Other ABIs, actual Android24/25 startup, current Android VPN/session behavior, consent, always-on and reboot remain unverified. No APK/AAB published.
+The real helper passes an API24-36 branch matrix compiled against API-checking JVM fakes. Source checks require both receiver/notification call sites and the manifest permission. This is fake/source coverage, not framework execution. All five jobs passed in [d09bf3f CI](https://github.com/MaisySen/Mnet/actions/runs/43885644442), including the JVM-fake matrix. A freshly rebuilt current-source arm64 Go AAR, every Java source/resource against Android34, and min-api24 dex compilation pass locally. Other ABIs, actual Android24/25 startup, current Android VPN/session behavior, consent, always-on and reboot remain unverified. No APK/AAB published.
 
 API basis: [Notification.Builder constructors](https://developer.android.com/reference/android/app/Notification.Builder), [Context receiver overloads](https://developer.android.com/reference/android/content/Context) and [signature permissions](https://developer.android.com/guide/topics/permissions/defining).
+
+
+## Android projection-stop lifecycle (new source, CI pending)
+
+Target34 session hosting lacked the MediaProjection onStop callback required before virtual-display creation. A ProjectionGuard registers first and handles app/system stop once, unregistering without recursive notifications. System capture stop now stops the host, disables session input, drops retained frames and releases display/reader/projection/thread/foreground state. Setup failures use the same cleanup. Duplicate starts do not consume another consent token; the service is non-sticky because projection consent cannot be replayed. The host worker checks cancellation under a lock shared with teardown; teardown releases that lock before waiting for Go workers. Only a successfully started host is stopped. The hosting activity also uses the legacy startService entry point below API26.
+
+Local JVM fakes cover callback-before-display, null refusal, external/app-stop idempotence and100 concurrent stop races. Source checks cover service callback order, release paths, non-sticky/duplicate-start policy and retained-frame gates. All Java sources compile against Android34 with the recently rebuilt current-Go arm64 AAR; min-api24 dex compilation passes. These checks do not run Android, grant consent, capture a screen or exercise the actual Java/Go host teardown. Rotation/resizing, system stop/lock, repeated consent/start/failure and physical session/VPN tests remain open. No new APK/AAB published.
+
+API basis: [Android projection lifecycle](https://developer.android.com/media/grow/media-projection), [MediaProjection callback requirement](https://developer.android.com/reference/android/media/projection/MediaProjection) and [Context service entry points](https://developer.android.com/reference/android/content/Context).
 
 ## v0.8.2-test.1 - 2026-11-16
 

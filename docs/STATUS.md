@@ -8,9 +8,9 @@ Updated 2026-11-17, Australia/Sydney. Development/testing only. No production-re
 | --- | --- | --- |
 | Published test artifacts | v0.8.2-test.1, source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11; Android 0.8.2/code 14. | [Release](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1). Sixteen assets verified at release. Update CLI and daemon together. |
 | Hosted test control plane | Last verified 2026-11-16 at 07:12 AEDT on `2bb55f4`. | Dated deployment check, not a current availability promise. Free-host ephemeral disk/restart state loss remains a limitation. |
-| Newer verified source | `7ddee3f`, all five jobs passed, including native pending-tunnel ownership and permanent disposal/cancellation. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43883114265). Not physical Android runtime/boot proof; published artifacts/deployment unchanged. |
+| Newer verified source | `d09bf3f`, all five jobs passed, including the JVM-fake Android API matrix plus existing native regressions. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43885644442). Not physical Android runtime/boot proof; published artifacts/deployment unchanged. |
 
-New pending source adds Android API-level guards and signature-permission receivers. JVM-fake matrix, fresh arm64 AAR, full Android34 Java/resources and min-api24 dex build pass locally. Android runtime and native CI for that extension remain unverified.
+Android API-level guards and signature-permission receivers passed the recorded CI JVM-fake matrix; fresh arm64 AAR, full Android34 Java/resources and min-api24 dex build pass locally. New pending source adds a projection-stop callback and capture cleanup. Actual Android runtime remains unverified.
 
 ## What is implemented and tested
 
@@ -24,7 +24,7 @@ New pending source adds Android API-level guards and signature-permission receiv
 - Route-only ACL withdrawal/restoration and admin expiry/reapproval block and restore access as expected. Reapproval clears stale approval status/link. Known expiry is enforced locally even if later control polling is blocked; unseen offline admin changes cannot be discovered.
 - `mnet up --reset-routing`, while down, clears saved roles without deleting identity. Ordinary saved-state Up preserves routing. Fresh attempts clear old setup errors, preserving errors raised during the new attempt.
 
-The latest verified [7ddee3f CI](https://github.com/MaisySen/Mnet/actions/runs/43883114265) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 159/139/125. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
+The latest verified [d09bf3f CI](https://github.com/MaisySen/Mnet/actions/runs/43885644442) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 126/147/152. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
 
 Exit-node selection/advertising is explicitly rejected before enrollment/device creation. Unsafe dormant host/default-route replacement helpers were removed, not enabled. Exit internet routing remains unsupported.
 

@@ -106,8 +106,9 @@ public class HostingActivity extends Activity {
             Intent svc = new Intent(this, HostSessionService.class);
             svc.putExtra("resultCode", res);
             svc.putExtra("data", data);
-            startForegroundService(svc);
-            append("screen capture started");
+            if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(svc);
+            else startService(svc);
+            append("starting screen capture");
         } else {
             append("screen capture permission denied");
         }
