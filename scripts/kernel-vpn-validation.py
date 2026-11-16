@@ -395,13 +395,22 @@ else:
             peers=local_api(state).get('peers', [])
             if len(peers)!=1 or any(peer.get('name')=='outsider' for peer in peers):
                 raise RuntimeError('original mesh disclosed different-network peer')
+        isolated_ip = local_api(isolated_state)['ipv4']
+        tested_targets = 0
         for target in ips.values():
+            # Networks have independent address spaces. A matching IP is
+            # this device's own address, not evidence of cross-network reach.
+            if target == isolated_ip:
+                continue
+            tested_targets += 1
             attempt=subprocess.run(ns('e','ping','-c','1','-W','1',target),capture_output=True,timeout=3)
             if attempt.returncode==0:
                 raise RuntimeError('different-network device reached original mesh IP')
+        if tested_targets == 0:
+            raise RuntimeError('isolation fixture tested no distinct target IP')
         local_api(isolated_state,'down',{})
         isolated.terminate();isolated.wait(timeout=10)
-        print('PASS separate-network device has no original peers and cannot reach either original mesh IP',flush=True)
+        print('PASS separate-network device has no original peers and cannot reach distinct original mesh IPs (overlapping self IP excluded)',flush=True)
         run(*ns('c', sys.executable, acl_script, tmp / 'control.json', 'deny-route'))
         def subnet_absent():
             return not json.loads(run('ip', '-n', spaces['a'], '-N', '-j', 'route', 'show', 'exact', '10.9.0.0/24'))

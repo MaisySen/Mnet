@@ -33,7 +33,7 @@ A new fixture adds a third independently keyed kernel VPN device to the same net
 
 ## Cross-network kernel isolation extension (pending)
 
-A fresh identity joins a second network on the same disposable control service. The new fixture requires no original peers on that device, no outsider in the original pair maps, and failed access to both original mesh IPs. Independent CI is pending. Network-scoped transport isolation is not account ownership, organization membership or a multi-tenant security certification.
+A fresh identity joins a second network on the same disposable control service. The new fixture requires no original peers on that device, no outsider in the original pair maps, and failed access to distinct original mesh IPs. Independent network address spaces can overlap, so the isolated device's own IP is not treated as a cross-network target. Independent CI is pending. Network-scoped transport isolation is not account ownership, organization membership or a multi-tenant security certification.
 
 
 ## v0.8.2-test.1 - 2026-11-16
