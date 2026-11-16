@@ -148,7 +148,7 @@ func (s *Server) handleAccountDevices(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 401, "account login required")
 		return
 	}
-	devices, err := s.accountDevices(cookie.Value)
+	network, devices, err := s.accountDeviceView(cookie.Value)
 	if err != nil {
 		writeErr(w, 401, "account login or membership required")
 		return
@@ -156,7 +156,7 @@ func (s *Server) handleAccountDevices(w http.ResponseWriter, r *http.Request) {
 	if devices == nil {
 		devices = []IdentityDevice{}
 	}
-	writeJSON(w, 200, map[string]any{"devices": devices})
+	writeJSON(w, 200, map[string]any{"network_id": network, "devices": devices})
 }
 func (s *Server) handleAccountLogout(w http.ResponseWriter, r *http.Request) {
 	if !accountMethod(w, r, "POST") || !s.requireAdminJSON(w, r) {

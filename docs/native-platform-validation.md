@@ -246,4 +246,8 @@ The guarded operator POST now parses each exact case-sensitive field once. Tests
 
 ## Unambiguous private membership reads (new source)
 
-Private grant reads now require exactly one case-sensitive network selector and reject malformed query encoding. Native-targeted tests reject duplicate identical/conflicting network IDs, alternate-case/unknown fields and invalid escape/semicolon queries with no private grant output. Local three-repetition membership tests, actual dashboard Chrome and full race/vet pass. CI pending. No live changes.
+Private grant reads now require exactly one case-sensitive network selector and reject malformed query encoding. Native-targeted tests reject duplicate identical/conflicting network IDs, alternate-case/unknown fields and invalid escape/semicolon queries with no private grant output. Local three-repetition membership tests, actual dashboard Chrome and full race/vet pass. All five jobs passed in [8d6727d CI](https://github.com/MaisySen/Mnet/actions/runs/43836834052), including native membership cases, both actual browser steps and three full kernel regressions with 132/121/138 later loss-profile drops. No live changes.
+
+## Authenticated member network context (new source)
+
+The device-summary response includes only its authorized session network ID, beside existing summaries. The member page renders it as text and clears it with private state. HTTP tests attempt query widening and assert the original network; internal tests deny missing/revoked credentials without any context. Actual Chrome checks the signed-in network and its sign-out cleanup. Local checks pass; full/native CI pending. No principal/role fields or new membership permissions.

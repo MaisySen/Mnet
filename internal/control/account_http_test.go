@@ -97,6 +97,12 @@ func TestAccountHTTPVerifiedLoginMembershipAndLogout(t *testing.T) {
 	if code != 200 || !strings.Contains(body, "mine") {
 		t.Fatal("own-device list failed")
 	}
+	var context struct {
+		NetworkID string `json:"network_id"`
+	}
+	if err := json.Unmarshal([]byte(body), &context); err != nil || context.NetworkID != network.ID {
+		t.Fatal("device view context not bound to authenticated network")
+	}
 	for _, secret := range []string{"node_token", "private_key", "user-1", fake.srv.URL} {
 		if strings.Contains(body, secret) {
 			t.Fatal("private principal/credential leaked in device list")

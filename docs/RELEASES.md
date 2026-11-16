@@ -250,7 +250,11 @@ Require the four exact case-sensitive membership POST fields once each. Reject d
 
 ## Unambiguous private membership query (new source)
 
-Require one exact `network_id` query field for private operator grant reads. Reject duplicate/unknown/alternate-case selectors and malformed encoding before listing grants. Local repeated tests, dashboard Chrome and full race/vet pass; CI pending. No live changes.
+Require one exact `network_id` query field for private operator grant reads. Reject duplicate/unknown/alternate-case selectors and malformed encoding before listing grants. All five jobs passed in [8d6727d CI](https://github.com/MaisySen/Mnet/actions/runs/43836834052), including native cases and three kernel regressions with 132/121/138 later loss-profile drops. No live changes.
+
+## Member network context (new source)
+
+Show the authenticated session's exact network ID beside its device list and include it in the same authorized summary response. It is not chosen from query/form input and clears on denial/sign-out. Tests cover query widening, revoked credentials revealing no context and actual browser display/cleanup. Local checks pass; CI pending. No principal/role disclosure or live changes.
 
 ## v0.8.2-test.1 - 2026-11-16
 

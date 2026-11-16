@@ -157,3 +157,24 @@ func TestAccountSessionProviderChangeClearsPendingAndLive(t *testing.T) {
 		t.Fatal("reenabling provider revived old session")
 	}
 }
+
+func TestAccountSessionNetworkContextPrivateOnDenial(t *testing.T) {
+	app, p, network, _ := accountFixture(t)
+	token, err := app.newAccountSession(network, p, &OIDCClaims{Subject: "owner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, devices, err := app.accountDeviceView(token)
+	if err != nil || id != network || len(devices) != 1 {
+		t.Fatal("session context wrong")
+	}
+	if err := app.store.SetNetworkMember(network, p.cfg.Issuer, "owner", false); err != nil {
+		t.Fatal(err)
+	}
+	for _, credential := range []string{token, "invalid", ""} {
+		id, devices, err = app.accountDeviceView(credential)
+		if err == nil || id != "" || devices != nil {
+			t.Fatal("denied view disclosed network context")
+		}
+	}
+}

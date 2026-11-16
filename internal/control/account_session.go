@@ -54,8 +54,13 @@ func (s *Server) newAccountSession(networkID string, p *OIDCProvider, claims *OI
 }
 
 func (s *Server) accountDevices(token string) ([]IdentityDevice, error) {
+	_, devices, err := s.accountDeviceView(token)
+	return devices, err
+}
+
+func (s *Server) accountDeviceView(token string) (string, []IdentityDevice, error) {
 	if token == "" {
-		return nil, ErrUnauthorized
+		return "", nil, ErrUnauthorized
 	}
 	s.oidcMu.Lock()
 	defer s.oidcMu.Unlock()
@@ -67,10 +72,14 @@ func (s *Server) accountDevices(token string) ([]IdentityDevice, error) {
 	}
 	s.accounts.mu.Unlock()
 	if !ok || session.Provider != s.oidc || session.Provider == nil || session.Issuer != session.Provider.cfg.Issuer {
-		return nil, ErrUnauthorized
+		return "", nil, ErrUnauthorized
 	}
 	// Every query checks the current explicit membership, not a cached grant.
-	return s.store.IdentityDevices(session.NetworkID, session.Issuer, session.Subject)
+	devices, err := s.store.IdentityDevices(session.NetworkID, session.Issuer, session.Subject)
+	if err != nil {
+		return "", nil, err
+	}
+	return session.NetworkID, devices, nil
 }
 
 func (s *Server) revokeAccountSession(token string) {
