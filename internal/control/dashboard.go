@@ -160,7 +160,7 @@ footer{padding:1.5rem;color:#9da7b1;font-size:.8rem}
 </section>
 <section class="card">
 <h2>ACL policy</h2>
-<p class="muted">JSON rules: <code>[{"src":"*","dst":"*"}]</code>. Empty means allow all. With any rule present the default is deny. src is a node name or *; dst is a node name, *, a subnet CIDR, or 0.0.0.0/0 for exit-node internet access.</p>
+<p class="muted">JSON rules: <code>[{"src":"*","dst":"*"}]</code>. Empty means allow all. With any rule present the default is deny. src is a node name or *; dst is a node name, *, or a subnet CIDR. Exit-node selection and internet routing are unsupported; an ACL does not enable them.</p>
 <p><select id="aclNet"></select> <button id="aclSave">Save policy</button> <span id="aclMsg" class="muted"></span></p>
 <textarea id="aclText" rows="8" style="width:100%;font-family:monospace"></textarea>
 </section>
