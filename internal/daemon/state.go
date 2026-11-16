@@ -1,10 +1,12 @@
 package daemon
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -52,8 +54,15 @@ func LoadState(dir string) (*State, error) {
 	if err != nil {
 		return nil, err
 	}
+	trimmed := bytes.TrimSpace(b)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return nil, fmt.Errorf("identity state must be an object; file was not changed")
+	}
 	var s State
 	if err := json.Unmarshal(b, &s); err != nil {
+		return nil, err
+	}
+	if err := s.validateIdentity(); err != nil {
 		return nil, err
 	}
 	return &s, nil
@@ -73,6 +82,9 @@ func (s *State) Save(dir string) error {
 
 // EnsureKey generates and saves a WireGuard identity if we have none.
 func (s *State) EnsureKey(dir string) error {
+	if err := s.validateIdentity(); err != nil {
+		return err
+	}
 	if s.PrivateKey != "" {
 		return nil
 	}
@@ -89,4 +101,29 @@ func (s *State) EnsureKey(dir string) error {
 	s.PrivateKey = base64.StdEncoding.EncodeToString(priv[:])
 	s.PublicKey = base64.StdEncoding.EncodeToString(pub)
 	return s.Save(dir)
+}
+
+// Validate existing key material instead of treating a broken identity as a
+// fresh install. Metadata-only legacy state is allowed when no credential or
+// half-key pair exists; this never repairs or rotates an existing identity.
+func (s *State) validateIdentity() error {
+	if s.PrivateKey == "" && s.PublicKey == "" {
+		if s.NodeID != "" || s.NodeToken != "" {
+			return fmt.Errorf("saved device credential has no key pair; identity file was not changed")
+		}
+		return nil
+	}
+	private, err := base64.StdEncoding.DecodeString(s.PrivateKey)
+	if err != nil || len(private) != 32 {
+		return fmt.Errorf("invalid saved private key; identity file was not changed")
+	}
+	public, err := base64.StdEncoding.DecodeString(s.PublicKey)
+	if err != nil || len(public) != 32 {
+		return fmt.Errorf("invalid saved public key; identity file was not changed")
+	}
+	expected, err := curve25519.X25519(private, curve25519.Basepoint)
+	if err != nil || !bytes.Equal(expected, public) {
+		return fmt.Errorf("saved key pair does not match; identity file was not changed")
+	}
+	return nil
 }
