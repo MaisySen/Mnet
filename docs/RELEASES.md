@@ -214,7 +214,11 @@ Reject malformed/null list or row data and wrong-network rows before rendering. 
 
 ## Confirmed operator membership removal (new source)
 
-The dashboard can now remove only a previously inspected exact membership tuple after a target/scope confirmation. This closes account queries, not device credentials or mesh traffic. Cancel does not write. Success rereads the actual list; an uncertain response does not claim success and asks for another inspection before retry. Local real Chrome tests actual removal, cancellation and simulated uncertain-response recovery. Full CI pending. No create-grant control, identity inference or live membership changes.
+The dashboard can now remove only a previously inspected exact membership tuple after a target/scope confirmation. This closes account queries, not device credentials or mesh traffic. Cancel does not write. Success rereads the actual list; an uncertain response does not claim success and asks for another inspection before retry. Local real Chrome tests actual removal, cancellation and simulated uncertain-response recovery. All five jobs passed in [52e2c38 CI](https://github.com/MaisySen/Mnet/actions/runs/43823084397), including actual Chrome and three complete kernel regressions with 131/133/139 later loss-profile drops. No create-grant control, identity inference or live membership changes.
+
+## Membership removal uncertain-commit proof (fixture extension)
+
+Local real Chrome now commits the actual disposable POST but drops its response, then requires an uncertain message and an actual GET showing the grant absent. No automatic retry write is made. Extra checks invalidate a retained old row callback and the selection during confirmation; neither can revoke membership. Pending full CI. No live changes.
 
 ## v0.8.2-test.1 - 2026-11-16
 

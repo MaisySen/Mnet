@@ -49,6 +49,17 @@ try{
  await until(()=>js(`document.querySelector('#memberMsg').textContent==='No explicit grants for this network.'`),'actual confirmed membership removal');
  if(!await js(`memberConfirmation.includes('https://issuer.example') && memberConfirmation.includes('<img src=x onerror=alert(1)>') && memberConfirmation.includes('NOT disconnect VPN devices')`))throw new Error('removal confirmation omitted target/scope');
  await js(`(async()=>{window.confirm=realConfirm;await api('/admin/api/memberships',{network_id:memberNetwork,issuer:'https://issuer.example',subject:'<img src=x onerror=alert(1)>',allow:true});await loadMembers();})()`);
+ // The POST can commit before its response is lost. Preserve uncertainty,
+ // then let a fresh actual GET settle the result without resending the write.
+ await js(`(async()=>{window.appliedFetch=window.fetch;window.confirm=()=>true;window.fetch=async(input,options)=>{if(input==='/admin/api/memberships' && options?.method==='POST'){const response=await appliedFetch(input,options);if(!response.ok)throw new Error('fixture write failed');throw new Error('fixture lost committed response');}return appliedFetch(input,options);};document.querySelector('#members tbody button').click();})()`);
+ await until(()=>js(`document.querySelector('#memberMsg').textContent.startsWith('Could not confirm removal.')`),'lost committed response kept uncertain');
+ await js(`window.fetch=appliedFetch;window.confirm=realConfirm;document.querySelector('#memberRead').click()`);
+ await until(()=>js(`document.querySelector('#memberMsg').textContent==='No explicit grants for this network.'`),'actual GET settled committed removal');
+ await js(`(async()=>{await api('/admin/api/memberships',{network_id:memberNetwork,issuer:'https://issuer.example',subject:'<img src=x onerror=alert(1)>',allow:true});await loadMembers();window.oldRemove=document.querySelector('#members tbody button').onclick;window.confirm=()=>{throw new Error('stale row reached confirmation');};clearMembers();await oldRemove();window.confirm=realConfirm;await loadMembers();})()`);
+ if(!await js(`document.querySelectorAll('#members tbody tr').length===1`))throw new Error('stale row callback changed membership');
+ // Changing the selection while confirmation is open invalidates the action.
+ await js(`(async()=>{window.confirm=()=>{clearMembers();return true;};document.querySelector('#members tbody button').click();window.confirm=realConfirm;await loadMembers();})()`);
+ if(!await js(`document.querySelectorAll('#members tbody tr').length===1`))throw new Error('confirmation scope change still removed membership');
  // Browser-local edge responses test safe failure/retry presentation; initial
  // login, grant creation and the successful inspection above use the server.
  await js(`(async()=>{window.edgeFetch=window.fetch;window.fetch=(input,options)=>String(input).startsWith('/admin/api/memberships?')?Promise.reject(new Error('private transport details')):edgeFetch(input,options);await loadMembers();window.fetch=edgeFetch;})()`);
@@ -95,5 +106,5 @@ try{
  const replay=await fetch(base+'/admin/api/state',{headers:{Cookie:'mnet_admin='+token}});if(replay.status!==401)throw new Error('logged-out cookie replay accepted');
  const remaining=(await cdp('Network.getCookies',{urls:[base]})).cookies;if(remaining.some(c=>c.name==='mnet_admin'))throw new Error('logout cookie not cleared');
  await shot('dashboard-signed-out');
- console.log('PASS real Chrome dashboard: login visibility, same-origin sign-in, network/key render, actual scoped membership reads, cancel/confirmed removal and refresh, HTML-as-text, empty grants, failed-read clear/retry, invalid-response handling, same-network out-of-order reads, network-switch/logout late-result suppression, expiry boundaries, sign-out, cleared populated private UI, delayed-refresh suppression and logged-out token replay');
+ console.log('PASS real Chrome dashboard: login visibility, same-origin sign-in, network/key render, actual scoped membership reads, cancel/confirmed removal and refresh, lost-committed-response inspection, stale row/confirmation guard, HTML-as-text, empty grants, failed-read clear/retry, invalid-response handling, same-network out-of-order reads, network-switch/logout late-result suppression, expiry boundaries, sign-out, cleared populated private UI, delayed-refresh suppression and logged-out token replay');
 }finally{ws?.close();chrome?.kill();control?.kill();await delay(150);rmSync(dir,{recursive:true,force:true});}
