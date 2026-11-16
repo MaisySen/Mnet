@@ -524,6 +524,10 @@ Notification channels are used only on API26+; API24/25 use the legacy low-prior
 
 Session-host source registers projection onStop before creating a virtual display. Android stop/lock or setup failure ends hosting, clears retained frames, disables input and releases capture/foreground state. Duplicate starts are refused and projection hosting is non-sticky; start hosting again for fresh Android consent after termination. Local callback-helper fake tests/source checks and Java/min-api24 dex compilation pass; actual Android capture/stop/lock and Go teardown remain unverified. The shipped APK is unchanged.
 
-### Mobile session-host owner (new source)
+### Mobile session-host owner (verified native loopback)
 
-StopSessionHost affects only the calling node's current host. Node Stop/Close stop that owned host too; Close refuses a later host. Pending accepted connections are closed during stop, and late consent/old cleanup cannot take over a replacement. An already blocked application consent callback returns on its application's schedule; the transport is closed immediately. Local loopback/race and fresh arm64 AAR/Java/dex checks pass, native extension pending. This does not verify the Android framework/consent/capture teardown.
+StopSessionHost affects only the calling node's current host. Node Stop/Close stop that owned host too; Close refuses a later host. Pending accepted connections are closed during stop, and late consent/old cleanup cannot take over a replacement. An already blocked application consent callback returns on its application's schedule; the transport is closed immediately. Local loopback/race and fresh arm64 AAR/Java/dex checks pass, native ownership checks passed in [5647bf6 CI](https://github.com/MaisySen/Mnet/actions/runs/43890650925). This does not verify the Android framework/consent/capture teardown.
+
+### Refusing a viewer (new source)
+
+Refusing a viewer or receiving a malformed peer handshake should close that connection without ending hosting. Local loopback regression now covers refused/malformed/approved sequence on one listener; native extension pending. There is not yet a handshake deadline for a connected silent peer. Framework/physical Android behavior is unverified; published APK unchanged.

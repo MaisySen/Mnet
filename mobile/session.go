@@ -162,9 +162,19 @@ func (r *sessionHostRun) serve(name string, cb HostCallbacks) {
 			return true, ""
 		})
 		sessMu.Lock()
+		pending := r.pending
 		r.pending = nil
 		if err != nil {
+			// A rejected/malformed accepted peer is not a listener failure.
+			// Keep serving after closing its connection, unless stopped.
+			retry := pending != nil && !r.stopped && hosting == r
 			sessMu.Unlock()
+			if pending != nil {
+				pending.Close()
+			}
+			if retry {
+				continue
+			}
 			return
 		}
 		if r.stopped || hosting != r {

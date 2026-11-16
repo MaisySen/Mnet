@@ -376,11 +376,18 @@ All five jobs passed in [841b83b CI](https://github.com/MaisySen/Mnet/actions/ru
 API basis: [Android projection lifecycle](https://developer.android.com/media/grow/media-projection), [MediaProjection callback requirement](https://developer.android.com/reference/android/media/projection/MediaProjection) and [Context service entry points](https://developer.android.com/reference/android/content/Context).
 
 
-## Mobile host ownership and late consent (new source, CI pending)
+## Mobile host ownership and late consent (verified native loopback)
 
 A fresh regression failed before the fix: StopSessionHost on an unrelated Node closed another node's process-global listener. A host run now owns its listener, pending accepted connection and active session under an explicit Node identity. Only that owner can stop it. Stop closes accepted connections even while handshake/consent blocks; a late consent response cannot publish a session. An old worker's cleanup cannot remove a replacement run. Stopping active host workers happens outside the shared mutex. Node Stop/Close also stop their owned host; Close permanently refuses later host publication. This remains one process-wide mobile host, not one simultaneous host per node.
 
-Thirty local race repetitions cover wrong-node stop isolation, a real loopback session handshake blocked on consent, immediate accepted-connection closure, late consent/old-run exit with replacement survival, disposed-node refusal and active session capture/mux/worker shutdown. Full fresh race suite/vet/Darwin/Windows builds pass; native mobile ownership CI extension is pending. A freshly rebuilt current-source arm64 Android AAR compiles all app Java and min-api24 dex. These are engine loopback/build checks, not Android VPN/capture/consent or physical Java/Go teardown proof. App callbacks already blocked in user code cannot be forcibly canceled; the pending transport is closed and the old worker exits when the callback returns. No APK/AAB published.
+Thirty local race repetitions cover wrong-node stop isolation, a real loopback session handshake blocked on consent, immediate accepted-connection closure, late consent/old-run exit with replacement survival, disposed-node refusal and active session capture/mux/worker shutdown. Full fresh race suite/vet/Darwin/Windows builds pass; all five jobs passed in [5647bf6 CI](https://github.com/MaisySen/Mnet/actions/runs/43890650925), including30 native macOS/Windows loopback repetitions. A freshly rebuilt current-source arm64 Android AAR compiles all app Java and min-api24 dex. These are engine loopback/build checks, not Android VPN/capture/consent or physical Java/Go teardown proof. App callbacks already blocked in user code cannot be forcibly canceled; the pending transport is closed and the old worker exits when the callback returns. No APK/AAB published.
+
+
+## Mobile host continues after peer refusal (new source, CI pending)
+
+A fresh real-loopback regression reproduced an ordinary-use failure: refusing one session terminated the host listener, preventing a later approved viewer. A failed accepted-peer handshake is now distinguished from a listener failure. The accepted connection is closed and the owner keeps accepting unless it was stopped; true listener errors still end that run. A malformed peer follows the same cleanup path.
+
+Thirty local race repetitions pass a refused peer, malformed peer, then approved session on one listener, plus previous owner/late-consent/active-stop cases. Full fresh race/vet/cross-build and current-source arm64 AAR/full Java/min-api24 dex checks are recorded locally; native extension pending. No Android framework, physical capture, public-internet load or malicious-peer resilience claim. This does not add a handshake timeout or prevent a connected silent peer from waiting for its first frame. No APK/AAB published.
 
 ## v0.8.2-test.1 - 2026-11-16
 

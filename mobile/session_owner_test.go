@@ -191,3 +191,61 @@ func TestSessionStopActiveHostClosesMux(t *testing.T) {
 		t.Fatal("session end callback count", cb.ends.Load())
 	}
 }
+
+type retryCallbacks struct {
+	ownerCallbacks
+	decisions atomic.Int32
+}
+
+func (c *retryCallbacks) AcceptSession(string) bool { return c.decisions.Add(1) > 1 }
+func TestSessionHostSurvivesRefusedAndMalformedPeer(t *testing.T) {
+	owner := &Node{}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cb := &retryCallbacks{}
+	if err := owner.startSessionHost(ln, "fixture", cb); err != nil {
+		t.Fatal(err)
+	}
+	defer owner.StopSessionHost()
+	sessMu.Lock()
+	run := hosting
+	sessMu.Unlock()
+	c, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.SetDeadline(time.Now().Add(time.Second))
+	if m, err := session.Dial(c, "refused"); err == nil {
+		m.Close()
+		t.Fatal("refusal accepted")
+	}
+	c.Close()
+	malformed, err := net.DialTimeout("tcp", ln.Addr().String(), time.Second)
+	if err != nil {
+		t.Fatal("refusal killed hosting:", err)
+	}
+	malformed.Write([]byte("invalid peer"))
+	malformed.Close()
+	c, err = net.DialTimeout("tcp", ln.Addr().String(), time.Second)
+	if err != nil {
+		t.Fatal("malformed peer killed hosting:", err)
+	}
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(2 * time.Second))
+	m, err := session.Dial(c, "approved")
+	if err != nil {
+		t.Fatal("later approved peer failed:", err)
+	}
+	defer m.Close()
+	owner.StopSessionHost()
+	select {
+	case <-run.done:
+	case <-time.After(time.Second):
+		t.Fatal("worker not stopped")
+	}
+	if cb.decisions.Load() != 2 {
+		t.Fatal("unexpected consent count", cb.decisions.Load())
+	}
+}
