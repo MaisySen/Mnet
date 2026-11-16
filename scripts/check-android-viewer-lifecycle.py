@@ -41,3 +41,9 @@ assert 'ev.getActionMasked()' in text and 'taps.up(ev.getX(), ev.getY(), slop)' 
 assert 'taps.move(ev.getX(), ev.getY(), slop)' in text and 'ev.getPointerCount() != 1' in text
 assert '"down".equals(action)' not in text
 print('PASS viewer completed-tap/move/cancel/multitouch wiring source checks; no MotionEvent/device execution')
+
+assert 'private volatile int frameW, frameH;' in text
+assert 'viewer == null || frameW <= 0 || frameH <= 0' in text
+assert 'frameW = frameH = 0;' in text and 'screen.setImageDrawable(null)' in text
+assert 'if (frameW != bmp.getWidth() || frameH != bmp.getHeight()) taps.cancel();' in text
+print('PASS frame-readiness/reset/resize-cancellation source wiring; no physical frame/input proof')

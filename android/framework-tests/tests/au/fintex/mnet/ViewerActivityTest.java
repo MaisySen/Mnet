@@ -11,13 +11,23 @@ import static org.junit.Assert.*;
 
 @RunWith(RobolectricTestRunner.class) @Config(manifest=Config.NONE,sdk={24,25,26,33})
 public class ViewerActivityTest {
+ private static int activityFrameWidth(ViewerActivity activity)throws Exception{
+  java.lang.reflect.Field field=ViewerActivity.class.getDeclaredField("frameW");field.setAccessible(true);return field.getInt(activity);
+ }
+ private static void frame(mobile.ViewerCallbacks callbacks,int width,int height){
+  android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(width,height,android.graphics.Bitmap.Config.ARGB_8888);
+  java.io.ByteArrayOutputStream encoded=new java.io.ByteArrayOutputStream();
+  bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG,80,encoded);bitmap.recycle();
+  callbacks.onFrame(encoded.toByteArray());Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+ }
  private static void touch(ImageView screen,int action,float x,float y){
   android.view.MotionEvent e=android.view.MotionEvent.obtain(1,2,action,x,y,0);
   screen.dispatchTouchEvent(e);e.recycle();
  }
  @Test public void completedMotionEventInjectsOnceAndCancelDragDoNot() throws Exception {
   mobile.SessionViewer viewer=new mobile.SessionViewer();
-  MnetVpnService.node=new mobile.Node(){@Override public mobile.SessionViewer connectSession(String peer,mobile.ViewerCallbacks cb){return viewer;}};
+  java.util.concurrent.atomic.AtomicReference<mobile.ViewerCallbacks> callbacks=new java.util.concurrent.atomic.AtomicReference<>();
+  MnetVpnService.node=new mobile.Node(){@Override public mobile.SessionViewer connectSession(String peer,mobile.ViewerCallbacks cb){callbacks.set(cb);return viewer;}};
   ActivityController<ViewerActivity> controller=Robolectric.buildActivity(ViewerActivity.class,new Intent().putExtra("peer_ip","100.64.0.2")).create();
   try {
   ViewerActivity activity=controller.get();
@@ -27,6 +37,9 @@ public class ViewerActivityTest {
   long publishedBy=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
   while(gate.current()==null&&System.nanoTime()<publishedBy){Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();Thread.sleep(1);}
   assertSame(viewer,gate.current());
+   touch(screen,MotionEvent.ACTION_DOWN,200,200);touch(screen,MotionEvent.ACTION_UP,200,200);
+   Thread.sleep(50);assertTrue("no input before any decoded frame",viewer.input.isEmpty());
+   frame(callbacks.get(),400,400);
    touch(screen,MotionEvent.ACTION_DOWN,200,200);assertTrue(viewer.input.isEmpty());
    touch(screen,MotionEvent.ACTION_UP,200,200);
    long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
@@ -35,7 +48,13 @@ public class ViewerActivityTest {
    touch(screen,MotionEvent.ACTION_UP,200,200);
    touch(screen,MotionEvent.ACTION_DOWN,200,200);touch(screen,MotionEvent.ACTION_CANCEL,200,200);touch(screen,MotionEvent.ACTION_UP,200,200);
    touch(screen,MotionEvent.ACTION_DOWN,200,200);touch(screen,MotionEvent.ACTION_MOVE,300,300);touch(screen,MotionEvent.ACTION_UP,200,200);
+   // A resize invalidates a pending tap's coordinate system.
+   touch(screen,MotionEvent.ACTION_DOWN,200,200);frame(callbacks.get(),800,400);touch(screen,MotionEvent.ACTION_UP,200,200);
    Thread.sleep(40);assertEquals(1,viewer.input.size());
+   touch(screen,MotionEvent.ACTION_DOWN,200,200);
+   callbacks.get().onClosed();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+   assertEquals(0,activityFrameWidth(activity));assertNull(screen.getDrawable());
+   touch(screen,MotionEvent.ACTION_UP,200,200);Thread.sleep(40);assertEquals(1,viewer.input.size());
   }finally{controller.destroy();MnetVpnService.node=null;}
   assertTrue(viewer.closed);
  }

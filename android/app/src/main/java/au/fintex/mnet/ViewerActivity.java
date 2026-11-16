@@ -26,7 +26,7 @@ public class ViewerActivity extends Activity {
     private EditText chatIn;
     private final ViewerGate<SessionViewer> viewers = new ViewerGate<>();
     private final ViewerTap taps = new ViewerTap();
-    private volatile int frameW = 1, frameH = 1;
+    private volatile int frameW, frameH;
 
     @Override
     protected void onCreate(Bundle saved) {
@@ -79,7 +79,7 @@ public class ViewerActivity extends Activity {
 
         screen.setOnTouchListener((v, ev) -> {
             SessionViewer viewer = viewers.current();
-            if (viewer == null) { taps.cancel(); return true; }
+            if (viewer == null || frameW <= 0 || frameH <= 0) { taps.cancel(); return true; }
             float slop = android.view.ViewConfiguration.get(this).getScaledTouchSlop();
             if (ev.getPointerCount() != 1) { taps.cancel(); return true; }
             // Map view coordinates into frame coordinates. FIT_CENTER
@@ -170,6 +170,9 @@ public class ViewerActivity extends Activity {
 
     private void failed(ViewerGate.Ticket attempt, String message) {
         if (!viewers.active(attempt)) return;
+        taps.cancel();
+        frameW = frameH = 0;
+        screen.setImageDrawable(null);
         closeViewer(viewers.end(attempt));
         appendChat(message);
         scheduleReconnect();
@@ -192,6 +195,7 @@ public class ViewerActivity extends Activity {
                 if (bmp == null) return;
                 reconnects.post(() -> {
                     if (!viewers.active(attempt)) return;
+                    if (frameW != bmp.getWidth() || frameH != bmp.getHeight()) taps.cancel();
                     frameW = bmp.getWidth();
                     frameH = bmp.getHeight();
                     screen.setImageBitmap(bmp);

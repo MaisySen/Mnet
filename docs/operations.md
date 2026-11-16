@@ -570,4 +570,10 @@ A completed stationary single-finger tap now emits one host click, not one on do
 
 ### Viewer event simulation
 
-The framework test script also exercises actual ViewerActivity touch dispatch on simulated API24/25/26/33 with a fake Go viewer. API34 Activity creation is excluded for the documented simulation class mismatch. This is not an emulator/device, UI pixel, JNI or real accessibility-input test. Total49 cases pass locally, CI pending.
+The framework test script also exercises actual ViewerActivity touch dispatch on simulated API24/25/26/33 with a fake Go viewer. API34 Activity creation is excluded for the documented simulation class mismatch. This is not an emulator/device, UI pixel, JNI or real accessibility-input test. Total49 cases passed904a1af CI; the frame-boundary follow-up below is local only.
+
+## Viewer frame input boundaries (new source, CI pending)
+
+The viewer no longer assumes a fictional1x1 frame before receiving screen content. It suppresses input until a decoded frame gives valid dimensions. A frame-size change cancels a pending tap so it cannot release in a different coordinate system. Disconnect clears frame dimensions, displayed content and pending tap before retrying.
+
+Expanded Activity regressions failed on each of simulated API24/25/26/33 before the initial-frame fix, then failed separately on the resize check before its fix. All49 cases now pass locally, including synthetic JPEG frame delivery through the actual callback, resize cancellation and disconnect clearing. Full Android34 Java/min-api24 dex compilation passes against current-Go arm64 bindings. These are simulated events and synthetic frames with fake Go transport, not actual capture pixels, physical input, JNI or emulator/device proof. API34 Activity simulation remains excluded as documented. No new APK/AAB, release or live deployment.
