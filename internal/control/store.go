@@ -3,6 +3,7 @@
 package control
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -78,10 +79,15 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(b) > 0 {
-		if err := json.Unmarshal(b, &s.data); err != nil {
-			return nil, fmt.Errorf("store: corrupt data file: %w", err)
-		}
+	trimmed := bytes.TrimSpace(b)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return nil, fmt.Errorf("store: expected a state object; file was not changed")
+	}
+	if err := json.Unmarshal(b, &s.data); err != nil {
+		return nil, fmt.Errorf("store: corrupt data file: %w", err)
+	}
+	if err := s.validateLoadedShape(); err != nil {
+		return nil, err
 	}
 	return s, nil
 }
