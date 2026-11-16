@@ -15,6 +15,16 @@ func (s *Server) handleAccountPage(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(accountPage))
 }
 
+// Browser callbacks keep a useful recovery path without echoing provider
+// errors, principal identifiers, codes, state or membership diagnostics.
+func accountLoginFailure(w http.ResponseWriter, status int) {
+	accountPrivate(w)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+	w.WriteHeader(status)
+	w.Write([]byte(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mnet - sign-in not completed</title><style>body{font:17px/1.6 system-ui,sans-serif;color:#183040;background:#f3f6f8;max-width:650px;margin:64px auto;padding:0 24px}main{background:white;border:1px solid #d7e1e8;border-radius:16px;padding:28px}h1{font-size:30px;line-height:1.25}a{color:#125970}footer{font-size:14px;margin-top:30px}</style><main><h1>Sign-in was not completed</h1><p>This login may have expired, been refused or opened in a different browser. Your identity must already have access to the selected network.</p><p><a href="/account/">Return to account sign-in</a> and start again in this browser. If access is still refused, ask your network operator to check membership and login setup.</p><p>Retrying does not enroll a device or grant membership. An existing session may still be active; use Sign out from the account page if needed.</p></main><footer>Mnet is provided by Fintex Australia Pty Ltd (ABN 60 688 406 108), New South Wales, Australia. Contact: <a href="mailto:contact@fintex.au">contact@fintex.au</a>.</footer></html>`))
+}
+
 const accountPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Mnet - your devices</title><style>
 :root{font-family:system-ui,sans-serif;color:#183040;background:#f3f6f8}body{max-width:760px;margin:48px auto;padding:0 22px}header{display:flex;align-items:baseline;justify-content:space-between;gap:20px}h1{font-size:32px;margin:0 0 12px}p{line-height:1.6}main{background:white;border:1px solid #d7e1e8;border-radius:16px;padding:28px;margin-top:24px}label{display:block;font-weight:600;margin:18px 0 8px}input{box-sizing:border-box;width:100%;border:1px solid #9fb0bb;border-radius:8px;padding:12px;font:inherit}button{background:#125970;color:white;border:0;border-radius:8px;padding:12px 18px;font:inherit;cursor:pointer;margin-top:16px}button:disabled{opacity:.6;cursor:wait}.secondary{background:#e2ebef;color:#183040}table{width:100%;border-collapse:collapse;text-align:left;margin:20px 0}th,td{padding:12px 8px;border-bottom:1px solid #d7e1e8;overflow-wrap:anywhere}td:first-child{max-width:300px}.hint,footer{font-size:14px;color:#526b7b}#message{min-height:26px;color:#365a69}footer{margin:32px 0;line-height:1.6}[hidden]{display:none!important}@media(max-width:500px){body{margin:24px auto}main{padding:18px}h1{font-size:27px}}

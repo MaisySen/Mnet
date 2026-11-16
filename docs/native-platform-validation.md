@@ -191,3 +191,7 @@ All five jobs passed in [031be71 CI](https://github.com/MaisySen/Mnet/actions/ru
 ## Member edge-state Chrome proof (verified extension)
 
 All five jobs passed in [229c0a3 CI](https://github.com/MaisySen/Mnet/actions/runs/43814532649), including the real Chrome member step. It adds literal HTML-like names, empty/denied display, failed logout and 390px no-overflow checks through isolated browser response fixtures, then completes the real isolated-server logout/replay test. Narrow/empty screenshots were inspected. Full kernel VPN regression fixtures passed with 138/142/127 later loss-profile drops. This is not physical mobile proof or a live account test.
+
+## Provider-change revocation (verified source)
+
+All five jobs passed in [b455910 CI](https://github.com/MaisySen/Mnet/actions/runs/43815622508), including native permanent session/pending-login invalidation tests and the real Chrome member step. Full kernel VPN regression fixtures passed with 135/136/153 later loss-profile drops. Reinstalling the old provider cannot revive cleared sessions; keeping the same provider leaves them alone. This is not a live provider change.

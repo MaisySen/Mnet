@@ -58,5 +58,12 @@ try{
  if(!await js(`document.querySelector('#devices').hidden && !document.querySelector('#login').hidden && !document.querySelector('#deviceRows').textContent && !document.querySelector('#network').value`))throw new Error('private device data survived sign-out or late refresh');
  const replay=await fetch(base+'/account/api/devices',{headers:{Cookie:'mnet_account='+cookie.value}});if(replay.status!==401)throw new Error('account session replay after logout accepted');
  await shot('account-after-logout');
+ await cdp('Page.navigate',{url:base+'/account/oidc/callback?state=private-fixture-state&code=private-fixture-code&error=private-provider-error'});
+ await until(()=>js(`document.body.textContent.includes('Sign-in was not completed')`),'safe sign-in recovery page');
+ if(!await js(`!document.body.textContent.includes('private-fixture') && !document.body.textContent.includes('private-provider-error') && document.querySelector('a[href="/account/"]')`))throw new Error('callback recovery echoed private data or lost return path');
+ await shot('account-login-failed');
+ await js(`document.querySelector('a[href="/account/"]').click()`);
+ await until(()=>js(`document.querySelector('#login') && !document.querySelector('#login').hidden`),'return from failed sign-in');
+
  console.log('PASS real Chrome account: signed-provider login, explicit member own-device render, HTML-as-text, empty/denied states, narrow layout, failed logout, private UI cleanup, delayed-refresh suppression and logout replay denial');
 }finally{ws?.close();chrome?.kill();await delay(150);rmSync(dir,{recursive:true,force:true});}

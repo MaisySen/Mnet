@@ -76,8 +76,8 @@ func TestAccountHTTPVerifiedLoginMembershipAndLogout(t *testing.T) {
 	}
 	browser := accountBrowser(t)
 	callback := accountCallbackURL(t, browser, accountStart(t, browser, ts.URL, network.ID))
-	if code, _ := accountGet(t, browser, callback); code != 403 {
-		t.Fatal("device approval became account membership")
+	if code, page := accountGet(t, browser, callback); code != 403 || !strings.Contains(page, "Return to account sign-in") || strings.Contains(page, "user-1") {
+		t.Fatal("device approval became account membership or failure recovery was missing/private")
 	}
 	if err := store.SetNetworkMember(network.ID, fake.srv.URL, "user-1", true); err != nil {
 		t.Fatal(err)

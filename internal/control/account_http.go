@@ -88,7 +88,7 @@ func (s *Server) handleAccountCallback(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
 	cookie, err := r.Cookie("mnet_account_login")
 	if err != nil {
-		writeErr(w, 400, "account login unknown or expired")
+		accountLoginFailure(w, http.StatusBadRequest)
 		return
 	}
 	hash := sha256.Sum256([]byte(cookie.Value))
@@ -102,22 +102,22 @@ func (s *Server) handleAccountCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	s.accounts.mu.Unlock()
 	if !matches {
-		writeErr(w, 400, "account login unknown or expired")
+		accountLoginFailure(w, http.StatusBadRequest)
 		return
 	}
 	s.accountCookie(w, "mnet_account_login", "", time.Unix(1, 0), -1)
 	if !time.Now().Before(login.Expires) || login.Provider != s.oidcProvider() || login.Provider == nil || r.URL.Query().Get("error") != "" {
-		writeErr(w, 403, "account login refused")
+		accountLoginFailure(w, http.StatusForbidden)
 		return
 	}
 	claims, err := login.Provider.Exchange(r.Context(), r.URL.Query().Get("code"), s.publicURL("/account/oidc/callback"), state)
 	if err != nil {
-		writeErr(w, 403, "account login refused")
+		accountLoginFailure(w, http.StatusForbidden)
 		return
 	}
 	token, err := s.newAccountSession(login.NetworkID, login.Provider, claims)
 	if err != nil {
-		writeErr(w, 403, "account login refused")
+		accountLoginFailure(w, http.StatusForbidden)
 		return
 	}
 	// Replace only this browser's previous account session, never an admin
