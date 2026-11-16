@@ -480,8 +480,14 @@ A fresh Android arm64 AAR from current Go3b959e2 source built with minimum API24
 
 This supersedes the earlier current-binding build gap for3ef11c8/3b959e2. It is arm64 build evidence only, not all-ABI packaging, JNI execution, install/boot, valid projection, real input, actual Android UI pixels or device/emulator proof. The64 simulation cases still use fake Go/VPN/accessibility endpoints and synthetic frames. No APK/AAB was signed or published and the existing release/live deployment is unchanged.
 
-## JPEG pixel-allocation policy (new source, CI pending)
+## JPEG pixel-allocation policy (48fcffc all-five CI verified)
 
 Go viewers and recorders check JPEG headers before full-image decoding. Each dimension must be positive and at most8192, and their product must be at most16,777,216 pixels. The division-based check avoids integer overflow.4K3840x2160 fits;8K7680x4320 does not. Tile headers and the composition base use the same dimension policy. An oversized keyframe is rejected and invalidates its old delta chain.
 
-A tiny JPEG fixture with rewritten65535x65535 header dimensions tests refusal without allocating that pixel image. Boundary/overflow tests, viewer/recorder rejection and existing recovery tests pass30 race-enabled repetitions. A fresh full-repository race run passes. This bounds a decoded image's pixel dimensions, not codec CPU, all decoder overhead, concurrent sessions or aggregate heap; compositing/callbacks can keep multiple images. No current-source Android binding rebuild, APK/AAB publication, device/capture/UI/JNI proof or live deployment for this change.
+A tiny JPEG fixture with rewritten65535x65535 header dimensions tests refusal without allocating that pixel image. Boundary/overflow tests, viewer/recorder rejection and existing recovery tests pass30 race-enabled repetitions. A fresh full-repository race run and all-five [48fcffc CI](https://github.com/MaisySen/Mnet/actions/runs/43937696893) pass. This bounds a decoded image's pixel dimensions, not codec CPU, all decoder overhead, concurrent sessions or aggregate heap; compositing/callbacks can keep multiple images. No current-source Android binding rebuild, APK/AAB publication, device/capture/UI/JNI proof or live deployment for this change.
+
+## Aggregate delta tile work (new source, CI pending)
+
+A delta is limited to4096 tiles and at most the base frame's pixel count summed across all tile rectangles, before pixel decoding or composition. Regular nonoverlapping64x64 updates fit the budget; repeated overlapping rectangles that exceed one frame's work are refused. This adds a per-delta count/pixel-work limit to the existing individual geometry/JPEG checks, not a general CPU or total memory guarantee.
+
+The aggregate-overlap regression failed before the guard. Tests accept exact four-quadrant coverage and reject excess aggregate pixels or tile count. Targeted frame/recorder/composition race checks pass30 repeats; a fresh full-repository race run passes. Synthetic Go codec data only, not physical capture/UI/JNI proof. No current-source Android AAR, release APK/AAB or live deployment produced for this change.

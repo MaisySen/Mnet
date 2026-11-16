@@ -16,6 +16,9 @@ import (
 
 const tileSize = 64
 
+// A maximum-size screen split into64x64 tiles fits this limit.
+const maxDeltaTiles = maxScreenPixels / (tileSize * tileSize)
+
 // Tile is one changed region's JPEG bytes.
 type Tile struct {
 	Rect  Rect   `json:"rect"`
@@ -74,6 +77,10 @@ func CompositeTiles(base *image.RGBA, tiles []Tile) (*image.RGBA, error) {
 	if !screenDimensionsAllowed(bounds.Dx(), bounds.Dy()) {
 		return nil, fmt.Errorf("base dimensions exceed screen policy")
 	}
+	if len(tiles) > maxDeltaTiles {
+		return nil, fmt.Errorf("too many delta tiles")
+	}
+	remainingPixels := bounds.Dx() * bounds.Dy()
 	// Validate every rectangle/header before decoding or painting any tile.
 	// Subtraction avoids overflow in attacker-controlled X+W / Y+H.
 	for _, tile := range tiles {
@@ -83,6 +90,11 @@ func CompositeTiles(base *image.RGBA, tiles []Tile) (*image.RGBA, error) {
 			r.W > bounds.Max.X-r.X || r.H > bounds.Max.Y-r.Y {
 			return nil, fmt.Errorf("tile rectangle outside base")
 		}
+		pixels := r.W * r.H // Individual dimensions are already bounded by the base.
+		if pixels > remainingPixels {
+			return nil, fmt.Errorf("delta pixel work exceeds frame")
+		}
+		remainingPixels -= pixels
 		config, err := screenJPEGConfig(tile.Image)
 		if err != nil {
 			return nil, err

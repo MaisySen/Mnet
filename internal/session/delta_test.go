@@ -178,3 +178,28 @@ func TestViewerBrokenDeltaClearsChain(t *testing.T) {
 		t.Fatal("delta accepted without recovered keyframe")
 	}
 }
+
+func TestCompositeBoundsAggregateTileWork(t *testing.T) {
+	base := solid(16, 16, color.RGBA{A: 255})
+	tile := Tile{Rect: Rect{W: 8, H: 8}, Image: jpegBytes(t, solid(8, 8, color.RGBA{A: 255}))}
+	// Four quadrants cover exactly one frame and remain supported.
+	valid := []Tile{tile, tile, tile, tile}
+	valid[1].Rect.X = 8
+	valid[2].Rect.Y = 8
+	valid[3].Rect.X = 8
+	valid[3].Rect.Y = 8
+	if _, err := CompositeTiles(base, valid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CompositeTiles(base, append(valid, tile)); err == nil {
+		t.Fatal("aggregate tile pixels exceeded frame")
+	}
+	tiny := Tile{Rect: Rect{W: 1, H: 1}, Image: jpegBytes(t, solid(1, 1, color.RGBA{A: 255}))}
+	tooMany := make([]Tile, 4097)
+	for i := range tooMany {
+		tooMany[i] = tiny
+	}
+	if _, err := CompositeTiles(solid(128, 128, color.RGBA{A: 255}), tooMany); err == nil {
+		t.Fatal("excess tile count accepted")
+	}
+}
