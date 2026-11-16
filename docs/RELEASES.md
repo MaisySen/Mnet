@@ -520,6 +520,13 @@ A delta is limited to4096 tiles and at most the base frame's pixel count summed 
 
 The aggregate-overlap regression failed before the guard. Tests accept exact four-quadrant coverage and reject excess aggregate pixels or tile count. Targeted frame/recorder/composition race checks pass30 repeats; a fresh full-repository race run passes. Synthetic Go codec data only, not physical capture/UI/JNI proof. No current-source Android AAR, release APK/AAB or live deployment produced for this change.
 
+
+## Framework dependency rate-limit recovery (CI configuration, pending)
+
+The first [13fa2e2 CI attempt](https://github.com/MaisySen/Mnet/actions/runs/43939827797) passed native Windows/macOS, kernel and session jobs, but Go ended during dependency resolution: Maven Central returned429 for Robolectric native runtime1.0.20 before framework tests ran. This is not an all-five pass. One failed-job retry was requested.
+
+CI now enables setup-java's Maven dependency cache keyed by the pinned framework POM. It reduces repeated downloads without skipping tests or swallowing errors. The existing local cache ran all64 framework cases successfully. Hosted cache save/restore is still pending; cold-cache/network failures remain possible. No production source, artifact or live deployment changed.
+
 ## v0.8.2-test.1 - 2026-11-16
 
 Source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11, Android 0.8.2/code 14. [Release and 16 assets](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1), [exact-source CI](https://github.com/MaisySen/Mnet/actions/runs/43756253912).

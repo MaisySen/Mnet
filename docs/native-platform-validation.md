@@ -491,3 +491,9 @@ A tiny JPEG fixture with rewritten65535x65535 header dimensions tests refusal wi
 A delta is limited to4096 tiles and at most the base frame's pixel count summed across all tile rectangles, before pixel decoding or composition. Regular nonoverlapping64x64 updates fit the budget; repeated overlapping rectangles that exceed one frame's work are refused. This adds a per-delta count/pixel-work limit to the existing individual geometry/JPEG checks, not a general CPU or total memory guarantee.
 
 The aggregate-overlap regression failed before the guard. Tests accept exact four-quadrant coverage and reject excess aggregate pixels or tile count. Targeted frame/recorder/composition race checks pass30 repeats; a fresh full-repository race run passes. Synthetic Go codec data only, not physical capture/UI/JNI proof. No current-source Android AAR, release APK/AAB or live deployment produced for this change.
+
+## Framework dependency rate-limit recovery (CI configuration, pending)
+
+The first [13fa2e2 CI attempt](https://github.com/MaisySen/Mnet/actions/runs/43939827797) passed native Windows/macOS, kernel and session jobs, but Go ended during dependency resolution: Maven Central returned429 for Robolectric native runtime1.0.20 before framework tests ran. This is not an all-five pass. One failed-job retry was requested.
+
+CI now enables setup-java's Maven dependency cache keyed by the pinned framework POM. It reduces repeated downloads without skipping tests or swallowing errors. The existing local cache ran all64 framework cases successfully. Hosted cache save/restore is still pending; cold-cache/network failures remain possible. No production source, artifact or live deployment changed.

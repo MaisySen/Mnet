@@ -43,6 +43,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          cache: maven
+          cache-dependency-path: android/framework-tests/pom.xml
       - name: Android startup configuration policy (JVM only)
         run: |
           mkdir -p "$RUNNER_TEMP/mnet-android-policy"

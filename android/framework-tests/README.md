@@ -4,6 +4,8 @@
 
 Run `sh scripts/test-android-framework.sh` with JDK17, Python3, Maven and network access to Maven Central/Google Maven. `MVN` can name the Maven executable; `MNET_MAVEN_REPO` selects the dependency cache. The script copies current production sources into a fresh temporary project, resolves pinned dependencies, runs tests and removes the temporary project.
 
+CI caches Maven dependencies using the framework POM as its dependency key, reducing repeated downloads. A cache does not skip compilation/tests, change pinned versions or make a network failure a pass.
+
 The harness uses Robolectric4.18. Its AAR extraction is limited to pinned AndroidX monitor1.8.0 and espresso-idling-resource3.7.0 classes jars. It does not change application builds or release outputs.
 
 ## Current coverage
