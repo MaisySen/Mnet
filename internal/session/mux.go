@@ -64,6 +64,7 @@ type Mux struct {
 // dispatches them when it is registered.
 type streamState struct {
 	ch      chan Frame
+	done    chan struct{} // closes on local release to unblock read-loop delivery
 	open    json.RawMessage
 	handled bool
 }
@@ -222,7 +223,7 @@ func (m *Mux) Open(priority uint8, openPayload any) (Stream, error) {
 		m.streamMu.Unlock()
 		return Stream{}, fmt.Errorf("session: active stream limit reached")
 	}
-	m.streams[id] = &streamState{ch: s.in, open: raw, handled: true}
+	m.streams[id] = &streamState{ch: s.in, done: make(chan struct{}), open: raw, handled: true}
 	m.streamMu.Unlock()
 	if err := m.send(id, msgOpen, priority, raw); err != nil {
 		m.releaseStream(id)
@@ -546,7 +547,7 @@ func (m *Mux) readLoop() {
 					m.Close()
 					return
 				}
-				st = &streamState{ch: make(chan Frame, 16), open: json.RawMessage(f.Payload)}
+				st = &streamState{ch: make(chan Frame, 16), done: make(chan struct{}), open: json.RawMessage(f.Payload)}
 				if h := m.streamHandler(); h != nil {
 					st.handled = true
 					m.streams[f.StreamID] = st
@@ -568,6 +569,7 @@ func (m *Mux) readLoop() {
 			if f.Type == msgRst {
 				select {
 				case st.ch <- f:
+				case <-st.done:
 				case <-m.closed:
 					return
 				}
@@ -580,6 +582,7 @@ func (m *Mux) readLoop() {
 		}
 		select {
 		case st.ch <- f:
+		case <-st.done:
 		case <-m.closed:
 			return
 		}
@@ -590,10 +593,13 @@ func (m *Mux) readLoop() {
 // Well-known channels count too; crossing the inbound cap ends the session.
 const maxActiveStreams = 256
 
-// releaseStream forgets a completed dynamic stream. It does not close
-// the channel: readLoop owns channel delivery/closing and may be in flight.
+// releaseStream forgets a completed dynamic stream and unblocks any read-loop
+// delivery into its queue. Only readLoop closes the frame channel.
 func (m *Mux) releaseStream(id uint32) {
 	m.streamMu.Lock()
+	if st, ok := m.streams[id]; ok && st.done != nil {
+		close(st.done)
+	}
 	delete(m.streams, id)
 	m.streamMu.Unlock()
 	m.wmu.Lock()

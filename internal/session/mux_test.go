@@ -3,6 +3,7 @@ package session
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net"
 	"sync"
 	"testing"
@@ -332,5 +333,65 @@ func TestQualityForRTT(t *testing.T) {
 	}
 	if qualityForRTT(time.Second) != 40 {
 		t.Fatal("bad path drops to the floor band")
+	}
+}
+
+func TestReleasedFullStreamDoesNotBlockOtherInboundStreams(t *testing.T) {
+	for _, typ := range []byte{msgData, msgRst} {
+		t.Run(fmt.Sprintf("type%d", typ), func(t *testing.T) {
+			a, b := net.Pipe()
+			defer b.Close()
+			m := newMux(a, StreamFile)
+			defer m.Close()
+			blocked := make(chan Frame, 16)
+			for i := 0; i < cap(blocked); i++ {
+				blocked <- Frame{Type: msgData}
+			}
+			other := make(chan Frame, 16)
+			m.streams[5] = &streamState{ch: blocked, done: make(chan struct{}), handled: true}
+			m.streams[7] = &streamState{ch: other, done: make(chan struct{}), handled: true}
+			go m.readLoop()
+			// A pipe write completes only after readFrame has consumed the frame.
+			if err := writeFrame(b, Frame{StreamID: 5, Type: typ, Priority: PriBulk, Payload: []byte("blocked")}); err != nil {
+				t.Fatal(err)
+			}
+			if err := b.SetWriteDeadline(time.Now().Add(time.Second)); err != nil {
+				t.Fatal(err)
+			}
+			next := make(chan error, 1)
+			go func() {
+				next <- writeFrame(b, Frame{StreamID: 7, Type: msgData, Priority: PriBulk, Payload: []byte("other")})
+			}()
+			// The second pipe write cannot finish while the read loop is delivering
+			// the first frame into the full queue. Wait for that blocked state.
+			select {
+			case err := <-next:
+				t.Fatalf("expected full stream to block before release: %v", err)
+			case <-time.After(30 * time.Millisecond):
+			}
+			m.releaseStream(5)
+			m.releaseStream(5) // repeated release must be safe
+			select {
+			case err := <-next:
+				if err != nil {
+					t.Fatalf("released stream still blocks read loop: %v", err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("released stream did not unblock read loop")
+			}
+			select {
+			case f := <-other:
+				if string(f.Payload) != "other" {
+					t.Fatalf("unexpected payload: %q", f.Payload)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("unrelated stream not delivered")
+			}
+			select {
+			case <-m.Closed():
+				t.Fatal("release closed unrelated session")
+			default:
+			}
+		})
 	}
 }
