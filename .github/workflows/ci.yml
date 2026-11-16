@@ -31,6 +31,11 @@ jobs:
         run: MNET_MESH_STRESS=1 MNET_MESH_LOSS=burst go test -race -count=1 -timeout=2m ./cmd/mnetd -run '^TestMeshFileStress$'
       - name: source gate regression tests
         run: python3 scripts/test-source-gate.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: isolated real Chrome admin login and logout
+        run: node scripts/dashboard-validation.mjs
       - name: secrets and style gate
         run: sh scripts/check-secrets.sh
 

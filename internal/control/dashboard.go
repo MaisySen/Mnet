@@ -111,6 +111,7 @@ form.inline{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
 .badge.off{background:#30363d;color:#9da7b1}
 .badge.wait{background:#9e6a03}
 .hidden{display:none}
+#login.hidden{display:none}
 #login{max-width:340px;margin:15vh auto;display:flex;flex-direction:column;gap:.7rem}
 .key{font-family:ui-monospace,monospace;word-break:break-all}
 .muted{color:#9da7b1;font-size:.85rem}
@@ -120,7 +121,7 @@ footer{padding:1.5rem;color:#9da7b1;font-size:.8rem}
 <body>
 <header>
 <h1>Mnet admin</h1>
-<button class="ghost hidden" id="refresh">Refresh</button>
+<div><button class="ghost hidden" id="refresh">Refresh</button> <button class="ghost hidden" id="logout">Sign out</button></div>
 </header>
 <div id="login" class="hidden">
 <h2>Sign in</h2>
@@ -174,14 +175,20 @@ const api = async (path, body) => {
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
 };
-function showLogin(){ $('#login').classList.remove('hidden'); $('#app').classList.add('hidden'); $('#refresh').classList.add('hidden'); }
-function showApp(){ $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); $('#refresh').classList.remove('hidden'); }
+let viewGeneration=0, signingOut=false;
+function showLogin(){ viewGeneration++; state=null; $('#pw').value=''; $('#login').classList.remove('hidden'); $('#app').classList.add('hidden'); $('#refresh').classList.add('hidden'); $('#logout').classList.add('hidden'); for(const selector of ['#nets tbody','#nodes tbody','#keys tbody','#pending tbody']) $(selector).innerHTML=''; $('#aclText').value=''; for(const selector of ['#keyNet','#aclNet']) $(selector).innerHTML=''; }
+
+function showApp(){ $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); $('#refresh').classList.remove('hidden'); $('#logout').classList.remove('hidden'); }
 function esc(s){ const d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
 function ago(t){ if(!t) return ''; const s=(Date.now()-new Date(t).getTime())/1000; if(s<60) return Math.floor(s)+'s ago'; if(s<3600) return Math.floor(s/60)+'m ago'; if(s<86400) return Math.floor(s/3600)+'h ago'; return Math.floor(s/86400)+'d ago'; }
 let state=null;
 async function load(){
-  try { state = await api('/admin/api/state'); } catch(e){ return; }
-  showApp(); render();
+  if(signingOut) return;
+  const generation=viewGeneration;
+  let next;
+  try { next = await api('/admin/api/state'); } catch(e){ return; }
+  if(generation!==viewGeneration) return;
+  state=next; showApp(); render();
 }
 function netName(id){ const n=(state.networks||[]).find(n=>n.id===id); return n?n.name:id; }
 function render(){
@@ -198,11 +205,13 @@ function render(){
   loadACL();
 }
 async function loadACL(){
+  const generation=viewGeneration;
   const id=$('#aclNet').value;
   if(!id){ $('#aclText').value=''; return; }
   const r=await fetch('/admin/api/acl?network_id='+encodeURIComponent(id));
   if(!r.ok) return;
   const j=await r.json();
+  if(generation!==viewGeneration || $('#aclNet').value!==id) return;
   $('#aclText').value=JSON.stringify(j.rules||[],null,2);
 }
 $('#aclNet').onchange=loadACL;
@@ -221,6 +230,13 @@ async function expireNode(id){ if(!confirm('Expire this node key now? The device
 $('#loginBtn').onclick = async ()=>{ try{ await api('/admin/api/login',{password:$('#pw').value}); $('#pw').value=''; $('#loginMsg').textContent=''; load(); }catch(e){ $('#loginMsg').textContent='Wrong password.'; } };
 $('#pw').addEventListener('keydown', e=>{ if(e.key==='Enter') $('#loginBtn').click(); });
 $('#refresh').onclick = load;
+$('#logout').onclick = async ()=>{
+  viewGeneration++; signingOut=true;
+  $('#logout').disabled=true;
+  try { await api('/admin/api/logout',{}); showLogin(); $('#loginMsg').textContent='Signed out.'; }
+  catch(e){ if(e.message!=='auth') alert('Sign out failed: '+e.message); }
+  finally { signingOut=false; $('#logout').disabled=false; }
+};
 $('#newNet').onsubmit = async (e)=>{ e.preventDefault(); try{ await api('/admin/api/networks',{name:$('#netName').value}); $('#netName').value=''; load(); }catch(err){ alert(err.message); } };
 $('#newKey').onsubmit = async (e)=>{ e.preventDefault(); try{ const k=await api('/admin/api/authkeys',{network_id:$('#keyNet').value,note:$('#keyNote').value,reusable:$('#keyReusable').checked,ttl_hours:parseInt($('#keyTTL').value||'0')}); $('#keyNote').value=''; $('#keyTTL').value=''; load(); prompt('New auth key (shown once, copy it now):', k.key); }catch(err){ alert(err.message); } };
 load();
