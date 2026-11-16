@@ -122,11 +122,12 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           go build -o "$RUNNER_TEMP/mnet-control-native" ./cmd/mnet-control
+          go build -o "$RUNNER_TEMP/mnet-cli-native" ./cmd/mnet
           go test -c -o "$RUNNER_TEMP/mnet-native-peer" ./cmd/mnetd
-          sudo env GITHUB_ACTIONS=true python3 scripts/darwin-tun-validation.py "$RUNNER_TEMP/mnetd-plist" "$RUNNER_TEMP/mnet-control-native" "$RUNNER_TEMP/mnet-native-peer"
+          sudo env GITHUB_ACTIONS=true python3 scripts/darwin-tun-validation.py "$RUNNER_TEMP/mnetd-plist" "$RUNNER_TEMP/mnet-control-native" "$RUNNER_TEMP/mnet-native-peer" "$RUNNER_TEMP/mnet-cli-native"
       - name: native macOS automatic default utun kernel lifecycle
         if: runner.os == 'macOS'
-        run: sudo env GITHUB_ACTIONS=true MNET_AUTO_UTUN=1 python3 scripts/darwin-tun-validation.py "$RUNNER_TEMP/mnetd-plist" "$RUNNER_TEMP/mnet-control-native" "$RUNNER_TEMP/mnet-native-peer"
+        run: sudo env GITHUB_ACTIONS=true MNET_AUTO_UTUN=1 python3 scripts/darwin-tun-validation.py "$RUNNER_TEMP/mnetd-plist" "$RUNNER_TEMP/mnet-control-native" "$RUNNER_TEMP/mnet-native-peer" "$RUNNER_TEMP/mnet-cli-native"
       - name: native macOS daemon clean-stop listener teardown (30 repetitions)
         if: runner.os == 'macOS'
         run: go test -race -count=30 -timeout=3m ./cmd/mnetd -run '^TestDaemonCleanStopWaitsForLocalAPITeardown$'

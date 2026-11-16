@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -192,25 +193,32 @@ func status(hc *http.Client) *daemon.Status {
 }
 
 func printStatus(st *daemon.Status) {
-	fmt.Printf("status:  %s\n", st.Status)
+	writeHumanStatus(os.Stdout, st)
+}
+
+func writeHumanStatus(out io.Writer, st *daemon.Status) {
+	fmt.Fprintf(out, "status:  %s\n", st.Status)
 	if st.LastError != "" {
-		fmt.Printf("error:   %s\n", st.LastError)
+		fmt.Fprintf(out, "error:   %s\n", st.LastError)
 	}
 	if st.Status == "down" {
 		return
 	}
-	fmt.Printf("server:  %s\nnetwork: %s\n", st.Server, st.Network)
-	fmt.Printf("this node: %s (%s)\n", st.NodeName, st.IPv4)
+	fmt.Fprintf(out, "server:  %s\nnetwork: %s\n", st.Server, st.Network)
+	fmt.Fprintf(out, "this node: %s (%s)\n", st.NodeName, st.IPv4)
+	if st.Interface != "" {
+		fmt.Fprintf(out, "interface: %s\n", st.Interface)
+	}
 	if st.ApprovalURL != "" {
-		fmt.Printf("\napprove this device here:\n%s\n", st.ApprovalURL)
+		fmt.Fprintf(out, "\napprove this device here:\n%s\n", st.ApprovalURL)
 		return
 	}
 	if len(st.Peers) == 0 {
-		fmt.Println("\nno peers yet")
+		fmt.Fprintln(out, "\nno peers yet")
 		return
 	}
-	fmt.Println()
-	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(out)
+	w := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(w, "NAME\tIP\tSTATUS\tPATH\tLAST HANDSHAKE\tRX/TX")
 	for _, p := range st.Peers {
 		online := "offline"

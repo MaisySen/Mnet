@@ -329,9 +329,13 @@ Fresh generated launchd Up consumes a 45-second future key expiry from its dispo
 
 Use Darwin default utun, resolve/validate the actual assigned kernel name before configuring it, expose/clear status interface, and allow automatic utun in generated launchd argv. Keep explicit-interface and non-Darwin behavior. Add native CLI default checks and a second full kernel/peer/recovery/denial/expiry fixture omitting ifname flags. Repeated local name/status/generator race tests, full race/vet and cross-builds pass; all five jobs passed in [a4eae56 CI](https://github.com/MaisySen/Mnet/actions/runs/43867041361), with both explicit/automatic full native kernel/peer/recovery/denial/expiry fixtures and three Linux regressions (153/147/163 drops). Not physical boot or two kernel hosts.
 
-## Invalid managed macOS interface early refusal (new source, CI pending)
+## Invalid managed macOS interface early refusal (verified source)
 
-Reject malformed managed utun requests in the constructor before saved identity loading or enrollment. Keep unmanaged mobile/proof and non-Darwin behavior. Repeated local validation race tests/full race/vet/cross-builds pass. Native constructor and actual process tests require no identity/token/socket creation; [e1ce7fc CI](https://github.com/MaisySen/Mnet/actions/runs/43868888841) passed new native refusal checks and both valid kernel modes but failed the old offline teardown test due to hardcoded Linux mnet0 on Darwin. Correct that test to the platform default and surface early exits; thirty local race repetitions pass. Corrected native rerun pending, not an all-five success.
+Reject malformed managed utun requests in the constructor before saved identity loading or enrollment. Keep unmanaged mobile/proof and non-Darwin behavior. Repeated local validation race tests/full race/vet/cross-builds pass. Native constructor and actual process tests require no identity/token/socket creation; [e1ce7fc CI](https://github.com/MaisySen/Mnet/actions/runs/43868888841) passed new native refusal checks and both valid kernel modes but failed the old offline teardown test due to hardcoded Linux mnet0 on Darwin. Correct that test to the platform default and surface early exits; thirty local race repetitions pass. Corrected [43190c8 CI](https://github.com/MaisySen/Mnet/actions/runs/43870595932) passed all five jobs, including thirty native clean-stop repetitions and both full kernel modes; Linux regressions135/156/150 drops. The earlier run remains failed.
+
+## Human status actual interface (new source, CI pending)
+
+Show actual managed interface in ordinary status without inventing one for older daemons or Down. Preserve JSON actual name. Repeated local CLI cases/full race/vet/cross-builds pass; native fixtures now compare actual human/JSON CLI with live kernel name/address after startup/recovery. Native extension pending, not peer-readiness solely from interface existence.
 
 ## v0.8.2-test.1 - 2026-11-16
 

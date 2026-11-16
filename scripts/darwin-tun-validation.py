@@ -23,6 +23,7 @@ if sys.platform != 'darwin' or os.geteuid() != 0 or os.environ.get('GITHUB_ACTIO
 binary = Path(sys.argv[1]).resolve()
 control_binary = Path(sys.argv[2]).resolve()
 peer_binary = Path(sys.argv[3]).resolve()
+cli_binary = Path(sys.argv[4]).resolve()
 root = Path(tempfile.mkdtemp(prefix='mnet-tun-', dir='/private/tmp'))
 state = root / 'state'
 processes, logs = [], []
@@ -142,6 +143,13 @@ try:
         return value
     status = wait_for(up, 'actual macOS utun Up')
     address = status['ipv4']
+    def check_cli():
+        human = run(str(cli_binary), '--state', str(state), 'status')
+        assert 'interface: ' + name + '\n' in human, 'human CLI lost actual kernel interface'
+        value = json.loads(run(str(cli_binary), '--state', str(state), 'status', '--json'))
+        assert value['interface'] == name and value['ipv4'] == address, 'JSON CLI kernel interface mismatch'
+        assert not any(k in value for k in ['private_key', 'node_token', 'auth_key']), 'CLI exposed saved secrets'
+    check_cli()
     info = run('/sbin/ifconfig', name)
     assert 'mtu 1280' in info and 'inet ' + address in info, 'kernel interface address/MTU mismatch'
     assert 'interface: ' + name in route_for_mesh(), 'mesh route not bound to actual utun'
@@ -234,6 +242,7 @@ try:
         info = run('/sbin/ifconfig', name)
         assert 'mtu 1280' in info and 'inet ' + address in info
         assert 'interface: ' + name in route_for_mesh()
+        check_cli()
         return status
 
     def stopped():
