@@ -629,8 +629,14 @@ Go viewers and recorders check JPEG headers before full-image decoding. Each dim
 
 A tiny JPEG fixture with rewritten65535x65535 header dimensions tests refusal without allocating that pixel image. Boundary/overflow tests, viewer/recorder rejection and existing recovery tests pass30 race-enabled repetitions. A fresh full-repository race run and all-five [48fcffc CI](https://github.com/MaisySen/Mnet/actions/runs/43937696893) pass. This bounds a decoded image's pixel dimensions, not codec CPU, all decoder overhead, concurrent sessions or aggregate heap; compositing/callbacks can keep multiple images. No current-source Android binding rebuild, APK/AAB publication, device/capture/UI/JNI proof or live deployment for this change.
 
-## Aggregate delta tile work (new source, CI pending)
+## Aggregate delta tile work (13fa2e2 retry verified)
 
 A delta is limited to4096 tiles and at most the base frame's pixel count summed across all tile rectangles, before pixel decoding or composition. Regular nonoverlapping64x64 updates fit the budget; repeated overlapping rectangles that exceed one frame's work are refused. This adds a per-delta count/pixel-work limit to the existing individual geometry/JPEG checks, not a general CPU or total memory guarantee.
 
-The aggregate-overlap regression failed before the guard. Tests accept exact four-quadrant coverage and reject excess aggregate pixels or tile count. Targeted frame/recorder/composition race checks pass30 repeats; a fresh full-repository race run passes. Synthetic Go codec data only, not physical capture/UI/JNI proof. No current-source Android AAR, release APK/AAB or live deployment produced for this change.
+The aggregate-overlap regression failed before the guard. Tests accept exact four-quadrant coverage and reject excess aggregate pixels or tile count. Targeted frame/recorder/composition race checks pass30 repeats; a fresh full-repository race run passes. [13fa2e2 CI attempt2](https://github.com/MaisySen/Mnet/actions/runs/43939827797) passed after the first dependency-download failure. Synthetic Go codec data only, not physical capture/UI/JNI proof. No current-source Android AAR, release APK/AAB or live deployment produced for this change.
+
+## Four-ABI current-source Android binding build (b581b89 source)
+
+Fresh current-source Go bindings built at minimum Android API24 for armeabi-v7a, arm64-v8a, x86 and x86_64. Archive inspection confirms all four native libraries; ELF inspection confirms their architecture classes. AAR SHA256: `0b5b52659366e345d338d9db2916f057e3b93fdc8fcbc878fefa0cd25a5f60a8`. Full Android34 resources/application Java and min-api24 dex compile against the new bindings.
+
+This closes the binding-build gap after the JPEG/delta work changes and extends earlier arm64-only compilation. It is not installation, linker/loading on Android, JNI execution, hardware capture/input, UI pixels, boot or package-store validation. No APK/AAB signed or published and no live service change. Maven cache save is confirmed by b581b89 CI; cache restore needs a later run.

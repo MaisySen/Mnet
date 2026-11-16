@@ -33,4 +33,4 @@ Service tests use reflection to set capture/running state rather than start a va
 
 ## Build evidence is separate
 
-At3b959e2, a fresh local current-Go Android arm64 AAR built with minimum API24. Full Android34 resource generation/application Java and min-api24 dex compilation against that AAR passed. These build checks do not execute JNI or validate a signed APK, all ABIs, installation or device behavior. No new APK/AAB or release was published.
+Atb581b89, a fresh local current-Go Android AAR built with minimum API24 for armeabi-v7a, arm64-v8a, x86 and x86_64. Full Android34 resource generation/application Java and min-api24 dex compilation against that AAR passed. These build checks do not execute JNI or validate a signed APK, installation or device behavior. No new APK/AAB or release was published.
