@@ -226,3 +226,61 @@ func TestStartupConfigFailedSaveDoesNotLeakIntoRetry(t *testing.T) {
 		})
 	}
 }
+
+func TestStateRejectsIncompleteEnrollmentWithoutRepair(t *testing.T) {
+	valid := &State{Server: "https://control.example", Network: "home", NodeID: "fixture-id", NodeToken: "fixture-token"}
+	// Generate first, then add enrollment, just as the ordinary workflow does.
+	valid.NodeID, valid.NodeToken = "", ""
+	if err := valid.EnsureKey(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	valid.NodeID, valid.NodeToken = "fixture-id", "fixture-token"
+	for _, field := range []string{"node-id", "node-token", "blank-id", "blank-token", "server", "network"} {
+		t.Run(field, func(t *testing.T) {
+			broken := *valid
+			switch field {
+			case "node-id":
+				broken.NodeID = ""
+			case "node-token":
+				broken.NodeToken = ""
+			case "blank-id":
+				broken.NodeID = " \t"
+			case "blank-token":
+				broken.NodeToken = " \t"
+			case "server":
+				broken.Server = ""
+			case "network":
+				broken.Network = ""
+			}
+			dir := t.TempDir()
+			if err := broken.Save(dir); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(statePath(dir))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, err := LoadState(dir); err == nil || got != nil {
+				t.Fatal("incomplete saved enrollment accepted")
+			}
+			if err := broken.EnsureKey(dir); err == nil {
+				t.Fatal("incomplete in-memory enrollment accepted")
+			}
+			after, err := os.ReadFile(statePath(dir))
+			if err != nil || string(after) != string(before) {
+				t.Fatal("incomplete enrollment repaired or overwritten")
+			}
+			if broken.PrivateKey != valid.PrivateKey || broken.PublicKey != valid.PublicKey {
+				t.Fatal("existing identity replaced")
+			}
+		})
+	}
+	dir := t.TempDir()
+	if err := valid.Save(dir); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadState(dir)
+	if err != nil || got.NodeID != valid.NodeID || got.NodeToken != valid.NodeToken {
+		t.Fatal("complete saved enrollment failed reload", err)
+	}
+}

@@ -59,6 +59,10 @@ New source explicitly rejects control responses larger than the existing 4 MiB l
 
 New source reports the HTTP status for rejected control requests without printing a server/proxy error body that could echo credentials. A 401 remains programmatically unauthorized even when its body is oversized or malformed, preserving rejoin handling. Non-success bodies are closed without being read. Successful JSON decoding failures use a generic printed diagnostic with the typed cause retained for programmatic checks. For server-side detail, inspect private control/proxy logs with care; this client change does not sanitize those logs.
 
+## Incomplete saved enrollment
+
+New source refuses existing enrollment state with only a node ID or token, whitespace-only credentials, or credentials without a saved server/network. It does not generate a replacement identity, erase the original file or treat that state as a fresh install. Keep the original private file and recover a complete backup/operator enrollment record. Fresh key pairs without any node credential remain valid before their first enrollment. This validates presence, not server reachability or the remote validity of the token.
+
 ## Nodes
 
 Linux with systemd:

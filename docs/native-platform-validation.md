@@ -151,3 +151,7 @@ Verbose transport failures and approval-wait logs no longer print credential-bea
 ## Explicit response-body bound (verified source)
 
 Control replies beyond the existing 4 MiB limit are explicitly rejected rather than silently truncated. Tests accept an exactly limit-sized valid reply, reject oversized replies and check safe failing-reader diagnostics/cause matching/body close. All five jobs passed in [8fb969a CI](https://github.com/MaisySen/Mnet/actions/runs/43802190586), including native Windows/macOS and three full kernel fixtures with 131/149/132 later loss-profile drops. Not a fleet-capacity claim.
+
+## Remote error boundary (verified source)
+
+Rejected control requests report HTTP status without arbitrary remote error bodies. Unauthorized matching is decided before reading, so malformed/oversized 401 bodies cannot hide the rejoin signal. Typed JSON decode causes remain available behind safe printable text. All five jobs passed in [4821002 CI](https://github.com/MaisySen/Mnet/actions/runs/43803217307), including native Windows/macOS and three full kernel fixtures with 137/119/140 later loss-profile drops. Private server/proxy logs remain separate.

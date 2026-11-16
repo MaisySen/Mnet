@@ -115,6 +115,11 @@ func (s *State) EnsureKey(dir string) error {
 // fresh install. Metadata-only legacy state is allowed when no credential or
 // half-key pair exists; this never repairs or rotates an existing identity.
 func (s *State) validateIdentity() error {
+	if s.NodeID != "" || s.NodeToken != "" {
+		if strings.TrimSpace(s.NodeID) == "" || strings.TrimSpace(s.NodeToken) == "" || strings.TrimSpace(s.Server) == "" || strings.TrimSpace(s.Network) == "" {
+			return fmt.Errorf("incomplete saved enrollment; identity file was not changed")
+		}
+	}
 	if s.PrivateKey == "" && s.PublicKey == "" {
 		if s.NodeID != "" || s.NodeToken != "" {
 			return fmt.Errorf("saved device credential has no key pair; identity file was not changed")
