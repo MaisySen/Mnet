@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -295,5 +296,71 @@ func TestFileProgressRestartsIdleBudget(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(dir, "progress.bin"))
 	if err != nil || string(data) != "xxxxx" {
 		t.Fatal("progress file missing")
+	}
+}
+
+// Saturate a started mux without a writer goroutine so the queue cannot drain.
+// This is a deterministic queue-boundary fixture, not a real-network timing test.
+func TestIdleFileReceiverCleansWithSaturatedOutboundQueue(t *testing.T) {
+	a, b := net.Pipe()
+	defer b.Close()
+	m := newMux(a, StreamFile)
+	defer m.Close()
+	m.started = true
+	id := uint32(5)
+	offer, _ := json.Marshal(FileOffer{Name: "blocked.bin", Size: 6})
+	in := make(chan Frame, 1)
+	in <- Frame{Type: msgData, Payload: []byte("abc")}
+	m.streams[id] = &streamState{ch: in, handled: true}
+	dir := t.TempDir()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		FileReceiver{Mux: m, Dir: dir, IdleTimeout: 100 * time.Millisecond}.Handle(Stream{Mux: m, ID: id, OpenJSON: offer, in: in})
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		m.wmu.Lock()
+		accepted := m.queuedBytes > 0
+		if accepted {
+			m.pending = [4][]Frame{}
+			m.pending[PriBulk] = []Frame{{StreamID: 99, Type: msgData, Priority: PriBulk, Payload: make([]byte, maxQueuedBytes-headerLen)}}
+			m.queuedBytes = maxQueuedBytes
+		}
+		m.wmu.Unlock()
+		if accepted {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("receiver did not queue acceptance")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("full outbound queue blocked idle cleanup")
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("partial files remain: %v %v", entries, err)
+	}
+	m.streamMu.Lock()
+	_, retained := m.streams[id]
+	m.streamMu.Unlock()
+	if retained {
+		t.Fatal("idle stream retained")
+	}
+	m.wmu.Lock()
+	queued := m.queuedBytes
+	frames := len(m.pending[PriBulk])
+	m.wmu.Unlock()
+	if queued != maxQueuedBytes || frames != 1 {
+		t.Fatalf("reset exceeded saturated queue: bytes=%d frames=%d", queued, frames)
+	}
+	select {
+	case <-m.Closed():
+		t.Fatal("idle cleanup closed unrelated mux")
+	default:
 	}
 }

@@ -404,6 +404,28 @@ func (m *Mux) send(id uint32, typ byte, pri uint8, payload []byte) error {
 	return nil
 }
 
+// tryReset queues best-effort stream termination without waiting for outbound
+// capacity. Cleanup must not depend on a peer draining its receive socket.
+// False means no reset was queued; it does not close the shared session.
+func (m *Mux) tryReset(id uint32) bool {
+	m.wmu.Lock()
+	defer m.wmu.Unlock()
+	select {
+	case <-m.closed:
+		return false
+	default:
+	}
+	if !m.started || m.queuedBytes+headerLen > maxQueuedBytes {
+		return false
+	}
+	f := Frame{StreamID: id, Type: msgRst, Priority: PriBulk}
+	m.pending[PriBulk] = append(m.pending[PriBulk], f)
+	m.queuedBytes += headerLen
+	m.traceFrame("queued", f)
+	m.cond.Signal()
+	return true
+}
+
 func (m *Mux) writeLoop() {
 	for {
 		m.wmu.Lock()
