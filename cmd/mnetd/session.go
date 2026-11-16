@@ -199,7 +199,9 @@ func runSessionHost(d *daemon.Daemon, stateDir string, autoAccept bool, allow ma
 			<-m.Closed()
 			h.Stop()
 			if rec != nil {
-				rec.Close()
+				if err := rec.Close(); err != nil {
+					log.Printf("mnetd: session recording incomplete: %v", err)
+				}
 				log.Printf("mnetd: session recording %s: %s", recPath, rec)
 			}
 			dur := time.Since(start).Round(time.Second)

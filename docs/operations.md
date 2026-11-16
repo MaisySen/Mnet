@@ -681,3 +681,8 @@ A sender-notification regression failed before the change. Idle/reset/progress t
 ### Recording destination collisions
 
 New source requires an unused recording path. Existing files and final symlinks are refused without overwriting their bytes or permissions. The daemon's timestamp-based naming can collide if the same viewer starts twice within one second; recording then reports unavailable while hosting continues. Choose a private, trusted recording directory. This final-path check does not secure attacker-controlled parent directories, guarantee disk space or repair a failed recording. Source/local tests only at this checkpoint; published downloads have not changed.
+
+
+### Recording output errors
+
+New source stops recording after an output error and keeps any partial file for inspection. The first error remains available from Close; the daemon logs recording incomplete when the hosted session ends, followed by its existing recorded-frame count. Hosting continues. This is not an immediate warning, automatic retry, file repair or durability guarantee. Do not infer a complete recording from the presence of a file or a nonzero frame count. Published downloads have not changed.

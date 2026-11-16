@@ -258,3 +258,39 @@ func TestConcurrentRecorderCreationHasOneOwner(t *testing.T) {
 		t.Fatalf("recording owners: %d", count)
 	}
 }
+
+func TestRecorderWriteFailureStopsAndSurvivesRepeatedClose(t *testing.T) {
+	path := t.TempDir() + "/readonly"
+	if err := os.WriteFile(path, []byte("unchanged"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Open(path) // a deterministic invalid write handle, not disk exhaustion
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	r := &Recorder{w: f}
+	fr := ScreenFrame{Full: true, Image: jpegBytes(t, solid(16, 16, color.RGBA{R: 100, A: 255}))}
+	r.OnFrame(fr)
+	if r.w != nil || r.base != nil {
+		t.Error("failed recording retained writer/frame pixels")
+	}
+	if r.Frames() != 0 {
+		t.Error("failed frame counted")
+	}
+	first := r.Close()
+	if first == nil {
+		t.Fatal("recording write failure was lost at close")
+	}
+	r.OnFrame(fr)
+	if again := r.Close(); again == nil || again.Error() != first.Error() {
+		t.Fatalf("repeated close lost first error: %v", again)
+	}
+	if r.Frames() != 0 || r.base != nil {
+		t.Fatal("late frame changed failed recording")
+	}
+	content, err := os.ReadFile(path)
+	if err != nil || string(content) != "unchanged" {
+		t.Fatalf("fixture content changed: %q %v", content, err)
+	}
+}

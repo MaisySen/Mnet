@@ -579,15 +579,24 @@ The full local gate bundle passed again with these test additions: build, Window
 No signed APK/AAB, publication, deployment, physical Android installation, JNI loading/execution, real capture/input, Android UI pixels or reboot proof is added. Build artifacts remain local validation outputs. The current source still permits head-of-line blocking for an unreleased slow stream and does not cancel queued outbound file chunks.
 
 
-## Protocol-v1 unsupported frame header refusal (new source, CI pending)
+## Protocol-v1 unsupported frame header refusal (5b58ea5 all-five CI verified)
 
 readFrame now rejects unknown message types, priorities outside the four defined classes and nonzero reserved header bits before allocating or reading payload bytes. All six known types and all four priorities remain accepted. Current writers already emit these supported headers with zero reserved bits. A future protocol extension must negotiate/update the format rather than rely on silently accepted v1 headers. No new message shape, peer identity or authorization is added.
 
 Seven malformed-header regressions failed before fixing: they reached payload EOF rather than refusing the header. The tests advertise a 1MiB payload but supply no payload bytes. Known-type/priority round trips and a net.Pipe active-mux test verify supported framing and closure on a malformed header without waiting for payload. These checks pass 100 race repetitions; a fresh full-repository race run passes. This does not reject every malformed message body or replace the existing payload-size limit, peer authentication or rate limits. The latest all-five source remains fe877fa, c8bdaa4 has four successful jobs/macOS pending at this check, and the latest Android binding build remains fe877fa. No release, live deployment or physical runtime evidence changed.
 
 
-## Recording destination no-clobber creation (new source, CI pending)
+## Recording destination no-clobber creation (c5bf4c8 all-five CI verified)
 
 NewRecorder creates a new mode-0600 file with O_EXCL rather than truncating an existing path. An existing regular destination, final symlink or directory now fails without modification. This also avoids inheriting an older destination's broader file permissions. It is an intentional no-overwrite rule: callers must choose an unused path. The daemon already generates viewer/timestamp names and logs recording-open failure while continuing the session; a same-second collision now preserves the previous recording instead of replacing it.
 
 Before-fix tests reproduced existing-file truncation and symlink-target truncation. Existing bytes/mode and final-symlink preservation, 12 concurrent creators with exactly one owner, and recorder codec/lifecycle tests pass 50 race repetitions. The symlink test can skip when the platform lacks symlink rights; it executed locally. Fresh full-repository race tests pass. O_EXCL protects the final destination, not attacker-controlled parent-directory substitution or recording write failures/disk exhaustion. This is local file/concurrency evidence, not physical playback/capture or a live-file repair. The latest all-five source is c8bdaa4; header-refusal5b58ea5 has four successful jobs/macOS pending at this check. Current bindings remain fe877fa. No release artifact, deployment or existing user recording changed.
+
+
+## Recording output failure retention (new source, CI pending)
+
+A recorder now stops on its first output error, closes the writer, releases its pixel base and ignores late frames. It counts only complete successful frame writes. A short write without an error is converted to io.ErrShortWrite. Close preserves the first write error across repeated calls; if writing succeeded, a close error is retained instead. The daemon checks Close and logs recording incomplete at session end before its existing path/frame-count log. Hosting is not ended, partial recording bytes are not deleted and no automatic retry is attempted.
+
+A read-only-file-handle regression failed before fixing because the recorder retained writer/pixels and lost the write error at Close. It now verifies zero recorded frames, released resources, unchanged fixture bytes, repeated-close error retention and ignored late callbacks. This is deterministic invalid-handle failure injection, not actual disk exhaustion, fsync/durability or partial-write filesystem proof. Recorder/create/concurrency checks pass 50 race repetitions; fresh full-repository race tests pass. Error reporting remains at session end, not an immediate UI alert. Bindings still name fe877fa, before this work. No release or live deployment changed.
+
+Prior source verification: all five [5b58ea5 CI jobs](https://github.com/MaisySen/Mnet/actions/runs/43967596216) and [c5bf4c8 CI jobs](https://github.com/MaisySen/Mnet/actions/runs/43969548449) passed.

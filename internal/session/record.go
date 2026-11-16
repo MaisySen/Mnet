@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"image"
 	"image/jpeg"
+	"io"
 	"os"
 	"sync"
 )
@@ -20,6 +21,7 @@ type Recorder struct {
 	w      *os.File
 	base   *image.RGBA
 	frames int
+	err    error // first output failure, preserved by repeated Close calls
 }
 
 // NewRecorder creates a new recording (0600: recordings are sensitive).
@@ -47,9 +49,7 @@ func (r *Recorder) OnFrame(fr ScreenFrame) {
 			r.base = nil // A broken keyframe invalidates following deltas.
 			return
 		}
-		if _, err := r.w.Write(fr.Image); err == nil {
-			r.frames++
-		}
+		r.writeLocked(fr.Image)
 		return
 	}
 	if r.base == nil {
@@ -65,9 +65,24 @@ func (r *Recorder) OnFrame(fr ScreenFrame) {
 	if err := jpeg.Encode(&buf, merged, &jpeg.Options{Quality: 80}); err != nil {
 		return
 	}
-	if _, err := r.w.Write(buf.Bytes()); err == nil {
-		r.frames++
+	r.writeLocked(buf.Bytes())
+}
+
+// writeLocked stops recording after the first output error. Continuing after a
+// partial JPEG would silently append frames to a damaged recording.
+func (r *Recorder) writeLocked(payload []byte) {
+	n, err := r.w.Write(payload)
+	if err == nil && n != len(payload) {
+		err = io.ErrShortWrite
 	}
+	if err != nil {
+		r.err = err
+		_ = r.w.Close() // retain the first write error, not a secondary close error
+		r.w = nil
+		r.base = nil
+		return
+	}
+	r.frames++
 }
 
 // Frames recorded so far.
@@ -81,12 +96,13 @@ func (r *Recorder) Close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.base = nil
-	if r.w == nil {
-		return nil
+	if r.w != nil {
+		if err := r.w.Close(); r.err == nil {
+			r.err = err
+		}
+		r.w = nil
 	}
-	err := r.w.Close()
-	r.w = nil
-	return err
+	return r.err
 }
 
 // String reports the recording shape for logs and audit lines.
