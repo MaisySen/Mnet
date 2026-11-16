@@ -8,7 +8,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 | --- | --- | --- |
 | Published test artifacts | v0.8.2-test.1, source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11; Android 0.8.2/code 14. | [Release](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1). Sixteen assets verified at release. Update CLI and daemon together. |
 | Hosted test control plane | Last verified 2026-11-16 at 07:12 AEDT on `2bb55f4`. | Dated deployment check, not a current availability promise. Free-host ephemeral disk/restart state loss remains a limitation. |
-| Newer verified source | `c2fe64c`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43780929040). New source below is not in those downloads or that last verified deployment. |
+| Newer verified source | `7e458a3`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43783449695). New source below is not in those downloads or that last verified deployment. |
 
 ## What is implemented and tested
 
@@ -22,7 +22,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 - Route-only ACL withdrawal/restoration and admin expiry/reapproval block and restore access as expected. Reapproval clears stale approval status/link. Known expiry is enforced locally even if later control polling is blocked; unseen offline admin changes cannot be discovered.
 - `mnet up --reset-routing`, while down, clears saved roles without deleting identity. Ordinary saved-state Up preserves routing. Fresh attempts clear old setup errors, preserving errors raised during the new attempt.
 
-The latest [c2fe64c CI](https://github.com/MaisySen/Mnet/actions/runs/43780929040) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 131/144/138. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
+The latest verified [7e458a3 CI](https://github.com/MaisySen/Mnet/actions/runs/43783449695) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 139/143/140. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
 
 Exit-node selection/advertising is explicitly rejected before enrollment/device creation. Unsafe dormant host/default-route replacement helpers were removed, not enabled. Exit internet routing remains unsupported.
 
@@ -40,17 +40,21 @@ Same-network multi-device connectivity is verified. A single login owning/managi
 
 See [product scope](product-scope.md) for the user's account/device/startup target and platform gaps. The shared architecture blueprint is reference, not an adopted stack, budget or migration plan.
 
-## Private identity-device query (new source, pending CI)
+## Private identity-device query (verified source)
 
 An internal helper can list approved, unexpired device summaries for an exact network + verified issuer + subject. It excludes same-email/different-subject identities, identical subjects at other issuers, other networks, legacy email-only approvals and expired devices. Returned summaries contain no keys/tokens/endpoints and do not alias stored state. Local race regressions cover persistence, scope, unknown inputs and expiry. All five jobs passed in [11198e8 CI](https://github.com/MaisySen/Mnet/actions/runs/43782589045), including three full kernel fixtures with 135/145/156 later loss-profile drops. No HTTP route exposes this helper; any future caller must authenticate the principal and separately authorize network access. This is not ownership, membership, a login UI or an authorization grant.
 
-## Explicit network membership gate (new source, pending CI)
+## Explicit network membership gate (verified source)
 
-Private control-state membership now binds an exact network/issuer/subject tuple by an explicit internal operator/admin method. Verified approval alone never grants membership. A separate gated device query denies missing/revoked/wrong-network/wrong-issuer/wrong-subject membership and returns only that principal's approved, unexpired devices, not everyone in the network. Grant/revoke persist with rollback on save failure; tests cover restart, tuple collisions, unknown scope and no cross-principal disclosure. No HTTP route exposes grants or account queries. Member is the only access shape; owner/admin roles and a user-facing login remain unfinished. Revoking this membership only closes the account-query gate, not device transport credentials; explicit device expiry is still required to revoke mesh traffic. Independent CI is pending.
+Private control-state membership now binds an exact network/issuer/subject tuple by an explicit internal operator/admin method. Verified approval alone never grants membership. A separate gated device query denies missing/revoked/wrong-network/wrong-issuer/wrong-subject membership and returns only that principal's approved, unexpired devices, not everyone in the network. Grant/revoke persist with rollback on save failure; tests cover restart, tuple collisions, unknown scope and no cross-principal disclosure. The verified membership model was internal-only; a newer admin-only management endpoint is described below. There is still no HTTP account-query route. Member is the only access shape; owner/admin roles and a user-facing login remain unfinished. Revoking this membership only closes the account-query gate, not device transport credentials; explicit device expiry is still required to revoke mesh traffic. All five jobs passed in [7e458a3 CI](https://github.com/MaisySen/Mnet/actions/runs/43783449695), including three full kernel fixtures with 139/143/140 later loss-profile drops.
+
+## Operator membership management (new source, pending CI)
+
+`POST /admin/api/memberships` accepts `network_id`, `issuer`, `subject` and an explicit boolean `allow`. It requires an unexpired admin session, JSON content type, a 4KiB bounded strict body and no trailing JSON. Browser requests must have the configured same origin when Origin is present and cannot claim cross-site or sibling-site fetch metadata. Non-browser operator clients may omit those browser headers. The principal in the body is the grant target, never the caller's authentication. There is no GET/list route, self-service membership, owner role, account login or device-query endpoint. The target principal must be selected from trustworthy identity evidence, not an email guess. Grant/revoke auditing records the network and outcome, not issuer/subject. A failed persistence attempt returns a generic error and rolls back the live membership. Local race tests cover those HTTP boundaries, expired/forged/absent sessions, persisted grants/revokes and snapshot/audit non-disclosure. Independent CI is pending. This endpoint is not yet in published downloads or the hosted deployment last verified above.
 
 ## Important open work
 
-- Account/organization ownership, membership and management experience.
+- Account/organization ownership, user login and device-management experience beyond the explicit operator membership gate.
 - Wider subnet/firewall compatibility, non-Linux/IPv6/public subnet OS routes and owned exit routing.
 - Real Windows Wintun/macOS VPN, second-user access, physical capture/input/permissions, mobile and actual OS boot/reboot.
 - Larger/cancelled transfers, long sessions, sleep/wake, sustained churn and fleet/relay capacity.

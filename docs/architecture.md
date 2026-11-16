@@ -7,9 +7,9 @@ Development design. [STATUS](STATUS.md) separates implementation, test evidence,
 One process stores networks, identities and policies in a JSON file. Changes use private temporary-file replacement and file sync, with rollback on persistence failure. This is not distributed durable storage or a proven large-fleet design.
 
 - `/api/*`: enrollment, credential-authenticated rejoin, approval polling, map polling, endpoint reports and relay WebSocket.
-- `/admin/api/*`: password-session administration of networks, nodes, keys, ACLs, metrics and audit.
+- `/admin/api/*`: password-session administration of networks, nodes, keys, ACLs, metrics and audit. New source adds explicit membership grant/revoke, with a bounded JSON-only same-origin operator route; see [status](STATUS.md) for verification.
 - `/admin`: embedded dashboard.
-- OIDC: configured issuer and explicit subject/verified-email admission policy, signed-token checks and nonce binding. Verified issuer/subject approval provenance is stored privately, separately from the node display label; it is not an account/membership model. Tests use a local signed provider; live-issuer certification is not claimed.
+- OIDC: configured issuer and explicit subject/verified-email admission policy, signed-token checks and nonce binding. Verified issuer/subject approval provenance is stored privately, separately from the node display label; it never grants membership. Separate private network/issuer/subject memberships gate an internal own-device query; an operator grant target is not caller authentication. User login/ownership remains unfinished. Tests use a local signed provider; live-issuer certification is not claimed.
 
 Maps contain approved, non-expired peers permitted by the current pair/route policy. Long polls carry changes; local clients cannot learn unseen server policy changes while disconnected. Newer source also enforces known map expiry timestamps locally.
 

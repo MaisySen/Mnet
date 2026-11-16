@@ -132,6 +132,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/admin/api/nodes/deny", s.adminOnly(s.handleAdminNodeDeny))
 	mux.HandleFunc("/admin/api/nodes/delete", s.adminOnly(s.handleAdminNodeDelete))
 	mux.HandleFunc("/admin/api/nodes/expire", s.adminOnly(s.handleAdminNodeExpire))
+	mux.HandleFunc("/admin/api/memberships", s.adminOnly(s.handleAdminMembership))
 	mux.HandleFunc("/admin/api/acl", s.adminOnly(s.handleAdminACL))
 	mux.HandleFunc("/admin/api/metrics", s.adminOnly(s.handleAdminMetrics))
 	return securityHeaders(mux)

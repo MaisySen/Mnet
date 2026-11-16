@@ -21,7 +21,7 @@ func memberIndex(networkID, issuer, subject string) string {
 }
 
 // SetNetworkMember is internal operator/admin plumbing, not a self-service
-// grant. No HTTP surface invokes it. Callers must authorize management first.
+// grant. The admin-only membership endpoint invokes it. Other callers must authorize management first.
 // Revocation affects this account-query gate only: it does not revoke device
 // credentials or existing mesh traffic. Use explicit device expiry for that.
 func (s *Store) SetNetworkMember(networkID, issuer, subject string, allow bool) error {
