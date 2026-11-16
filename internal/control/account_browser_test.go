@@ -26,9 +26,6 @@ func TestAccountRealChrome(t *testing.T) {
 	if err := store.ApproveNodeIdentity(joined.NodeID, "display@fintex.au", fake.srv.URL, "user-1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SetNetworkMember(network.ID, fake.srv.URL, "user-1", true); err != nil {
-		t.Fatal(err)
-	}
 	// Multiple owned identities plus look-alike outsiders exercise the real
 	// HTTP response and DOM, not only a mocked table response.
 	other, err := store.CreateNetwork("other-account-network")
@@ -59,7 +56,7 @@ func TestAccountRealChrome(t *testing.T) {
 		}
 	}
 	cmd := exec.Command("node", "../../scripts/account-validation.mjs")
-	cmd.Env = append(os.Environ(), "MNET_ACCOUNT_BASE="+ts.URL, "MNET_ACCOUNT_NETWORK="+network.ID)
+	cmd.Env = append(os.Environ(), "MNET_ACCOUNT_BASE="+ts.URL, "MNET_ACCOUNT_NETWORK="+network.ID, "MNET_ACCOUNT_FIXTURE_PASSWORD="+pw, "MNET_ACCOUNT_FIXTURE_ISSUER="+fake.srv.URL)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("real Chrome account proof failed: %v\n%s", err, output)

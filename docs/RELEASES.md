@@ -266,7 +266,11 @@ Manual exact issuer/subject entry from trusted provider records, required acknow
 
 ## Explicit grant uncertain-response proof (fixture extension)
 
-Actual local Chrome checks network-context invalidation prevents a grant after confirmation, a committed grant with a lost response is settled by inspection without another write, and private draft inputs/acknowledgement clear on sign-out. CI pending. Test-only, no live grant.
+Actual local Chrome checks network-context invalidation prevents a grant after confirmation, a committed grant with a lost response is settled by inspection without another write, and private draft inputs/acknowledgement clear on sign-out. All five jobs passed in [50646a5 CI](https://github.com/MaisySen/Mnet/actions/runs/43843273639), including actual dashboard Chrome and three kernel regressions with 131/146/132 later loss-profile drops. Test-only, no live grant.
+
+## Reviewed account setup/removal browser journey (fixture extension)
+
+Start without membership, create it through the reviewed operator form, follow the landing member link, complete signed-provider login and verify two owned summaries. Remove the grant through the actual operator UI, require 401 for the active member query and a cleared sign-in page. Local Chrome/full race/vet pass; CI pending. Disposable records only, no live grant or physical-device proof.
 
 ## v0.8.2-test.1 - 2026-11-16
 

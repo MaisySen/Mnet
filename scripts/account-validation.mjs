@@ -25,6 +25,18 @@ try{
  catch(error){throw new Error(error.message+'; Chrome startup diagnostics: '+chromeErrors);}
  ws=new WebSocket(target.webSocketDebuggerUrl);await new Promise((r,j)=>{ws.onopen=r;ws.onerror=j;});ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id&&pending.has(m.id)){const p=pending.get(m.id);pending.delete(m.id);m.error?p.reject(new Error(m.error.message)):p.resolve(m.result);}};
  await cdp('Page.enable');await cdp('Runtime.enable');await cdp('Network.enable');
+ // The disposable operator starts with no grant. Create it through the real
+ // reviewed form, then cross into the separate signed-provider member flow.
+ const fixturePassword=process.env.MNET_ACCOUNT_FIXTURE_PASSWORD,fixtureIssuer=process.env.MNET_ACCOUNT_FIXTURE_ISSUER;
+ if(!fixturePassword||!fixtureIssuer)throw new Error('operator fixture missing');
+ await cdp('Page.navigate',{url:base+'/admin'});
+ await until(()=>js(`document.querySelector('#loginBtn') && getComputedStyle(document.querySelector('#login')).display!=='none'`),'operator setup login');
+ await js(`document.querySelector('#pw').value=${JSON.stringify(fixturePassword)};document.querySelector('#loginBtn').click()`);
+ await until(()=>js(`state && document.querySelector('#memberNet').options.length>=2`),'operator setup networks');
+ await js(`document.querySelector('#memberNet').value=${JSON.stringify(network)};document.querySelector('#memberNet').dispatchEvent(new Event('change'));document.querySelector('#memberRead').click()`);
+ await until(()=>js(`document.querySelector('#memberMsg').textContent==='No explicit grants for this network.'`),'member initially has no explicit grant');
+ await js(`window.confirm=()=>true;document.querySelector('#grantDetails').open=true;document.querySelector('#grantIssuer').value=${JSON.stringify(fixtureIssuer)};document.querySelector('#grantSubject').value='user-1';document.querySelector('#grantVerified').checked=true;document.querySelector('#memberGrant').requestSubmit()`);
+ await until(()=>js(`document.querySelector('#members tbody').textContent.includes('user-1')`),'operator reviewed grant reached real store');
  await cdp('Page.navigate',{url:base+'/'});
  await until(()=>js(`document.querySelector('a[href="/account/"]')`),'landing member entry visible');
  if(!await js(`document.querySelector('a[href="/admin"]') && document.body.textContent.includes('does not enroll a device or grant membership') && document.body.textContent.includes('not live connectivity')`))throw new Error('landing mixed member/operator scope');
@@ -88,6 +100,19 @@ try{
  const lostReplay=await fetch(base+'/account/api/devices',{headers:{Cookie:'mnet_account='+lostCookie.value}});if(lostReplay.status!==401)throw new Error('committed logout token remained usable');
  await js(`window.fetch=logoutFetch;document.querySelector('#logout').click()`);
  await until(()=>js(`document.querySelector('#message').textContent==='Signed out.' && document.querySelector('#devices').hidden`),'idempotent logout retry confirmed');
+ // Existing operator session can remove the grant; an already active member
+ // session must immediately lose its query without a new login round trip.
+ await js(`document.querySelector('#network').value=${JSON.stringify(network)};document.querySelector('#loginForm').requestSubmit()`);
+ await until(()=>js(`document.querySelector('#deviceRows').textContent.includes('personal-laptop')`),'third real member login before operator removal');
+ await cdp('Page.navigate',{url:base+'/admin'});
+ await until(()=>js(`state && document.querySelector('#memberNet').options.length>=2`),'existing operator session restored');
+ await js(`document.querySelector('#memberNet').value=${JSON.stringify(network)};document.querySelector('#memberNet').dispatchEvent(new Event('change'));document.querySelector('#memberRead').click()`);
+ await until(()=>js(`document.querySelector('#members tbody button')`),'granted principal visible for removal');
+ await js(`window.confirm=()=>true;document.querySelector('#members tbody button').click()`);
+ await until(()=>js(`document.querySelector('#memberMsg').textContent==='No explicit grants for this network.'`),'operator removed actual member grant');
+ const revoked=await js(`(async()=>{const response=await fetch('/account/api/devices');return response.status;})()`);if(revoked!==401)throw new Error('active member survived operator UI removal');
+ await cdp('Page.navigate',{url:base+'/account/'});
+ await until(()=>js(`document.querySelector('#login') && !document.querySelector('#login').hidden && document.querySelector('#devices').hidden && !document.querySelector('#currentNetwork').textContent && !document.querySelector('#deviceRows').textContent`),'revoked account returned to cleared sign-in');
  await cdp('Page.navigate',{url:base+'/account/oidc/callback?state=private-fixture-state&code=private-fixture-code&error=private-provider-error'});
  await until(()=>js(`document.body.textContent.includes('Sign-in was not completed')`),'safe sign-in recovery page');
  if(!await js(`!document.body.textContent.includes('private-fixture') && !document.body.textContent.includes('private-provider-error') && document.querySelector('a[href="/account/"]')`))throw new Error('callback recovery echoed private data or lost return path');
