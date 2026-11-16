@@ -212,6 +212,10 @@ Reject malformed/null list or row data and wrong-network rows before rendering. 
 
 [90f633b CI](https://github.com/MaisySen/Mnet/actions/runs/43820313703) detected a global tracing flag write in a test overlapping a prior TCP session writer. A later green full run does not close it. Each new mux now captures its tracing option before its loops start; unit fixtures set only their own unstarted mux. Thirty local trace/TCP race repetitions, the full race suite and vet pass. All five jobs passed in [03b55a6 CI](https://github.com/MaisySen/Mnet/actions/runs/43821694030) and [b3f313d CI](https://github.com/MaisySen/Mnet/actions/runs/43821716633), the latter including 30 Linux trace/TCP race repetitions and native three-repetition trace/TCP tests. Three complete kernel regressions passed with 152/185/158 later loss-profile drops. Opt-in bounded metadata-only tracing remains unchanged in purpose; no live service or transport change is claimed.
 
+## Confirmed operator membership removal (new source)
+
+The dashboard can now remove only a previously inspected exact membership tuple after a target/scope confirmation. This closes account queries, not device credentials or mesh traffic. Cancel does not write. Success rereads the actual list; an uncertain response does not claim success and asks for another inspection before retry. Local real Chrome tests actual removal, cancellation and simulated uncertain-response recovery. Full CI pending. No create-grant control, identity inference or live membership changes.
+
 ## v0.8.2-test.1 - 2026-11-16
 
 Source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11, Android 0.8.2/code 14. [Release and 16 assets](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1), [exact-source CI](https://github.com/MaisySen/Mnet/actions/runs/43756253912).

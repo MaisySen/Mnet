@@ -34,6 +34,21 @@ try{
  await until(()=>js(`document.querySelector('#members tbody').textContent.includes('<img src=x onerror=alert(1)>')`),'actual explicit grant rendered');
  if(!await js(`document.querySelectorAll('#members tbody tr').length===1 && !document.querySelector('#members tbody img')`))throw new Error('private grant did not render as text');
  await shot('dashboard-memberships');
+ // Cancellation is not a write; a confirmed removal targets the listed tuple
+ // through the real guarded API, and refreshing proves it disappeared.
+ await js(`window.realConfirm=window.confirm;window.confirm=()=>false;document.querySelector('#members tbody button').click()`);
+ if(!await js(`document.querySelectorAll('#members tbody tr').length===1`))throw new Error('cancelled revoke cleared grants');
+ if(!await js(`(async()=>{const result=await api('/admin/api/memberships?network_id='+encodeURIComponent(memberNetwork));return result.memberships.length===1;})()`))throw new Error('cancelled revoke changed server membership');
+ // An unconfirmed network outcome must not claim removal succeeded. Inspect
+ // again reads the actual unchanged service before the real removal below.
+ await js(`(async()=>{window.revokeFetch=window.fetch;window.confirm=()=>true;window.fetch=(input,options)=>input==='/admin/api/memberships' && options?.method==='POST'?Promise.reject(new Error('fixture interrupted response')):revokeFetch(input,options);document.querySelector('#members tbody button').click();})()`);
+ await until(()=>js(`document.querySelector('#memberMsg').textContent.startsWith('Could not confirm removal.') && !document.querySelector('#members tbody').textContent`),'honest unconfirmed removal state');
+ await js(`window.fetch=revokeFetch;document.querySelector('#memberRead').click()`);
+ await until(()=>js(`document.querySelector('#members tbody').textContent.includes('<img')`),'actual inspection retry after unconfirmed removal');
+ await js(`window.confirm=text=>{window.memberConfirmation=text;return true;};document.querySelector('#members tbody button').click()`);
+ await until(()=>js(`document.querySelector('#memberMsg').textContent==='No explicit grants for this network.'`),'actual confirmed membership removal');
+ if(!await js(`memberConfirmation.includes('https://issuer.example') && memberConfirmation.includes('<img src=x onerror=alert(1)>') && memberConfirmation.includes('NOT disconnect VPN devices')`))throw new Error('removal confirmation omitted target/scope');
+ await js(`(async()=>{window.confirm=realConfirm;await api('/admin/api/memberships',{network_id:memberNetwork,issuer:'https://issuer.example',subject:'<img src=x onerror=alert(1)>',allow:true});await loadMembers();})()`);
  // Browser-local edge responses test safe failure/retry presentation; initial
  // login, grant creation and the successful inspection above use the server.
  await js(`(async()=>{window.edgeFetch=window.fetch;window.fetch=(input,options)=>String(input).startsWith('/admin/api/memberships?')?Promise.reject(new Error('private transport details')):edgeFetch(input,options);await loadMembers();window.fetch=edgeFetch;})()`);
@@ -80,5 +95,5 @@ try{
  const replay=await fetch(base+'/admin/api/state',{headers:{Cookie:'mnet_admin='+token}});if(replay.status!==401)throw new Error('logged-out cookie replay accepted');
  const remaining=(await cdp('Network.getCookies',{urls:[base]})).cookies;if(remaining.some(c=>c.name==='mnet_admin'))throw new Error('logout cookie not cleared');
  await shot('dashboard-signed-out');
- console.log('PASS real Chrome dashboard: login visibility, same-origin sign-in, network/key render, actual scoped membership reads, HTML-as-text, empty grants, failed-read clear/retry, invalid-response handling, same-network out-of-order reads, network-switch/logout late-result suppression, expiry boundaries, sign-out, cleared populated private UI, delayed-refresh suppression and logged-out token replay');
+ console.log('PASS real Chrome dashboard: login visibility, same-origin sign-in, network/key render, actual scoped membership reads, cancel/confirmed removal and refresh, HTML-as-text, empty grants, failed-read clear/retry, invalid-response handling, same-network out-of-order reads, network-switch/logout late-result suppression, expiry boundaries, sign-out, cleared populated private UI, delayed-refresh suppression and logged-out token replay');
 }finally{ws?.close();chrome?.kill();control?.kill();await delay(150);rmSync(dir,{recursive:true,force:true});}

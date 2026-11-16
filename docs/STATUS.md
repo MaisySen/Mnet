@@ -112,6 +112,8 @@ New source lets an authenticated operator GET explicit membership grants for one
 
 The next source extension also rejects malformed or wrong-network membership-list responses before rendering any private row. Local actual-Chrome retries recover after a simulated read failure; browser-local malformed-response and reversed same-network completion tests pass. All five jobs passed in [c834830 CI](https://github.com/MaisySen/Mnet/actions/runs/43820460941); the initial 90f633b run instead failed a separate shared trace-test race described below. The successful grant/read path still uses the actual disposable service.
 
+New source adds confirmed removal of a listed operator membership. Confirmation names the exact network/issuer/subject and explains that VPN devices stay connected. Cancellation is not a write; success rereads the actual grants. Uncertain responses require inspection before retry rather than claiming completion. Local real Chrome covers actual API removal plus cancellation and a simulated interrupted response; full CI pending. There is no create-grant control.
+
 ## Important open work
 
 - Account/organization ownership, enrollment and device management beyond the read-only member login and explicit operator membership gate.

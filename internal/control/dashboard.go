@@ -160,10 +160,10 @@ footer{padding:1.5rem;color:#9da7b1;font-size:.8rem}
 </section>
 <section id="membershipSection">
 <h2>Account membership grants</h2>
-<p class="muted">Inspect explicit account access for one network. Private issuer/subject identifiers are not email addresses. This does not list device approval provenance or grant access. Removing membership does not disconnect VPN devices.</p>
+<p class="muted">Inspect explicit account access for one network. Private issuer/subject identifiers are not email addresses. This does not list device approval provenance or create grants. Removing membership closes account queries, not VPN device connections.</p>
 <p><label>Network <select id="memberNet"></select></label> <button id="memberRead" type="button">Inspect grants</button></p>
 <p id="memberMsg" class="muted" role="status"></p>
-<table id="members"><thead><tr><th>Verified issuer</th><th>Subject</th></tr></thead><tbody></tbody></table>
+<table id="members"><thead><tr><th>Verified issuer</th><th>Subject</th><th></th></tr></thead><tbody></tbody></table>
 </section>
 <section class="card">
 <h2>ACL policy</h2>
@@ -246,12 +246,34 @@ async function loadMembers(){
       for(const value of [member.issuer,member.subject]){
         const cell=document.createElement('td'); cell.style.overflowWrap='anywhere'; cell.textContent=value; row.append(cell);
       }
+      const action=document.createElement('td'), remove=document.createElement('button');
+      remove.className='danger'; remove.textContent='Remove membership';
+      remove.onclick=()=>revokeMember(id,member.issuer,member.subject,generation,request);
+      action.append(remove); row.append(action);
       return row;
     });
     $('#members tbody').replaceChildren(...rows);
     $('#memberMsg').textContent=rows.length ? rows.length+' explicit grant(s).' : 'No explicit grants for this network.';
   } catch(e){
     if(generation===viewGeneration && request===memberRequest && !signingOut) $('#memberMsg').textContent='Could not read grants. Try again.';
+  }
+}
+async function revokeMember(network,issuer,subject,generation,request){
+  const current=()=>generation===viewGeneration && request===memberRequest && !signingOut && state && $('#memberNet').value===network;
+  if(!current()) return;
+  if(!confirm('Remove account membership for network '+network+'?\nIssuer: '+issuer+'\nSubject: '+subject+'\nThis closes account queries. It does NOT disconnect VPN devices or revoke their credentials.')) return;
+  if(!current()) return;
+  clearMembers();
+  const operation=memberRequest;
+  $('#memberMsg').textContent='Removing membership...';
+  try {
+    const response=await fetch('/admin/api/memberships',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({network_id:network,issuer,subject,allow:false})});
+    if(generation!==viewGeneration || operation!==memberRequest || signingOut || $('#memberNet').value!==network) return;
+    if(response.status===401){ showLogin(); return; }
+    if(!response.ok) throw new Error('revoke failed');
+    await loadMembers();
+  } catch(e){
+    if(generation===viewGeneration && operation===memberRequest && !signingOut) $('#memberMsg').textContent='Could not confirm removal. Inspect grants again before retrying. VPN device connections are separate.';
   }
 }
 $('#memberNet').onchange=clearMembers;
