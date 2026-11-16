@@ -8,7 +8,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 | --- | --- | --- |
 | Published test artifacts | v0.8.2-test.1, source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11; Android 0.8.2/code 14. | [Release](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1). Sixteen assets verified at release. Update CLI and daemon together. |
 | Hosted test control plane | Last verified 2026-11-16 at 07:12 AEDT on `2bb55f4`. | Dated deployment check, not a current availability promise. Free-host ephemeral disk/restart state loss remains a limitation. |
-| Newer verified source | `0aaf471`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43805223887). New source below is not in those downloads or that last verified deployment. |
+| Newer verified source | `efaf16e`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43806151062). New source below is not in those downloads or that last verified deployment. |
 
 ## What is implemented and tested
 
@@ -22,7 +22,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 - Route-only ACL withdrawal/restoration and admin expiry/reapproval block and restore access as expected. Reapproval clears stale approval status/link. Known expiry is enforced locally even if later control polling is blocked; unseen offline admin changes cannot be discovered.
 - `mnet up --reset-routing`, while down, clears saved roles without deleting identity. Ordinary saved-state Up preserves routing. Fresh attempts clear old setup errors, preserving errors raised during the new attempt.
 
-The latest verified [0aaf471 CI](https://github.com/MaisySen/Mnet/actions/runs/43805223887) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 135/128/125. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
+The latest verified [efaf16e CI](https://github.com/MaisySen/Mnet/actions/runs/43806151062) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 141/155/131. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
 
 Exit-node selection/advertising is explicitly rejected before enrollment/device creation. Unsafe dormant host/default-route replacement helpers were removed, not enabled. Exit internet routing remains unsupported.
 
@@ -81,15 +81,16 @@ These checks do not make ephemeral hosting durable. Keep state in a trusted priv
 
 Each run passed all five jobs, including native Windows/macOS and three full kernel fixtures. These are source changes, not deployment changes. See [destination setup](operations.md#control-api-destination), [target handling](operations.md#enrolled-target-changes), [enrollment recovery](operations.md#enrollment-response-and-local-save-recovery) and [diagnostics](operations.md#credential-safe-diagnostics) before changing an installed node.
 
-New source also explicitly rejects responses exceeding the existing 4 MiB control-body limit and keeps body-read failure details out of printed diagnostics. All five jobs passed in [8fb969a CI](https://github.com/MaisySen/Mnet/actions/runs/43802190586), including native Windows/macOS. This is not a fleet-capacity claim. See [response limits](operations.md#response-size-boundary).
+### Response and authorization boundaries
 
-New source prints only HTTP status for rejected control requests, not arbitrary error bodies that can echo credentials. Unauthorized classification survives malformed/oversized bodies; successful-response JSON errors retain a typed cause behind safe printed text. All five jobs passed in [4821002 CI](https://github.com/MaisySen/Mnet/actions/runs/43803217307), including native Windows/macOS. See [remote errors](operations.md#remote-error-diagnostics).
+| Boundary | Verified behavior | Evidence and limits |
+| --- | --- | --- |
+| Response size | Exactly 4 MiB is allowed; oversized responses fail explicitly, not by silent truncation. Body-read failures close the response and keep safe printed errors. | [Size CI](https://github.com/MaisySen/Mnet/actions/runs/43802190586). Existing bound, not a fleet-capacity claim. |
+| Remote errors | Rejected requests print HTTP status, not credential-echoing error bodies. Unauthorized matching survives malformed/oversized replies. JSON causes remain typed behind safe printed text. | [Error CI](https://github.com/MaisySen/Mnet/actions/runs/43803217307). Private server/proxy logs remain separate. |
+| Saved enrollment | Partial/blank credentials or missing server/network refuse startup without changing files or regenerating keys. Fresh unenrolled pairs remain allowed. | [State CI](https://github.com/MaisySen/Mnet/actions/runs/43804190569). Not corruption repair or remote token validation. |
+| Received denial | Map/relay 403 or an unapproved map withdraws old peer access. Status waits for approval; path refresh cannot reinstall peers. A later approved map restores access. | [IPC CI](https://github.com/MaisySen/Mnet/actions/runs/43805223887), [kernel CI](https://github.com/MaisySen/Mnet/actions/runs/43806151062). Cannot infer unseen offline revocation. |
 
-New source refuses incomplete saved enrollment (partial/blank node credentials or missing server/network), without modifying the identity file or regenerating keys. Fresh unenrolled pairs remain allowed. All five jobs passed in [929b744 CI](https://github.com/MaisySen/Mnet/actions/runs/43804190569), including native Windows/macOS. See [saved enrollment](operations.md#incomplete-saved-enrollment).
-
-New source withdraws old peer authorization on received map/relay 403 or an explicitly unapproved map, reports waiting-approval and accepts a later approved map. All five jobs passed in [0aaf471 CI](https://github.com/MaisySen/Mnet/actions/runs/43805223887), including native Windows/macOS actual in-memory WireGuard denial/recovery tests. The full kernel suite is regression coverage, not yet a kernel denial proof. Offline unseen revocation remains unknowable. See [authorization denial](operations.md#received-authorization-denial).
-
-A new disposable kernel fixture directly injects an unapproved test identity across a control-process restart, then requires denial of actual mesh/LAN traffic and recovery after reapproval with unchanged saved identities. Actual kernel CI is pending; do not count the fixture extension as passed yet. No live account is used or changed.
+The denial extension passed three fresh complete Linux kernel fixtures: a stopped disposable control file marks only test node b unapproved; after restart its actual mesh/LAN traffic is denied until authenticated reapproval. Direct access returns with unchanged saved identities before the existing control-off TCP/loss/cleanup tests continue. This is test-only state injection, not a production unapprove API or live account change. See [operations](operations.md) and [native/kernel methods](native-platform-validation.md) for recovery instructions, methods and limits.
 
 ## Important open work
 

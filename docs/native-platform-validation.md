@@ -163,3 +163,7 @@ Partial/blank node credentials or enrolled state without a server/network refuse
 ## Received denial withdrawal (verified IPC source)
 
 All five jobs passed in [0aaf471 CI](https://github.com/MaisySen/Mnet/actions/runs/43805223887), including native Windows/macOS actual in-memory WireGuard withdrawal/path-refresh/recovery tests and three full kernel regression fixtures with 135/128/125 later loss-profile drops. The full fixture did not yet directly inject the new denial case; do not count it as kernel denial proof. Offline unseen revocation remains unknowable.
+
+## Direct kernel received-denial extension (verified fixture)
+
+All five jobs passed in [efaf16e CI](https://github.com/MaisySen/Mnet/actions/runs/43806151062). Three fresh disposable Linux fixtures stopped their control process, marked only test node b unapproved in that stopped private state file and restarted the same endpoint. Each required b waiting for approval with no peers, failed actual b-to-a mesh and a-to-LAN pings, authenticated reapproval, restored direct/LAN access and unchanged saved identities. Each then completed the existing control-off transfer/loss/cleanup suite with 141/155/131 later loss-profile drops. This is direct kernel denial/recovery proof for this bounded fixture, not a production unapprove endpoint, live account edit, offline-unseen-revocation guarantee or physical-device proof.
