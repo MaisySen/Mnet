@@ -24,7 +24,6 @@ import android.view.WindowManager;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import mobile.HostCallbacks;
 import mobile.Node;
@@ -44,8 +43,8 @@ public class HostSessionService extends Service implements HostCallbacks {
     private static final String CHANNEL = "session";
     private static final int NOTIF_ID = 2;
 
-    // Set by HostingActivity.
-    public static final AtomicBoolean autoAccept = new AtomicBoolean(false);
+    public static final String EXTRA_AUTO_ACCEPT = "auto_accept_for_this_host";
+    private volatile boolean autoAccept;
     private static final SessionConsent CONSENT = new SessionConsent();
 
     public static void answerSession(String requestId, boolean accept) {
@@ -101,6 +100,7 @@ public class HostSessionService extends Service implements HostCallbacks {
             }
             startCapture(resultCode, data);
             synchronized (hostLifecycle) {
+                autoAccept = intent.getBooleanExtra(EXTRA_AUTO_ACCEPT, false);
                 running = true;
                 MnetAccessibilityService.setHosting(true);
             }
@@ -239,7 +239,7 @@ public class HostSessionService extends Service implements HostCallbacks {
     @Override
     public boolean acceptSession(String peerNodeName) {
         if (!running) return false;
-        if (autoAccept.get()) {
+        if (autoAccept) {
             log("accepted session from " + peerNodeName + " (auto-accept)");
             return true;
         }
@@ -294,6 +294,7 @@ public class HostSessionService extends Service implements HostCallbacks {
         Node stoppingNode = null;
         synchronized (hostLifecycle) {
             running = false;
+            autoAccept = false;
             MnetAccessibilityService.setHosting(false);
             latestJpeg = null;
             latestSeq = servedSeq = 0;

@@ -20,3 +20,12 @@ assert 'pendingLatch' not in host and 'pendingAnswer' not in host
 for required in ('EXTRA_REQUEST', 'consentPending(requestId)', 'answerSession(requestId, true)', 'answerSession(requestId, false)'):
     assert required in activity, required
 print('PASS Android exact-request consent wiring source checks; no dialog/runtime execution')
+
+assert 'static final AtomicBoolean autoAccept' not in host
+assert 'intent.getBooleanExtra(EXTRA_AUTO_ACCEPT, false)' in host
+assert 'autoAccept = false;' in host
+assert 'HostSessionService.autoAccept' not in activity
+assert 'capturePending && pendingAutoAccept' in activity
+assert 'autoAccept.setChecked(false)' in activity
+assert 'HostSessionService.EXTRA_AUTO_ACCEPT, autoAcceptThisHost' in activity
+print('PASS host-run auto-accept default-false/reset and capture-request snapshot source checks; no consent/UI runtime proof')

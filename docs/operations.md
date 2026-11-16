@@ -547,3 +547,7 @@ Activity source now closes its current viewer and permanently invalidates the at
 ### Session consent request identity (new source)
 
 Each Android host prompt now carries its own request ID. Allow/refuse/cancel affects only that pending request; stale dialogs cannot answer a newer peer and stopped workers cannot clear its prompt. No dialog response still refuses after 60 seconds. Explicit auto-accept behavior is unchanged. JVM/source/Java/dex checks pass locally; real Android dialogs and physical consent/capture remain unverified. Published APK unchanged.
+
+### Auto-accept is per hosting run (new source)
+
+The switch configures the next hosting start only, and resets after the capture-consent result. Default is false and stop clears the run's setting. Changing the switch does not revoke auto-accept for a running host: stop hosting, then start again with the desired setting. Source/Java/dex checks pass; actual Android label/layout, recreation and consent runtime remain unverified. Published APK unchanged.

@@ -23,6 +23,8 @@ public class HostingActivity extends Activity {
 
     private TextView log;
     private Switch autoAccept;
+    private boolean capturePending;
+    private boolean pendingAutoAccept;
 
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override
@@ -70,15 +72,16 @@ public class HostingActivity extends Activity {
         root.addView(accessibility);
 
         autoAccept = new Switch(this);
-        autoAccept.setText("Accept sessions automatically");
-        autoAccept.setOnCheckedChangeListener((b, on) -> HostSessionService.autoAccept.set(on));
+        autoAccept.setText("Auto-accept viewers on next hosting start");
         root.addView(autoAccept);
 
         Button start = new Button(this);
         start.setId(R.id.start_hosting_button);
         start.setText("Start hosting");
         start.setOnClickListener(v -> {
-            HostSessionService.autoAccept.set(autoAccept.isChecked());
+            if (capturePending) return;
+            capturePending = true;
+            pendingAutoAccept = autoAccept.isChecked();
             MediaProjectionManager mpm = getSystemService(MediaProjectionManager.class);
             startActivityForResult(mpm.createScreenCaptureIntent(), 42);
         });
@@ -104,10 +107,16 @@ public class HostingActivity extends Activity {
 
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
-        if (req == 42 && res == RESULT_OK && data != null) {
+        if (req != 42) return;
+        boolean autoAcceptThisHost = capturePending && pendingAutoAccept;
+        capturePending = false;
+        pendingAutoAccept = false;
+        autoAccept.setChecked(false);
+        if (res == RESULT_OK && data != null) {
             Intent svc = new Intent(this, HostSessionService.class);
             svc.putExtra("resultCode", res);
             svc.putExtra("data", data);
+            svc.putExtra(HostSessionService.EXTRA_AUTO_ACCEPT, autoAcceptThisHost);
             if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(svc);
             else startService(svc);
             append("starting screen capture");
