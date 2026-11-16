@@ -39,6 +39,10 @@ the only thing to back up.
 
 New source refuses every HTTP redirect from the daemon control API, including same-origin redirects and requests made with a supplied HTTP client. Configure the final control base URL directly. An HTTP-to-HTTPS or path redirect is an error, not an automatic credential handoff. This protects node credential headers and enrollment/approval credentials in request bodies or URLs. It does not make plaintext HTTP safe; use HTTPS outside isolated local fixtures. Dashboard browser navigation is separate.
 
+## Enrolled target changes
+
+New source binds a saved node credential to its saved server and network selector. Up and mobile Prepare reject a different non-empty server or network before saving configuration or making a request. A trailing server slash is ignored; network names/IDs are compared exactly, so use the same selector used for enrollment rather than switching aliases. Omitted flags reuse the saved target. Renaming a node at that target is separate. For a different target, use a separate private state directory and enroll a new identity; do not delete the existing identity as a workaround. This is not account switching, automatic migration or remote device removal.
+
 ## Nodes
 
 Linux with systemd:

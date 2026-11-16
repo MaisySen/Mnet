@@ -165,6 +165,9 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 	if err := func() error {
 		d.mu.Lock()
 		defer d.mu.Unlock()
+		if err := d.state.validateJoinTarget(server, network); err != nil {
+			return err
+		}
 		if err := d.state.EnsureKey(d.cfg.StateDir); err != nil {
 			return err
 		}

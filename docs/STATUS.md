@@ -74,6 +74,8 @@ These checks do not make ephemeral hosting durable. Keep state in a trusted priv
 
 New source refuses all daemon HTTP control API redirects, including same-origin redirects and supplied HTTP clients. A local two-server race regression covers all five redirect codes and proves the redirect destination receives no request; direct requests still work. Use the final base URL directly. Native/full CI verification is pending. This is not a live incident report or a deployment change. See [operations](operations.md#control-api-destination).
 
+New source also rejects server/network changes for an enrolled saved credential in both Up and mobile Prepare. Local race tests verify rejection before requests or saved-state changes and a retry reaching the original server. Use the saved target or a separate state directory for a new identity. Network selectors compare exactly; this is not account switching or remote migration. Full/native CI is pending. See [target handling](operations.md#enrolled-target-changes).
+
 ## Important open work
 
 - Account/organization ownership, user login and device-management experience beyond the explicit operator membership gate.

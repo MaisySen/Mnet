@@ -82,7 +82,7 @@ jobs:
       - name: native control-state private file and shape checks
         run: go test -race -count=3 -timeout=5m ./internal/control -run 'TestControlState|TestStoreRejectsNullShape|TestOldObjectState'
       - name: native identity persistence and in-memory WireGuard IPC
-        run: go test -race -count=1 -timeout=5m ./internal/daemon -run 'TestPrivateStateAtomicRoundTrip|TestStateRefusesLinkedIdentity|TestStateRejectsBrokenIdentity|TestStateGeneratedIdentityReload|TestIdentityGenerationFailedSave|TestRoutingFailedSave|TestStartupConfigFailedSave|TestStatsReadsActualDeviceIPC|TestParseWireGuardPeerStats'
+        run: go test -race -count=1 -timeout=5m ./internal/daemon -run 'TestPrivateStateAtomicRoundTrip|TestStateRefusesLinkedIdentity|TestStateRejectsBrokenIdentity|TestStateGeneratedIdentityReload|TestIdentityGenerationFailedSave|TestRoutingFailedSave|TestStartupConfigFailedSave|TestEnrolledJoinTarget|TestFreshJoinTarget|TestStatsReadsActualDeviceIPC|TestParseWireGuardPeerStats'
       - name: native local key expiry and daemon restart
         run: go test -race -count=3 -timeout=5m ./internal/daemon -run 'TestApplyMapRejectsExpiredAuthorization|TestLocalExpiryWithoutControlResponse|TestExpiryGuardRenewsAndWakesFromNoDeadline|TestExpiryEqualityAndNoDeadlineCompatibility|TestDaemonExpiryWithBlockedControlAndRestart|TestReapprovedMapRestoresRunningStatus|TestSuccessfulRetryClearsPreviousError|TestUnsupportedRoutingFailsBeforeControlOrDevice|TestPrepareSerializesIdentityAndPublishesStatus|TestDownCancelsBlockedPrepare'
       - name: native OS TCP session and file transfer

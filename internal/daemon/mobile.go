@@ -50,6 +50,9 @@ func (d *Daemon) Prepare(server, network, nodeName, authKey string) (string, err
 	if err := func() error {
 		d.mu.Lock()
 		defer d.mu.Unlock()
+		if err := d.state.validateJoinTarget(server, network); err != nil {
+			return err
+		}
 		if err := d.state.EnsureKey(d.cfg.StateDir); err != nil {
 			return err
 		}

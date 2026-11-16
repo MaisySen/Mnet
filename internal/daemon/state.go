@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"fintex.au/mnet/internal/privatefs"
 	"golang.org/x/crypto/curve25519"
@@ -131,6 +132,19 @@ func (s *State) validateIdentity() error {
 	expected, err := curve25519.X25519(private, curve25519.Basepoint)
 	if err != nil || !bytes.Equal(expected, public) {
 		return fmt.Errorf("saved key pair does not match; identity file was not changed")
+	}
+	return nil
+}
+
+// A saved node credential belongs to its enrolled control target. Passing new
+// startup flags must not disclose it to a different server or silently move a
+// device between networks. A separate state directory is a separate identity.
+func (s *State) validateJoinTarget(server, network string) error {
+	if s.NodeID == "" && s.NodeToken == "" {
+		return nil
+	}
+	if (server != "" && strings.TrimRight(server, "/") != strings.TrimRight(s.Server, "/")) || (network != "" && network != s.Network) {
+		return fmt.Errorf("device is already enrolled with a different server or network; use its saved target or a separate state directory for a new identity")
 	}
 	return nil
 }

@@ -491,3 +491,7 @@ Magic DNS, end-to-end tests green.
 ## Control API redirect refusal (new source)
 
 The daemon HTTP control client no longer follows redirects. A two-server regression reproduced the old behavior forwarding custom node credential headers and, for 307/308, replaying the enrollment body. New local race tests cover 301/302/303/307/308, same-origin/cross-origin destinations, default/supplied clients, zero requests to redirect destinations, preservation of supplied client configuration and successful direct requests. All redirects now fail, so operators must set the final base URL directly. This is a source finding, not evidence of a live attack. CI/native checks are pending; downloads and hosted deployment are unchanged.
+
+## Enrolled target binding (new source)
+
+Up and mobile Prepare now reject server/network changes for an existing saved node credential, before configuration writes or network requests. This prevents startup flags from transferring the old credential to a newly selected control server or silently moving the enrolled device. Local race tests cover both entry points, changed server/network/both, unchanged live/disk identity, no requests to either server on rejection and a retry reaching the original server. Fresh unenrolled state may still select its target; server trailing slashes are equivalent, but network selectors compare exactly. Use a separate state directory for another identity. Full/native CI is pending. No live changes, downloads or remote enrollment migration.
