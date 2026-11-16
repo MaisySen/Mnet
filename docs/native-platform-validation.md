@@ -540,8 +540,17 @@ Only a successfully written nonempty data chunk restarts the incoming file idle 
 
 The empty-frame regression failed before fixing. Empty-frame refusal, partial cleanup and a progressing transfer lasting longer than its configured budget pass20 race repetitions, followed by fresh full-repository race tests. All-five [061eecb CI](https://github.com/MaisySen/Mnet/actions/runs/43956537225) passes. Accelerated net.Pipe fixtures only, not60-second real-network/device evidence. No new bindings, release artifacts or live deployment.
 
-## Idle transfer stream-reset notification (new source, CI pending)
+## Idle transfer stream-reset notification (b77bf55 all-five CI verified)
 
 An incoming file idle expiry now sends a reset on that stream before releasing its local state. The sender sees ErrStreamReset instead of waiting for a later ACK timeout. Peer resets and mux closure do not trigger a reset echo. The reset uses the existing bounded outbound queue; delivery is not guaranteed when the connection is broken or blocked, and this does not add transport cancellation of already queued chunks.
 
-A sender-notification regression failed before the change. Idle/reset/progress tests pass20 race repetitions, followed by fresh full-repository race tests. They also check partial cleanup, stream release and a still-open unrelated mux. These are accelerated net.Pipe fixtures, not60-second real-network or device proof. No fresh bindings, release artifacts or deployment.
+A sender-notification regression failed before the change. Idle/reset/progress tests pass20 race repetitions, followed by fresh full-repository race tests. They also check partial cleanup, stream release and a still-open unrelated mux. These are accelerated net.Pipe fixtures, not60-second real-network or device proof. All five jobs passed in [b77bf55 CI](https://github.com/MaisySen/Mnet/actions/runs/43958595910). Fresh bindings are recorded below; no release artifacts or deployment.
+
+
+## Current Android binding rebuild and full local gates (b77bf55)
+
+Fresh bindings include the session framing, connection ownership and file-idle changes since the earlier b581b89 build. All four JNI libraries were extracted and their ELF architecture classes inspected: armeabi-v7a, arm64-v8a, x86 and x86_64. Minimum Android API is 24. AAR SHA256: `7b088f63c31519ee16161bfc98ad0b8f532849c2f4121824f7bfa8a1600d6827`. Full Android 34 resource generation and application Java compilation, plus min-api-24 dex compilation against this AAR, passed. A fresh framework run passed 60 service/helper and 4 Activity cases with no failures, errors or skips.
+
+The full local gate bundle passed: Go build, Windows/macOS cross-builds, vet, vulnerability scan, fresh full-repository race tests, normal and burst-loss mesh-file stress, source-gate tests and secret scan. All five [b77bf55 CI jobs](https://github.com/MaisySen/Mnet/actions/runs/43958595910) passed. This remains build/simulation/controlled-fixture evidence, not Android installation, JNI loading/execution, physical capture/input, actual Android UI pixels, boot or public-internet soak proof. No APK/AAB signed or published, no hosted deployment and no live device state changed.
+
+Review confirmed a remaining cleanup limit: idle-expiry reset enqueue uses the ordinary blocking outbound queue. If that queue is full because the peer stops reading, local partial-file cleanup can wait past the idle deadline. The current timeout tests do not exercise that backpressure case. The source still needs a bounded/nonblocking termination path; this rebuild does not fix it.
