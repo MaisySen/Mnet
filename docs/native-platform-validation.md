@@ -254,4 +254,8 @@ The device-summary response includes only its authorized session network ID, bes
 
 ## Member context cleanup edges (browser extension)
 
-Local actual Chrome now explicitly checks the network ID is cleared alongside device rows after denied/malformed reads, failed logout and committed logout with a lost response. Missing/null/wrong-type/empty network context rejects rather than producing a signed-in view. These response edges are browser-local; real login/logout and initial session reads remain server-backed. CI pending.
+Local actual Chrome now explicitly checks the network ID is cleared alongside device rows after denied/malformed reads, failed logout and committed logout with a lost response. Missing/null/wrong-type/empty network context rejects rather than producing a signed-in view. These response edges are browser-local; real login/logout and initial session reads remain server-backed. All five jobs passed in [fe97e6c CI](https://github.com/MaisySen/Mnet/actions/runs/43840039637), including actual Chrome and three full kernel regressions with 143/153/155 later loss-profile drops.
+
+## Explicit operator grant form (new source)
+
+New source lets an operator manually enter the exact issuer/subject from trusted provider records, acknowledge that check and review the selected network/principal before sending the existing guarded grant POST. No email/approval autofill or inference. Actual local Chrome checks cancel leaves the server unchanged, missing acknowledgement cannot write, confirmed grant appears in the actual list and private input clears. Local full race/vet checks pass; CI pending. Source fixture only, no live grant.

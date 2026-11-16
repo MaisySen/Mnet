@@ -258,7 +258,11 @@ Show the authenticated session's exact network ID beside its device list and inc
 
 ## Member context cleanup edge checks (fixture extension)
 
-Check network context clears with private rows on denied/malformed responses and uncertain logout, and missing/null/wrong-type/empty network IDs cannot render a signed-in member view. Local actual Chrome passes; CI pending. Edge responses are browser-local fixtures, not a live account change.
+Check network context clears with private rows on denied/malformed responses and uncertain logout, and missing/null/wrong-type/empty network IDs cannot render a signed-in member view. All five jobs passed in [fe97e6c CI](https://github.com/MaisySen/Mnet/actions/runs/43840039637), including actual Chrome and three full kernel regressions with 143/153/155 later loss-profile drops. Edge responses are browser-local fixtures, not a live account change.
+
+## Explicit operator membership grant form (new source)
+
+Manual exact issuer/subject entry from trusted provider records, required acknowledgement and full target confirmation before the existing guarded POST. No email/approval inference. Actual local Chrome checks cancellation, unchecked acknowledgement rejection, confirmed grant/list refresh and cleared private fields. Full local race/vet checks pass; CI pending. No live grant or new operator privilege model.
 
 ## v0.8.2-test.1 - 2026-11-16
 

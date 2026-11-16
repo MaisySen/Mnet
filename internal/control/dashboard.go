@@ -162,8 +162,16 @@ footer{padding:1.5rem;color:#9da7b1;font-size:.8rem}
 </section>
 <section id="membershipSection">
 <h2>Account membership grants</h2>
-<p class="muted">Inspect explicit account access for one network. Private issuer/subject identifiers are not email addresses. This does not list device approval provenance or create grants. Removing membership closes account queries, not VPN device connections.</p>
+<p class="muted">Inspect explicit account access for one network. Private issuer/subject identifiers are not email addresses. This does not list device approval provenance. Removing membership closes account queries, not VPN device connections.</p>
 <p><label>Network <select id="memberNet"></select></label> <button id="memberRead" type="button">Inspect grants</button></p>
+<details id="grantDetails"><summary>Add explicit account membership</summary>
+<p class="muted">Use the exact issuer and subject from your trusted identity-provider records. Do not guess from an email address, name or device approval. This grants read-only account access to that principal's approved devices in the selected network, not operator privileges or device enrollment.</p>
+<form id="memberGrant" class="inline">
+<label>Issuer <input id="grantIssuer" autocomplete="off" required maxlength="2048"></label>
+<label>Subject <input id="grantSubject" autocomplete="off" required maxlength="1024"></label>
+<label class="muted"><input id="grantVerified" type="checkbox" required> I checked this exact principal in trusted identity-provider records.</label>
+<button type="submit">Review membership grant</button>
+</form></details>
 <p id="memberMsg" class="muted" role="status"></p>
 <table id="members"><thead><tr><th>Verified issuer</th><th>Subject</th><th></th></tr></thead><tbody></tbody></table>
 </section>
@@ -185,8 +193,9 @@ const api = async (path, body) => {
   return j;
 };
 let viewGeneration=0, signingOut=false, memberRequest=0;
+function clearGrant(){ $('#grantIssuer').value=''; $('#grantSubject').value=''; $('#grantVerified').checked=false; $('#grantDetails').open=false; }
 function clearMembers(){ memberRequest++; $('#members tbody').replaceChildren(); $('#memberMsg').textContent=''; }
-function showLogin(){ viewGeneration++; clearMembers(); state=null; $('#pw').value=''; $('#login').classList.remove('hidden'); $('#app').classList.add('hidden'); $('#refresh').classList.add('hidden'); $('#logout').classList.add('hidden'); for(const selector of ['#nets tbody','#nodes tbody','#keys tbody','#pending tbody']) $(selector).innerHTML=''; $('#aclText').value=''; for(const selector of ['#keyNet','#aclNet','#memberNet']) $(selector).innerHTML=''; }
+function showLogin(){ viewGeneration++; clearMembers(); clearGrant(); state=null; $('#pw').value=''; $('#login').classList.remove('hidden'); $('#app').classList.add('hidden'); $('#refresh').classList.add('hidden'); $('#logout').classList.add('hidden'); for(const selector of ['#nets tbody','#nodes tbody','#keys tbody','#pending tbody']) $(selector).innerHTML=''; $('#aclText').value=''; for(const selector of ['#keyNet','#aclNet','#memberNet']) $(selector).innerHTML=''; }
 
 function showApp(){ $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); $('#refresh').classList.remove('hidden'); $('#logout').classList.remove('hidden'); }
 function esc(s){ const d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
@@ -226,7 +235,7 @@ function render(){
   const selectedMember=$('#memberNet').value;
   $('#memberNet').innerHTML = $('#keyNet').innerHTML;
   if(nets.some(n=>n.id===selectedMember)) $('#memberNet').value=selectedMember;
-  if($('#memberNet').value!==selectedMember) clearMembers();
+  if($('#memberNet').value!==selectedMember){ clearMembers(); clearGrant(); }
   loadACL();
 }
 async function loadMembers(){
@@ -278,7 +287,27 @@ async function revokeMember(network,issuer,subject,generation,request){
     if(generation===viewGeneration && operation===memberRequest && !signingOut) $('#memberMsg').textContent='Could not confirm removal. Inspect grants again before retrying. VPN device connections are separate.';
   }
 }
-$('#memberNet').onchange=clearMembers;
+$('#memberNet').onchange=()=>{clearMembers();clearGrant();};
+$('#memberGrant').onsubmit=async event=>{
+  event.preventDefault();
+  const generation=viewGeneration, request=memberRequest, network=$('#memberNet').value;
+  const issuer=$('#grantIssuer').value, subject=$('#grantSubject').value;
+  const current=()=>generation===viewGeneration && request===memberRequest && !signingOut && state && $('#memberNet').value===network;
+  if(!current() || !network || !issuer || !subject || !$('#grantVerified').checked) return;
+  if(!confirm('Grant account membership?\nNetwork: '+network+'\nIssuer: '+issuer+'\nSubject: '+subject+'\nOnly continue if this exact principal was verified in trusted identity-provider records. This is not enrollment, operator access or VPN connectivity.')) return;
+  if(!current()) return;
+  clearMembers(); clearGrant(); const operation=memberRequest;
+  $('#memberMsg').textContent='Adding membership...';
+  try{
+    const response=await fetch('/admin/api/memberships',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({network_id:network,issuer,subject,allow:true})});
+    if(generation!==viewGeneration || operation!==memberRequest || signingOut || $('#memberNet').value!==network) return;
+    if(response.status===401){showLogin();return;}
+    if(!response.ok) throw new Error('grant failed');
+    await loadMembers();
+  }catch{
+    if(generation===viewGeneration && operation===memberRequest && !signingOut) $('#memberMsg').textContent='Could not confirm grant. Inspect grants again before retrying.';
+  }
+};
 $('#memberRead').onclick=loadMembers;
 async function loadACL(){
   const generation=viewGeneration;
@@ -307,7 +336,7 @@ $('#loginBtn').onclick = async ()=>{ try{ await api('/admin/api/login',{password
 $('#pw').addEventListener('keydown', e=>{ if(e.key==='Enter') $('#loginBtn').click(); });
 $('#refresh').onclick = load;
 $('#logout').onclick = async ()=>{
-  viewGeneration++; signingOut=true; clearMembers();
+  viewGeneration++; signingOut=true; clearMembers(); clearGrant();
   $('#logout').disabled=true;
   try { await api('/admin/api/logout',{}); showLogin(); $('#loginMsg').textContent='Signed out.'; }
   catch(e){ if(e.message!=='auth') alert('Sign out failed: '+e.message); }
