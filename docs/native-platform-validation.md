@@ -2,6 +2,14 @@
 
 Native CI is a narrower claim than a physical desktop/phone test. Always name the layer that passed.
 
+## Evidence routes
+
+- [Platform matrix](#what-the-platform-matrix-checks) and [remaining platform work](#still-outstanding).
+- [Three-device kernel mesh](#three-device-kernel-mesh), [network isolation](#cross-network-kernel-isolation) and [received-denial kernel recovery](#direct-kernel-received-denial-extension-verified-fixture).
+- [CLI readiness](#cli-readiness-wait-verified-source), [approval timeout](#cli-approval-timeout-kernel-extension-verified-fixture) and [private JSON](#private-machine-readable-cli-status-verified-source).
+- [Account HTTP](#account-http-plumbing-verified-source), [member page](#member-account-page-verified-browser-source) and [two-device summary scope](#two-device-account-summary-scope-verified-browser-extension).
+- [Current result summary](STATUS.md) and [operating procedures](operations.md). The sections below preserve implementation-stage evidence; later extensions may replace an earlier limitation.
+
 ## What the platform matrix checks
 
 - Windows and macOS build every package on a native runner, not only a cross-compiler.
@@ -9,12 +17,12 @@ Native CI is a narrower claim than a physical desktop/phone test. Always name th
 - Private state tests exercise actual file replacement, link rejection and cleanup. Windows tests read the actual security descriptor, require a protected DACL, and reject grants outside the file owner, LocalSystem and local administrators. This is ACL inspection, not an impersonated second-user penetration test.
 - Daemon tests exercise state round trips and WireGuard IPC using an in-memory TUN. Local-expiry regressions cover self/peer deadlines, renewal, stale-map refresh, and repeated Up/Down while later control polls are blocked. They do not create an OS VPN interface.
 - Windows CI also installs a real SCM service in an offline fixture, checks authenticated local API startup, clean stop/restart, forced-process crash recovery and removal. The script refuses to replace an existing service. This does not create a Wintun interface or test VPN reconnection.
-- Linux kernel CI creates two real TUN interfaces in isolated network namespaces, checks assigned addresses and mesh ping, transfers 3 x 4MiB OS TCP payloads normally and 3 x 4MiB under 1% loss plus 20ms delay with sender ACK and receiver hash, asserts direct UDP endpoints, stops the control/relay process before transfers, requires actual nonzero drop counters, then checks interface and mesh-route removal. This is a controlled runner fixture, not physical hardware, the public internet, arbitrary-loss or long-session proof.
+- Linux kernel CI creates independent real TUN interfaces in isolated network namespaces, checks assigned addresses and mesh ping, transfers 3 x 4MiB OS TCP payloads normally and 3 x 4MiB under 1% loss plus 20ms delay with sender ACK and receiver hash, asserts direct UDP endpoints, stops the control/relay process before transfers, requires actual nonzero drop counters, then checks interface and mesh-route removal. This is a controlled runner fixture, not physical hardware, the public internet, arbitrary-loss or long-session proof.
 - Session tests exercise a native loopback TCP connection, screen/input/chat framing and a verified 3MiB file. They also test queued startup and repeated stream cleanup. They do not cross an actual VPN interface or a lossy public network.
 
 Evidence for the combined direct-path check: [c4a1bcd, all five jobs](https://github.com/MaisySen/Mnet/actions/runs/43760903768). Newer source is distinct from published artifacts; see [STATUS](STATUS.md).
 
-Bounded Linux RFC1918 subnet routing: [8fcaf91 CI](https://github.com/MaisySen/Mnet/actions/runs/43764310572) checks an advertised prefix reaches an address on the peer loopback, owned-route cleanup/reinstallation across two saved-state cycles, and preservation of an unrelated underlay route. This is not forwarding through a separate LAN host, exit routing, IPv6 or non-Linux subnet routing.
+Bounded Linux RFC1918 subnet routing: [8fcaf91 CI](https://github.com/MaisySen/Mnet/actions/runs/43764310572) checks an advertised prefix reaches an address on the peer loopback, owned-route cleanup/reinstallation across two saved-state cycles, and preservation of an unrelated underlay route. That earlier revision did not forward through a separate LAN host; the later LAN extension below does. Exit routing, IPv6 and non-Linux subnet routing remain unverified.
 
 Three fresh full fixture runs passed in [2d23b6a CI](https://github.com/MaisySen/Mnet/actions/runs/43765976816), including route-only ACL withdrawal/restoration with peer/unrelated-route preservation and actual drops 135/149/169. This is bounded regression repeatability, not a soak.
 
@@ -203,3 +211,7 @@ All five jobs passed in [fa00aca CI](https://github.com/MaisySen/Mnet/actions/ru
 ## Two-device account summary scope (verified browser extension)
 
 All five jobs passed in [7299060 CI](https://github.com/MaisySen/Mnet/actions/runs/43817883961), including real Chrome signed-provider login with two owned device records and same-email/different-subject, other-network, other-issuer and expired outsiders. Actual JSON plus DOM contain exactly the two owned approved/unexpired summaries despite attempted query widening. Desktop/narrow screenshots were inspected. Full kernel VPN regression fixtures passed with 155/123/147 later loss-profile drops. These are control summaries, not two new physical running VPN devices.
+
+## Operator membership inspection (verified browser/native source)
+
+All five jobs passed in [e25b70d CI](https://github.com/MaisySen/Mnet/actions/runs/43819448319). Real Chrome uses the actual disposable operator login, explicit grant API and exact-network read API, checks HTML-as-text and an empty second network, then holds responses across network selection and logout. Native tests reject currently valid account/node credentials in the operator cookie slot and check empty/missing/unknown network responses. Three full kernel regressions passed with 163/127/153 later loss-profile drops. No live membership was changed. The next response-validation extension adds browser-local failure/malformed/reversed-request cases; its CI is still pending.

@@ -2,6 +2,18 @@
 
 Development only. These setup examples are not production certification. Check [STATUS](STATUS.md) for the source/release/deployment split and [native validation](native-platform-validation.md) before relying on a platform.
 
+## Find the right procedure
+
+| Need | Start here |
+| --- | --- |
+| Check what is actually shipped or verified | [Current status](STATUS.md) |
+| Run the control service or a node | [Control plane](#control-plane), [nodes](#nodes) |
+| Recover enrollment or inspect startup | [Saved enrollment](#incomplete-saved-enrollment), [save recovery](#enrollment-response-and-local-save-recovery), [readiness wait](#bounded-cli-readiness-wait), [private JSON status](#machine-readable-private-status) |
+| Set up read-only member sign-in | [OIDC setup](#sso-login-oidc), [account flow](#account-http-flow), [explicit grants](#operator-membership-management-verified-source) |
+| Inspect explicit account grants | [Private operator inspection](#operator-membership-inspection) |
+| Understand routes or network limits | [Subnet/exit scope](#exit-nodes-and-subnet-routes), [ingress limits](#reverse-proxies-and-admission-limits) |
+| Check test methods and historical results | [Native/kernel validation](native-platform-validation.md), [release history](RELEASES.md) |
+
 ## Control plane
 
 Put mnet-control behind HTTPS with any reverse proxy (Caddy is simplest):
@@ -32,8 +44,7 @@ RestartSec=2
 WantedBy=multi-user.target
 ```
 
-The dashboard is at https://control.example.com/admin. The state file is
-the only thing to back up.
+The dashboard is at https://control.example.com/admin. Back up the private state file and preserve the service configuration and its separately stored secrets. Account/operator sessions are process-local, so they are not restored from the state file. Test restoration before relying on a backup.
 
 ## Control API destination
 
@@ -103,8 +114,8 @@ mnet --state /var/lib/mnet up --server https://control.example.com \
   --network home --auth-key mnet_...
 ```
 
-or leave the key off and approve the device from the dashboard link the
-CLI prints.
+or leave the key off and open the private approval link from authenticated
+`mnet status`. Do not paste that credential-bearing URL into shared logs.
 
 macOS: run mnetd with sudo or a LaunchDaemon. Windows: run mnetd.exe as
 Administrator with wintun.dll next to it. Basic SCM install/start/stop/restart/crash recovery/removal passes on a disposable native runner; actual Wintun/VPN service operation and physical-host verification remain open. Use an explicit
