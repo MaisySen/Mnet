@@ -82,6 +82,11 @@ func readFrame(r io.Reader) (Frame, error) {
 	if _, err := io.ReadFull(r, h[:]); err != nil {
 		return Frame{}, err
 	}
+	// Protocol v1 defines six types, four priority classes and no flags.
+	// Reject unsupported headers before allocating or waiting for payload bytes.
+	if h[4] < msgOpen || h[4] > msgPong || h[5] > PriBulk || binary.BigEndian.Uint16(h[6:8]) != 0 {
+		return Frame{}, fmt.Errorf("session: unsupported frame header")
+	}
 	n := binary.BigEndian.Uint32(h[8:12])
 	if n > maxPayload {
 		return Frame{}, fmt.Errorf("session: frame payload %d exceeds %d", n, maxPayload)
