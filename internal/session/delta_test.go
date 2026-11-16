@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/jpeg"
 	"testing"
+	"time"
 )
 
 func solid(w, h int, c color.RGBA) *image.RGBA {
@@ -201,5 +202,45 @@ func TestCompositeBoundsAggregateTileWork(t *testing.T) {
 	}
 	if _, err := CompositeTiles(solid(128, 128, color.RGBA{A: 255}), tooMany); err == nil {
 		t.Fatal("excess tile count accepted")
+	}
+}
+
+func TestViewerWireMalformedJSONBreaksDeltaChain(t *testing.T) {
+	client, host := pipe(t)
+	defer client.Close()
+	defer host.Close()
+	got := make(chan ScreenFrame, 4)
+	ConnectViewerWithOptions(client, ViewerOptions{OnFrame: func(fr ScreenFrame) { got <- fr }})
+	image := solid(16, 16, color.RGBA{R: 100, A: 255})
+	key := ScreenFrame{Seq: 1, Full: true, Image: jpegBytes(t, image)}
+	if err := host.SendJSON(StreamScreen, PriScreen, key); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-got:
+	case <-time.After(time.Second):
+		t.Fatal("initial frame missing")
+	}
+	if err := host.SendBytes(StreamScreen, PriScreen, []byte(`{"seq":2,"tiles":`)); err != nil {
+		t.Fatal(err)
+	}
+	tiles, err := EncodeTiles(image, []Rect{{W: 8, H: 8}}, 80)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := host.SendJSON(StreamScreen, PriScreen, ScreenFrame{Seq: 3, Tiles: tiles}); err != nil {
+		t.Fatal(err)
+	}
+	key.Seq = 4
+	if err := host.SendJSON(StreamScreen, PriScreen, key); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case fr := <-got:
+		if fr.Seq != 4 {
+			t.Fatalf("delta after malformed JSON used stale base: seq%d", fr.Seq)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("valid keyframe did not recover")
 	}
 }

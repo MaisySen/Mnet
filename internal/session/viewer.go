@@ -107,6 +107,9 @@ func (v *Viewer) screenLoop(s Stream) {
 		}
 		var fr ScreenFrame
 		if err := json.Unmarshal(f.Payload, &fr); err != nil {
+			v.frameMu.Lock()
+			v.base = nil // A missing wire frame breaks the delta chain too.
+			v.frameMu.Unlock()
 			continue
 		}
 		if !v.resolveFrame(&fr) {
