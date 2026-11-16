@@ -331,7 +331,7 @@ Use Darwin default utun, resolve/validate the actual assigned kernel name before
 
 ## Invalid managed macOS interface early refusal (new source, CI pending)
 
-Reject malformed managed utun requests in the constructor before saved identity loading or enrollment. Keep unmanaged mobile/proof and non-Darwin behavior. Repeated local validation race tests/full race/vet/cross-builds pass. Native constructor and actual process tests require no identity/token/socket creation; actual native execution pending.
+Reject malformed managed utun requests in the constructor before saved identity loading or enrollment. Keep unmanaged mobile/proof and non-Darwin behavior. Repeated local validation race tests/full race/vet/cross-builds pass. Native constructor and actual process tests require no identity/token/socket creation; [e1ce7fc CI](https://github.com/MaisySen/Mnet/actions/runs/43868888841) passed new native refusal checks and both valid kernel modes but failed the old offline teardown test due to hardcoded Linux mnet0 on Darwin. Correct that test to the platform default and surface early exits; thirty local race repetitions pass. Corrected native rerun pending, not an all-five success.
 
 ## v0.8.2-test.1 - 2026-11-16
 

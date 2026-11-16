@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"fintex.au/mnet/internal/daemon"
 )
 
 func TestDaemonCleanStopWaitsForLocalAPITeardown(t *testing.T) {
@@ -19,12 +21,16 @@ func TestDaemonCleanStopWaitsForLocalAPITeardown(t *testing.T) {
 		ready := make(chan error, 1)
 		done := make(chan error, 1)
 		stop := make(chan struct{})
-		go func() { done <- runDaemon(options{stateDir: state, ifname: "mnet0", ready: ready}, stop) }()
+		go func() {
+			done <- runDaemon(options{stateDir: state, ifname: daemon.DefaultInterfaceName(), ready: ready}, stop)
+		}()
 		select {
 		case err := <-ready:
 			if err != nil {
 				t.Fatal(err)
 			}
+		case err := <-done:
+			t.Fatalf("daemon exited before readiness: %v", err)
 		case <-time.After(10 * time.Second):
 			t.Fatal("daemon did not become ready")
 		}
