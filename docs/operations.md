@@ -567,3 +567,7 @@ Encoding copies only visible RGBA row bytes, without requiring final-row padding
 ### Android viewer taps (new source)
 
 A completed stationary single-finger tap now emits one host click, not one on down plus another on up. Canceled/multitouch/drag/letterbox gestures are suppressed. Drag/scroll forwarding is not implemented by this change. JVM/source/build checks pass; physical remote-control gesture behavior remains unverified. Published APK unchanged.
+
+### Viewer event simulation
+
+The framework test script also exercises actual ViewerActivity touch dispatch on simulated API24/25/26/33 with a fake Go viewer. API34 Activity creation is excluded for the documented simulation class mismatch. This is not an emulator/device, UI pixel, JNI or real accessibility-input test. Total49 cases pass locally, CI pending.

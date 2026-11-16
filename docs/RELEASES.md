@@ -448,14 +448,21 @@ Forty simulated-framework cases pass locally and in all-five [8c6478e CI](https:
 
 [Android Image.Plane](https://developer.android.com/reference/android/media/Image.Plane) guarantees bytes only through the last pixel, not trailing padding after the final row. A new direct-buffer regression failed on all five simulated APIs before this fix because whole padded-bitmap copying demanded those extra bytes. The encoder now copies visible row bytes into one exact-size frame, skips padding without reading beyond the final pixel and preserves the source buffer position/limit through a duplicate. Exact rows avoid the packing allocation. Arithmetic/remaining-byte validation rejects truncated or unsupported layouts.
 
-Forty-five local framework-simulation cases pass, including omitted final-row padding and a nonzero source-buffer offset. Full Android34 Java/min-api24 dex and source cleanup checks pass. This verifies synthetic buffers/framework simulation, not actual device ImageReader colors, stride variants, crop/orientation or memory-pressure behavior. No real capture pixels were inspected. [44be5db CI](https://github.com/MaisySen/Mnet/actions/runs/43914849207) has four successful jobs including45 simulated cases; native macOS is queued. Published APK/AAB unchanged.
+Forty-five local framework-simulation cases pass, including omitted final-row padding and a nonzero source-buffer offset. Full Android34 Java/min-api24 dex and source cleanup checks pass. This verifies synthetic buffers/framework simulation, not actual device ImageReader colors, stride variants, crop/orientation or memory-pressure behavior. No real capture pixels were inspected. [44be5db CI](https://github.com/MaisySen/Mnet/actions/runs/43914849207) has four successful jobs including45 simulated cases; native macOS was canceled before steps and the run is not all-five verified. Published APK/AAB unchanged.
 
 
-## Android viewer completed taps (new source, CI pending)
+## Android viewer completed taps (4a98e99 all-five CI verified)
 
 The viewer previously translated both finger-down and finger-up into separate clicks, so one tap could activate a host control twice. It now sends one click only on a completed stationary release. Canceled, multi-touch, dragged or letterbox-margin gestures clear the pending tap. A drag that returns to its start is still suppressed. This does not implement drag/scroll/multi-touch forwarding; unsupported gestures must not turn into unintended taps.
 
 Local JVM policy tests pass1000 completed taps with duplicate-up suppression plus cancellation/movement cases. Source checks cover MotionEvent wiring; full Android34 Java/min-api24 dex compiles. No real MotionEvent, accessibility gesture or physical remote-control action is tested here, and no UI layout changes are made. Published APK/AAB unchanged.
+
+
+## Viewer Activity MotionEvent simulation (new tests, CI pending)
+
+The framework harness now copies the actual ViewerActivity/ViewerGate/ViewerTap and uses an explicit fake Go viewer transport. Its real asynchronous connection publication path runs, then simulated MotionEvents pass through the actual screen touch listener. Four local Activity cases on simulated API24/25/26/33 require zero clicks on down, one on up, no duplicate-up/cancel/drag clicks and viewer closure on Activity destruction. Together with45 service/encoder cases,49 pass locally.
+
+API34 Activity creation failed with a Robolectric VirtualDeviceManager listener class mismatch before touch execution, so it is explicitly excluded from this Activity test, not reported as tested. Service/encoder simulation still includes API34. The test uses reflection only to find its screen/gate for inspection, not to replace lifecycle state. No actual UI pixels were inspected, no real accessibility input or JNI runs, and these are not emulator/device tests. The existing physical/UI/capture limits remain. No production source or published artifact changed.
 
 ## v0.8.2-test.1 - 2026-11-16
 

@@ -14,3 +14,7 @@ The real `HostSessionService`, `SessionConsent`, `ProjectionGuard` and `VpnPlatf
 - SDK simulation is not a declaration that the complete application supports those OS versions.
 
 The Maven AAR runtime extraction in the script is limited to the pinned AndroidX monitor1.8.0 and espresso-idling-resource3.7.0 classes jars required by Robolectric. Main app builds and release outputs are untouched.
+
+## Viewer Activity simulation extension
+
+The actual ViewerActivity/ViewerGate/ViewerTap run with a fake Go SessionViewer. Four extra cases on API24/25/26/33 exercise actual Activity async publication, simulated MotionEvents and destruction. API34 Activity creation is excluded because Robolectric4.18 reports a missing VirtualDeviceManager listener class; this is a test-platform gap, not a passing API34 Activity check. Service/encoder tests still include API34. Total49 cases pass locally; CI pending. No actual UI pixels or accessibility injection are checked.

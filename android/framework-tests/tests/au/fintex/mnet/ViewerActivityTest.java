@@ -1,0 +1,42 @@
+package au.fintex.mnet;
+import android.content.Intent;
+import android.view.*;
+import android.widget.ImageView;
+import org.junit.*;
+import org.junit.runner.RunWith;
+import org.robolectric.*;
+import org.robolectric.android.controller.ActivityController;
+import org.robolectric.annotation.Config;
+import static org.junit.Assert.*;
+
+@RunWith(RobolectricTestRunner.class) @Config(manifest=Config.NONE,sdk={24,25,26,33})
+public class ViewerActivityTest {
+ private static void touch(ImageView screen,int action,float x,float y){
+  android.view.MotionEvent e=android.view.MotionEvent.obtain(1,2,action,x,y,0);
+  screen.dispatchTouchEvent(e);e.recycle();
+ }
+ @Test public void completedMotionEventInjectsOnceAndCancelDragDoNot() throws Exception {
+  mobile.SessionViewer viewer=new mobile.SessionViewer();
+  MnetVpnService.node=new mobile.Node(){@Override public mobile.SessionViewer connectSession(String peer,mobile.ViewerCallbacks cb){return viewer;}};
+  ActivityController<ViewerActivity> controller=Robolectric.buildActivity(ViewerActivity.class,new Intent().putExtra("peer_ip","100.64.0.2")).create();
+  try {
+  ViewerActivity activity=controller.get();
+  java.lang.reflect.Field screenField=ViewerActivity.class.getDeclaredField("screen");screenField.setAccessible(true);ImageView screen=(ImageView)screenField.get(activity);screen.layout(0,0,400,400);
+  java.lang.reflect.Field gateField=ViewerActivity.class.getDeclaredField("viewers");gateField.setAccessible(true);
+  @SuppressWarnings("unchecked") ViewerGate<mobile.SessionViewer> gate=(ViewerGate<mobile.SessionViewer>)gateField.get(activity);
+  long publishedBy=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+  while(gate.current()==null&&System.nanoTime()<publishedBy){Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();Thread.sleep(1);}
+  assertSame(viewer,gate.current());
+   touch(screen,MotionEvent.ACTION_DOWN,200,200);assertTrue(viewer.input.isEmpty());
+   touch(screen,MotionEvent.ACTION_UP,200,200);
+   long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+   while(viewer.input.size()<1&&System.nanoTime()<deadline)Thread.sleep(1);
+   assertEquals(1,viewer.input.size());assertTrue(viewer.input.get(0).contains("click"));
+   touch(screen,MotionEvent.ACTION_UP,200,200);
+   touch(screen,MotionEvent.ACTION_DOWN,200,200);touch(screen,MotionEvent.ACTION_CANCEL,200,200);touch(screen,MotionEvent.ACTION_UP,200,200);
+   touch(screen,MotionEvent.ACTION_DOWN,200,200);touch(screen,MotionEvent.ACTION_MOVE,300,300);touch(screen,MotionEvent.ACTION_UP,200,200);
+   Thread.sleep(40);assertEquals(1,viewer.input.size());
+  }finally{controller.destroy();MnetVpnService.node=null;}
+  assertTrue(viewer.closed);
+ }
+}

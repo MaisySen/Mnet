@@ -11,7 +11,7 @@ cp "$ROOT/android/framework-tests/pom.xml" "$OUT/pom.xml"
 mkdir -p "$OUT/src/main/java/au/fintex/mnet" "$OUT/src/test/java" "$OUT/libs"
 cp -R "$ROOT/android/framework-tests/stubs/." "$OUT/src/main/java/"
 cp -R "$ROOT/android/framework-tests/tests/." "$OUT/src/test/java/"
-for source in HostSessionService SessionConsent ProjectionGuard VpnPlatform CaptureEncoder; do
+for source in HostSessionService SessionConsent ProjectionGuard VpnPlatform CaptureEncoder ViewerActivity ViewerGate ViewerTap; do
     cp "$ROOT/android/app/src/main/java/au/fintex/mnet/$source.java" "$OUT/src/main/java/au/fintex/mnet/"
 done
 cd "$OUT"
@@ -29,4 +29,4 @@ for source, name in [
         (output / name).write_bytes(archive.read('classes.jar'))
 PY
 "$MVN" -B -Dmaven.repo.local="$REPO" test
-printf '%s\n' 'PASS selected Android service/helper framework simulation; Go/VPN/accessibility are fakes, no emulator/device/capture/manifest permission enforcement proof'
+printf '%s\n' 'PASS selected Android service/helper/Activity framework simulation; Go/VPN/accessibility/viewer transport are fakes, no emulator/device/capture/manifest permission enforcement proof'
