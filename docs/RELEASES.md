@@ -230,7 +230,7 @@ The service landing page now separates the member account link from operator adm
 
 ## Member response validation (new source)
 
-Validate the complete device-summary list and ID/name/address types before rendering. Malformed/null rows cannot create partial output or false empty success. Local Chrome tests browser-local malformed responses and reversed refresh completion, keeping the latest result. Actual OIDC login and initial device reads stay server-backed. Full race/vet checks pass; CI pending. No live changes.
+Validate the complete device-summary list and ID/name/address types before rendering. Malformed/null rows cannot create partial output or false empty success. Local Chrome tests browser-local malformed responses and reversed refresh completion, keeping the latest result. Actual OIDC login and initial device reads stay server-backed. Full race/vet checks pass. [3089c84 CI](https://github.com/MaisySen/Mnet/actions/runs/43828177972) failed dashboard Chrome startup before the account step, while native/session/kernel jobs passed. A harness-only follow-up retains bounded startup diagnostics, avoids shared-memory dependence and allows 30 seconds for discovery. Both local browser fixtures pass; CI pending. No live changes.
 
 ## v0.8.2-test.1 - 2026-11-16
 

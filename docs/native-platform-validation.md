@@ -223,3 +223,7 @@ The signed-provider account HTTP test now removes membership through the actual 
 ## Member response validation (browser extension)
 
 The member page now validates the entire list and each ID/name/address field before creating a complete row set. Local real Chrome checks malformed/null lists/rows, wrong types and a partly valid response without partial render or false empty success, plus reversed completion of two refreshes. Edge data is browser-local; actual OIDC login/device reads/logout still use the disposable service. Fresh full race/vet checks pass; CI pending.
+
+## Isolated Chrome startup failure and diagnostics
+
+[3089c84 CI](https://github.com/MaisySen/Mnet/actions/runs/43828177972) passed native, session and kernel jobs but failed before the account browser step: the dashboard harness could not discover its isolated Chrome target within 15 seconds. The browser stderr was previously discarded, so the underlying startup cause is not established. New fixture source retains only a bounded 4KiB startup diagnostic tail, avoids shared-memory dependence and allows 30 seconds for target discovery; test assertions and production timeouts are unchanged. Both local browser fixtures pass. Full CI remains pending for the member-response change and harness follow-up.

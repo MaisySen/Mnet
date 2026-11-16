@@ -118,7 +118,7 @@ A signed-provider HTTP extension now checks operator removal against an already 
 
 The landing page now links members to their separate account view and operators to the admin dashboard, with clear enrollment/membership/connectivity limits. The real-Chrome account fixture starts there and follows the member link before signed-provider login. All five jobs passed in [302e0a6 CI](https://github.com/MaisySen/Mnet/actions/runs/43826840257), including the actual-Chrome landing-to-member flow.
 
-New source validates the whole member device-summary list before rendering, rejecting malformed/null/wrong-type rows instead of showing partial output or false empty success. Local Chrome also tests two refreshes completing in reverse order; the latest result wins. These edge responses are browser-local fixtures, while initial signed-provider login and actual device reads remain server-backed. Full local race/vet checks pass; CI pending.
+New source validates the whole member device-summary list before rendering, rejecting malformed/null/wrong-type rows instead of showing partial output or false empty success. Local Chrome also tests two refreshes completing in reverse order; the latest result wins. These edge responses are browser-local fixtures, while initial signed-provider login and actual device reads remain server-backed. Full local race/vet checks pass. Its first CI run failed dashboard Chrome startup before this account step; native/session/kernel jobs passed. A fixture-only startup diagnostic/budget follow-up is pending. See [validation](native-platform-validation.md#isolated-chrome-startup-failure-and-diagnostics).
 
 ## Important open work
 
