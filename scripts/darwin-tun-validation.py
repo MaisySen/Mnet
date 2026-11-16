@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Disposable native root macOS CI: real utun setup/cleanup, not peer VPN proof."""
+import datetime
 import hashlib
 import http.client
 import http.cookiejar
@@ -293,6 +294,22 @@ try:
     assert all(current[k] == v for k, v in identity.items()), 'reapproval changed native identity'
     assert api()['ipv4'] == address and (state / 'local-api-token').read_bytes() == token
     print('PASS received control denial removes actual macOS kernel peers and blocks three fresh TCP connects; reapproval restores bidirectional 4MiB hash/ACK with same identity/IP/token')
+    # Reload the generated job against a known short future key deadline.
+    # Fresh Up must consume this map before we take control/relay offline.
+    run('/bin/launchctl', 'bootout', target)
+    wait_for(stopped, 'native kernel teardown before known-expiry reload')
+    control.terminate()
+    control.wait(timeout=10)
+    snapshot = json.loads(snapshot_path.read_text())
+    expiry = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=45)
+    node = next(n for n in snapshot['nodes'].values() if n['id'] == identity['node_id'])
+    node['key_expiry'] = expiry.isoformat().replace('+00:00', 'Z')
+    snapshot_path.write_text(json.dumps(snapshot))
+    control = start([control_binary, '-listen', '127.0.0.1:' + str(port), '-base-url', base,
+                     '-data', snapshot_path, '-admin-password', 'native-tun-fixture-only'], 'control-known-expiry')
+    wait_for(lambda: urllib.request.urlopen(base + '/healthz', timeout=2).status == 200, 'known-expiry control health')
+    run('/bin/launchctl', 'bootstrap', 'system', str(plist))
+    wait_for(kernel_ready, 'fresh launchd Up consumes known future key expiry')
     def direct():
         transfer()
         peers = api().get('peers', [])
@@ -305,6 +322,22 @@ try:
     for _ in range(3):
         transfer()
     print('PASS actual macOS kernel bidirectional TCP 3 x 4MiB each way hash/ACK with control/relay process stopped; same-host direct UDP fixture only')
+    assert datetime.datetime.now(datetime.timezone.utc) < expiry, 'offline transfer missed known expiry boundary'
+    def locally_expired():
+        value = api()
+        return value['status'] == 'key-expired' and not value.get('peers')
+    wait_for(locally_expired, 'known native key expiry enforced with control/relay offline', 70)
+    assert control.poll() is not None, 'control unexpectedly alive at local expiry'
+    for _ in range(3):
+        try:
+            conn = socket.create_connection((peer['ipv4'], peer['port']), timeout=2)
+        except OSError:
+            continue
+        conn.close()
+        raise RuntimeError('known local expiry left fresh kernel TCP reachable while control offline')
+    current = json.loads((state / 'state.json').read_text())
+    assert all(current[k] == v for k, v in identity.items())
+    print('PASS known future key expiry removes actual macOS kernel peers and blocks three fresh TCP connects while control/relay remains stopped; same saved identity')
     assert (state / 'local-api-token').read_bytes() == token
     run('/bin/launchctl', 'bootout', target)
     wait_for(stopped, 'final launchd utun unload cleanup')

@@ -317,9 +317,13 @@ Add a proof-only userspace WireGuard peer with no OS TCP listener. Native OS TCP
 
 Require 4MiB both ways with both receiver SHA256 ACKs at every recovery stage. Assert a live non-relay endpoint, stop/await disposable control/relay and require three fresh bidirectional TCP transfers without it. All five jobs passed in [e64d449 CI](https://github.com/MaisySen/Mnet/actions/runs/43861794260), including native bidirectional/offline-control transfer logs and three Linux kernel regressions (134/142/133 drops). Same-host hybrid kernel/userspace only, not two kernel hosts/public internet/NAT traversal/long-offline or boot proof.
 
-## macOS received denial and reapproval (fixture extension, CI pending)
+## macOS received denial and reapproval (verified fixture extension)
 
-Force received authorization denial using only a stopped disposable control snapshot. Running kernel daemon must withdraw peers, report waiting-approval and fail three fresh TCP connects. Reapproval must restore bidirectional 4MiB hash/ACK, same identity/IP/API token and no stale approval link. Python/source checks pass; actual native extension pending. Not unseen offline revocation or two physical hosts.
+Force received authorization denial using only a stopped disposable control snapshot. Running kernel daemon must withdraw peers, report waiting-approval and fail three fresh TCP connects. Reapproval must restore bidirectional 4MiB hash/ACK, same identity/IP/API token and no stale approval link. All five jobs passed in [bbb8bb8 CI](https://github.com/MaisySen/Mnet/actions/runs/43863430835), including native denial/reapproval and three Linux kernel regressions (145/127/159 drops). Not unseen offline revocation or two physical hosts.
+
+## macOS known expiry offline enforcement (fixture extension, CI pending)
+
+Fresh generated launchd Up consumes a 45-second future key expiry from its disposable control. Require direct bidirectional traffic before the deadline after control/relay stops, then local key-expired/no peers and three failed fresh TCP connects without control returning or saved identity changes. Python/source checks pass; native execution pending. Not unseen offline revocation, long-duration or two-kernel-host proof.
 
 ## v0.8.2-test.1 - 2026-11-16
 
