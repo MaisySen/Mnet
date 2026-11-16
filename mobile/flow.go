@@ -25,10 +25,16 @@ func (n *Node) StartFlow(flow PacketFlow, server, network, name, authKey string)
 	if flow == nil {
 		return errors.New("nil packet flow")
 	}
-	if err := n.d.SetTUN(newFlowTUN(flow)); err != nil {
+	t := newFlowTUN(flow)
+	if err := n.d.SetTUN(t); err != nil {
+		t.Close()
 		return err
 	}
-	return n.d.Up(server, network, name, authKey)
+	if err := n.d.Up(server, network, name, authKey); err != nil {
+		t.Close()
+		return err
+	}
+	return nil
 }
 
 // flowTUN adapts a PacketFlow to tun.Device, one packet per call.

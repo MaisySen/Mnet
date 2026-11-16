@@ -79,5 +79,9 @@ func (n *Node) Start(tunFD int, server, network, name, authKey string) error {
 		t.Close()
 		return err
 	}
-	return n.d.Up(server, network, name, authKey)
+	if err := n.d.Up(server, network, name, authKey); err != nil {
+		t.Close()
+		return err
+	}
+	return nil
 }

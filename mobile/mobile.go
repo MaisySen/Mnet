@@ -70,3 +70,7 @@ func (n *Node) Stop() {
 func (n *Node) MeshIPv4() string {
 	return n.d.Status().IPv4
 }
+
+// Close permanently disposes this node and cancels current startup. Later
+// Prepare/Start/StartFlow cannot revive it; create a new Node for reconnect.
+func (n *Node) Close() { n.d.Close() }

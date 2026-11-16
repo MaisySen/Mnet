@@ -20,6 +20,9 @@ import (
 func (d *Daemon) SetTUN(t tun.Device) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.closed {
+		return fmt.Errorf("node is closed")
+	}
 	if d.status != "down" {
 		return fmt.Errorf("already %s", d.status)
 	}
@@ -35,6 +38,10 @@ func (d *Daemon) Prepare(server, network, nodeName, authKey string) (string, err
 	d.lifecycleMu.Lock()
 	defer d.lifecycleMu.Unlock()
 	d.mu.Lock()
+	if d.closed {
+		d.mu.Unlock()
+		return "", fmt.Errorf("node is closed")
+	}
 	if d.status != "down" {
 		d.mu.Unlock()
 		return "", fmt.Errorf("already %s", d.status)

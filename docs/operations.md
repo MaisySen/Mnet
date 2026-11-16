@@ -507,3 +507,7 @@ General VPN logs use fixed lifecycle/failure messages; detailed status JSON, con
 ### Android worker ownership (new source)
 
 A canceled worker retains its process-wide startup ticket until it exits. A second connect while it unwinds is refused with a retry-after-exit message rather than sharing the identity concurrently. This is source/JVM-tested behavior, not physical reconnect verification; a stronger cross-language cancellation boundary is still needed for stop just before a blocking Go call. Android JVM config/log policies passed all-five [d4ba818 CI](https://github.com/MaisySen/Mnet/actions/runs/43876328009).
+
+### Permanent mobile disposal (new source)
+
+Use Node.Close when disposing a canceled Android worker; it permanently rejects later startup on that object. Stop/Down remain reusable for callers that intentionally restart the same node. A new node object is required after Close. Android source now uses Close in stop/final cleanup. Fresh arm64 Go binding/full Java compile and repeated local cancellation tests pass; native CI and physical Android runtime remain distinct checks. No new APK/AAB published.

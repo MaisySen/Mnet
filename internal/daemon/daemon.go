@@ -56,6 +56,7 @@ type Daemon struct {
 	mu            sync.Mutex
 	status        string // down, preparing, joining, waiting-approval, up, key-expired
 	interfaceName string // actual kernel TUN name; protected by mu
+	closed        bool   // permanent disposal boundary; protected by mu
 	// joinMu serializes join and rejoin: the control-plane identity
 	// (node id, token, auth key, control client) swaps as one step,
 	// never concurrently from two loops.
@@ -144,6 +145,10 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 	d.lifecycleMu.Lock()
 	defer d.lifecycleMu.Unlock()
 	d.mu.Lock()
+	if d.closed {
+		d.mu.Unlock()
+		return fmt.Errorf("node is closed")
+	}
 	if d.status != "down" {
 		d.mu.Unlock()
 		return fmt.Errorf("already %s", d.status)
@@ -217,6 +222,12 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	d.mu.Lock()
+	if d.closed {
+		d.mu.Unlock()
+		cancel()
+		d.setDown()
+		return fmt.Errorf("node is closed")
+	}
 	d.cancel = cancel
 	d.mu.Unlock()
 
@@ -493,6 +504,16 @@ func (d *Daemon) stopDevice() {
 		d.dns.Close()
 		d.dns = nil
 	}
+}
+
+// Close permanently disposes this node. Unlike Down, later Prepare, Up and
+// tunnel injection cannot revive it. Mark first so a concurrent startup either
+// sees closed before publishing cancellation or is canceled by Down.
+func (d *Daemon) Close() {
+	d.mu.Lock()
+	d.closed = true
+	d.mu.Unlock()
+	d.Down()
 }
 
 // Down tears the mesh down.

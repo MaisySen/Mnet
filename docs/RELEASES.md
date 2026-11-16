@@ -345,9 +345,13 @@ Validate an immutable saved configuration before node creation: refuse missing s
 
 Remove private server/network/IP, full status JSON and exception stacks from general VPN logs. Preserve fixed lifecycle logs and detailed private app status. Source-only log policy regression and full Android34 Java compile pass locally; [d4ba818 CI](https://github.com/MaisySen/Mnet/actions/runs/43876328009) passed all five jobs, including Android policies and kernel regressions140/126/154. Not runtime log capture. Preceding5105980 also completed all five. No new APK/AAB published.
 
-## Android single-worker ownership (new source, CI pending)
+## Android single-worker ownership (verified JVM policy)
 
-Keep a process-wide worker ticket through cancellation until actual exit. Refuse overlapping replacement, check canceled publication/prepare/establish checkpoints, keep local node references and compare shared-node identity on cleanup. Local JVM stale/canceled ownership plus100 x16 contender tests and Android34 Java compile pass. Cross-language cancellation before a blocking Go call remains open; no physical runtime/always-on claim. CI pending, no APK/AAB published.
+Keep a process-wide worker ticket through cancellation until actual exit. Refuse overlapping replacement, check canceled publication/prepare/establish checkpoints, keep local node references and compare shared-node identity on cleanup. Local JVM stale/canceled ownership plus100 x16 contender tests and Android34 Java compile pass. Cross-language cancellation before a blocking Go call remains open; no physical runtime/always-on claim. All five jobs passed in [9c05393 CI](https://github.com/MaisySen/Mnet/actions/runs/43878415619), including JVM worker policy and three Linux regressions154/161/128. No APK/AAB published.
+
+## Permanent node disposal (new source, CI pending)
+
+Add shared/mobile Close that cannot be revived by later Prepare/Up/tunnel injection; recheck disposal before Up context publication. Android worker stop/finally uses Close; rejected mobile start paths close consumed tunnel adapters. Repeated local cancellation/restart/FD tests and fresh arm64 AAR/full Android34 Java compile pass, not published artifacts or physical runtime. Native cancellation CI pending. Stop/Down remain reusable.
 
 ## v0.8.2-test.1 - 2026-11-16
 

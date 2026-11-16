@@ -120,7 +120,7 @@ public class MnetVpnService extends VpnService {
             if (WORKERS.active(run)) stopMesh(msg);
         } finally {
             try {
-                if (localNode != null) localNode.stop();
+                if (localNode != null) localNode.close();
             } finally {
                 synchronized (this) {
                     if (node == localNode) node = null;
@@ -195,7 +195,7 @@ public class MnetVpnService extends VpnService {
             if (sharedNode == stopping) sharedNode = null;
             node = null;
         }
-        if (stopping != null) stopping.stop();
+        if (stopping != null) stopping.close();
         stopForeground(true);
         stopSelf();
         if (lastError != null) {
