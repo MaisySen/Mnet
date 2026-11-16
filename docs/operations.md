@@ -47,6 +47,10 @@ New source binds a saved node credential to its saved server and network selecto
 
 New source refuses a join response without both a non-blank node ID and token, before replacing local identity. A valid remote enrollment can still succeed while saving locally fails, including consuming a one-time key. The running daemon keeps the accepted credential in memory for retry; fix local state storage and retry before restarting. It does not publish the new control client before saving. A successful retry is checked by reload in isolated tests. If the process exits before a successful save, the newly accepted credential can be lost and the server may retain the enrollment: inspect the remote device/key state and use an operator recovery path. Do not assume the enrollment was undone or delete the old identity as a workaround. There is no crash-durable distributed transaction.
 
+## Credential-safe diagnostics
+
+New source hides transport-error text when it could contain a complete credential-bearing request URL. Programmatic error matching is retained, but printed status/logs use a generic transport failure. The approval wait log no longer prints its URL, because OIDC approval links contain a device token. Open the approval link from authenticated local status instead. Keep status/identity files private. This does not scrub historical logs, reverse-proxy URL access logs or external service records, and is not an incident report.
+
 ## Nodes
 
 Linux with systemd:

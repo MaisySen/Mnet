@@ -1,8 +1,10 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"fintex.au/mnet/internal/netmap"
 )
@@ -100,5 +103,46 @@ func TestJoinAcceptedCredentialSaveRetry(t *testing.T) {
 	}
 	if requests.Load() != 2 || d.client() == nil || !reflect.DeepEqual(loaded, d.state) || loaded.PrivateKey != s.PrivateKey {
 		t.Fatal("retry did not durably publish the accepted identity")
+	}
+}
+
+func TestPendingApprovalURLNotLogged(t *testing.T) {
+	var output bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&output)
+	defer log.SetOutput(previous)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(netmap.JoinResponse{NodeID: "pending", NodeToken: "fixture-secret", ApprovalURL: "https://control.example/oidc/start?token=fixture-secret"})
+	}))
+	defer srv.Close()
+	dir := t.TempDir()
+	s := &State{Server: srv.URL, Network: "home"}
+	if err := s.EnsureKey(dir); err != nil {
+		t.Fatal(err)
+	}
+	d, err := New(Config{StateDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- d.join(ctx, "") }()
+	deadline := time.Now().Add(10 * time.Second)
+	for d.Status().Status != "waiting-approval" && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if d.Status().Status != "waiting-approval" {
+		cancel()
+		<-done
+		t.Fatal("approval wait did not start")
+	}
+	if !strings.Contains(d.Status().ApprovalURL, "fixture-secret") {
+		t.Error("local approval action lost its URL")
+	}
+	cancel()
+	<-done
+	if strings.Contains(output.String(), "fixture-secret") || strings.Contains(output.String(), "token=") {
+		t.Fatal("approval credential written to log")
 	}
 }

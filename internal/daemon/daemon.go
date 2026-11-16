@@ -359,7 +359,7 @@ func (d *Daemon) joinLocked(ctx context.Context, authKey string) error {
 	d.status = "waiting-approval"
 	d.approvalURL = resp.ApprovalURL
 	d.mu.Unlock()
-	log.Printf("mnetd: waiting for approval: %s", resp.ApprovalURL)
+	log.Printf("mnetd: waiting for approval; open the approval URL from local status")
 	for {
 		select {
 		case <-ctx.Done():

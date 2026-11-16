@@ -26,6 +26,16 @@ import (
 // The daemon answers it by re-joining.
 var ErrUnauthorized = errors.New("control: unauthorized")
 
+// Transport errors may include the complete request URL and its credential
+// query. Keep the cause available to errors.Is/As without printing it in
+// operator-facing status or logs.
+type transportError struct{ cause error }
+
+func (e transportError) Error() string {
+	return "control: request transport failed (details withheld to protect device credentials)"
+}
+func (e transportError) Unwrap() error { return e.cause }
+
 // Client talks to one control server as one node.
 type Client struct {
 	Base   string // https://control.example.com
@@ -57,7 +67,7 @@ func (c *Client) do(req *http.Request, out any) error {
 	}
 	resp, err := requestClient.Do(req)
 	if err != nil {
-		return err
+		return transportError{cause: err}
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
@@ -157,7 +167,7 @@ func (c *Client) DialRelay(ctx context.Context, selfPubkey string, onPacket func
 		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
 			return nil, ErrUnauthorized
 		}
-		return nil, err
+		return nil, transportError{cause: err}
 	}
 	r := &Relay{ws: ws, done: make(chan struct{})}
 	go func() {

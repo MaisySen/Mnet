@@ -2,6 +2,7 @@ package controlclient
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -107,5 +108,30 @@ func TestJoinRejectsIncompleteCredential(t *testing.T) {
 				t.Fatal("response bytes disclosed in diagnostic")
 			}
 		})
+	}
+}
+
+type failingTransport struct{ err error }
+
+func (f failingTransport) RoundTrip(*http.Request) (*http.Response, error) { return nil, f.err }
+
+func TestTransportFailureDoesNotPrintCredentialURL(t *testing.T) {
+	cause := errors.New("fixture-token deliberately included by transport")
+	c := &Client{Base: "https://control.example", HTTP: &http.Client{Transport: failingTransport{cause}}}
+	_, err := c.JoinStatus(context.Background(), "fixture-node", "fixture-token")
+	if err == nil {
+		t.Fatal("transport failure accepted")
+	}
+	if strings.Contains(err.Error(), "fixture-token") || strings.Contains(err.Error(), "token=") || strings.Contains(err.Error(), "fixture-node") {
+		t.Fatalf("credential appears in printable error: %v", err)
+	}
+	if !errors.Is(err, cause) {
+		t.Fatal("safe error lost programmatic cause")
+	}
+	// Cancellation must remain discoverable without printing its URL wrapper.
+	c.HTTP.Transport = failingTransport{context.Canceled}
+	_, err = c.JoinStatus(context.Background(), "fixture-node", "fixture-token")
+	if !errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "fixture-token") {
+		t.Fatal("cancellation classification or privacy lost")
 	}
 }
