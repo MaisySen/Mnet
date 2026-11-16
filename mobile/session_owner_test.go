@@ -2,6 +2,7 @@ package mobile
 
 import (
 	"fintex.au/mnet/internal/session"
+	"fmt"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -292,4 +293,63 @@ func TestSessionSilentPeerDeadlineAndApprovedRecovery(t *testing.T) {
 	default:
 	}
 	owner.StopSessionHost()
+}
+
+type failingCaptureCallbacks struct{ ownerCallbacks }
+
+func (c *failingCaptureCallbacks) AcceptSession(string) bool { return true }
+func (c *failingCaptureCallbacks) Capture() ([]byte, error) {
+	c.captures.Add(1)
+	return nil, fmt.Errorf("fixture capture failure")
+}
+
+func TestSessionCaptureFailureCleansAndAcceptsNextViewer(t *testing.T) {
+	owner := &Node{}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cb := &failingCaptureCallbacks{}
+	if err := owner.startSessionHost(ln, "fixture", cb); err != nil {
+		t.Fatal(err)
+	}
+	defer owner.StopSessionHost()
+	for attempt := int32(1); attempt <= 2; attempt++ {
+		conn, err := net.DialTimeout("tcp", ln.Addr().String(), time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := conn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+			conn.Close()
+			t.Fatal(err)
+		}
+		m, err := session.Dial(conn, "viewer")
+		if err != nil {
+			t.Fatal(err)
+		}
+		session.ConnectViewer(m)
+		select {
+		case <-m.Closed():
+		case <-time.After(2 * time.Second):
+			m.Close()
+			t.Fatal("capture failure did not end viewer")
+		}
+		deadline := time.Now().Add(time.Second)
+		for {
+			sessMu.Lock()
+			run := hosting
+			ready := run != nil && run.owner == owner && run.active == nil && !run.stopped
+			sessMu.Unlock()
+			if ready && cb.ends.Load() == attempt {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("owner cleanup/end callback missing: ends%d", cb.ends.Load())
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+	if cb.captures.Load() != 2 || cb.ends.Load() != 2 {
+		t.Fatalf("unexpected callbacks: captures%d ends%d", cb.captures.Load(), cb.ends.Load())
+	}
 }

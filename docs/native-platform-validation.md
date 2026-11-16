@@ -632,8 +632,17 @@ Fresh Android bindings include malformed-screen-JSON recovery and screen-loop pi
 The owning session-layer guide now groups current image, handshake, file-idle/reset, stream-release and recording behavior rather than repeating stale chronological pending claims. Exact old measurements remain here as history; STATUS and the newest versioned checks supersede them. No signed APK/AAB, release, deployment or user-device state changed. Build/simulation still does not prove JNI/device/physical capture/input/UI/boot behavior.
 
 
-## Host capture failure ends the session transport (new source, CI pending)
+## Host capture failure ends the session transport (0396795 all-five CI verified)
 
 The host screen loop closes its mux when screen production exits, including ordinary capture errors, delta-capture errors and periodic-keyframe fallback errors. Previously those returns left keepalives running and a viewer connected to a frozen screen. Transport closure ends this session's chat/file traffic too. It does not invoke Stop from the screen worker, which would wait on itself; the existing owner still calls Stop for capture cleanup and worker waits. Recording-only output errors remain nonfatal to hosting.
 
 All three net.Pipe host/viewer failure regressions failed before fixing by leaving the viewer connected. They now observe both transport closures, pass 50 race repetitions and are followed by a fresh full-repository race pass. Capturers are explicit failure fakes; no physical capture failure, device recovery, capture-timeout or reconnect proof is implied. A capture call that blocks forever is not interrupted by this change. All-five [22ed76c CI](https://github.com/MaisySen/Mnet/actions/runs/43979463842) is verified; current bindings remain 351be62, before this host source change. No release, deployment or user-device state changed.
+
+
+## Capture-failure owner cleanup and current bindings (0396795 source)
+
+A new mobile-owner test starts the actual listener/session workflow on OS loopback with explicit callbacks whose capture fails. Two successive viewers each disconnect, receive exactly one session-end callback, clear active state and leave the same listener able to accept the next viewer. It passes 20 race repetitions. This checks Go owner/callback/listener reuse, not Android MediaProjection, JNI, physical capture, UI or reboot.
+
+The full local gate bundle passed with this test addition: build, Windows/macOS cross-builds, vet, vulnerability scan, fresh full race suite, normal/burst mesh-file stress, source-gate tests and secret scan. Fresh 0396795 Android bindings include host capture-failure shutdown on all four ABIs at minimum API 24. Archive/ELF inspection and Android 34 resources/all app Java/min-api-24 dex compilation passed. AAR SHA256: `25ee3d878ff2b37c068c8f80f70c0762ef1ad4a30cd1183a256bac07416b3b80`. Fresh framework simulation passed 64 cases, zero failures/errors/skips. All five [0396795 CI jobs](https://github.com/MaisySen/Mnet/actions/runs/43981179826) passed; the owner-test/documentation revision is not yet CI verified.
+
+No signed/published APK/AAB, deployment or existing user-device state changed. Physical-platform/JNI/capture/input/Android UI/boot gaps remain unchanged.

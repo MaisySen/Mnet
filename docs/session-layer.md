@@ -62,7 +62,7 @@ JPEG frames and 64x64 changed-tile deltas with periodic keyframes are implemente
 
 Capture backends include Android MediaProjection and Linux X11/Wayland paths. X11 proof runs under Xvfb; real GNOME portal/PipeWire and physical mobile capture remain open.
 
-A screen-production failure now ends the host session transport instead of leaving a keepalive-connected frozen screen. That also ends its chat/file traffic; reconnect requires capture to work again. Recording-only output failure remains separate and does not end hosting. This newer source has local full/delta/keyframe-fallback failure coverage, CI pending.
+A screen-production failure now ends the host session transport instead of leaving a keepalive-connected frozen screen. That also ends its chat/file traffic; reconnect requires capture to work again. Recording-only output failure remains separate and does not end hosting. Full/delta/keyframe-fallback failure coverage and all-five CI pass at 0396795. A mobile owner-level callback/listener reuse test passes locally, not physical Android capture proof.
 
 ## Input v1
 
@@ -176,4 +176,4 @@ The first output error stops recording, closes the writer and releases pixels; c
 
 The behavior above is newer source, not a claim about unchanged v0.8.2-test.1 downloads or the last dated hosted deployment. [STATUS](STATUS.md) owns current source/build/release/deployment state. [Native validation](native-platform-validation.md) owns exact regression history, CI URLs and fixture limits, so this guide does not repeat stale per-commit pending/build notes.
 
-At 351be62, all five CI jobs passed. Fresh local full gates and four-ABI Android binding/resource/Java/min-api-24 dex checks passed, plus 64 framework simulation cases. This does not execute JNI, physical capture/input, Android UI pixels, install or boot. No signed APK/AAB or release/deployment followed these checks.
+At 0396795, all five CI jobs passed. Fresh local full gates and four-ABI Android binding/resource/Java/min-api-24 dex checks passed, plus 64 framework simulation cases. This does not execute JNI, physical capture/input, Android UI pixels, install or boot. No signed APK/AAB or release/deployment followed these checks.
