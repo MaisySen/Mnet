@@ -47,3 +47,11 @@ assert 'viewer == null || frameW <= 0 || frameH <= 0' in text
 assert 'frameW = frameH = 0;' in text and 'screen.setImageDrawable(null)' in text
 assert 'if (frameW != bmp.getWidth() || frameH != bmp.getHeight()) taps.cancel();' in text
 print('PASS frame-readiness/reset/resize-cancellation source wiring; no physical frame/input proof')
+
+assert 'inputGeometryInvalid || frameW <= 0 || frameH <= 0' in host
+assert 'captureDisplayW = devW;' in host and 'captureDisplayH = devH;' in host
+assert 'captureRotation = wm.getDefaultDisplay().getRotation();' in host
+assert 'inputGeometryInvalid = false;' in host and 'inputGeometryInvalid = true;' in host
+assert 'dm.widthPixels != captureDisplayW || dm.heightPixels != captureDisplayH' in host
+assert 'wm.getDefaultDisplay().getRotation() != captureRotation' in host
+print('PASS host capture/display mismatch refusal/reset source wiring; no physical rotation/input proof')

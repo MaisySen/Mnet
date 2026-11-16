@@ -18,3 +18,7 @@ The Maven AAR runtime extraction in the script is limited to the pinned AndroidX
 ## Viewer Activity simulation extension
 
 The actual ViewerActivity/ViewerGate/ViewerTap run with a fake Go SessionViewer. Four extra cases on API24/25/26/33 exercise actual Activity async publication, simulated MotionEvents and destruction. New local assertions use encoded synthetic bitmaps through the real frame callback and require no input before a decoded frame, cancellation across frame resize and no stale dimensions/display after disconnect. API34 Activity creation is excluded because Robolectric4.18 reports a missing VirtualDeviceManager listener class; this is a test-platform gap, not a passing API34 Activity check. Service/encoder tests still include API34. Total49 cases passed904a1af CI. New frame-boundary assertions pass locally, CI pending. No actual UI pixels or accessibility injection are checked.
+
+## Host geometry refusal extension
+
+Two new service tests per simulated API24/25/26/33/34 use reflected capture dimensions/rotation with a fake accessibility sink. They verify no forwarding for uninitialized dimensions, changed width/height/rotation and a latched refusal until a new capture setup. The reset in actual capture setup is source-checked, not executed in these tests.59 total cases pass locally, CI pending. Previous49 passed all-five [2420ae9 CI](https://github.com/MaisySen/Mnet/actions/runs/43922014681). No dynamic rotation, actual accessibility input, valid projection or device execution is proven.

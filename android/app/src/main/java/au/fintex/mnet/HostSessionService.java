@@ -61,6 +61,8 @@ public class HostSessionService extends Service implements HostCallbacks {
     private Handler captureHandler;
 
     private int frameW, frameH;
+    private int captureDisplayW, captureDisplayH, captureRotation;
+    private volatile boolean inputGeometryInvalid;
     private volatile byte[] latestJpeg;
     private volatile long latestSeq;
     private volatile long servedSeq;
@@ -146,6 +148,10 @@ public class HostSessionService extends Service implements HostCallbacks {
         DisplayMetrics dm = new DisplayMetrics();
         wm.getDefaultDisplay().getRealMetrics(dm);
         int devW = dm.widthPixels, devH = dm.heightPixels;
+        captureDisplayW = devW;
+        captureDisplayH = devH;
+        captureRotation = wm.getDefaultDisplay().getRotation();
+        inputGeometryInvalid = false;
         int scale = 1;
         while (Math.max(devW, devH) / scale > 1280) {
             scale++;
@@ -213,12 +219,20 @@ public class HostSessionService extends Service implements HostCallbacks {
 
     @Override
     public void inject(String evJson) {
-        if (!running) return;
+        if (!running || inputGeometryInvalid || frameW <= 0 || frameH <= 0) return;
         MnetAccessibilityService svc = MnetAccessibilityService.instance();
         if (svc != null) {
             WindowManager wm = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
             DisplayMetrics dm = new DisplayMetrics();
             wm.getDefaultDisplay().getRealMetrics(dm);
+            // Capture is not reconfigured on rotation/resize yet. Never map
+            // an old capture coordinate system into a different display.
+            if (dm.widthPixels != captureDisplayW || dm.heightPixels != captureDisplayH
+                    || wm.getDefaultDisplay().getRotation() != captureRotation) {
+                inputGeometryInvalid = true;
+                log("display changed; restart hosting to enable remote control");
+                return;
+            }
             float scale = (float) dm.widthPixels / frameW;
             svc.inject(evJson, scale);
         }

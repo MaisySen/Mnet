@@ -2,6 +2,36 @@ package au.fintex.mnet;
 import android.content.*;import android.app.*;import org.junit.*;import org.junit.runner.RunWith;import org.robolectric.*;import org.robolectric.android.controller.ServiceController;import org.robolectric.annotation.Config;import static org.junit.Assert.*;import static org.robolectric.Shadows.shadowOf;
 @RunWith(RobolectricTestRunner.class) @Config(manifest=Config.NONE,sdk={24,25,26,33,34})
 public class ServiceTest{
+ @Test public void captureInputNeedsInitializedFrame() throws Exception {
+  ServiceController<HostSessionService> controller=Robolectric.buildService(HostSessionService.class).create();
+  MnetAccessibilityService sink=new MnetAccessibilityService();MnetAccessibilityService.current=sink;
+  try {
+   setField(controller.get(),"running",true);
+   controller.get().inject("{\"kind\":\"pointer\",\"action\":\"click\",\"x\":0,\"y\":0}");
+   assertEquals("no injection before capture dimensions",0,sink.injections);
+  } finally {controller.destroy();MnetAccessibilityService.current=null;}
+ }
+ @Test public void changedDisplayGeometryCannotInjectOldFrameCoordinates() throws Exception {
+  ServiceController<HostSessionService> controller=Robolectric.buildService(HostSessionService.class).create();
+  MnetAccessibilityService sink=new MnetAccessibilityService();MnetAccessibilityService.current=sink;
+  try {
+   HostSessionService service=controller.get();
+   android.util.DisplayMetrics metrics=new android.util.DisplayMetrics();
+   ((android.view.WindowManager)service.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay().getRealMetrics(metrics);
+   setField(service,"running",true);setField(service,"frameW",metrics.widthPixels);setField(service,"frameH",metrics.heightPixels);
+   setField(service,"captureDisplayW",metrics.widthPixels);setField(service,"captureDisplayH",metrics.heightPixels);
+   setField(service,"captureRotation",((android.view.WindowManager)service.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay().getRotation());
+   service.inject("{}");assertEquals(1,sink.injections);
+   setField(service,"captureDisplayW",metrics.widthPixels+1);
+   service.inject("{}");assertEquals("old frame after display-width change",1,sink.injections);
+   setField(service,"captureDisplayW",metrics.widthPixels);
+   service.inject("{}");assertEquals("geometry refusal stays latched until restart",1,sink.injections);
+   setField(service,"inputGeometryInvalid",false);setField(service,"captureDisplayH",metrics.heightPixels+1);
+   service.inject("{}");assertEquals("old frame after display-height change",1,sink.injections);
+   setField(service,"inputGeometryInvalid",false);setField(service,"captureDisplayH",metrics.heightPixels);
+   setField(service,"captureRotation",-1);service.inject("{}");assertEquals("old frame after rotation",1,sink.injections);
+  } finally {controller.destroy();MnetAccessibilityService.current=null;}
+ }
  @Test public void notificationAndPrivateReceiver(){
   android.app.Application app=RuntimeEnvironment.getApplication();
   Notification n=VpnPlatform.notification(app,"mesh","Mnet").setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("fixture").build();assertNotNull(n);
