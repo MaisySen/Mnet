@@ -73,6 +73,10 @@ New source adds `mnet wait [--timeout 60s]` for scripts that need a daemon Up ob
 
 This observes current state, not completion of a particular Up request: concurrent callers can change the daemon, and an already Up daemon satisfies it. It does not prove peer reachability, a physical boot or background service installation. Default `mnet up` behavior is unchanged.
 
+## Machine-readable private status
+
+New source adds `mnet status --json`, a single JSON object from authenticated local daemon status without human headings. Default human status output is unchanged; unknown status arguments fail. It includes daemon/peer state and may include the private approval URL during enrollment, so do not publish or paste its output into shared logs. It does not include saved private keys, auth keys or node-token fields. The approval URL can itself carry a token; the absence of a token field does not make this output safe to share. Use the same global `--state DIR` as the daemon. This is diagnostics, not proof of peer reachability or readiness of a particular Up request.
+
 ## Nodes
 
 Linux with systemd:

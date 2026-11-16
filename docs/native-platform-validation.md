@@ -171,3 +171,7 @@ All five jobs passed in [efaf16e CI](https://github.com/MaisySen/Mnet/actions/ru
 ## CLI readiness wait (verified source)
 
 All five jobs passed in [7b6e9ad CI](https://github.com/MaisySen/Mnet/actions/runs/43808113962), including native Windows/macOS CLI tests and three full kernel fixtures. Each ran the actual CLI against the authenticated Unix local API, required nonzero wait after intentional forwarding-disabled startup failure, and required success after Up with an address. Each then passed the kernel denial/reapproval and control-off transfer/loss/cleanup tests with 135/138/140 later loss-profile drops. This is current-state readiness, not per-request completion, peer reachability or physical boot proof.
+
+## CLI approval-timeout kernel extension (verified fixture)
+
+All five jobs passed in [e15f818 CI](https://github.com/MaisySen/Mnet/actions/runs/43809073253). In three fresh full kernel fixtures the actual CLI wait timed out during denied authorization, left waiting-approval and saved identity unchanged, then succeeded after reapproval. Each continued through control-off TCP/loss/cleanup with 131/143/123 later loss-profile drops. Timeout is not cancellation or rollback of the daemon.

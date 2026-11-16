@@ -124,7 +124,14 @@ func main() {
 		r.Body.Close()
 		fmt.Println("down")
 	case "status":
-		printStatus(status(hc))
+		asJSON, err := statusJSONRequested(args[1:])
+		must(err)
+		st := status(hc)
+		if asJSON {
+			must(writeJSONStatus(os.Stdout, st))
+		} else {
+			printStatus(st)
+		}
 	case "ip":
 		st := status(hc)
 		if st.IPv4 == "" {
@@ -162,7 +169,7 @@ func usage() {
           Exit routing is unsupported. --reset-routing clears saved routing roles while down.
   mnet down
   mnet wait [--timeout 60s]  (observe current Up state; timeout does not stop startup)
-  mnet status
+  mnet status [--json]  (private local status; may include an approval link)
   mnet ip
   mnet ping <node>
   mnet session connect <peer> [--save-frames DIR] [--send-file PATH]

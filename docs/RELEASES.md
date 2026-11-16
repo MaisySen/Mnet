@@ -530,4 +530,8 @@ The disposable Linux fixture now stops its private control process, marks only i
 
 ## CLI approval-timeout kernel extension (pending fixture)
 
-The kernel fixture now runs the actual wait command during denied authorization, requires nonzero timeout without changing waiting-approval state or saved identity, then requires success after authenticated reapproval. Local syntax/source checks pass; actual extended kernel CI is pending. This keeps timeout separate from cancellation of startup or enrollment.
+The kernel fixture now runs the actual wait command during denied authorization, requires nonzero timeout without changing waiting-approval state or saved identity, then requires success after authenticated reapproval. All five jobs passed in [e15f818 CI](https://github.com/MaisySen/Mnet/actions/runs/43809073253), including three fresh full kernel fixtures with the actual CLI timeout/recovery assertion and 131/143/123 later loss-profile drops. This keeps timeout separate from cancellation of startup or enrollment.
+
+## Machine-readable status (new source)
+
+`mnet status --json` emits one authenticated local status object without human text, preserving the default human output otherwise. Tests cover escaped names, peers, pending approval, standalone JSON decoding, write failures and argument validation. The kernel fixture now parses the actual CLI output and checks readiness fields plus absence of saved secret fields. Native/full CI pending. Status can contain a private token-bearing approval URL, so the output is not a share-safe diagnostic bundle.

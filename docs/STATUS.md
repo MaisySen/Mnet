@@ -8,7 +8,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 | --- | --- | --- |
 | Published test artifacts | v0.8.2-test.1, source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11; Android 0.8.2/code 14. | [Release](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1). Sixteen assets verified at release. Update CLI and daemon together. |
 | Hosted test control plane | Last verified 2026-11-16 at 07:12 AEDT on `2bb55f4`. | Dated deployment check, not a current availability promise. Free-host ephemeral disk/restart state loss remains a limitation. |
-| Newer verified source | `7b6e9ad`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43808113962). New source below is not in those downloads or that last verified deployment. |
+| Newer verified source | `e15f818`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43809073253). New source below is not in those downloads or that last verified deployment. |
 
 ## What is implemented and tested
 
@@ -22,7 +22,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 - Route-only ACL withdrawal/restoration and admin expiry/reapproval block and restore access as expected. Reapproval clears stale approval status/link. Known expiry is enforced locally even if later control polling is blocked; unseen offline admin changes cannot be discovered.
 - `mnet up --reset-routing`, while down, clears saved roles without deleting identity. Ordinary saved-state Up preserves routing. Fresh attempts clear old setup errors, preserving errors raised during the new attempt.
 
-The latest verified [7b6e9ad CI](https://github.com/MaisySen/Mnet/actions/runs/43808113962) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 135/138/140. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
+The latest verified [e15f818 CI](https://github.com/MaisySen/Mnet/actions/runs/43809073253) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 131/143/123. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
 
 Exit-node selection/advertising is explicitly rejected before enrollment/device creation. Unsafe dormant host/default-route replacement helpers were removed, not enabled. Exit internet routing remains unsupported.
 
@@ -94,7 +94,9 @@ The denial extension passed three fresh complete Linux kernel fixtures: a stoppe
 
 New source adds a bounded read-only `mnet wait` CLI command for scripts to observe current daemon Up with an address, rather than treating the asynchronous Up acknowledgement as readiness. Default Up behavior is unchanged; timeout does not stop startup and this is not per-request completion or peer reachability. All five jobs passed in [7b6e9ad CI](https://github.com/MaisySen/Mnet/actions/runs/43808113962), including native CLI tests and actual kernel fixture CLI success/failed-startup checks. See [readiness wait](operations.md#bounded-cli-readiness-wait).
 
-A kernel extension now checks actual CLI timeout during denied authorization leaves daemon status and saved identity unchanged, then succeeds after approval. Extended kernel CI is pending; existing unit and initial kernel wait checks remain verified separately.
+A kernel extension now checks actual CLI timeout during denied authorization leaves daemon status and saved identity unchanged, then succeeds after approval. All five jobs passed in [e15f818 CI](https://github.com/MaisySen/Mnet/actions/runs/43809073253); all three full kernel runs passed that CLI timeout/recovery assertion.
+
+New source adds `mnet status --json` for scripts, with the existing authenticated local fields and no human text. Output can include a private approval URL and must not be published. Local parsing/write/flag regressions pass; actual native/kernel CI is pending. See [private JSON status](operations.md#machine-readable-private-status).
 
 ## Important open work
 

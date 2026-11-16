@@ -230,6 +230,11 @@ print(json.dumps(k))
             cli_ready = run(*ns(x, binary_dir / 'mnet', '--state', state, 'wait', '--timeout', '10s'))
             if not cli_ready.startswith('up: 100.'):
                 raise RuntimeError('CLI wait did not confirm actual daemon readiness')
+            cli_status = json.loads(run(*ns(x, binary_dir / 'mnet', '--state', state, 'status', '--json')))
+            if cli_status.get('status') != 'up' or not cli_status.get('ipv4'):
+                raise RuntimeError('CLI JSON status did not match actual daemon readiness')
+            if any(k in cli_status for k in ['private_key', 'node_token', 'auth_key']):
+                raise RuntimeError('CLI JSON status disclosed saved secret fields')
             if local_api(state).get('last_error'):
                 raise RuntimeError('successful Up retained setup error: ' + local_api(state)['last_error'])
         wait_for(lambda: (s if len(s.get('peers', [])) == 1 else None)
