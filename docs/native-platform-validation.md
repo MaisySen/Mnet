@@ -155,3 +155,7 @@ Control replies beyond the existing 4 MiB limit are explicitly rejected rather t
 ## Remote error boundary (verified source)
 
 Rejected control requests report HTTP status without arbitrary remote error bodies. Unauthorized matching is decided before reading, so malformed/oversized 401 bodies cannot hide the rejoin signal. Typed JSON decode causes remain available behind safe printable text. All five jobs passed in [4821002 CI](https://github.com/MaisySen/Mnet/actions/runs/43803217307), including native Windows/macOS and three full kernel fixtures with 137/119/140 later loss-profile drops. Private server/proxy logs remain separate.
+
+## Incomplete saved enrollment (verified source)
+
+Partial/blank node credentials or enrolled state without a server/network refuse startup without rewriting state or regenerating keys. Complete enrollment reloads and fresh unenrolled pairs remain allowed. All five jobs passed in [929b744 CI](https://github.com/MaisySen/Mnet/actions/runs/43804190569), including native Windows/macOS and three full kernel fixtures with 147/149/143 later loss-profile drops. No repair or remote token validity claim.

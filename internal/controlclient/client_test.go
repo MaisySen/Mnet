@@ -198,7 +198,10 @@ func TestControlStatusDoesNotEchoRemoteBody(t *testing.T) {
 				if (status == 401) != errors.Is(err, ErrUnauthorized) {
 					t.Fatalf("unauthorized classification wrong: %v", err)
 				}
-				if status != 401 && !strings.Contains(err.Error(), fmt.Sprint(status)) {
+				if (status == 403) != errors.Is(err, ErrForbidden) {
+					t.Fatal("forbidden classification wrong")
+				}
+				if status != 401 && status != 403 && !strings.Contains(err.Error(), fmt.Sprint(status)) {
 					t.Fatalf("HTTP status missing: %v", err)
 				}
 			})
@@ -219,5 +222,21 @@ func TestControlDecodeErrorPrivacy(t *testing.T) {
 	var cause *json.UnmarshalTypeError
 	if !errors.As(err, &cause) {
 		t.Fatal("JSON classification lost")
+	}
+}
+
+func TestRelayAuthorizationClassification(t *testing.T) {
+	for _, status := range []int{401, 403} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status) }))
+		c := &Client{Base: srv.URL, NodeID: "fixture-id", Token: "fixture-token"}
+		_, err := c.DialRelay(context.Background(), "", func(string, []byte) {})
+		srv.Close()
+		want := ErrUnauthorized
+		if status == 403 {
+			want = ErrForbidden
+		}
+		if !errors.Is(err, want) {
+			t.Fatalf("relay authorization classification lost: %v", err)
+		}
 	}
 }

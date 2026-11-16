@@ -205,6 +205,20 @@ func (st *peerTrack) currentEndpoint() string {
 }
 
 // mapLoop long polls the control plane for new maps.
+// A received authorization denial must withdraw the old dataplane map,
+// not preserve it as though only connectivity had failed.
+func (d *Daemon) denyMap(m *netmap.Map) {
+	denied := *m
+	denied.Self.Approved = false
+	denied.Peers = nil
+	d.applyMap(&denied)
+	d.mu.Lock()
+	if d.status == "up" {
+		d.status = "waiting-approval"
+	}
+	d.mu.Unlock()
+}
+
 func (d *Daemon) mapLoop(ctx context.Context) {
 	for {
 		var since int64
@@ -216,10 +230,15 @@ func (d *Daemon) mapLoop(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
+			if errors.Is(err, controlclient.ErrForbidden) {
+				d.denyMap(&netmap.Map{})
+				waitContext(ctx, 2*time.Second)
+				continue
+			}
 			if errors.Is(err, controlclient.ErrUnauthorized) {
 				// Revocation must stop existing dataplane authorization before
 				// waiting for a fresh join/approval.
-				d.applyMap(&netmap.Map{})
+				d.denyMap(&netmap.Map{})
 				d.rejoin(ctx)
 				continue
 			}
@@ -228,6 +247,8 @@ func (d *Daemon) mapLoop(ctx context.Context) {
 		}
 		if m.Self.Approved {
 			d.applyMap(m)
+		} else {
+			d.denyMap(m)
 		}
 	}
 }
@@ -428,10 +449,15 @@ func (d *Daemon) relayLoop(ctx context.Context) {
 		}
 		r, err := d.client().DialRelay(ctx, d.state.PublicKey, d.bind.Inject)
 		if err != nil {
+			if errors.Is(err, controlclient.ErrForbidden) {
+				d.denyMap(&netmap.Map{})
+				waitContext(ctx, 3*time.Second)
+				continue
+			}
 			if errors.Is(err, controlclient.ErrUnauthorized) {
 				// Revocation must stop existing dataplane authorization before
 				// waiting for a fresh join/approval.
-				d.applyMap(&netmap.Map{})
+				d.denyMap(&netmap.Map{})
 				d.rejoin(ctx)
 				continue
 			}

@@ -26,6 +26,9 @@ import (
 // The daemon answers it by re-joining.
 var ErrUnauthorized = errors.New("control: unauthorized")
 
+// ErrForbidden is an authenticated request denied by current authorization.
+var ErrForbidden = errors.New("control: forbidden")
+
 // Transport errors may include the complete request URL and its credential
 // query. Keep the cause available to errors.Is/As without printing it in
 // operator-facing status or logs.
@@ -83,6 +86,9 @@ func (c *Client) do(req *http.Request, out any) error {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		if resp.StatusCode == http.StatusUnauthorized {
 			return ErrUnauthorized
+		}
+		if resp.StatusCode == http.StatusForbidden {
+			return ErrForbidden
 		}
 		return fmt.Errorf("control: http %d", resp.StatusCode)
 	}
@@ -176,6 +182,9 @@ func (c *Client) DialRelay(ctx context.Context, selfPubkey string, onPacket func
 	if err != nil {
 		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
 			return nil, ErrUnauthorized
+		}
+		if resp != nil && resp.StatusCode == http.StatusForbidden {
+			return nil, ErrForbidden
 		}
 		return nil, transportError{cause: err}
 	}

@@ -63,6 +63,10 @@ New source reports the HTTP status for rejected control requests without printin
 
 New source refuses existing enrollment state with only a node ID or token, whitespace-only credentials, or credentials without a saved server/network. It does not generate a replacement identity, erase the original file or treat that state as a fresh install. Keep the original private file and recover a complete backup/operator enrollment record. Fresh key pairs without any node credential remain valid before their first enrollment. This validates presence, not server reachability or the remote validity of the token.
 
+## Received authorization denial
+
+New source withdraws the previous peer map when a map/relay request returns 403 or a successful map explicitly marks this node unapproved. It reports waiting-approval rather than leaving a stale connected state, and path refresh cannot reinstall those withdrawn peers. A later approved map can restore access. A 401 also withdraws authorization before rejoin. Transient transport errors still keep the last received authorization subject to its known expiry. This cannot learn an admin change while every control/relay request is blocked, and does not promise immediate offline revocation.
+
 ## Nodes
 
 Linux with systemd:
