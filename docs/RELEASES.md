@@ -270,7 +270,11 @@ Actual local Chrome checks network-context invalidation prevents a grant after c
 
 ## Reviewed account setup/removal browser journey (fixture extension)
 
-Start without membership, create it through the reviewed operator form, follow the landing member link, complete signed-provider login and verify two owned summaries. Remove the grant through the actual operator UI, require 401 for the active member query and a cleared sign-in page. Local Chrome/full race/vet pass; CI pending. Disposable records only, no live grant or physical-device proof.
+Start without membership, create it through the reviewed operator form, follow the landing member link, complete signed-provider login and verify two owned summaries. Remove the grant through the actual operator UI, require 401 for the active member query and a cleared sign-in page. All five jobs passed in [5e6e406 CI](https://github.com/MaisySen/Mnet/actions/runs/43844911937), including the actual journey and three full kernel regressions with 149/131/174 later loss-profile drops. Disposable records only, no live grant or physical-device proof.
+
+## Read-only Linux saved-state service unit (new source)
+
+Add `mnetd -service print-unit` on Linux: generate only a reviewed systemd unit from a stable executable path, explicit dedicated absolute state directory and literal interface name. Reject unsafe expansion/paths and enrollment/secret/routing/session overrides; no install/enable/start or identity writes. Local repeated generator tests, actual CLI output plus `systemd-analyze verify`, full race/vet and cross-builds pass; CI pending. Not boot/reboot or actual systemd VPN proof.
 
 ## v0.8.2-test.1 - 2026-11-16
 
