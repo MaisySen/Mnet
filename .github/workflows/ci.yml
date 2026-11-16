@@ -49,10 +49,14 @@ jobs:
           javac -d "$RUNNER_TEMP/mnet-android-policy" android/app/src/main/java/au/fintex/mnet/VpnStartupConfig.java android/tests/au/fintex/mnet/VpnStartupConfigTest.java android/app/src/main/java/au/fintex/mnet/VpnWorkerGate.java android/tests/au/fintex/mnet/VpnWorkerGateTest.java
           java -cp "$RUNNER_TEMP/mnet-android-policy" au.fintex.mnet.VpnStartupConfigTest
           java -cp "$RUNNER_TEMP/mnet-android-policy" au.fintex.mnet.VpnWorkerGateTest
+          javac -d "$RUNNER_TEMP/mnet-android-policy" android/app/src/main/java/au/fintex/mnet/ViewerGate.java android/tests/au/fintex/mnet/ViewerGateTest.java
+          java -cp "$RUNNER_TEMP/mnet-android-policy" au.fintex.mnet.ViewerGateTest
       - name: Android API compatibility matrix (JVM fakes and source only)
         run: python3 scripts/test-android-api-compat.py
       - name: Android projection stop policy (JVM fakes and source only)
         run: python3 scripts/test-android-projection.py
+      - name: Android viewer lifecycle wiring (source only)
+        run: python3 scripts/check-android-viewer-lifecycle.py
       - name: Android VPN fixed-log policy (source checks only)
         run: python3 scripts/check-android-vpn-logs.py
       - name: source gate regression tests

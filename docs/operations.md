@@ -536,6 +536,10 @@ Refusing a viewer or receiving a malformed peer handshake should close that conn
 
 Accepted mobile-host connections get15 seconds for their hello and then70 seconds for consent/reply transport I/O. The active-session deadline is cleared after approval. Timeout closes the peer, not the listener. The existing Android consent prompt waits60 seconds; arbitrary blocked callbacks cannot be forcibly interrupted. Local short-deadline loopback/race tests pass, native extension pending. Public-internet load and physical Android are unverified.
 
-### Mobile viewer stop (new source)
+### Mobile viewer stop (verified native in-memory transport)
 
 Node Stop/Close now close their pending and active viewer transports. Close refuses future viewer publication. TCP dial remains bounded by its existing10-second timeout; after connect the reply window is70 seconds, cleared on acceptance. Failure closes the transport. Local in-memory transport/race tests and fresh Android arm64 build checks pass; native viewer extension and actual Android Activity/reconnect lifecycle remain unverified. Published APK unchanged.
+
+### Leaving the Android viewer (new source)
+
+Activity source now closes its current viewer and permanently invalidates the attempt on destruction. Late connection results are closed, stale callbacks ignored and reconnect timers deduplicated. An in-flight connect can wait for the Go handshake deadline before returning; Activity destruction alone does not interrupt that call. Local JVM/source/Java/dex checks pass; Android runtime and physical reconnect remain unverified. Published APK unchanged.

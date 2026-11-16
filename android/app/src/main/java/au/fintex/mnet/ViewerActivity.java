@@ -19,12 +19,12 @@ import mobile.ViewerCallbacks;
 
 // ViewerActivity is the viewing side of a session: it renders the
 // peer's screen, turns touches into pointer events, and carries chat.
-public class ViewerActivity extends Activity implements ViewerCallbacks {
+public class ViewerActivity extends Activity {
 
     private ImageView screen;
     private TextView chat;
     private EditText chatIn;
-    private SessionViewer viewer;
+    private final ViewerGate<SessionViewer> viewers = new ViewerGate<>();
     private volatile int frameW = 1, frameH = 1;
 
     @Override
@@ -61,6 +61,7 @@ public class ViewerActivity extends Activity implements ViewerCallbacks {
         send.setText("Send");
         send.setOnClickListener(v -> {
             String t = chatIn.getText().toString().trim();
+            SessionViewer viewer = viewers.current();
             if (!t.isEmpty() && viewer != null) {
                 new Thread(() -> {
                     try {
@@ -76,6 +77,7 @@ public class ViewerActivity extends Activity implements ViewerCallbacks {
         setContentView(root);
 
         screen.setOnTouchListener((v, ev) -> {
+            SessionViewer viewer = viewers.current();
             if (viewer == null) {
                 return true;
             }
@@ -129,79 +131,100 @@ public class ViewerActivity extends Activity implements ViewerCallbacks {
     private volatile boolean userClosed;
     private int retryMs = 1000;
 
+    private boolean retryPending;
+    private final Runnable retryTask = () -> {
+        retryPending = false;
+        connectWithRetry();
+    };
+
+    // State transitions and queued callbacks run on the main thread.
     private void connectWithRetry() {
+        if (userClosed || isFinishing()) return;
+        ViewerGate.Ticket attempt = viewers.begin();
+        if (attempt == null) return;
         new Thread(() -> {
             Node node = MnetVpnService.currentNode();
             if (node == null) {
-                appendChat("connect the mesh first");
+                reconnects.post(() -> failed(attempt, "connect the mesh first"));
                 return;
             }
             try {
-                viewer = node.connectSession(peerIp, this);
-                retryMs = 1000;
-                appendChat("connected to " + peerIp);
+                SessionViewer connected = node.connectSession(peerIp, callbacks(attempt));
+                reconnects.post(() -> {
+                    if (!viewers.publish(attempt, connected)) {
+                        closeViewer(connected);
+                        return;
+                    }
+                    retryMs = 1000;
+                    appendChat("connected to " + peerIp);
+                });
             } catch (Exception e) {
-                appendChat("connect failed: " + e.getMessage());
-                scheduleReconnect();
+                reconnects.post(() -> failed(attempt, "connection failed"));
             }
         }, "session-connect").start();
     }
 
-    private void scheduleReconnect() {
-        if (userClosed || isFinishing()) {
-            return;
-        }
-        appendChat("reconnecting in " + (retryMs / 1000) + "s...");
-        reconnects.postDelayed(this::connectWithRetry, retryMs);
-        retryMs = Math.min(retryMs * 2, 15000);
-    }
-
-    @Override
-    public void onFrame(byte[] jpeg) {
-        if (jpeg == null || jpeg.length == 0) {
-            return;
-        }
-        android.graphics.Bitmap bmp = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length);
-        if (bmp == null) {
-            return;
-        }
-        frameW = bmp.getWidth();
-        frameH = bmp.getHeight();
-        runOnUiThread(() -> screen.setImageBitmap(bmp));
-    }
-
-    @Override
-    public void onChat(String msgJson) {
-        try {
-            JSONObject m = new JSONObject(msgJson);
-            appendChat(m.optString("from") + ": " + m.optString("text"));
-        } catch (Exception ignored) {
-        }
-    }
-
-    @Override
-    public void onClosed() {
-        if (userClosed) {
-            return;
-        }
-        appendChat("connection lost");
+    private void failed(ViewerGate.Ticket attempt, String message) {
+        if (!viewers.active(attempt)) return;
+        closeViewer(viewers.end(attempt));
+        appendChat(message);
         scheduleReconnect();
     }
 
+    private void scheduleReconnect() {
+        if (userClosed || isFinishing() || retryPending) return;
+        retryPending = true;
+        appendChat("reconnecting in " + (retryMs / 1000) + "s...");
+        reconnects.postDelayed(retryTask, retryMs);
+        retryMs = Math.min(retryMs * 2, 15000);
+    }
+
+    private ViewerCallbacks callbacks(ViewerGate.Ticket attempt) {
+        return new ViewerCallbacks() {
+            @Override
+            public void onFrame(byte[] jpeg) {
+                if (!viewers.active(attempt) || jpeg == null || jpeg.length == 0) return;
+                android.graphics.Bitmap bmp = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length);
+                if (bmp == null) return;
+                reconnects.post(() -> {
+                    if (!viewers.active(attempt)) return;
+                    frameW = bmp.getWidth();
+                    frameH = bmp.getHeight();
+                    screen.setImageBitmap(bmp);
+                });
+            }
+            @Override
+            public void onChat(String json) {
+                reconnects.post(() -> {
+                    if (!viewers.active(attempt)) return;
+                    try {
+                        JSONObject m = new JSONObject(json);
+                        appendChat(m.optString("from") + ": " + m.optString("text"));
+                    } catch (Exception ignored) { }
+                });
+            }
+            @Override
+            public void onClosed() {
+                reconnects.post(() -> failed(attempt, "connection lost"));
+            }
+        };
+    }
+
+    private static void closeViewer(SessionViewer viewer) {
+        if (viewer != null) {
+            try { viewer.close(); } catch (Exception ignored) { }
+        }
+    }
+
     private void appendChat(String s) {
-        runOnUiThread(() -> chat.append(s + "\n"));
+        runOnUiThread(() -> { if (!userClosed) chat.append(s + "\n"); });
     }
 
     @Override
     protected void onDestroy() {
         userClosed = true;
-        reconnects.removeCallbacksAndMessages(null);
-        if (viewer != null) {
-            try {
-                viewer.close();
-            } catch (Exception ignored) {
-            }
-        }
+        reconnects.removeCallbacks(retryTask);
+        closeViewer(viewers.close());
         super.onDestroy();
     }
 }
