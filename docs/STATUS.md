@@ -38,12 +38,10 @@ Exit-node selection/advertising is explicitly rejected before enrollment/device 
 
 Same-network multi-device connectivity is verified. A single login owning/managing all devices is not finished.
 
-- Verified OIDC issuer/subject is stored as private approval provenance, separately from display email. Historical email-only labels remain unknown; principals are not added to peer maps. An internal own-device query returns only approved, unexpired summaries for an exact network + issuer + subject. Explicit membership is required by its gated entry point; approval alone never grants membership. There is no HTTP account-device query, self-service account login or owner/admin role model. [Provenance CI](https://github.com/MaisySen/Mnet/actions/runs/43780929040), [signed callback CI](https://github.com/MaisySen/Mnet/actions/runs/43781793743), [query CI](https://github.com/MaisySen/Mnet/actions/runs/43782589045), [membership CI](https://github.com/MaisySen/Mnet/actions/runs/43783449695).
+- Verified OIDC issuer/subject is stored as private approval provenance, separately from display email. Historical email-only labels remain unknown; principals are not added to peer maps. An internal own-device query returns only approved, unexpired summaries for an exact network + issuer + subject. Explicit membership is required by its gated entry point; approval alone never grants membership. The separate authenticated account query/login is described below; owner/admin roles remain unfinished. [Provenance CI](https://github.com/MaisySen/Mnet/actions/runs/43780929040), [signed callback CI](https://github.com/MaisySen/Mnet/actions/runs/43781793743), [query CI](https://github.com/MaisySen/Mnet/actions/runs/43782589045), [membership CI](https://github.com/MaisySen/Mnet/actions/runs/43783449695).
 - `POST /admin/api/memberships` lets an authenticated operator explicitly grant/revoke an exact principal. A strict 4KiB body requires network/issuer/subject and an explicit boolean decision. The target principal is not caller authentication and must not be guessed from email. Persistence rollback and snapshot/audit non-disclosure are tested. Revocation closes this account-query gate only, not device credentials or mesh traffic. [Endpoint CI](https://github.com/MaisySen/Mnet/actions/runs/43784350674).
-- Login and every admin mutation require JSON plus configured same-origin browser checks. State/metrics use GET, ACL uses GET/PUT, other mutations use POST only. Headerless non-browser JSON scripts remain supported. HTTPS admin cookies are Secure, HttpOnly and SameSite=Lax. [Admin request guard CI](https://github.com/MaisySen/Mnet/actions/runs/43785399011).
+- Login and every admin mutation require JSON plus configured same-origin browser checks. State/metrics and membership inspection use GET, ACL uses GET/PUT, mutations use POST only. Headerless non-browser JSON scripts remain supported. HTTPS admin cookies are Secure, HttpOnly and SameSite=Lax. [Admin request guard CI](https://github.com/MaisySen/Mnet/actions/runs/43785399011).
 - Pending OIDC state is capped at 1,024 entries, reclaims expired entries and rejects full capacity without evicting live flows. States bind the starting provider, expire at equality and are one-use. Wrong methods cannot allocate/consume state. [OIDC state CI](https://github.com/MaisySen/Mnet/actions/runs/43786272564).
-
-
 - Admin sessions are capped at 1,024 entries, reclaim expired entries, rotate an existing token on successful re-login and support server-side logout. Old tokens stop working. Sessions are process-local and disappear on restart; logout does not revoke device credentials or mesh traffic. [Session CI](https://github.com/MaisySen/Mnet/actions/runs/43787156366).
 
 See [product scope](product-scope.md) for the account/device/startup target and platform gaps. The shared architecture blueprint is reference, not an adopted stack, budget or migration plan.
@@ -114,7 +112,7 @@ New source lets an authenticated operator GET explicit membership grants for one
 
 ## Important open work
 
-- Account/organization ownership, user login and device-management experience beyond the explicit operator membership gate.
+- Account/organization ownership, enrollment and device management beyond the read-only member login and explicit operator membership gate.
 - Wider subnet/firewall compatibility, non-Linux/IPv6/public subnet OS routes and owned exit routing.
 - Real Windows Wintun/macOS VPN, second-user access, physical capture/input/permissions, mobile and actual OS boot/reboot.
 - Larger/cancelled transfers, long sessions, sleep/wake, sustained churn and fleet/relay capacity.
