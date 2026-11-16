@@ -418,18 +418,23 @@ The old process-global pending answer/latch let a stale dialog answer a later pe
 Local JVM tests cover overlapping-prompt refusal, stale dialog/stop/worker isolation, exact first answer, timeout and 1000 concurrent answer/cancel races. Source checks require ID wiring at every dialog answer and owner-scoped cancellation; full Android34 Java/min-api24 dex compilation passes against current-Go arm64 bindings. [e86a1bc CI](https://github.com/MaisySen/Mnet/actions/runs/43901980153) has four successful jobs; native macOS was canceled before any steps/log and the run is not all-five verified. This does not execute an Android dialog, verify user identity or establish physical capture/consent behavior. A missing UI still times out closed after 60 seconds. No new APK/AAB published.
 
 
-## Android host-run auto-accept scope (new source, CI pending)
+## Android host-run auto-accept scope (verified source/build policy)
 
 Auto-accept was a process-global flag, which could remain true after a host run and disagree with a newly created unchecked switch. It is now an instance setting defaulting false, carried only by the explicit start intent and cleared on stop. HostingActivity snapshots the switch when requesting screen consent, prevents overlapping capture requests and resets it after the result. A recreated Activity without that pending snapshot defaults false. The switch now says "Auto-accept viewers on next hosting start"; changing it does not change an already running host. Use Stop hosting to revoke the current run, then start again with the desired setting.
 
-Source checks require default-false intent handling, stop/reset and request snapshot wiring. Full Android34 Java/min-api24 dex compilation and existing JVM consent/viewer/projection policies pass. This extension's auto-accept wiring has source coverage, not its own executed Activity/service test. The changed switch label/layout is not inspected in an actual Android UI. Physical consent, rotation/recreation, live UI and capture remain unverified. No APK/AAB published.
+Source checks require default-false intent handling, stop/reset and request snapshot wiring. Full Android34 Java/min-api24 dex compilation and existing JVM consent/viewer/projection policies pass. All five jobs passed in [aa728e6 CI](https://github.com/MaisySen/Mnet/actions/runs/43904383406). At that revision the auto-accept wiring had source coverage, not its own executed Activity/service test. The changed switch label/layout is not inspected in an actual Android UI. Physical consent, rotation/recreation, live UI and capture remain unverified. No APK/AAB published.
 
 
-## Selected Android service framework simulation (new tests, CI pending)
+## Selected Android service framework simulation (verified20 cases,30-case extension pending)
 
-A repeatable Maven/Robolectric4.18 harness now executes the real selected HostSessionService/SessionConsent/ProjectionGuard/VpnPlatform Java sources on simulated API24/25/26/33/34. Twenty local cases pass: notification/channel construction plus receiver registration, non-sticky restart/stop, invalid capture-consent setup cleanup and an actual service consent wait canceled by stop. CI is extended to run the same script; dependencies are pinned and temporary test sources are copied from the current checkout rather than maintained duplicates.
+A repeatable Maven/Robolectric4.18 harness now executes the real selected HostSessionService/SessionConsent/ProjectionGuard/VpnPlatform Java sources on simulated API24/25/26/33/34. Twenty cases passed locally and in all-five [e2d03a6 CI](https://github.com/MaisySen/Mnet/actions/runs/43907146698): notification/channel construction plus receiver registration, non-sticky restart/stop, invalid capture-consent setup cleanup and an actual service consent wait canceled by stop. CI runs the same script; dependencies are pinned and temporary test sources are copied from the current checkout rather than maintained duplicates.
 
 This is framework simulation, not an Android emulator/device. Go Node, VPN entry and accessibility are explicit fakes; manifest processing is disabled. It does not prove real signature-permission enforcement, valid projection capture, Go JNI teardown, Activity dialogs/pixels, auto-accept UI flow, rotation, always-on or physical boot. The auto-accept label/layout remains visually unverified in Android. See [harness setup and exact limits](../android/framework-tests/README.md). No production source, APK/AAB or live service is changed by this test harness.
+
+
+## Service consent framework extension (new tests, CI pending)
+
+The same framework simulation now passes30 local cases. Two added tests per API execute actual host service consent broadcasts and answers: refusing one request then trying its old ID against a new peer leaves the second pending until its own ID is allowed; auto-accept is instance-local and service stop clears it. These tests use reflected running/auto-accept state to isolate the service logic. They do not execute the Activity switch, valid projection start or system consent flow, and are not visual checks. Existing fake Go/VPN/accessibility and disabled-manifest limits still apply. No production source or published artifact changed.
 
 ## v0.8.2-test.1 - 2026-11-16
 

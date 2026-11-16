@@ -554,4 +554,4 @@ The switch configures the next hosting start only, and resets after the capture-
 
 ### Selected Android framework check
 
-Run `sh scripts/test-android-framework.sh` with JDK17, Python3 and Maven. It runs20 selected service/helper cases across five simulated API levels with Go/VPN/accessibility fakes and no manifest. This is not an emulator/device, live VPN, valid capture, permission-enforcement or UI proof. See [harness limits](../android/framework-tests/README.md).
+Run `sh scripts/test-android-framework.sh` with JDK17, Python3 and Maven. It runs30 selected service/helper cases across five simulated API levels with Go/VPN/accessibility fakes and no manifest. Original20 cases passed e2d03a6 CI;10 added service consent cases pass locally and await CI. This is not an emulator/device, live VPN, valid capture, permission-enforcement or UI proof. See [harness limits](../android/framework-tests/README.md).

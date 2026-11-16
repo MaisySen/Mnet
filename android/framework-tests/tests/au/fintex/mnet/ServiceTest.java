@@ -32,6 +32,46 @@ public class ServiceTest{
    assertFalse(MnetAccessibilityService.hosting);
   } finally {worker.shutdownNow();c.destroy();}
  }
+ private static void setField(HostSessionService service,String field,Object value) throws Exception {
+  java.lang.reflect.Field f=HostSessionService.class.getDeclaredField(field);f.setAccessible(true);f.set(service,value);
+ }
+ private static String awaitRequest(int earlier) throws Exception {
+  long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(2);
+  while(System.nanoTime()<deadline){
+   java.util.List<Intent> events=shadowOf(RuntimeEnvironment.getApplication()).getBroadcastIntents();
+   for(int i=earlier;i<events.size();i++)if(HostSessionService.ACTION_ASK.equals(events.get(i).getAction()))return events.get(i).getStringExtra(HostSessionService.EXTRA_REQUEST);
+   Thread.sleep(1);
+  }
+  throw new AssertionError("consent request not broadcast");
+ }
+ @Test public void exactServiceConsentCannotReuseOldDialog() throws Exception {
+  ServiceController<HostSessionService> c=Robolectric.buildService(HostSessionService.class).create();HostSessionService service=c.get();
+  setField(service,"running",true);
+  java.util.concurrent.ExecutorService worker=java.util.concurrent.Executors.newSingleThreadExecutor();
+  try {
+   int before=shadowOf(RuntimeEnvironment.getApplication()).getBroadcastIntents().size();
+   java.util.concurrent.Future<Boolean> first=worker.submit(()->service.acceptSession("first"));
+   String firstId=awaitRequest(before);assertTrue(HostSessionService.consentPending(firstId));
+   HostSessionService.answerSession(firstId,false);assertFalse(first.get(1,java.util.concurrent.TimeUnit.SECONDS));
+   before=shadowOf(RuntimeEnvironment.getApplication()).getBroadcastIntents().size();
+   java.util.concurrent.Future<Boolean> second=worker.submit(()->service.acceptSession("second"));
+   String secondId=awaitRequest(before);assertNotEquals(firstId,secondId);
+   HostSessionService.answerSession(firstId,true);assertTrue(HostSessionService.consentPending(secondId));assertFalse(second.isDone());
+   HostSessionService.answerSession(secondId,true);assertTrue(second.get(1,java.util.concurrent.TimeUnit.SECONDS));
+  }finally{worker.shutdownNow();c.destroy();}
+ }
+ @Test public void autoAcceptIsInstanceLocalAndStopClearsIt() throws Exception {
+  ServiceController<HostSessionService> old=Robolectric.buildService(HostSessionService.class).create();
+  ServiceController<HostSessionService> fresh=Robolectric.buildService(HostSessionService.class).create();
+  try {
+   setField(old.get(),"running",true);setField(old.get(),"autoAccept",true);
+   assertTrue(old.get().acceptSession("auto"));
+   java.lang.reflect.Field option=HostSessionService.class.getDeclaredField("autoAccept");option.setAccessible(true);
+   assertFalse(option.getBoolean(fresh.get()));
+   old.get().onStartCommand(new Intent().setAction("stop"),0,1);
+   assertFalse(option.getBoolean(old.get()));assertFalse(old.get().acceptSession("stopped"));
+  }finally{old.destroy();fresh.destroy();}
+ }
  @Test public void stopAndProcessRestartStayNonSticky(){
   ServiceController<HostSessionService> c=Robolectric.buildService(HostSessionService.class).create();HostSessionService s=c.get();
   assertEquals(Service.START_NOT_STICKY,s.onStartCommand(null,0,1));
