@@ -30,12 +30,20 @@ var (
 	ErrBadName      = errors.New("invalid name")
 )
 
+// ApprovalIdentity is provenance from a verified OIDC login, not network
+// ownership or an authorization grant. It never goes into peer maps.
+type ApprovalIdentity struct {
+	Issuer  string `json:"issuer"`
+	Subject string `json:"subject"`
+}
+
 type storeData struct {
-	Networks   map[string]*netmap.Network `json:"networks"`
-	Nodes      map[string]*netmap.Node    `json:"nodes"`
-	AuthKeys   map[string]*netmap.AuthKey `json:"auth_keys"`
-	NodeTokens map[string]string          `json:"node_tokens"`
-	NextIP     map[string]int             `json:"next_ip"` // network ID -> host part offset
+	ApprovalIdentities map[string]ApprovalIdentity `json:"approval_identities,omitempty"`
+	Networks           map[string]*netmap.Network  `json:"networks"`
+	Nodes              map[string]*netmap.Node     `json:"nodes"`
+	AuthKeys           map[string]*netmap.AuthKey  `json:"auth_keys"`
+	NodeTokens         map[string]string           `json:"node_tokens"`
+	NextIP             map[string]int              `json:"next_ip"` // network ID -> host part offset
 }
 
 // Store is the whole control-plane state, persisted as one JSON file.
@@ -611,13 +619,31 @@ func (s *Store) SetACL(networkID string, pol *netmap.ACLPolicy) error {
 // ApproveNodeAs marks a node approved and records the SSO identity
 // behind the approval.
 func (s *Store) ApproveNodeAs(nodeID, user string) error {
-	return s.approveNode(nodeID, &user)
+	return s.approveNode(nodeID, &user, nil)
 }
 
 // ApproveNode marks a pending node approved.
-func (s *Store) ApproveNode(nodeID string) error { return s.approveNode(nodeID, nil) }
+func (s *Store) ApproveNode(nodeID string) error { return s.approveNode(nodeID, nil, nil) }
 
-func (s *Store) approveNode(nodeID string, user *string) error {
+// ApproveNodeIdentity records an issuer-bound subject only after verified
+// authentication. Display email remains a label, never the account key.
+func (s *Store) ApproveNodeIdentity(nodeID, user, issuer, subject string) error {
+	if issuer == "" || subject == "" {
+		return fmt.Errorf("verified issuer and subject required")
+	}
+	return s.approveNode(nodeID, &user, &ApprovalIdentity{Issuer: issuer, Subject: subject})
+}
+
+// NodeApprovalIdentity returns a value copy for internal account groundwork.
+// Absence in old stores stays unknown: never infer a principal from email.
+func (s *Store) NodeApprovalIdentity(nodeID string) (ApprovalIdentity, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	identity, ok := s.data.ApprovalIdentities[nodeID]
+	return identity, ok
+}
+
+func (s *Store) approveNode(nodeID string, user *string, identity *ApprovalIdentity) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	n := s.data.Nodes[nodeID]
@@ -625,11 +651,30 @@ func (s *Store) approveNode(nodeID string, user *string) error {
 		return ErrNotFound
 	}
 	oldApproved, oldUser := n.Approved, n.User
+	oldIdentity, hadIdentity := s.data.ApprovalIdentities[nodeID]
+	identityMapWasNil := s.data.ApprovalIdentities == nil
 	n.Approved = true
 	if user != nil {
 		n.User = *user
 	}
-	if err := s.commitLocked(func() { n.Approved = oldApproved; n.User = oldUser }); err != nil {
+	if identity != nil {
+		if s.data.ApprovalIdentities == nil {
+			s.data.ApprovalIdentities = map[string]ApprovalIdentity{}
+		}
+		s.data.ApprovalIdentities[nodeID] = *identity
+	}
+	if err := s.commitLocked(func() {
+		n.Approved = oldApproved
+		n.User = oldUser
+		if hadIdentity {
+			s.data.ApprovalIdentities[nodeID] = oldIdentity
+		} else {
+			delete(s.data.ApprovalIdentities, nodeID)
+		}
+		if identityMapWasNil {
+			s.data.ApprovalIdentities = nil
+		}
+	}); err != nil {
 		return err
 	}
 	s.bumpLocked(n.NetworkID)
@@ -645,9 +690,17 @@ func (s *Store) DeleteNode(nodeID string) error {
 		return ErrNotFound
 	}
 	token := s.data.NodeTokens[nodeID]
+	identity, hadIdentity := s.data.ApprovalIdentities[nodeID]
+	delete(s.data.ApprovalIdentities, nodeID)
 	delete(s.data.Nodes, nodeID)
 	delete(s.data.NodeTokens, nodeID)
-	if err := s.commitLocked(func() { s.data.Nodes[nodeID] = n; s.data.NodeTokens[nodeID] = token }); err != nil {
+	if err := s.commitLocked(func() {
+		s.data.Nodes[nodeID] = n
+		s.data.NodeTokens[nodeID] = token
+		if hadIdentity {
+			s.data.ApprovalIdentities[nodeID] = identity
+		}
+	}); err != nil {
 		return err
 	}
 	s.relayIndex = nil

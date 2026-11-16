@@ -12,7 +12,7 @@ import (
 )
 
 func TestFailedPersistenceDoesNotChangeLiveState(t *testing.T) {
-	for _, operation := range []string{"network", "join", "approve", "approve-as", "expire", "endpoints", "acl", "delete-node", "create-key", "delete-key"} {
+	for _, operation := range []string{"network", "join", "approve", "approve-as", "approve-identity", "expire", "endpoints", "acl", "delete-node", "create-key", "delete-key"} {
 		t.Run(operation, func(t *testing.T) {
 			s, err := Open(filepath.Join(t.TempDir(), "state.json"))
 			if err != nil {
@@ -45,6 +45,8 @@ func TestFailedPersistenceDoesNotChangeLiveState(t *testing.T) {
 				err = s.ApproveNode(first.NodeID)
 			case "approve-as":
 				err = s.ApproveNodeAs(first.NodeID, "fixture-user")
+			case "approve-identity":
+				err = s.ApproveNodeIdentity(first.NodeID, "display@example.invalid", "https://issuer.invalid", "verified-subject")
 			case "expire":
 				err = s.ExpireNode(first.NodeID)
 			case "endpoints":

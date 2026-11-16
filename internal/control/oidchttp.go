@@ -88,7 +88,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	if user == "" {
 		user = claims.Subject
 	}
-	if err := s.store.ApproveNodeAs(st.NodeID, user); err != nil {
+	if err := s.store.ApproveNodeIdentity(st.NodeID, user, p.cfg.Issuer, claims.Subject); err != nil {
 		writeErr(w, http.StatusNotFound, err.Error())
 		return
 	}
