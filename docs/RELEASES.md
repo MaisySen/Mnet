@@ -305,9 +305,13 @@ Extend the stable private no-follow regular-file flock guard from Linux to macOS
 
 One fresh real utun node against a disposable loopback control plane: assert assigned kernel address/MTU/mesh route, authenticated Up, Down/Up, saved-state process restart and final interface/route/socket cleanup. Absent interface and no preexisting mesh-range route required; defaults unchanged. All five jobs passed in [310bf59 CI](https://github.com/MaisySen/Mnet/actions/runs/43856374974), including explicit native kernel setup/teardown and three full Linux kernel regressions (135/137/143 loss-profile drops). Not peer VPN traffic, actual two-host networking or OS reboot proof.
 
-## Enrolled macOS launchd kernel lifecycle (fixture extension, CI pending)
+## Enrolled macOS launchd kernel lifecycle (verified fixture extension)
 
-Extend real single-node utun validation through the generated saved-state launchd job: bootstrap, forced-crash automatic recovery/new PID, unload/reload, stable kernel address/MTU/route/node/key/token/IP and final job/process/socket/interface/route teardown. No persistent host installation/enablement. Strengthen fixture preflight to refuse all parsed overlapping non-default IPv4 mesh routes. Python/source checks pass locally; native execution pending. No encrypted peer traffic or OS boot/reboot claim.
+Extend real single-node utun validation through the generated saved-state launchd job: bootstrap, forced-crash automatic recovery/new PID, unload/reload, stable kernel address/MTU/route/node/key/token/IP and final job/process/socket/interface/route teardown. No persistent host installation/enablement. Strengthen fixture preflight to refuse all parsed overlapping non-default IPv4 mesh routes. All five jobs passed in [3960f8b CI](https://github.com/MaisySen/Mnet/actions/runs/43858139526), including native kernel/launchd recovery and three Linux kernel regressions (172/124/148 drops). No encrypted peer traffic or OS boot/reboot claim.
+
+## macOS kernel peer TCP (fixture extension, CI pending)
+
+Add a proof-only userspace WireGuard peer with no OS TCP listener. Native OS TCP through real utun must deliver 4MiB with receiver SHA256 ACK initially and after Down/Up, saved process restart and launchd bootstrap/crash/reload. Same-host hybrid fixture only; no two-kernel-host/public-internet/physical-boot or direct/offline-control claim. Local protocol race/source checks pass; native execution pending.
 
 ## v0.8.2-test.1 - 2026-11-16
 

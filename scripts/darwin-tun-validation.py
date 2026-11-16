@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Disposable native root macOS CI: real utun setup/cleanup, not peer VPN proof."""
+import hashlib
 import http.client
 import http.cookiejar
 import ipaddress
@@ -20,6 +21,7 @@ if sys.platform != 'darwin' or os.geteuid() != 0 or os.environ.get('GITHUB_ACTIO
     raise RuntimeError('requires root on a disposable native GitHub Actions macOS runner')
 binary = Path(sys.argv[1]).resolve()
 control_binary = Path(sys.argv[2]).resolve()
+peer_binary = Path(sys.argv[3]).resolve()
 root = Path(tempfile.mkdtemp(prefix='mnet-tun-', dir='/private/tmp'))
 state = root / 'state'
 processes, logs = [], []
@@ -42,10 +44,10 @@ def wait_for(fn, what, seconds=40):
         time.sleep(.1)
     raise RuntimeError('timeout: ' + what)
 
-def start(args, label):
+def start(args, label, env=None):
     log = (root / (label + '.log')).open('w')
     logs.append(log)
-    p = subprocess.Popen(list(map(str, args)), stdout=log, stderr=subprocess.STDOUT)
+    p = subprocess.Popen(list(map(str, args)), stdout=log, stderr=subprocess.STDOUT, env=env)
     processes.append(p)
     return p
 
@@ -132,11 +134,39 @@ try:
     saved = json.loads((state / 'state.json').read_text())
     identity = {k: saved[k] for k in ['node_id', 'public_key', 'node_token']}
     print('PASS actual macOS kernel utun address/MTU/mesh route and authenticated Up; single node, not peer traffic')
+    peer_config = root / 'peer-config.json'
+    peer_config.write_text(json.dumps({'Server': base, 'Network': 'native-utun', 'Key': key, 'Root': str(root)}))
+    os.chmod(peer_config, 0o600)
+    start([peer_binary, '-test.run=^TestNativeKernelPeerFixture$', '-test.timeout=5m'], 'userspace-peer',
+          {**os.environ, 'MNET_NATIVE_PEER_CONFIG': str(peer_config)})
+    def peer_ready():
+        path = root / 'peer-ready.json'
+        return json.loads(path.read_text()) if path.exists() else None
+    peer = wait_for(peer_ready, 'proof-only userspace encrypted peer listener')
+    assert peer['ipv4'] != address
+    wait_for(lambda: len(api().get('peers', [])) == 1, 'native kernel device sees the userspace peer')
+    payload = bytes(range(256)) * (4 * 1024 * 1024 // 256)
+    digest = hashlib.sha256(payload).digest()
+    def transfer():
+        with socket.create_connection((peer['ipv4'], peer['port']), timeout=5) as conn:
+            conn.settimeout(30)
+            conn.sendall(payload)
+            received = b''
+            while len(received) < 32:
+                chunk = conn.recv(32 - len(received))
+                if not chunk:
+                    break
+                received += chunk
+            assert received == digest, 'encrypted peer receiver hash ACK mismatch'
+        return True
+    wait_for(transfer, 'native OS TCP over actual utun to encrypted userspace peer', 60)
+    print('PASS actual macOS kernel utun OS TCP 4MiB receiver SHA256 ACK to proof-only userspace WireGuard peer; same host, not two-kernel-host proof')
     api('down', {})
     wait_for(lambda: name not in interfaces(), 'utun removed after Down')
     assert 'interface: ' + name not in route_for_mesh(), 'mesh route survived Down'
     api('up', {})
     wait_for(up, 'saved-state utun Up')
+    wait_for(transfer, 'kernel peer TCP after Down/Up', 60)
     daemon.terminate()
     assert daemon.wait(timeout=15) == 0, 'daemon clean stop failed'
     wait_for(lambda: name not in interfaces(), 'utun removed after process stop')
@@ -144,6 +174,7 @@ try:
     daemon = start([binary, '-state', state, '-ifname', name, '-up'], 'restarted')
     status = wait_for(up, 'fresh process saved-state automatic utun Up')
     assert status['ipv4'] == address
+    wait_for(transfer, 'kernel peer TCP after saved process restart', 60)
     saved = json.loads((state / 'state.json').read_text())
     assert all(saved[k] == v for k, v in identity.items()), 'saved native device identity changed'
     assert 'interface: ' + name in route_for_mesh()
@@ -192,6 +223,7 @@ try:
     launchd_attempted = True
     run('/bin/launchctl', 'bootstrap', 'system', str(plist))
     wait_for(kernel_ready, 'launchd saved-state actual kernel utun Up')
+    wait_for(transfer, 'kernel peer TCP after launchd bootstrap', 60)
     first = wait_for(pid, 'launchd enrolled daemon PID')
     assert (state / 'local-api-token').read_bytes() == token
     print('PASS actual launchd generated job restores saved one-node kernel utun address/MTU/route and identity')
@@ -199,11 +231,14 @@ try:
     wait_for(lambda: (p if p and p != first else None) if (p := pid()) else None,
              'launchd utun forced-crash recovery new PID', 60)
     wait_for(kernel_ready, 'launchd crash recovery actual kernel utun Up')
+    wait_for(transfer, 'kernel peer TCP after launchd forced-crash recovery', 60)
     assert (state / 'local-api-token').read_bytes() == token
     run('/bin/launchctl', 'bootout', target)
     wait_for(stopped, 'launchd utun unload process/socket/interface/route cleanup')
     run('/bin/launchctl', 'bootstrap', 'system', str(plist))
     wait_for(kernel_ready, 'launchd reload actual kernel utun Up')
+    wait_for(transfer, 'kernel peer TCP after launchd reload', 60)
+    print('PASS actual macOS utun OS TCP 4MiB hash/ACK restored after Down/Up, saved process restart and launchd bootstrap/crash/reload against same-host proof peer')
     assert (state / 'local-api-token').read_bytes() == token
     run('/bin/launchctl', 'bootout', target)
     wait_for(stopped, 'final launchd utun unload cleanup')
