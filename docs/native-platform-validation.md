@@ -159,3 +159,7 @@ Rejected control requests report HTTP status without arbitrary remote error bodi
 ## Incomplete saved enrollment (verified source)
 
 Partial/blank node credentials or enrolled state without a server/network refuse startup without rewriting state or regenerating keys. Complete enrollment reloads and fresh unenrolled pairs remain allowed. All five jobs passed in [929b744 CI](https://github.com/MaisySen/Mnet/actions/runs/43804190569), including native Windows/macOS and three full kernel fixtures with 147/149/143 later loss-profile drops. No repair or remote token validity claim.
+
+## Received denial withdrawal (verified IPC source)
+
+All five jobs passed in [0aaf471 CI](https://github.com/MaisySen/Mnet/actions/runs/43805223887), including native Windows/macOS actual in-memory WireGuard withdrawal/path-refresh/recovery tests and three full kernel regression fixtures with 135/128/125 later loss-profile drops. The full fixture did not yet directly inject the new denial case; do not count it as kernel denial proof. Offline unseen revocation remains unknowable.

@@ -445,6 +445,49 @@ else:
         wait_for(both_direct, 'direct paths after expiry and reapproval', timeout=40)
         wait_for(lan_reachable, 'LAN forwarding after route restoration', timeout=30)
         print('PASS admin expiry removes peer/subnet route and blocks reachability until reapproval', flush=True)
+        # Directly exercise a received 403 on a real running kernel VPN.
+        # Only this disposable fixture's stopped private control file changes;
+        # no production admin API or live account is edited by the test.
+        control.terminate()
+        control.wait(timeout=5)
+        denied_snapshot = json.loads((tmp / 'control.json').read_text())
+        denied_node = next(n for n in denied_snapshot['nodes'].values() if n['name'] == 'b')
+        denied_node['approved'] = False
+        (tmp / 'control.json').write_text(json.dumps(denied_snapshot))
+        control = start('c', [binary_dir / 'mnet-control', '-listen', '198.18.10.1:8080',
+                    '-base-url', 'http://198.18.10.1:8080', '-data', tmp / 'control.json',
+                    '-admin-password', 'kernel-ci-fixture-only'], 'control-denial-restart')
+        wait_for(lambda: local_api(states['b'])['status'] == 'waiting-approval'
+                 and not local_api(states['b']).get('peers'), 'received 403 withdraws real kernel peers')
+        if subprocess.run(ns('b', 'ping', '-c', '1', '-W', '1', ips['a']),
+                          capture_output=True, timeout=3).returncode == 0:
+            raise RuntimeError('received denial left mesh reachability')
+        if lan_reachable():
+            raise RuntimeError('received denial left subnet reachability')
+        # The server restart invalidated admin sessions, not node credentials.
+        # Reauthenticate privately, approve exactly b and save the new cookie.
+        reapprove = tmp / 'reapprove.py'
+        reapprove.write_text(r'''
+import http.cookiejar,json,sys,urllib.request,os
+from pathlib import Path
+jar=http.cookiejar.LWPCookieJar(str(Path(__file__).with_name('admin.cookies')))
+opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+def post(path,data):
+ req=urllib.request.Request('http://198.18.10.1:8080'+path,json.dumps(data).encode(),{'Content-Type':'application/json'})
+ return json.load(opener.open(req,timeout=3))
+post('/admin/api/login',{'password':'kernel-ci-fixture-only'})
+post('/admin/api/nodes/approve',{'node_id':sys.argv[1]})
+jar.save(ignore_discard=True);os.chmod(jar.filename,0o600)
+''')
+        run(*ns('c', sys.executable, reapprove, denied_node['id']))
+        wait_for(lambda: local_api(states['b'])['status'] == 'up', 'approved map restores denied kernel device')
+        wait_for(both_direct, 'direct path after received denial and approval', timeout=40)
+        wait_for(lan_reachable, 'LAN forwarding after received denial and approval', timeout=30)
+        for x in 'ab':
+            saved = json.loads((states[x] / 'state.json').read_text())
+            if any(saved.get(k) != v for k, v in identities[x].items()):
+                raise RuntimeError('received denial/approval changed saved identity')
+        print('PASS received 403 clears kernel VPN peers and denies mesh/LAN until approval; same identities recover', flush=True)
         # With the control/relay process dead, transfers cannot silently
         # succeed by falling back to the shared control-plane WebSocket.
         control.terminate()
