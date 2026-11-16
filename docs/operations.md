@@ -12,7 +12,22 @@ Development only. These setup examples are not production certification. Check [
 | Set up read-only member sign-in | [OIDC setup](#sso-login-oidc), [account flow](#account-http-flow), [explicit grants](#operator-membership-management-verified-source) |
 | Inspect explicit account grants | [Private operator inspection](#operator-membership-inspection) |
 | Understand routes or network limits | [Subnet/exit scope](#exit-nodes-and-subnet-routes), [ingress limits](#reverse-proxies-and-admission-limits) |
+| Use Android hosting/control safely | [Current Android session limits](#android-session-operation-and-recovery), [framework coverage](../android/framework-tests/README.md) |
 | Check test methods and historical results | [Native/kernel validation](native-platform-validation.md), [release history](RELEASES.md) |
+
+## Android session operation and recovery
+
+These behaviors describe newer source, not the older published APK. Check [STATUS](STATUS.md) before selecting an artifact.
+
+1. Connect the mesh before starting hosting or opening a viewer. Projection consent is single-use; start hosting again after Android ends capture. A process restart does not replay consent.
+2. Auto-accept applies only to the next explicitly selected hosting run. Otherwise answer the current request; an old dialog cannot approve a replacement request.
+3. Viewer touch control starts only after a decoded frame. A completed stationary release sends one click. Drag, multitouch and held-down control are unsupported; canceled or margin touches do not become clicks.
+4. If the host reports that the display changed, restart hosting and obtain fresh capture consent before controlling again. Input stays refused after a width/height/rotation mismatch. There is no dynamic rotation/capture-resize implementation.
+5. A disconnected viewer clears its old frame and retries with capped backoff while open. Leaving it closes owned connection state. This has source/simulation/native transport evidence, not physical Android reconnect proof.
+
+Malformed, unsupported or out-of-capture-frame pointer events are refused. Go omitted zero coordinates remain valid. Accessibility must be enabled by the user, but actual Android permission/gesture behavior remains a device-validation gap.
+
+For developers: use the [framework guide](../android/framework-tests/README.md) for the exact64-case matrix, replacements and API34 Activity exclusion. Java/dex and arm64 binding builds do not execute JNI. Historical implementation notes below are evidence history, not extra setup steps.
 
 ## Control plane
 

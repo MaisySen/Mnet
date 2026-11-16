@@ -14,6 +14,7 @@ These documents describe a development project, not a production-readiness guara
 | [Scale testing](scale-testing.md) | Dated synthetic measurements, methods, raw benchmark references and limits. |
 | [Releases and development history](RELEASES.md) | Shipped test versions and historical work, not a current feature guarantee. |
 | [Android store draft](PLAY-LISTING.md) | Unapproved listing and data-disclosure work, not ready-to-publish claims. |
+| [Android framework guide](../android/framework-tests/README.md) | Current simulation matrix, run command, explicit fakes and device/JNI gaps. |
 | [iOS source guide](../ios/README.md) | Source integration, toolchain and remaining signing/device validation. |
 
 ## Keeping documents current alongside code

@@ -134,3 +134,12 @@ excess incoming streams end the session and excess local opens fail.
 Completed file-transfer entries are released, and a reset is distinct
 from a successful FIN. These limits bound selected queues and tables,
 not all per-session memory or process-wide concurrent connections.
+
+
+## Screen decode recovery and Android input limits
+
+Go viewers and recorders reject invalid full JPEGs and failed deltas, discard the composition base and wait for a valid keyframe. Tile rectangles must fit the base and match decoded JPEG header dimensions. These checks bound rectangle work, not all image-decoder or per-session memory. Closing a recorder clears retained base pixels; late frames are ignored.
+
+Android sends one click on a completed stationary release after a decoded frame is available. Drag/multitouch/held-pointer control is not implemented. Host-side validation accepts completed click/fixed scroll events with finite integer coordinates inside capture bounds, preserving Go omitted-zero coordinates. It rejects down/up rather than reinterpreting each as a click. A host display width/height/rotation mismatch disables input until capture is restarted. This is a fail-closed limit, not dynamic rotation support.
+
+See [current framework coverage](../android/framework-tests/README.md) for source versus fake endpoints and simulated API limits. No physical capture/input or JNI runtime proof is implied.
