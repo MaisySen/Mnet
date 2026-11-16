@@ -89,6 +89,11 @@ func New(cfg Config) (*Daemon, error) {
 	if cfg.IfName == "" {
 		cfg.IfName = DefaultInterfaceName()
 	}
+	if cfg.ManagedIface {
+		if err := validateManagedInterface(cfg.IfName, runtime.GOOS); err != nil {
+			return nil, err
+		}
+	}
 	st, err := LoadState(cfg.StateDir)
 	if err != nil {
 		return nil, err

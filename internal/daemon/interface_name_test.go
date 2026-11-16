@@ -3,6 +3,8 @@ package daemon
 import (
 	"errors"
 	"golang.zx2c4.com/wireguard/tun"
+	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 )
@@ -75,5 +77,40 @@ func TestStartDeviceFailureClearsInterfaceStatus(t *testing.T) {
 	}
 	if d.Status().Interface != "" {
 		t.Fatal("failed startup retained stale interface")
+	}
+}
+
+func TestManagedDarwinInterfaceValidation(t *testing.T) {
+	for _, name := range []string{"utun", "utun0", "utun9", "utun65535"} {
+		if err := validateManagedInterface(name, "darwin"); err != nil {
+			t.Fatal("valid requested name rejected", err)
+		}
+	}
+	for _, name := range []string{"", "mnet0", "utun-1", "utun01", "utun65536", "utun7junk", "utun7\n", "utun+7"} {
+		if validateManagedInterface(name, "darwin") == nil {
+			t.Fatal("invalid requested name accepted")
+		}
+		if validateManagedInterface(name, "linux") != nil || validateManagedInterface(name, "windows") != nil {
+			t.Fatal("non-Darwin behavior changed")
+		}
+	}
+}
+
+func TestDarwinInvalidManagedInterfaceBeforeState(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("native Darwin New boundary")
+	}
+	for _, name := range []string{"mnet0", "utun01", "utun7junk", "utun65536"} {
+		root := filepath.Join(t.TempDir(), "not-created")
+		if d, err := New(Config{StateDir: root, IfName: name, ManagedIface: true}); err == nil || d != nil {
+			t.Fatal("invalid managed request accepted")
+		}
+		if _, err := os.Stat(root); !os.IsNotExist(err) {
+			t.Fatal("invalid request touched state", err)
+		}
+	}
+	// Supplied mobile/proof TUNs do not use managed host names.
+	if _, err := New(Config{StateDir: t.TempDir(), IfName: "mobile-provided", ManagedIface: false}); err != nil {
+		t.Fatal(err)
 	}
 }

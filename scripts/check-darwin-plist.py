@@ -33,4 +33,13 @@ with tempfile.TemporaryDirectory(prefix='mnet-plist-check-') as root:
         assert rejected.returncode != 0 and not rejected.stdout, 'unsupported generation accepted'
         assert b'fixture-private-value' not in rejected.stderr, 'secret echoed'
         assert not state.exists(), 'rejected action initialized state'
+    for number, name in enumerate(['mnet0', 'utun01', 'utun7junk', 'utun65536']):
+        invalid_state = Path(root) / ('invalid-' + str(number))
+        rejected = subprocess.run([binary, '-state', str(invalid_state), '-ifname', name,
+                                   '-up', '-server', 'http://127.0.0.1:1', '-network', 'must-not-enroll'],
+                                  capture_output=True, timeout=5)
+        assert rejected.returncode != 0, 'invalid kernel request started'
+        assert not (invalid_state / 'state.json').exists(), 'invalid request created device identity'
+        assert not (invalid_state / 'local-api-token').exists(), 'invalid request initialized API'
+        assert not (invalid_state / 'mnetd.sock').exists(), 'invalid request opened API socket'
 print('actual native macOS CLI: plist exact argv/keys, plutil syntax, no state writes and rejected actions passed; no job loaded')

@@ -325,9 +325,13 @@ Force received authorization denial using only a stopped disposable control snap
 
 Fresh generated launchd Up consumes a 45-second future key expiry from its disposable control. Require direct bidirectional traffic before the deadline after control/relay stops, then local key-expired/no peers and three failed fresh TCP connects without control returning or saved identity changes. All five jobs passed in [7e573f0 CI](https://github.com/MaisySen/Mnet/actions/runs/43865116996), including native offline expiry and three Linux kernel regressions (141/142/133 drops). Not unseen offline revocation, long-duration or two-kernel-host proof.
 
-## Automatic macOS utun startup (new source, CI pending)
+## Automatic macOS utun startup (verified source)
 
-Use Darwin default utun, resolve/validate the actual assigned kernel name before configuring it, expose/clear status interface, and allow automatic utun in generated launchd argv. Keep explicit-interface and non-Darwin behavior. Add native CLI default checks and a second full kernel/peer/recovery/denial/expiry fixture omitting ifname flags. Repeated local name/status/generator race tests, full race/vet and cross-builds pass; native automatic execution pending. Not physical boot or two kernel hosts.
+Use Darwin default utun, resolve/validate the actual assigned kernel name before configuring it, expose/clear status interface, and allow automatic utun in generated launchd argv. Keep explicit-interface and non-Darwin behavior. Add native CLI default checks and a second full kernel/peer/recovery/denial/expiry fixture omitting ifname flags. Repeated local name/status/generator race tests, full race/vet and cross-builds pass; all five jobs passed in [a4eae56 CI](https://github.com/MaisySen/Mnet/actions/runs/43867041361), with both explicit/automatic full native kernel/peer/recovery/denial/expiry fixtures and three Linux regressions (153/147/163 drops). Not physical boot or two kernel hosts.
+
+## Invalid managed macOS interface early refusal (new source, CI pending)
+
+Reject malformed managed utun requests in the constructor before saved identity loading or enrollment. Keep unmanaged mobile/proof and non-Darwin behavior. Repeated local validation race tests/full race/vet/cross-builds pass. Native constructor and actual process tests require no identity/token/socket creation; actual native execution pending.
 
 ## v0.8.2-test.1 - 2026-11-16
 

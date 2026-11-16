@@ -106,6 +106,7 @@ jobs:
       - name: native macOS read-only launchd plist generation and syntax
         if: runner.os == 'macOS'
         run: |
+          go test -race -count=10 -timeout=3m ./internal/daemon -run 'TestKernelInterfaceName|TestActualInterfaceStatus|TestStartDeviceFailureClearsInterfaceStatus|TestManagedDarwinInterfaceValidation|TestDarwinInvalidManagedInterfaceBeforeState'
           go test -race -count=10 -timeout=3m ./cmd/mnetd -run '^TestDarwinServicePlist'
           go build -o "$RUNNER_TEMP/mnetd-plist" ./cmd/mnetd
           python3 scripts/check-darwin-plist.py "$RUNNER_TEMP/mnetd-plist"
