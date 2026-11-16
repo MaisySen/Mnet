@@ -108,7 +108,7 @@ New source gives failed/expired account callbacks a private generic recovery pag
 
 A new real-Chrome scope extension lists two devices for the signed-in principal while excluding same-email/different-subject, different-network, different-issuer and expired device records from both the actual API response and DOM. All five jobs passed in [7299060 CI](https://github.com/MaisySen/Mnet/actions/runs/43817883961), including the real-Chrome two-device scope proof; desktop/narrow screenshots were inspected. These are control records, not two newly running physical VPN devices.
 
-New source lets an authenticated operator GET explicit membership grants for one exact network via `/admin/api/memberships?network_id=...`. It is a private principal listing, not a member/device route or an inferred grant. Local scope/copy/auth/revocation tests pass; full/native CI is pending. See [membership inspection](operations.md#operator-membership-inspection).
+New source lets an authenticated operator GET explicit membership grants for one exact network via `/admin/api/memberships?network_id=...`. It is a private principal listing, not a member/device route or an inferred grant. Local scope/copy/auth/revocation tests pass; full/native CI is pending. A new read-only dashboard section makes those grants inspectable on demand, clears them when the network changes or sign-out begins and rejects late responses after either. Local real-Chrome tests cover actual granted/empty networks, HTML-as-text and held responses; the screenshot was inspected. Extended UI CI is pending. See [membership inspection](operations.md#operator-membership-inspection).
 
 ## Important open work
 

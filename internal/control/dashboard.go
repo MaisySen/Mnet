@@ -158,6 +158,13 @@ footer{padding:1.5rem;color:#9da7b1;font-size:.8rem}
 <button>Create key</button>
 </form>
 </section>
+<section id="membershipSection">
+<h2>Account membership grants</h2>
+<p class="muted">Inspect explicit account access for one network. Private issuer/subject identifiers are not email addresses. This does not list device approval provenance or grant access. Removing membership does not disconnect VPN devices.</p>
+<p><label>Network <select id="memberNet"></select></label> <button id="memberRead" type="button">Inspect grants</button></p>
+<p id="memberMsg" class="muted" role="status"></p>
+<table id="members"><thead><tr><th>Verified issuer</th><th>Subject</th></tr></thead><tbody></tbody></table>
+</section>
 <section class="card">
 <h2>ACL policy</h2>
 <p class="muted">JSON rules: <code>[{"src":"*","dst":"*"}]</code>. Empty means allow all. With any rule present the default is deny. src is a node name or *; dst is a node name, *, or a subnet CIDR. Exit-node selection and internet routing are unsupported; an ACL does not enable them.</p>
@@ -175,8 +182,9 @@ const api = async (path, body) => {
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
 };
-let viewGeneration=0, signingOut=false;
-function showLogin(){ viewGeneration++; state=null; $('#pw').value=''; $('#login').classList.remove('hidden'); $('#app').classList.add('hidden'); $('#refresh').classList.add('hidden'); $('#logout').classList.add('hidden'); for(const selector of ['#nets tbody','#nodes tbody','#keys tbody','#pending tbody']) $(selector).innerHTML=''; $('#aclText').value=''; for(const selector of ['#keyNet','#aclNet']) $(selector).innerHTML=''; }
+let viewGeneration=0, signingOut=false, memberRequest=0;
+function clearMembers(){ memberRequest++; $('#members tbody').replaceChildren(); $('#memberMsg').textContent=''; }
+function showLogin(){ viewGeneration++; clearMembers(); state=null; $('#pw').value=''; $('#login').classList.remove('hidden'); $('#app').classList.add('hidden'); $('#refresh').classList.add('hidden'); $('#logout').classList.add('hidden'); for(const selector of ['#nets tbody','#nodes tbody','#keys tbody','#pending tbody']) $(selector).innerHTML=''; $('#aclText').value=''; for(const selector of ['#keyNet','#aclNet','#memberNet']) $(selector).innerHTML=''; }
 
 function showApp(){ $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); $('#refresh').classList.remove('hidden'); $('#logout').classList.remove('hidden'); }
 function esc(s){ const d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
@@ -213,8 +221,41 @@ function render(){
   $('#keys tbody').innerHTML = keys.map(k=>'<tr><td class="key"><code>'+esc(k.key)+'</code></td><td>'+esc(netName(k.network_id))+'</td><td>'+esc(k.note)+'</td><td>'+(k.reusable?'yes':'no')+'</td><td>'+k.uses+'</td><td>'+expires(k.expires_at)+'</td><td><button class="danger" onclick="delKey(\''+esc(k.id)+'\')">Delete</button></td></tr>').join('') || '<tr><td colspan="7" class="muted">No keys.</td></tr>';
   $('#keyNet').innerHTML = nets.map(n=>'<option value="'+esc(n.id)+'">'+esc(n.name)+'</option>').join('');
   $('#aclNet').innerHTML = $('#keyNet').innerHTML;
+  const selectedMember=$('#memberNet').value;
+  $('#memberNet').innerHTML = $('#keyNet').innerHTML;
+  if(nets.some(n=>n.id===selectedMember)) $('#memberNet').value=selectedMember;
+  if($('#memberNet').value!==selectedMember) clearMembers();
   loadACL();
 }
+async function loadMembers(){
+  if(signingOut || !state) return;
+  clearMembers();
+  const request=memberRequest, generation=viewGeneration, id=$('#memberNet').value;
+  if(!id){ $('#memberMsg').textContent='Choose a network first.'; return; }
+  $('#memberMsg').textContent='Loading grants...';
+  try {
+    const r=await fetch('/admin/api/memberships?network_id='+encodeURIComponent(id));
+    if(generation!==viewGeneration || request!==memberRequest || signingOut || $('#memberNet').value!==id) return;
+    if(r.status===401){ showLogin(); return; }
+    if(!r.ok) throw new Error('read failed');
+    const j=await r.json();
+    if(generation!==viewGeneration || request!==memberRequest || signingOut || $('#memberNet').value!==id) return;
+    if(!Array.isArray(j.memberships)) throw new Error('invalid response');
+    const rows=j.memberships.map(member=>{
+      const row=document.createElement('tr');
+      for(const value of [member.issuer,member.subject]){
+        const cell=document.createElement('td'); cell.style.overflowWrap='anywhere'; cell.textContent=value; row.append(cell);
+      }
+      return row;
+    });
+    $('#members tbody').replaceChildren(...rows);
+    $('#memberMsg').textContent=rows.length ? rows.length+' explicit grant(s).' : 'No explicit grants for this network.';
+  } catch(e){
+    if(generation===viewGeneration && request===memberRequest && !signingOut) $('#memberMsg').textContent='Could not read grants. Try again.';
+  }
+}
+$('#memberNet').onchange=clearMembers;
+$('#memberRead').onclick=loadMembers;
 async function loadACL(){
   const generation=viewGeneration;
   const id=$('#aclNet').value;
@@ -242,7 +283,7 @@ $('#loginBtn').onclick = async ()=>{ try{ await api('/admin/api/login',{password
 $('#pw').addEventListener('keydown', e=>{ if(e.key==='Enter') $('#loginBtn').click(); });
 $('#refresh').onclick = load;
 $('#logout').onclick = async ()=>{
-  viewGeneration++; signingOut=true;
+  viewGeneration++; signingOut=true; clearMembers();
   $('#logout').disabled=true;
   try { await api('/admin/api/logout',{}); showLogin(); $('#loginMsg').textContent='Signed out.'; }
   catch(e){ if(e.message!=='auth') alert('Sign out failed: '+e.message); }
