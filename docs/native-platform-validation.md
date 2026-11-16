@@ -219,3 +219,7 @@ All five jobs passed in [e25b70d CI](https://github.com/MaisySen/Mnet/actions/ru
 ## Operator removal versus account and node access (fixture extension)
 
 The signed-provider account HTTP test now removes membership through the actual guarded operator endpoint rather than calling the store directly. A cross-origin rejection must leave the active account query usable. Accepted removal must deny that query while the original approved node token still authenticates `/api/map` with unchanged ID and approval. Three local race repetitions and a fresh full race suite/vet pass. All five jobs passed in [f81b124 CI](https://github.com/MaisySen/Mnet/actions/runs/43825558997), including the native Windows/macOS account test batch. Three complete kernel regression fixtures passed with 129/123/150 later loss-profile drops. This is HTTP authorization-layer coverage, not VPN reachability or live account work.
+
+## Member response validation (browser extension)
+
+The member page now validates the entire list and each ID/name/address field before creating a complete row set. Local real Chrome checks malformed/null lists/rows, wrong types and a partly valid response without partial render or false empty success, plus reversed completion of two refreshes. Edge data is browser-local; actual OIDC login/device reads/logout still use the disposable service. Fresh full race/vet checks pass; CI pending.

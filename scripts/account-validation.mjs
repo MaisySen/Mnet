@@ -37,8 +37,16 @@ try{
  if(!await js(`document.body.textContent.includes('not a live online-status check')`))throw new Error('device list implies online proof');
  await shot('account-signed-in');
  // Rendering boundary: untrusted names must be text, never executable HTML.
- await js(`(async()=>{window.originalFetch=fetch;window.injected=false;window.fetch=(input,options)=>input==='/account/api/devices'?Promise.resolve(new Response(JSON.stringify({devices:[{Name:'<img src=x onerror="window.injected=true">',IPv4:'100.64.0.9'}]}),{status:200,headers:{'Content-Type':'application/json'}})):originalFetch(input,options);await load();})()`);
+ await js(`(async()=>{window.originalFetch=fetch;window.injected=false;window.fetch=(input,options)=>input==='/account/api/devices'?Promise.resolve(new Response(JSON.stringify({devices:[{ID:'fixture-render-only',Name:'<img src=x onerror="window.injected=true">',IPv4:'100.64.0.9'}]}),{status:200,headers:{'Content-Type':'application/json'}})):originalFetch(input,options);await load();})()`);
  if(!await js(`!window.injected && !document.querySelector('#deviceRows img') && document.querySelector('#deviceRows').textContent.includes('<img')`))throw new Error('device name parsed as HTML');
+ // Reject the entire response before rendering if any row has wrong shape.
+ for(const body of ['null','{}',JSON.stringify({devices:[null]}),JSON.stringify({devices:[{ID:'partial',Name:'would-be-partial',IPv4:'100.64.0.8'},{}]}),JSON.stringify({devices:[{ID:7,Name:'bad',IPv4:'100.64.0.8'}]}),JSON.stringify({devices:[{ID:'bad',Name:{private:'details'},IPv4:'100.64.0.8'}]})]){
+  await js(`(async()=>{window.fetch=(input,options)=>input==='/account/api/devices'?Promise.resolve(new Response(${JSON.stringify(body)},{status:200,headers:{'Content-Type':'application/json'}})):originalFetch(input,options);await load();})()`);
+  if(!await js(`!document.querySelector('#deviceRows').textContent && document.querySelector('#devices').hidden && !document.querySelector('#login').hidden && document.querySelector('#message').textContent==='Could not read your devices. Try again.'`))throw new Error('malformed member response rendered partial private rows or empty-success state');
+ }
+ // The latest refresh wins when two reads finish in reverse order.
+ await js(`(async()=>{window.deviceReleases=[];window.fetch=(input,options)=>input==='/account/api/devices'?new Promise(resolve=>deviceReleases.push(name=>resolve(new Response(JSON.stringify({devices:[{ID:'fixture',Name:name,IPv4:'100.64.0.8'}]}),{status:200,headers:{'Content-Type':'application/json'}})))):originalFetch(input,options);window.olderLoad=load();window.newerLoad=load();deviceReleases[1]('latest-device');await newerLoad;deviceReleases[0]('stale-device');await olderLoad;})()`);
+ if(!await js(`document.querySelector('#deviceRows').rows.length===1 && document.querySelector('#deviceRows').textContent.includes('latest-device') && !document.querySelector('#deviceRows').textContent.includes('stale-device')`))throw new Error('older member refresh replaced latest result');
  await js(`(async()=>{window.fetch=(input,options)=>input==='/account/api/devices'?Promise.resolve(new Response(JSON.stringify({devices:[]}),{status:200,headers:{'Content-Type':'application/json'}})):originalFetch(input,options);await load();})()`);
  if(!await js(`!document.querySelector('#empty').hidden && !document.querySelector('#deviceRows').textContent`))throw new Error('empty member state incorrect');
  await shot('account-empty');

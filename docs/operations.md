@@ -457,7 +457,7 @@ Up and mobile Prepare now restore the prior server/network/device-name settings 
 
 ## Account HTTP flow
 
-New source adds separate account endpoints, not an admin-session or device-token shortcut. The service landing page links to the member view at `/account/` separately from the operator dashboard; it explains that login neither enrolls a device nor grants membership. Real-Chrome entry-navigation coverage is pending CI:
+New source adds separate account endpoints, not an admin-session or device-token shortcut. The service landing page links to the member view at `/account/` separately from the operator dashboard; it explains that login neither enrolls a device nor grants membership. All five jobs passed in [302e0a6 CI](https://github.com/MaisySen/Mnet/actions/runs/43826840257), including real-Chrome entry navigation:
 
 
 1. On the configured origin, POST JSON `{"network_id":"exact-network-id"}` to `/account/api/login`. OIDC must already be configured. The response supplies `authorization_url`; open it in the same browser, retaining the private login cookie. Unknown networks are not distinguished at start.

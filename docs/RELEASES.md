@@ -226,7 +226,11 @@ A signed-provider HTTP test now checks the actual operator removal endpoint: rej
 
 ## Member entry from the landing page (new source)
 
-The service landing page now separates the member account link from operator administration and explains that login neither enrolls a device nor grants membership or proves connectivity. The local real-Chrome fixture starts at the landing page, follows its actual member link and completes signed-provider login. Full CI pending. No provider/deployment changes.
+The service landing page now separates the member account link from operator administration and explains that login neither enrolls a device nor grants membership or proves connectivity. The local real-Chrome fixture starts at the landing page, follows its actual member link and completes signed-provider login. All five jobs passed in [302e0a6 CI](https://github.com/MaisySen/Mnet/actions/runs/43826840257), including actual-Chrome entry navigation and three complete kernel regressions with 157/157/150 later loss-profile drops. No provider/deployment changes.
+
+## Member response validation (new source)
+
+Validate the complete device-summary list and ID/name/address types before rendering. Malformed/null rows cannot create partial output or false empty success. Local Chrome tests browser-local malformed responses and reversed refresh completion, keeping the latest result. Actual OIDC login and initial device reads stay server-backed. Full race/vet checks pass; CI pending. No live changes.
 
 ## v0.8.2-test.1 - 2026-11-16
 
