@@ -8,7 +8,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 | --- | --- | --- |
 | Published test artifacts | v0.8.2-test.1, source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11; Android 0.8.2/code 14. | [Release](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1). Sixteen assets verified at release. Update CLI and daemon together. |
 | Hosted test control plane | Last verified 2026-11-16 at 07:12 AEDT on `2bb55f4`. | Dated deployment check, not a current availability promise. Free-host ephemeral disk/restart state loss remains a limitation. |
-| Newer verified source | `c834830`, all five jobs passed; separate trace-race follow-up is pending. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43820460941). New source below is not in those downloads or that last verified deployment. |
+| Newer verified source | `b3f313d`, all five jobs passed, including repeated trace/TCP race checks. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43821716633). New source below is not in those downloads or that last verified deployment. |
 
 ## What is implemented and tested
 
@@ -22,7 +22,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 - Route-only ACL withdrawal/restoration and admin expiry/reapproval block and restore access as expected. Reapproval clears stale approval status/link. Known expiry is enforced locally even if later control polling is blocked; unseen offline admin changes cannot be discovered.
 - `mnet up --reset-routing`, while down, clears saved roles without deleting identity. Ordinary saved-state Up preserves routing. Fresh attempts clear old setup errors, preserving errors raised during the new attempt.
 
-The latest verified [c834830 CI](https://github.com/MaisySen/Mnet/actions/runs/43820460941) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 157/134/143. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
+The latest verified [b3f313d CI](https://github.com/MaisySen/Mnet/actions/runs/43821716633) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 152/185/158. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
 
 Exit-node selection/advertising is explicitly rejected before enrollment/device creation. Unsafe dormant host/default-route replacement helpers were removed, not enabled. Exit internet routing remains unsupported.
 
@@ -122,6 +122,6 @@ The next source extension also rejects malformed or wrong-network membership-lis
 
 Methods and earlier failures: [native validation](native-platform-validation.md), [reliability](session-reliability.md), [operations](operations.md), [release history](RELEASES.md) and [synthetic scale measurements](scale-testing.md).
 
-## Trace test isolation follow-up (pending CI)
+## Trace test isolation follow-up (verified)
 
-The full race suite on [90f633b](https://github.com/MaisySen/Mnet/actions/runs/43820313703) detected a metadata-trace test mutating a global flag while a previous TCP test's writer still read it. The subsequent green run does not close that race. New source captures trace enablement per session before loops start and tests modify only their own unstarted fixture. Thirty local race repetitions of trace/TCP cases and a fresh full race suite/vet pass. Extended CI is pending. Tracing remains opt-in, metadata-only and bounded; this is not a new transport or live deployment.
+The full race suite on [90f633b](https://github.com/MaisySen/Mnet/actions/runs/43820313703) detected a metadata-trace test mutating a global flag while a previous TCP test's writer still read it. The subsequent green run does not close that race. New source captures trace enablement per session before loops start and tests modify only their own unstarted fixture. Thirty local race repetitions of trace/TCP cases and a fresh full race suite/vet pass. All five jobs passed in [03b55a6 CI](https://github.com/MaisySen/Mnet/actions/runs/43821694030) and [b3f313d CI](https://github.com/MaisySen/Mnet/actions/runs/43821716633); the latter includes 30 Linux trace/TCP race repetitions, native three-repetition trace/TCP checks and both actual-Chrome flows. Tracing remains opt-in, metadata-only and bounded; this is not a new transport or live deployment.

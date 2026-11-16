@@ -208,9 +208,9 @@ GET `/admin/api/memberships?network_id=...` now returns only explicit grants for
 
 Reject malformed/null list or row data and wrong-network rows before rendering. Failure removes old rows and shows only a generic retry message. Local Chrome checks include failure then actual-server retry, invalid responses and reversed same-network request completion. Edge responses are browser-local fixtures; all five jobs passed in [c834830 CI](https://github.com/MaisySen/Mnet/actions/runs/43820460941), with 157/134/143 kernel loss-profile drops. The initial 90f633b run failed a separate global trace-test race, tracked below. No membership writes or live changes.
 
-## Trace test isolation (new source, pending CI)
+## Trace test isolation (verified source)
 
-[90f633b CI](https://github.com/MaisySen/Mnet/actions/runs/43820313703) detected a global tracing flag write in a test overlapping a prior TCP session writer. A later green full run does not close it. Each new mux now captures its tracing option before its loops start; unit fixtures set only their own unstarted mux. Thirty local trace/TCP race repetitions, the full race suite and vet pass. CI pending. Opt-in bounded metadata-only tracing remains unchanged in purpose; no live service or transport change is claimed.
+[90f633b CI](https://github.com/MaisySen/Mnet/actions/runs/43820313703) detected a global tracing flag write in a test overlapping a prior TCP session writer. A later green full run does not close it. Each new mux now captures its tracing option before its loops start; unit fixtures set only their own unstarted mux. Thirty local trace/TCP race repetitions, the full race suite and vet pass. All five jobs passed in [03b55a6 CI](https://github.com/MaisySen/Mnet/actions/runs/43821694030) and [b3f313d CI](https://github.com/MaisySen/Mnet/actions/runs/43821716633), the latter including 30 Linux trace/TCP race repetitions and native three-repetition trace/TCP tests. Three complete kernel regressions passed with 152/185/158 later loss-profile drops. Opt-in bounded metadata-only tracing remains unchanged in purpose; no live service or transport change is claimed.
 
 ## v0.8.2-test.1 - 2026-11-16
 
