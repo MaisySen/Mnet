@@ -29,3 +29,10 @@ assert 'capturePending && pendingAutoAccept' in activity
 assert 'autoAccept.setChecked(false)' in activity
 assert 'HostSessionService.EXTRA_AUTO_ACCEPT, autoAcceptThisHost' in activity
 print('PASS host-run auto-accept default-false/reset and capture-request snapshot source checks; no consent/UI runtime proof')
+
+assert 'CaptureEncoder.jpeg(' in host
+assert host.index('Image img = null;') < host.index('try {', host.index('Image img = null;')) < host.index('img = r.acquireLatestImage();')
+assert 'if (img != null) img.close();' in host
+encoder = (Path(__file__).resolve().parents[1] / 'android/app/src/main/java/au/fintex/mnet/CaptureEncoder.java').read_text()
+assert 'finally {' in encoder and 'cropped != padded' in encoder and 'padded.recycle()' in encoder
+print('PASS capture acquire/close and temporary bitmap release wiring source checks; not real ImageReader/memory-pressure proof')

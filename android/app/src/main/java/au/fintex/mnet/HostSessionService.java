@@ -5,7 +5,6 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
-import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
@@ -21,8 +20,6 @@ import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.view.WindowManager;
 
-import java.io.ByteArrayOutputStream;
-import java.nio.ByteBuffer;
 import java.util.concurrent.TimeUnit;
 
 import mobile.HostCallbacks;
@@ -173,31 +170,22 @@ public class HostSessionService extends Service implements HostCallbacks {
                 reader.getSurface(), null, captureHandler);
         if (display == null) throw new IllegalStateException("Screen capture display unavailable");
         reader.setOnImageAvailableListener(r -> {
-            Image img = r.acquireLatestImage();
-            if (img == null) {
-                return;
-            }
+            Image img = null;
             try {
+                img = r.acquireLatestImage();
+                if (img == null || !running) return;
                 Image.Plane plane = img.getPlanes()[0];
-                ByteBuffer buf = plane.getBuffer();
-                int pixelStride = plane.getPixelStride();
-                int rowStride = plane.getRowStride();
-                int rowPadding = rowStride - pixelStride * frameW;
-                Bitmap bmp = Bitmap.createBitmap(frameW + rowPadding / pixelStride,
-                        frameH, Bitmap.Config.ARGB_8888);
-                bmp.copyPixelsFromBuffer(buf);
-                Bitmap cropped = Bitmap.createBitmap(bmp, 0, 0, frameW, frameH);
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
-                cropped.compress(Bitmap.CompressFormat.JPEG, 70, out);
+                byte[] encoded = CaptureEncoder.jpeg(plane.getBuffer(), frameW, frameH,
+                        plane.getPixelStride(), plane.getRowStride());
                 synchronized (hostLifecycle) {
                     if (running) {
-                        latestJpeg = out.toByteArray();
+                        latestJpeg = encoded;
                         latestSeq++;
                     }
                 }
             } catch (Exception ignored) {
             } finally {
-                img.close();
+                if (img != null) img.close();
             }
         }, captureHandler);
     }

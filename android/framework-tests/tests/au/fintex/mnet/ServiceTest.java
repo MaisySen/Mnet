@@ -72,6 +72,23 @@ public class ServiceTest{
    assertFalse(option.getBoolean(old.get()));assertFalse(old.get().acceptSession("stopped"));
   }finally{old.destroy();fresh.destroy();}
  }
+ @Test public void captureEncoderAcceptsPaddedAndExactRows() {
+  for(int padding:new int[]{0,8}){
+   int width=16,height=8,stride=width*4+padding;
+   java.nio.ByteBuffer pixels=java.nio.ByteBuffer.allocate(stride*height);
+   while(pixels.hasRemaining())pixels.put((byte)0x7f);pixels.rewind();
+   byte[] encoded=CaptureEncoder.jpeg(pixels,width,height,4,stride);
+   assertTrue(encoded.length>0);
+   android.graphics.Bitmap decoded=android.graphics.BitmapFactory.decodeByteArray(encoded,0,encoded.length);
+   assertNotNull(decoded);assertEquals(width,decoded.getWidth());assertEquals(height,decoded.getHeight());decoded.recycle();
+  }
+ }
+ @Test public void captureEncoderRefusesInvalidLayouts() {
+  for(int[] layout:new int[][]{{0,8,4,64},{16,8,2,64},{16,8,4,60},{16,8,4,65}}){
+   try{CaptureEncoder.jpeg(java.nio.ByteBuffer.allocate(1024),layout[0],layout[1],layout[2],layout[3]);fail("invalid layout accepted");}catch(IllegalArgumentException expected){}
+  }
+  try{CaptureEncoder.jpeg(java.nio.ByteBuffer.allocate(4),16,8,4,64);fail("short frame accepted");}catch(RuntimeException expected){}
+ }
  @Test public void stopAndProcessRestartStayNonSticky(){
   ServiceController<HostSessionService> c=Robolectric.buildService(HostSessionService.class).create();HostSessionService s=c.get();
   assertEquals(Service.START_NOT_STICKY,s.onStartCommand(null,0,1));

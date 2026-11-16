@@ -4,7 +4,7 @@ Run `sh scripts/test-android-framework.sh` with JDK17, Python3, Maven and networ
 
 ## What executes
 
-The real `HostSessionService`, `SessionConsent`, `ProjectionGuard` and `VpnPlatform` Java sources run on Robolectric4.18 simulated API24,25,26,33,34. Six tests per API cover notification construction/channel lookup and receiver registration, non-sticky restart/stop, invalid-consent cleanup and stop unblocking an actual service consent waiter. Thirty cases pass locally. The original20 cases passed all-five e2d03a6 CI; the added10 cases are pending. Added cases exercise service broadcast/exact-answer isolation and instance-local auto-accept/stop reset, using reflected service state rather than starting a valid projection.
+The real `HostSessionService`, `SessionConsent`, `ProjectionGuard` and `VpnPlatform` Java sources run on Robolectric4.18 simulated API24,25,26,33,34. Eight tests per API cover notification construction/channel lookup and receiver registration, non-sticky restart/stop, invalid-consent cleanup and stop unblocking an actual service consent waiter. Forty cases pass locally. Thirty service cases passed all-five5db95ec CI; the added10 encoder cases are pending. Encoder cases check padded/exact row decoding dimensions and invalid layouts/buffers, not device colors or heap pressure. Added cases exercise service broadcast/exact-answer isolation and instance-local auto-accept/stop reset, using reflected service state rather than starting a valid projection.
 
 ## What is replaced or not covered
 
