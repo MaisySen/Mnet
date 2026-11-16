@@ -618,8 +618,15 @@ The viewer screen loop now clears its stored frame base when screen-message JSON
 An actual mux/viewer-loop net.Pipe regression sends a valid keyframe, malformed JSON, a delta and a recovery keyframe in wire order. It failed before fixing by delivering the stale-base delta. It now observes the recovery keyframe as the next callback. Viewer tests pass 50 race repetitions, followed by a fresh full-repository race run. Synthetic JPEG/wire fixtures only, not real capture/display/UI proof. This does not add sequence-gap detection, reject every semantic JSON ambiguity or change the host recorder's typed-frame path. All-five [e291bd8 CI](https://github.com/MaisySen/Mnet/actions/runs/43973623419) is verified; fresh bindings still name e110af8, before this viewer source change. No release or deployment changed.
 
 
-## Viewer screen-loop exit releases decoded pixels (new source, CI pending)
+## Viewer screen-loop exit releases decoded pixels (351be62 all-five CI verified)
 
 The viewer screen loop clears its decoded pixel base under the existing frame mutex when it exits. A reachable Viewer no longer retains that base after its loop observes FIN, peer reset or mux closure. This cleanup does not erase JPEG bytes or image copies an application callback retained, clear the geometry descriptor or interrupt a callback that blocks instead of returning. It is loop-exit cleanup, not a new Close API or hard memory-lifetime guarantee.
 
 Direct screen-loop fixtures for FIN/reset/closed mux all failed before fixing by retaining pixels. The fixtures now observe loop exit and an empty base. Viewer checks pass 50 race repetitions, followed by fresh full-repository race tests. These tests use a synthetic pixel base and controlled channel/pipe state, not Android/desktop display or real-device memory measurements. All-five [ded8d94 CI](https://github.com/MaisySen/Mnet/actions/runs/43975421785) is verified. Current four-ABI binding build still names e110af8, before the two viewer source changes. No release, deployment or user-device state changed.
+
+
+## Current viewer bindings and session guide consolidation (351be62 source)
+
+Fresh Android bindings include malformed-screen-JSON recovery and screen-loop pixel cleanup on all four ABIs at minimum API 24. Archive/ELF inspection confirms armeabi-v7a, arm64-v8a, x86 and x86_64. Android 34 resources/all app Java/min-api-24 dex compilation passed. AAR SHA256: `63683e07786321da988f109f11eabfd160eafb3155d79cf1d6291d8d569bf7a5`. A fresh framework run passed 64 cases, zero failures/errors/skips. The full local gate bundle passed in a separate complete rerun; an earlier combined build/gates command hit its execution timeout during stress checks and is not counted as a pass. All five [351be62 CI jobs](https://github.com/MaisySen/Mnet/actions/runs/43977271776) passed.
+
+The owning session-layer guide now groups current image, handshake, file-idle/reset, stream-release and recording behavior rather than repeating stale chronological pending claims. Exact old measurements remain here as history; STATUS and the newest versioned checks supersede them. No signed APK/AAB, release, deployment or user-device state changed. Build/simulation still does not prove JNI/device/physical capture/input/UI/boot behavior.

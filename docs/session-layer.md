@@ -144,56 +144,34 @@ Android sends one click on a completed stationary release after a decoded frame 
 
 See [current framework coverage](../android/framework-tests/README.md) for source versus fake endpoints and simulated API limits. No physical capture/input or JNI runtime proof is implied.
 
-## JPEG pixel-allocation policy (48fcffc all-five CI verified)
+## Image limits and viewer lifecycle
 
-Go viewers and recorders check JPEG headers before full-image decoding. Each dimension must be positive and at most8192, and their product must be at most16,777,216 pixels. The division-based check avoids integer overflow.4K3840x2160 fits;8K7680x4320 does not. Tile headers and the composition base use the same dimension policy. An oversized keyframe is rejected and invalidates its old delta chain.
+JPEG headers are checked before full decoding: each side is at most 8,192 pixels and the product at most 16,777,216 pixels. A 3,840 x 2,160 image fits; 7,680 x 4,320 does not. A delta has at most 4,096 tiles, and summed tile rectangle pixels cannot exceed the base frame's pixel count. These are per-image/per-delta checks, not codec CPU, aggregate heap or concurrent-session limits.
 
-A tiny JPEG fixture with rewritten65535x65535 header dimensions tests refusal without allocating that pixel image. Boundary/overflow tests, viewer/recorder rejection and existing recovery tests pass30 race-enabled repetitions. A fresh full-repository race run and all-five [48fcffc CI](https://github.com/MaisySen/Mnet/actions/runs/43937696893) pass. This bounds a decoded image's pixel dimensions, not codec CPU, all decoder overhead, concurrent sessions or aggregate heap; compositing/callbacks can keep multiple images. No current-source Android binding rebuild, APK/AAB publication, device/capture/UI/JNI proof or live deployment for this change.
+Malformed viewer screen JSON also invalidates the old delta base. The viewer waits for a valid keyframe instead of composing subsequent deltas on stale pixels. When the screen loop exits after FIN/reset/mux closure, it releases its decoded base. Callback-retained copies and callbacks that block are outside that cleanup. No sequence-gap detector is added.
 
-## Aggregate delta tile work (13fa2e2 retry verified)
+## Transport ownership and handshake budgets
 
-A delta is limited to4096 tiles and at most the base frame's pixel count summed across all tile rectangles, before pixel decoding or composition. Regular nonoverlapping64x64 updates fit the budget; repeated overlapping rectangles that exceed one frame's work are refused. This adds a per-delta count/pixel-work limit to the existing individual geometry/JPEG checks, not a general CPU or total memory guarantee.
+Dial takes ownership of its connection: failures close it, success transfers it to the mux. Callers set handshake deadlines. CLI connect/reconnect and file-send allow 70 seconds for hello/consent after a 10-second TCP connection budget. The desktop headless host allows 15 seconds for accepted hello/reply I/O. Success clears these deadlines before active use. Mobile consent uses its separate existing allowance. These are timeouts, not admission/rate limits or changes to authorization.
 
-The aggregate-overlap regression failed before the guard. Tests accept exact four-quadrant coverage and reject excess aggregate pixels or tile count. Targeted frame/recorder/composition race checks pass30 repeats; a fresh full-repository race run passes. [13fa2e2 CI attempt2](https://github.com/MaisySen/Mnet/actions/runs/43939827797) passed after the first dependency-download failure. Synthetic Go codec data only, not physical capture/UI/JNI proof. No current-source Android AAR, release APK/AAB or live deployment produced for this change.
+Framing rejects silent short header/payload writes with io.ErrShortWrite. Unsupported v1 types, priorities outside 0-3 and nonzero reserved bits reject before payload allocation/read. All six defined types remain supported. Future extensions need explicit format/compatibility work; this is not complete message-body validation.
 
-## Session truncated-write error detection (4bce9b8 all-five CI verified)
+## File idle cleanup and stream release
 
-Session framing now returns io.ErrShortWrite if a writer reports fewer header or payload bytes without an error. It does not claim success or continue with a payload after an incomplete header; existing transport errors remain unchanged. The mux's existing write-error path closes the session. This protects framing at its io.Writer boundary, including custom adapters that violate the usual short-write error contract; it is not automatic retry or a reproduced kernel TCP failure.
+The default incoming file idle budget is 60 seconds. FileReceiver.IdleTimeout can set a positive override. Only successfully written nonempty bytes restart it; empty/unrelated frames cannot retain a partial transfer. Actual progress may continue beyond one budget, so this is not a total-transfer cap. FIN can complete an empty offered file.
 
-A short-header regression failed before the fix. Header/payload truncation and transport-error preservation tests pass100 race-enabled repetitions; fresh full-repository race tests pass. All-five [4bce9b8 CI](https://github.com/MaisySen/Mnet/actions/runs/43946082516) passes. Synthetic writer evidence only, no live network/device/runtime claim. No new bindings, release APK/AAB or deployment. Separately, [905a401 all-five CI](https://github.com/MaisySen/Mnet/actions/runs/43944038163) confirms Maven cache restoration and64 passing framework cases.
+Idle expiry attempts a best-effort stream reset, then closes/removes the private partial file and releases its stream. If outbound capacity is full, notification is skipped rather than waiting for the peer to drain. A reachable sender can observe ErrStreamReset, but reset delivery is not guaranteed and already queued outgoing chunks are not canceled. A paused sender must retry, not resume. Filesystem/scheduler timing has no hard wall-clock guarantee.
 
-## Session Dial transport ownership (2e87ce6 all-five CI verified)
+Local stream release interrupts an in-flight read-loop DATA/reset delivery into that stream's full queue. The loop can then process unrelated streams. The read loop alone closes frame queues. Ordinary head-of-line blocking still exists for an unreleased slow consumer.
 
-Dial now explicitly owns its supplied connection: a failed hello write, reply read/parse, unexpected frame/version or refusal closes it. Success transfers ownership to the returned mux, which closes it later. Callers still supply handshake deadlines; this does not add a timeout or change consent rules. Existing caller-side error cleanup may close an already-closed connection, which net.Conn permits.
+## Session recording
 
-Counted net.Pipe regressions failed before the change for bad reply/frame/version/refusal and failed hello write. Error closure and successful mux ownership pass30 race repetitions; fresh full-repository race tests pass. All-five [2e87ce6 CI](https://github.com/MaisySen/Mnet/actions/runs/43948329722) passes. These are local synthetic transport tests, not a reproduced live descriptor leak or device/OS-network proof. No fresh bindings, release APK/AAB or deployment.
+Recordings use concatenated JPEG frames. Keyframes are validated; deltas are composited and re-encoded. Broken chains wait for a valid keyframe. NewRecorder exclusively creates a mode-0600 destination. Existing files/final symlinks are refused, never truncated. The daemon's viewer/timestamp paths can collide within one second; recording then reports unavailable while hosting continues. Parent directories must be trusted.
 
-## CLI session handshake deadline (4f93413 all-five CI verified)
+The first output error stops recording, closes the writer and releases pixels; completed frames remain counted. Close retains the first write error, or a close error when no earlier write failed, across repeated calls. The daemon logs recording incomplete at session end. It keeps partial bytes and does not retry, repair, fsync or promise durability. A file or nonzero frame count alone does not establish a complete recording. Late callbacks after close/failure are ignored.
 
-CLI session connect/reconnect and file-send now allow70 seconds for hello/host consent after TCP connects, rather than waiting indefinitely for a silent host. The existing TCP connect limit remains10 seconds. A successful handshake clears its deadline before active use; a failure closes the connection through Dial ownership. Expiry can terminate a delayed consent response and requires another attempt; it does not change authorization policy.
+## Validation and version boundaries
 
-Short-budget silent-host and successful deadline-clear net.Pipe tests pass30 race repetitions. Fresh full-repository race tests pass. These use an accelerated fixture timeout, not an elapsed70-second real host/device test. All-five [4f93413 CI](https://github.com/MaisySen/Mnet/actions/runs/43950358961) passes. No mobile source, bindings, release artifacts or live deployment changed.
+The behavior above is newer source, not a claim about unchanged v0.8.2-test.1 downloads or the last dated hosted deployment. [STATUS](STATUS.md) owns current source/build/release/deployment state. [Native validation](native-platform-validation.md) owns exact regression history, CI URLs and fixture limits, so this guide does not repeat stale per-commit pending/build notes.
 
-## Headless desktop host hello budget (d55f4d3 all-five CI verified)
-
-The desktop session host bounds accepted-socket hello/reply I/O to15 seconds, then clears the deadline before starting capture. A silent peer no longer occupies the serial accept/hello loop indefinitely. Headless authorization remains immediate and unchanged; mobile's separate consent allowance is unchanged. This is a deadline, not a per-peer admission/connection-rate limit.
-
-An accelerated40ms real OS-loopback test accepts a silent connection, verifies timeout, accepts a subsequent approved viewer and measures a successful keepalive round trip after the original handshake deadline.30 race repetitions and a fresh full-repository race run pass. No physical host, public-internet timing,15-second elapsed run, capture/input or device proof. All-five [d55f4d3 CI](https://github.com/MaisySen/Mnet/actions/runs/43952410300) passes. No bindings, release artifacts or live deployment changed.
-
-## File receiver idle cleanup (5ff8e90 all-five CI verified)
-
-Incoming file reception now allows60 seconds between data/FIN frames by default. A silent incomplete stream returns, closes/removes its private temporary file and releases its stream entry without closing unrelated session channels. FileReceiver.IdleTimeout can select a different positive budget; nonpositive uses the default. Active progress restarts the per-receive wait, so this is not a total-transfer deadline or resumable-transfer feature. A sender paused past the budget must retry the file.
-
-A short40ms net.Pipe test sends a partial file, waits for idle cleanup and checks empty destination directory, stream release and a still-open mux. Idle/safe-file/reset tests pass30 race repetitions; a fresh full-repository race run passes. All-five [5ff8e90 CI](https://github.com/MaisySen/Mnet/actions/runs/43954473611) passes. No elapsed60-second real network test, device/runtime, new bindings, release APK/AAB or live deployment proof.
-
-## File idle budget requires byte progress (061eecb all-five CI verified)
-
-Only a successfully written nonempty data chunk restarts the incoming file idle budget. Empty data or unrelated frame types cannot retain a partial file indefinitely. A FIN still completes an empty offered file. Real chunk progress can continue beyond one budget duration, so this remains an idle timeout, not a total-transfer cap.
-
-The empty-frame regression failed before fixing. Empty-frame refusal, partial cleanup and a progressing transfer lasting longer than its configured budget pass20 race repetitions, followed by fresh full-repository race tests. All-five [061eecb CI](https://github.com/MaisySen/Mnet/actions/runs/43956537225) passes. Accelerated net.Pipe fixtures only, not60-second real-network/device evidence. No new bindings, release artifacts or live deployment.
-
-## Idle transfer stream-reset notification (new source, CI pending)
-
-An incoming file idle expiry now sends a reset on that stream before releasing its local state. The sender sees ErrStreamReset instead of waiting for a later ACK timeout. Peer resets and mux closure do not trigger a reset echo. The reset uses the existing bounded outbound queue; delivery is not guaranteed when the connection is broken or blocked, and this does not add transport cancellation of already queued chunks.
-
-A sender-notification regression failed before the change. Idle/reset/progress tests pass20 race repetitions, followed by fresh full-repository race tests. They also check partial cleanup, stream release and a still-open unrelated mux. These are accelerated net.Pipe fixtures, not60-second real-network or device proof. No fresh bindings, release artifacts or deployment.
+At 351be62, all five CI jobs passed. Fresh local full gates and four-ABI Android binding/resource/Java/min-api-24 dex checks passed, plus 64 framework simulation cases. This does not execute JNI, physical capture/input, Android UI pixels, install or boot. No signed APK/AAB or release/deployment followed these checks.
