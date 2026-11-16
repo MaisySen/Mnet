@@ -79,8 +79,16 @@ type Stream struct {
 }
 
 // Dial opens a session to a host and performs the handshake.
+// Ownership of conn transfers to Dial: errors close it; success transfers it
+// to the returned mux. The caller must set any handshake deadline beforehand.
 // accept is called on the host side (via Listen) to decide consent.
 func Dial(conn net.Conn, nodeName string) (*Mux, error) {
+	success := false
+	defer func() {
+		if !success {
+			_ = conn.Close()
+		}
+	}()
 	m := newMux(conn, StreamFile) // client dynamic ids: 4, 6, 8, ...
 	h := Hello{Version: protoVersion, NodeName: nodeName, Want: "screen"}
 	if err := m.sendJSON(StreamControl, msgOpen, PriInteractive, h); err != nil {
@@ -104,6 +112,7 @@ func Dial(conn net.Conn, nodeName string) (*Mux, error) {
 		return nil, fmt.Errorf("session: refused: %s", rep.Reason)
 	}
 	m.start()
+	success = true
 	return m, nil
 }
 
