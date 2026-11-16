@@ -344,7 +344,7 @@ func (d *Daemon) joinLocked(ctx context.Context, authKey string) error {
 	}
 	if err := d.state.Save(d.cfg.StateDir); err != nil {
 		d.mu.Unlock()
-		return err
+		return fmt.Errorf("enrollment accepted but saving its credential failed; fix local state storage and retry before restarting: %w", err)
 	}
 	d.cc = &controlclient.Client{
 		Base:   d.state.Server,

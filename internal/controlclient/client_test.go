@@ -92,3 +92,20 @@ func TestControlClientDirectRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestJoinRejectsIncompleteCredential(t *testing.T) {
+	for _, body := range []string{`{}`, `null`, `{"approved":true}`, `{"node_id":"id","approved":true}`, `{"node_token":"token","approved":false}`, `{"node_id":" ","node_token":"token"}`, `{"node_id":"id","node_token":"\t"}`} {
+		t.Run(body, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
+			defer srv.Close()
+			c := &Client{Base: srv.URL}
+			resp, err := c.Join(context.Background(), netmap.JoinRequest{})
+			if err == nil || resp != nil {
+				t.Fatal("incomplete credential accepted")
+			}
+			if strings.Contains(err.Error(), "token\"") {
+				t.Fatal("response bytes disclosed in diagnostic")
+			}
+		})
+	}
+}

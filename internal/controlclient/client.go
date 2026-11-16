@@ -95,6 +95,9 @@ func (c *Client) Join(ctx context.Context, req netmap.JoinRequest) (*netmap.Join
 	if err := c.do(r, &out); err != nil {
 		return nil, err
 	}
+	if strings.TrimSpace(out.NodeID) == "" || strings.TrimSpace(out.NodeToken) == "" {
+		return nil, fmt.Errorf("control: join returned an incomplete device credential")
+	}
 	return &out, nil
 }
 

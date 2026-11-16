@@ -72,9 +72,11 @@ These checks do not make ephemeral hosting durable. Keep state in a trusted priv
 
 ## Control credential destination follow-up
 
-New source refuses all daemon HTTP control API redirects, including same-origin redirects and supplied HTTP clients. A local two-server race regression covers all five redirect codes and proves the redirect destination receives no request; direct requests still work. Use the final base URL directly. Native/full CI verification is pending. This is not a live incident report or a deployment change. See [operations](operations.md#control-api-destination).
+New source refuses all daemon HTTP control API redirects, including same-origin redirects and supplied HTTP clients. A local two-server race regression covers all five redirect codes and proves the redirect destination receives no request; direct requests still work. Use the final base URL directly. All five jobs passed in [9d6c03d CI](https://github.com/MaisySen/Mnet/actions/runs/43799181639), including native Windows/macOS. This is not a live incident report or a deployment change. See [operations](operations.md#control-api-destination).
 
-New source also rejects server/network changes for an enrolled saved credential in both Up and mobile Prepare. Local race tests verify rejection before requests or saved-state changes and a retry reaching the original server. Use the saved target or a separate state directory for a new identity. Network selectors compare exactly; this is not account switching or remote migration. Full/native CI is pending. See [target handling](operations.md#enrolled-target-changes).
+New source also rejects server/network changes for an enrolled saved credential in both Up and mobile Prepare. Local race tests verify rejection before requests or saved-state changes and a retry reaching the original server. Use the saved target or a separate state directory for a new identity. Network selectors compare exactly; this is not account switching or remote migration. All five jobs passed in [c632d45 CI](https://github.com/MaisySen/Mnet/actions/runs/43799335015), including native Windows/macOS. See [target handling](operations.md#enrolled-target-changes).
+
+New source rejects incomplete enrollment credentials before replacing saved identity. An accepted enrollment whose local save fails retains its credential for a same-process retry, with an explicit diagnostic; it does not undo remote enrollment or guarantee recovery after process exit. Local race regressions check unchanged prior disk state and successful durable retry. Full/native CI is pending. See [enrollment recovery](operations.md#enrollment-response-and-local-save-recovery).
 
 ## Important open work
 

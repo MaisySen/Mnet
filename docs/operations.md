@@ -43,6 +43,10 @@ New source refuses every HTTP redirect from the daemon control API, including sa
 
 New source binds a saved node credential to its saved server and network selector. Up and mobile Prepare reject a different non-empty server or network before saving configuration or making a request. A trailing server slash is ignored; network names/IDs are compared exactly, so use the same selector used for enrollment rather than switching aliases. Omitted flags reuse the saved target. Renaming a node at that target is separate. For a different target, use a separate private state directory and enroll a new identity; do not delete the existing identity as a workaround. This is not account switching, automatic migration or remote device removal.
 
+## Enrollment response and local save recovery
+
+New source refuses a join response without both a non-blank node ID and token, before replacing local identity. A valid remote enrollment can still succeed while saving locally fails, including consuming a one-time key. The running daemon keeps the accepted credential in memory for retry; fix local state storage and retry before restarting. It does not publish the new control client before saving. A successful retry is checked by reload in isolated tests. If the process exits before a successful save, the newly accepted credential can be lost and the server may retain the enrollment: inspect the remote device/key state and use an operator recovery path. Do not assume the enrollment was undone or delete the old identity as a workaround. There is no crash-durable distributed transaction.
+
 ## Nodes
 
 Linux with systemd:
