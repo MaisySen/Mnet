@@ -124,6 +124,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/endpoints", s.handleEndpoints)
 	mux.HandleFunc("/api/relay/ws", s.handleRelayWS)
 	mux.HandleFunc("/admin/api/login", s.loginLim.limit(s.handleAdminLogin))
+	mux.HandleFunc("/admin/api/logout", s.adminOnly(s.handleAdminLogout))
 	mux.HandleFunc("/admin/api/state", s.adminOnly(s.handleAdminState))
 	mux.HandleFunc("/admin/api/networks", s.adminOnly(s.handleAdminNetworks))
 	mux.HandleFunc("/admin/api/authkeys", s.adminOnly(s.handleAdminAuthKeys))
@@ -339,23 +340,37 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "wrong password")
 		return
 	}
-	s.audit(r, "admin_login", "admin", "", true)
-	s.metrics.bump(&s.metrics.LoginsOK)
 	b := make([]byte, 24)
 	rand.Read(b)
 	tok := base64.RawURLEncoding.EncodeToString(b)
+	now := time.Now()
+	exp := now.Add(24 * time.Hour)
 	s.sessionsMu.Lock()
-	s.sessions[tok] = time.Now().Add(24 * time.Hour)
+	for key, deadline := range s.sessions {
+		if !now.Before(deadline) {
+			delete(s.sessions, key)
+		}
+	}
+	previous := ""
+	if c, err := r.Cookie("mnet_admin"); err == nil {
+		if _, found := s.sessions[c.Value]; found {
+			previous = c.Value
+		}
+	}
+	if len(s.sessions) >= maxAdminSessions && previous == "" {
+		s.sessionsMu.Unlock()
+		w.Header().Set("Retry-After", "60")
+		writeErr(w, http.StatusTooManyRequests, "too many admin sessions; try again later")
+		return
+	}
+	if previous != "" {
+		delete(s.sessions, previous)
+	}
+	s.sessions[tok] = exp
 	s.sessionsMu.Unlock()
-	http.SetCookie(w, &http.Cookie{
-		Name:     "mnet_admin",
-		Value:    tok,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   strings.HasPrefix(s.publicBase, "https://"),
-		SameSite: http.SameSiteLaxMode,
-		Expires:  time.Now().Add(24 * time.Hour),
-	})
+	s.audit(r, "admin_login", "admin", "", true)
+	s.metrics.bump(&s.metrics.LoginsOK)
+	s.adminCookie(w, tok, exp, 0)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -367,6 +382,9 @@ func (s *Server) adminOnly(next http.HandlerFunc) http.HandlerFunc {
 			s.sessionsMu.Lock()
 			exp, found := s.sessions[c.Value]
 			ok = found && time.Now().Before(exp)
+			if found && !ok {
+				delete(s.sessions, c.Value)
+			}
 			s.sessionsMu.Unlock()
 		}
 		if !ok {

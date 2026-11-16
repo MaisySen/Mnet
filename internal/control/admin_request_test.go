@@ -21,7 +21,7 @@ func TestAdminWriteOriginAndMethodBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	app.sessions["valid"] = time.Now().Add(time.Hour)
-	paths := []string{"networks", "authkeys", "authkeys/delete", "nodes/approve", "nodes/deny", "nodes/delete", "nodes/expire", "memberships", "acl", "state", "metrics"}
+	paths := []string{"logout", "networks", "authkeys", "authkeys/delete", "nodes/approve", "nodes/deny", "nodes/delete", "nodes/expire", "memberships", "acl", "state", "metrics"}
 	before, _ := json.Marshal(st.data)
 	for _, path := range paths {
 		for _, method := range []string{"GET", "HEAD", "POST", "PUT", "DELETE", "PATCH"} {
