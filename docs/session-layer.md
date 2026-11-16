@@ -62,6 +62,8 @@ JPEG frames and 64x64 changed-tile deltas with periodic keyframes are implemente
 
 Capture backends include Android MediaProjection and Linux X11/Wayland paths. X11 proof runs under Xvfb; real GNOME portal/PipeWire and physical mobile capture remain open.
 
+A screen-production failure now ends the host session transport instead of leaving a keepalive-connected frozen screen. That also ends its chat/file traffic; reconnect requires capture to work again. Recording-only output failure remains separate and does not end hosting. This newer source has local full/delta/keyframe-fallback failure coverage, CI pending.
+
 ## Input v1
 
 JSON events: {"kind":"pointer","x":..,"y":..,"button":..,"action":..}

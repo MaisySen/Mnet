@@ -8,11 +8,13 @@ Updated 2026-11-17, Australia/Sydney. Development/testing only. No production-re
 | --- | --- | --- |
 | Published test artifacts | v0.8.2-test.1, source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11; Android 0.8.2/code 14. | [Release](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1). Sixteen assets verified at release. Update CLI and daemon together. |
 | Hosted test control plane | Last verified 2026-11-16 at 07:12 AEDT on `2bb55f4`. | Dated deployment check, not a current availability promise. Free-host ephemeral disk/restart state loss remains a limitation. |
-| Newer verified source | `351be62`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43977271776). Native/kernel controlled fixtures, not physical Android runtime/boot proof. |
+| Newer verified source | `22ed76c`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43979463842). Native/kernel controlled fixtures, not physical Android runtime/boot proof. |
 | Current Android build check | Fresh `351be62` bindings for armeabi-v7a, arm64-v8a, x86 and x86_64 (minimum API 24), Android 34 resources/application Java and min-api-24 dex compile; 64 local framework cases pass. | Build and simulation only. No JNI/device/install proof or new APK/AAB. [Framework guide](../android/framework-tests/README.md). |
 | Local source validation | Fresh build, Windows/macOS cross-build, vet, vulnerability scan, full race suite, normal/burst mesh-file stress, source-gate tests and secret scan passed at `351be62`. | Local gates, not physical-platform or public-internet soak proof. |
 
 ### Current mobile/session summary
+
+New host source closes the session transport when screen production exits, including capture failure, rather than leaving keepalives on a frozen viewer. Local full/delta/fallback failure tests pass; CI pending. This also ends chat/file traffic on that session. Recording-only output failure still leaves hosting running.
 
 - Mobile nodes own pending/active tunnels and session connections; disposal rejects reuse. Host consent answers are tied to one exact request, and auto-accept is opt-in for one hosting run.
 - Android viewer input requires a decoded frame. Completed stationary release sends one click; cancel, drag, multitouch, letterbox touches and frame-size changes do not become clicks. Held-pointer/drag control is unsupported.

@@ -186,6 +186,9 @@ func (h *Host) SendChat(from, text string) error {
 }
 
 func (h *Host) screenLoop() {
+	// A hosted desktop session cannot remain healthy without screen production.
+	// Close only the transport here; Stop owns capture cleanup and worker waits.
+	defer h.Mux.Close()
 	defer h.wg.Done()
 	interval := time.Second / time.Duration(h.FPS)
 	tick := time.NewTicker(interval)
