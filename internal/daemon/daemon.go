@@ -168,6 +168,13 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 		if err := d.state.EnsureKey(d.cfg.StateDir); err != nil {
 			return err
 		}
+		previousServer, previousNetwork, previousName := d.state.Server, d.state.Network, d.state.NodeName
+		published := false
+		defer func() {
+			if !published {
+				d.state.Server, d.state.Network, d.state.NodeName = previousServer, previousNetwork, previousName
+			}
+		}()
 		if server != "" {
 			d.state.Server = server
 		}
@@ -190,6 +197,8 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 		if err := d.state.Save(d.cfg.StateDir); err != nil {
 			return err
 		}
+
+		published = true
 
 		return nil
 	}(); err != nil {

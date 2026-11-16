@@ -8,7 +8,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 | --- | --- | --- |
 | Published test artifacts | v0.8.2-test.1, source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11; Android 0.8.2/code 14. | [Release](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1). Sixteen assets verified at release. Update CLI and daemon together. |
 | Hosted test control plane | Last verified 2026-11-16 at 07:12 AEDT on `2bb55f4`. | Dated deployment check, not a current availability promise. Free-host ephemeral disk/restart state loss remains a limitation. |
-| Newer verified source | `841d3a6`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43795711303). New source below is not in those downloads or that last verified deployment. |
+| Newer verified source | `ba15a1d`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43796613946). New source below is not in those downloads or that last verified deployment. |
 
 ## What is implemented and tested
 
@@ -22,7 +22,7 @@ Updated 2026-11-16, Australia/Sydney. Development/testing only. No production-re
 - Route-only ACL withdrawal/restoration and admin expiry/reapproval block and restore access as expected. Reapproval clears stale approval status/link. Known expiry is enforced locally even if later control polling is blocked; unseen offline admin changes cannot be discovered.
 - `mnet up --reset-routing`, while down, clears saved roles without deleting identity. Ordinary saved-state Up preserves routing. Fresh attempts clear old setup errors, preserving errors raised during the new attempt.
 
-The latest verified [841d3a6 CI](https://github.com/MaisySen/Mnet/actions/runs/43795711303) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 146/140/144. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
+The latest verified [ba15a1d CI](https://github.com/MaisySen/Mnet/actions/runs/43796613946) repeated the full kernel fixture three times. Later original-pair/LAN transfers ran with control and relay stopped: LAN TCP 3 x 4MiB, mesh normal TCP 3 x 4MiB and mesh TCP with 1% loss/20ms delay 3 x 4MiB, with receiver hash/sender ACK. Actual loss drops: 162/155/150. Third-device transfers occurred before control was stopped. These are disposable controlled fixtures, not fleet or public-internet soak proof.
 
 Exit-node selection/advertising is explicitly rejected before enrollment/device creation. Unsafe dormant host/default-route replacement helpers were removed, not enabled. Exit internet routing remains unsupported.
 
@@ -77,9 +77,13 @@ A Windows-specific control regression starts with an Everyone-readable state fil
 
 Daemon state loading rejects non-object files, malformed/half key pairs, mismatched private/public keys and saved control credentials without a key pair. EnsureKey also validates existing in-memory material before deciding whether first-run generation is allowed. It never silently replaces those broken identities. Valid saved pairs reload without regeneration/rewrite, while metadata-only legacy state can still generate its first pair. Tests check unchanged rejected file bytes, in-memory refusal without writing, generated-pair reload and metadata compatibility. All five jobs passed in [841d3a6 CI](https://github.com/MaisySen/Mnet/actions/runs/43795711303), including native Windows/macOS identity assertions and three full kernel fixtures with 146/140/144 later loss-profile drops. This does not repair corruption, rotate an identity or prove physical reboot recovery.
 
-## Daemon failed-save rollback (new source, pending CI)
+## Daemon failed-save rollback (verified source)
 
-If the first identity save fails, EnsureKey now removes the unpublished in-memory pair so a retry cannot mistake it for a durable identity and skip saving. A successful retry is reloaded and checked against the generated pair. Routing-setting save failure also restores the previous live exit/routes/selection exactly, leaving the saved file intact; a later valid change persists correctly. Local daemon race/build/vet checks pass and native Windows/macOS regressions are added; independent CI is pending. These changes do not enable exit routing or repair/migrate existing identities.
+If the first identity save fails, EnsureKey now removes the unpublished in-memory pair so a retry cannot mistake it for a durable identity and skip saving. A successful retry is reloaded and checked against the generated pair. Routing-setting save failure also restores the previous live exit/routes/selection exactly, leaving the saved file intact; a later valid change persists correctly. All five jobs passed in [ba15a1d CI](https://github.com/MaisySen/Mnet/actions/runs/43796613946), including native Windows/macOS rollback regressions and three full kernel fixtures with 162/155/150 later loss-profile drops. These changes do not enable exit routing or repair/migrate existing identities.
+
+## Startup configuration save rollback (new source, pending CI)
+
+Up and mobile Prepare now restore the prior server/network/device-name settings if initial validation or saving the replacement configuration fails. A failed call cannot leave a different unsaved destination in memory for a later retry. A successfully saved first key pair is kept; this change does not discard a durable identity. Local race tests exercise both entry points with an existing pair and a failing destination, checking prior live configuration, unchanged disk bytes/keys and Down status. Native Windows/macOS regressions are added; independent CI is pending. Enrollment that has already changed remote control state is outside this narrow rollback boundary.
 
 ## Important open work
 

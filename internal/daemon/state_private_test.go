@@ -186,3 +186,43 @@ func TestRoutingFailedSaveRestoresLiveAndDiskState(t *testing.T) {
 		t.Fatal("routing retry failed", err)
 	}
 }
+
+func TestStartupConfigFailedSaveDoesNotLeakIntoRetry(t *testing.T) {
+	for _, mode := range []string{"up", "prepare"} {
+		t.Run(mode, func(t *testing.T) {
+			dir := t.TempDir()
+			initial := &State{Server: "http://127.0.0.1:1", Network: "original", NodeName: "original-device"}
+			if err := initial.EnsureKey(dir); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(statePath(dir))
+			if err != nil {
+				t.Fatal(err)
+			}
+			d, err := New(Config{StateDir: dir})
+			if err != nil {
+				t.Fatal(err)
+			}
+			d.cfg.StateDir = filepath.Join(statePath(dir), "invalid-child")
+			if mode == "up" {
+				err = d.Up("http://127.0.0.1:2", "wrong-network", "wrong-device", "")
+			} else {
+				_, err = d.Prepare("http://127.0.0.1:2", "wrong-network", "wrong-device", "")
+			}
+			if err == nil {
+				t.Fatal("startup configuration save unexpectedly succeeded")
+			}
+			got := d.State()
+			if got.Server != initial.Server || got.Network != initial.Network || got.NodeName != initial.NodeName || got.PrivateKey != initial.PrivateKey || got.PublicKey != initial.PublicKey {
+				t.Fatal("failed startup changed live persisted configuration or identity")
+			}
+			if d.Status().Status != "down" {
+				t.Fatal("failed startup did not return down")
+			}
+			after, err := os.ReadFile(statePath(dir))
+			if err != nil || string(before) != string(after) {
+				t.Fatal("failed startup changed saved bytes")
+			}
+		})
+	}
+}
