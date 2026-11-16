@@ -63,6 +63,24 @@ func peerIP(peer string) string {
 	return ""
 }
 
+// TCP connect timeout is separate from user consent on an established socket.
+// Clear the deadline on success so an active session is not cut off later.
+func dialSessionHandshake(conn net.Conn, name string, budget time.Duration) (*session.Mux, error) {
+	if err := conn.SetDeadline(time.Now().Add(budget)); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	mux, err := session.Dial(conn, name)
+	if err != nil {
+		return nil, err
+	}
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		mux.Close()
+		return nil, err
+	}
+	return mux, nil
+}
+
 func dialSession(peer string) (*session.Mux, string) {
 	st := status(client(stateDir))
 	if st.Status != "up" {
@@ -71,7 +89,7 @@ func dialSession(peer string) (*session.Mux, string) {
 	ip := peerIP(peer)
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip, "5909"), 10*time.Second)
 	must(err)
-	m, err := session.Dial(conn, st.NodeName)
+	m, err := dialSessionHandshake(conn, st.NodeName, 70*time.Second)
 	must(err)
 	return m, st.NodeName
 }
@@ -194,7 +212,7 @@ func dialSessionTry(peer string) (*session.Mux, string) {
 		fmt.Printf("dial %s: %v\n", peer, err)
 		return nil, ""
 	}
-	m, err := session.Dial(conn, st.NodeName)
+	m, err := dialSessionHandshake(conn, st.NodeName, 70*time.Second)
 	if err != nil {
 		conn.Close()
 		fmt.Printf("session handshake: %v\n", err)

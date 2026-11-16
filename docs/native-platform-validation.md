@@ -510,8 +510,14 @@ Session framing now returns io.ErrShortWrite if a writer reports fewer header or
 
 A short-header regression failed before the fix. Header/payload truncation and transport-error preservation tests pass100 race-enabled repetitions; fresh full-repository race tests pass. All-five [4bce9b8 CI](https://github.com/MaisySen/Mnet/actions/runs/43946082516) passes. Synthetic writer evidence only, no live network/device/runtime claim. No new bindings, release APK/AAB or deployment. Separately, [905a401 all-five CI](https://github.com/MaisySen/Mnet/actions/runs/43944038163) confirms Maven cache restoration and64 passing framework cases.
 
-## Session Dial transport ownership (new source, CI pending)
+## Session Dial transport ownership (2e87ce6 all-five CI verified)
 
 Dial now explicitly owns its supplied connection: a failed hello write, reply read/parse, unexpected frame/version or refusal closes it. Success transfers ownership to the returned mux, which closes it later. Callers still supply handshake deadlines; this does not add a timeout or change consent rules. Existing caller-side error cleanup may close an already-closed connection, which net.Conn permits.
 
-Counted net.Pipe regressions failed before the change for bad reply/frame/version/refusal and failed hello write. Error closure and successful mux ownership pass30 race repetitions; fresh full-repository race tests pass. These are local synthetic transport tests, not a reproduced live descriptor leak or device/OS-network proof. No fresh bindings, release APK/AAB or deployment.
+Counted net.Pipe regressions failed before the change for bad reply/frame/version/refusal and failed hello write. Error closure and successful mux ownership pass30 race repetitions; fresh full-repository race tests pass. All-five [2e87ce6 CI](https://github.com/MaisySen/Mnet/actions/runs/43948329722) passes. These are local synthetic transport tests, not a reproduced live descriptor leak or device/OS-network proof. No fresh bindings, release APK/AAB or deployment.
+
+## CLI session handshake deadline (new source, CI pending)
+
+CLI session connect/reconnect and file-send now allow70 seconds for hello/host consent after TCP connects, rather than waiting indefinitely for a silent host. The existing TCP connect limit remains10 seconds. A successful handshake clears its deadline before active use; a failure closes the connection through Dial ownership. Expiry can terminate a delayed consent response and requires another attempt; it does not change authorization policy.
+
+Short-budget silent-host and successful deadline-clear net.Pipe tests pass30 race repetitions. Fresh full-repository race tests pass. These use an accelerated fixture timeout, not an elapsed70-second real host/device test. No mobile source, bindings, release artifacts or live deployment changed.
