@@ -218,7 +218,11 @@ The dashboard can now remove only a previously inspected exact membership tuple 
 
 ## Membership removal uncertain-commit proof (fixture extension)
 
-Local real Chrome now commits the actual disposable POST but drops its response, then requires an uncertain message and an actual GET showing the grant absent. No automatic retry write is made. Extra checks invalidate a retained old row callback and the selection during confirmation; neither can revoke membership. Pending full CI. No live changes.
+Local real Chrome now commits the actual disposable POST but drops its response, then requires an uncertain message and an actual GET showing the grant absent. No automatic retry write is made. Extra checks invalidate a retained old row callback and the selection during confirmation; neither can revoke membership. All five jobs passed in [3fd47cf CI](https://github.com/MaisySen/Mnet/actions/runs/43824315289), including the actual-Chrome extension and three complete kernel regressions with 138/156/161 later loss-profile drops. No live changes.
+
+## Operator removal account/node boundary (fixture extension)
+
+A signed-provider HTTP test now checks the actual operator removal endpoint: rejected cross-origin removal leaves an active account query usable; accepted removal denies it without changing the original approved node's map authentication. Local focused three-repetition and full race/vet checks pass; CI pending. No production API or live membership changes.
 
 ## v0.8.2-test.1 - 2026-11-16
 

@@ -102,9 +102,21 @@ func TestAccountHTTPVerifiedLoginMembershipAndLogout(t *testing.T) {
 			t.Fatal("private principal/credential leaked in device list")
 		}
 	}
-	// Query parameters cannot widen scope; current membership remains required.
-	if err := store.SetNetworkMember(network.ID, fake.srv.URL, "user-1", false); err != nil {
-		t.Fatal(err)
+	// Operator HTTP removal closes the current signed-in account gate, not the
+	// approved device credential. Rejected cross-origin writes do neither.
+	target := map[string]any{"network_id": network.ID, "issuer": fake.srv.URL, "subject": "user-1", "allow": false}
+	if code, _ := post(t, ts.URL+"/admin/api/memberships", target, map[string]string{"Cookie": admin.String(), "Origin": "https://other.invalid"}); code != 403 {
+		t.Fatal("cross-origin membership removal accepted")
+	}
+	if code, _ := accountGet(t, browser, ts.URL+"/account/api/devices"); code != 200 {
+		t.Fatal("rejected membership removal changed account access")
+	}
+	if code, _ := post(t, ts.URL+"/admin/api/memberships", target, map[string]string{"Cookie": admin.String()}); code != 200 {
+		t.Fatal("operator HTTP membership removal failed")
+	}
+	mapCode, mapped := getMap(t, ts.URL, joined, map[string]string{"X-Node-ID": joined.NodeID, "X-Node-Token": joined.NodeToken})
+	if mapCode != 200 || mapped.Self.ID != joined.NodeID || !mapped.Self.Approved {
+		t.Fatal("membership removal changed device authorization")
 	}
 	if code, _ := accountGet(t, browser, ts.URL+"/account/api/devices"); code != 401 {
 		t.Fatal("active session bypassed revocation")
