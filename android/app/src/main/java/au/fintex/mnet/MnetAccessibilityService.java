@@ -50,7 +50,7 @@ public class MnetAccessibilityService extends AccessibilityService {
     // Coordinates arrive in capture-frame pixels; the caller scales
     // them to device pixels before this call.
     public void inject(String evJson, float scale) {
-        if (!hosting) {
+        if (!hosting || !(scale > 0) || Float.isInfinite(scale)) {
             return;
         }
         try {
@@ -61,14 +61,14 @@ public class MnetAccessibilityService extends AccessibilityService {
             }
             float x = (float) ev.optDouble("x") * scale;
             float y = (float) ev.optDouble("y") * scale;
+            if (Float.isNaN(x) || Float.isInfinite(x) || x < 0
+                    || Float.isNaN(y) || Float.isInfinite(y) || y < 0) return;
             String action = ev.optString("action");
             Path p = new Path();
             p.moveTo(x, y);
             GestureDescription.Builder b = new GestureDescription.Builder();
             switch (action) {
                 case "click":
-                case "down":
-                case "up":
                     b.addStroke(new GestureDescription.StrokeDescription(p, 0, 50));
                     break;
                 case "scroll": {

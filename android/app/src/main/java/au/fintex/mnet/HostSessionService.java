@@ -217,9 +217,33 @@ public class HostSessionService extends Service implements HostCallbacks {
         return frameH;
     }
 
+    // Android currently supports completed clicks and fixed scroll gestures,
+    // not a held down/up stream. Reject rather than reinterpret unsupported input.
+    private boolean supportedPointer(String json) {
+        try {
+            org.json.JSONObject event = new org.json.JSONObject(json);
+            if (!"pointer".equals(event.optString("kind"))) return false;
+            String action = event.optString("action");
+            if (!"click".equals(action) && !"scroll".equals(action)) return false;
+            for (String axis : new String[]{"x", "y"}) {
+                // Go's omitempty leaves zero coordinates absent.
+                Object raw = event.has(axis) ? event.get(axis) : Integer.valueOf(0);
+                if (!(raw instanceof Number)) return false;
+                double value = ((Number) raw).doubleValue();
+                int limit = "x".equals(axis) ? frameW : frameH;
+                if (Double.isNaN(value) || Double.isInfinite(value) || value < 0
+                        || value >= limit || value != Math.floor(value)) return false;
+            }
+            return true;
+        } catch (Exception invalid) {
+            return false;
+        }
+    }
+
     @Override
     public void inject(String evJson) {
         if (!running || inputGeometryInvalid || frameW <= 0 || frameH <= 0) return;
+        if (!supportedPointer(evJson)) return;
         MnetAccessibilityService svc = MnetAccessibilityService.instance();
         if (svc != null) {
             WindowManager wm = (WindowManager) getSystemService(Context.WINDOW_SERVICE);

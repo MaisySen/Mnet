@@ -472,11 +472,18 @@ The viewer no longer assumes a fictional1x1 frame before receiving screen conten
 Expanded Activity regressions failed on each of simulated API24/25/26/33 before the initial-frame fix, then failed separately on the resize check before its fix. All49 cases pass in all-five [2420ae9 CI](https://github.com/MaisySen/Mnet/actions/runs/43922014681), including synthetic JPEG frame delivery through the actual callback, resize cancellation and disconnect clearing. Full Android34 Java/min-api24 dex compilation passes against current-Go arm64 bindings. These are simulated events and synthetic frames with fake Go transport, not actual capture pixels, physical input, JNI or emulator/device proof. API34 Activity simulation remains excluded as documented. No new APK/AAB, release or live deployment.
 
 
-## Host capture/display geometry input refusal (new source, CI pending)
+## Host capture/display geometry input refusal (a1b761c all-five CI verified)
 
 The Android host now refuses input when frame dimensions are uninitialized or the current display width, height or rotation differs from capture setup. A detected geometry change latches remote input off and logs a notice to restart hosting. It does not dynamically resize/restart capture or claim rotation support. Fresh capture setup resets the latch in source; a real projection restart is still unverified.
 
-Two added service tests across simulated API24/25/26/33/34 use reflected capture state and an explicit fake accessibility sink. Initial-dimension and display-width mismatch assertions each failed before the guard. The fixed tests cover width/height/rotation refusal and the refusal latch.59 framework cases pass locally (55 service/helper,4 Activity); API34 Activity exclusion remains. Full Android34 resources/Java and min-api24 dex compile against current-Go arm64 bindings. No physical display rotation, injected gesture, real projection or JNI executes, and no actual Android UI pixels were inspected. Published APK/AAB and live service are unchanged.
+Two added service tests across simulated API24/25/26/33/34 use reflected capture state and an explicit fake accessibility sink. Initial-dimension and display-width mismatch assertions each failed before the guard. The fixed tests cover width/height/rotation refusal and the refusal latch.59 framework cases pass in all-five [a1b761c CI](https://github.com/MaisySen/Mnet/actions/runs/43924405581) (55 service/helper,4 Activity); API34 Activity exclusion remains. Full Android34 resources/Java and min-api24 dex compile against current-Go arm64 bindings. No physical display rotation, injected gesture, real projection or JNI executes, and no actual Android UI pixels were inspected. Published APK/AAB and live service are unchanged.
+
+
+## Android host pointer validation (new source, CI pending)
+
+The host now checks pointer payloads before forwarding to the accessibility endpoint: only completed click and fixed scroll actions with integer, finite, nonnegative coordinates inside the capture frame are accepted. Missing x/y remain zero for Go omitempty compatibility. Malformed JSON, non-pointer input, string/null/fractional/out-of-frame coordinates and unsupported down/up/move are refused. The accessibility source no longer converts down/up into separate clicks and also checks scale/coordinate finiteness. Older senders relying on that incorrect behavior must send completed clicks instead; held-pointer forwarding is still unsupported.
+
+One added service test across simulated API24/25/26/33/34 failed before validation, then passed its invalid/valid payload assertions after the fix.64 local framework cases pass (60 service/helper,4 Activity), with a fake accessibility sink. Full Android34 resource/Java/min-api24 dex compilation passes against current-Go arm64 bindings. The real accessibility-service changes have source/build checks only, not gesture runtime or physical input proof. API34 Activity simulation remains excluded. No release artifacts or deployment changed.
 
 ## v0.8.2-test.1 - 2026-11-16
 

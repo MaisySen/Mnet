@@ -55,3 +55,10 @@ assert 'inputGeometryInvalid = false;' in host and 'inputGeometryInvalid = true;
 assert 'dm.widthPixels != captureDisplayW || dm.heightPixels != captureDisplayH' in host
 assert 'wm.getDefaultDisplay().getRotation() != captureRotation' in host
 print('PASS host capture/display mismatch refusal/reset source wiring; no physical rotation/input proof')
+
+assert 'if (!supportedPointer(evJson)) return;' in host
+assert 'value >= limit || value != Math.floor(value)' in host
+accessibility = (Path(__file__).resolve().parents[1] / 'android/app/src/main/java/au/fintex/mnet/MnetAccessibilityService.java').read_text()
+assert 'case "down":' not in accessibility and 'case "up":' not in accessibility
+assert 'Float.isNaN(x)' in accessibility and 'Float.isInfinite(scale)' in accessibility
+print('PASS host pointer boundary/endpoint source checks; real accessibility dispatch not executed')

@@ -22,3 +22,7 @@ The actual ViewerActivity/ViewerGate/ViewerTap run with a fake Go SessionViewer.
 ## Host geometry refusal extension
 
 Two new service tests per simulated API24/25/26/33/34 use reflected capture dimensions/rotation with a fake accessibility sink. They verify no forwarding for uninitialized dimensions, changed width/height/rotation and a latched refusal until a new capture setup. The reset in actual capture setup is source-checked, not executed in these tests.59 total cases pass locally, CI pending. Previous49 passed all-five [2420ae9 CI](https://github.com/MaisySen/Mnet/actions/runs/43922014681). No dynamic rotation, actual accessibility input, valid projection or device execution is proven.
+
+## Pointer validation extension
+
+One extra service test per simulated API24/25/26/33/34 exercises supported completed click/scroll payloads, Go omitted-zero compatibility and rejection of malformed/unsupported/out-of-frame coordinates.64 local cases pass, CI pending. The sink is a fake, not real accessibility. Real endpoint finite checks and removal of down/up-as-click have source/build checks only. Previous59 cases passed all-five [a1b761c CI](https://github.com/MaisySen/Mnet/actions/runs/43924405581).

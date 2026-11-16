@@ -21,15 +21,33 @@ public class ServiceTest{
    setField(service,"running",true);setField(service,"frameW",metrics.widthPixels);setField(service,"frameH",metrics.heightPixels);
    setField(service,"captureDisplayW",metrics.widthPixels);setField(service,"captureDisplayH",metrics.heightPixels);
    setField(service,"captureRotation",((android.view.WindowManager)service.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay().getRotation());
-   service.inject("{}");assertEquals(1,sink.injections);
+   service.inject("{\"kind\":\"pointer\",\"action\":\"click\"}");assertEquals(1,sink.injections);
    setField(service,"captureDisplayW",metrics.widthPixels+1);
-   service.inject("{}");assertEquals("old frame after display-width change",1,sink.injections);
+   service.inject("{\"kind\":\"pointer\",\"action\":\"click\"}");assertEquals("old frame after display-width change",1,sink.injections);
    setField(service,"captureDisplayW",metrics.widthPixels);
-   service.inject("{}");assertEquals("geometry refusal stays latched until restart",1,sink.injections);
+   service.inject("{\"kind\":\"pointer\",\"action\":\"click\"}");assertEquals("geometry refusal stays latched until restart",1,sink.injections);
    setField(service,"inputGeometryInvalid",false);setField(service,"captureDisplayH",metrics.heightPixels+1);
-   service.inject("{}");assertEquals("old frame after display-height change",1,sink.injections);
+   service.inject("{\"kind\":\"pointer\",\"action\":\"click\"}");assertEquals("old frame after display-height change",1,sink.injections);
    setField(service,"inputGeometryInvalid",false);setField(service,"captureDisplayH",metrics.heightPixels);
-   setField(service,"captureRotation",-1);service.inject("{}");assertEquals("old frame after rotation",1,sink.injections);
+   setField(service,"captureRotation",-1);service.inject("{\"kind\":\"pointer\",\"action\":\"click\"}");assertEquals("old frame after rotation",1,sink.injections);
+  } finally {controller.destroy();MnetAccessibilityService.current=null;}
+ }
+ @Test public void hostRefusesMalformedUnsupportedAndOutsidePointerInput() throws Exception {
+  ServiceController<HostSessionService> controller=Robolectric.buildService(HostSessionService.class).create();
+  MnetAccessibilityService sink=new MnetAccessibilityService();MnetAccessibilityService.current=sink;
+  try {
+   HostSessionService service=controller.get();android.util.DisplayMetrics metrics=new android.util.DisplayMetrics();
+   android.view.Display display=((android.view.WindowManager)service.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();display.getRealMetrics(metrics);
+   setField(service,"running",true);setField(service,"frameW",metrics.widthPixels);setField(service,"frameH",metrics.heightPixels);
+   setField(service,"captureDisplayW",metrics.widthPixels);setField(service,"captureDisplayH",metrics.heightPixels);setField(service,"captureRotation",display.getRotation());
+   String valid="{\"kind\":\"pointer\",\"action\":\"click\"}";
+   service.inject(valid);assertEquals("Go omits zero coordinates",1,sink.injections);
+   for(String invalid:new String[]{null,"bad","{}",valid.replace("click","down"),valid.replace("click","up"),valid.replace("click","move"),valid.replace("pointer","key"),
+    valid.replace("}",",\"x\":-1}"),valid.replace("}",",\"x\":"+metrics.widthPixels+"}"),valid.replace("}",",\"y\":"+metrics.heightPixels+"}"),
+    valid.replace("}",",\"x\":0.5}"),valid.replace("}",",\"x\":\"1\"}"),valid.replace("}",",\"x\":null}")}){
+    service.inject(invalid);assertEquals("invalid input forwarded: "+invalid,1,sink.injections);
+   }
+   service.inject(valid.replace("click","scroll"));assertEquals(2,sink.injections);
   } finally {controller.destroy();MnetAccessibilityService.current=null;}
  }
  @Test public void notificationAndPrivateReceiver(){
