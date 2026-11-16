@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -103,6 +104,19 @@ func main() {
 			fmt.Println("\nlog in / approve this device here:")
 			fmt.Println(st.ApprovalURL)
 		}
+	case "wait":
+		timeout, err := waitTimeout(args[1:])
+		must(err)
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		st, err := waitUntilUp(ctx, hc, apiBase(), 250*time.Millisecond)
+		if err != nil {
+			if st != nil && st.Status == "waiting-approval" && st.ApprovalURL != "" {
+				fmt.Println("approve this device using the private link from mnet status")
+			}
+			fatal(err.Error())
+		}
+		fmt.Printf("up: %s\n", st.IPv4)
 	case "down":
 		r, err := hc.Post(apiBase()+"/localapi/down", "application/json", nil)
 		must(err)
@@ -147,6 +161,7 @@ func usage() {
           [--advertise-routes CIDR,...] [--reset-routing]
           Exit routing is unsupported. --reset-routing clears saved routing roles while down.
   mnet down
+  mnet wait [--timeout 60s]  (observe current Up state; timeout does not stop startup)
   mnet status
   mnet ip
   mnet ping <node>

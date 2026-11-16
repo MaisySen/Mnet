@@ -217,12 +217,19 @@ print(json.dumps(k))
                 if any(link['ifname'] == 'mnet0' for link in json.loads(run('ip', '-n', spaces['b'], '-j', 'link', 'show'))):
                     raise RuntimeError('failed serving setup leaked kernel TUN')
                 serving_state(False, '0')
+                wait_failure = subprocess.run(ns('b', binary_dir / 'mnet', '--state', state,
+                                                 'wait', '--timeout', '5s'), capture_output=True, timeout=8)
+                if wait_failure.returncode == 0:
+                    raise RuntimeError('CLI wait accepted failed kernel startup')
                 run(*ns('b', sys.executable, '-c', "from pathlib import Path; Path('/proc/sys/net/ipv4/ip_forward').write_text('1')"))
                 print('PASS serving without operator forwarding fails Down with no TUN/NAT leak or sysctl/unrelated NAT mutation', flush=True)
             local_api(state, 'up', {'server': 'http://198.18.10.1:8080', 'network':'kerneltest',
                                    'name': x, 'auth_key': key,
                                    'advertise_routes': ['10.9.0.0/24'] if x == 'b' else []})
             wait_for(lambda: local_api(state)['status'] == 'up', 'kernel TUN up ' + x)
+            cli_ready = run(*ns(x, binary_dir / 'mnet', '--state', state, 'wait', '--timeout', '10s'))
+            if not cli_ready.startswith('up: 100.'):
+                raise RuntimeError('CLI wait did not confirm actual daemon readiness')
             if local_api(state).get('last_error'):
                 raise RuntimeError('successful Up retained setup error: ' + local_api(state)['last_error'])
         wait_for(lambda: (s if len(s.get('peers', [])) == 1 else None)

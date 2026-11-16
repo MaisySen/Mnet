@@ -92,6 +92,8 @@ Each run passed all five jobs, including native Windows/macOS and three full ker
 
 The denial extension passed three fresh complete Linux kernel fixtures: a stopped disposable control file marks only test node b unapproved; after restart its actual mesh/LAN traffic is denied until authenticated reapproval. Direct access returns with unchanged saved identities before the existing control-off TCP/loss/cleanup tests continue. This is test-only state injection, not a production unapprove API or live account change. See [operations](operations.md) and [native/kernel methods](native-platform-validation.md) for recovery instructions, methods and limits.
 
+New source adds a bounded read-only `mnet wait` CLI command for scripts to observe current daemon Up with an address, rather than treating the asynchronous Up acknowledgement as readiness. Default Up behavior is unchanged; timeout does not stop startup and this is not per-request completion or peer reachability. Local regressions pass; native/kernel CI is pending. See [readiness wait](operations.md#bounded-cli-readiness-wait).
+
 ## Important open work
 
 - Account/organization ownership, user login and device-management experience beyond the explicit operator membership gate.

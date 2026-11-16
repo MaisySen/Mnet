@@ -67,6 +67,12 @@ New source refuses existing enrollment state with only a node ID or token, white
 
 New source withdraws the previous peer map when a map/relay request returns 403 or a successful map explicitly marks this node unapproved. It reports waiting-approval rather than leaving a stale connected state, and path refresh cannot reinstall those withdrawn peers. A later approved map can restore access. A 401 also withdraws authorization before rejoin. Transient transport errors still keep the last received authorization subject to its known expiry. This cannot learn an admin change while every control/relay request is blocked, and does not promise immediate offline revocation.
 
+## Bounded CLI readiness wait
+
+New source adds `mnet wait [--timeout 60s]` for scripts that need a daemon Up observation rather than the asynchronous `mnet up` acknowledgement. Timeout must be positive and at most 30 minutes. Example: `mnet up ...` followed by `mnet wait --timeout 90s` (use the same global `--state DIR` on both if set). Wait only reads authenticated local status. It succeeds with a mesh address when current status is Up; startup failure, expiry, invalid status or unreadable status exits nonzero. Approval/pending/Down without an error waits until the deadline. Timeout does not stop or roll back startup. Inspect `mnet status` for the private approval action.
+
+This observes current state, not completion of a particular Up request: concurrent callers can change the daemon, and an already Up daemon satisfies it. It does not prove peer reachability, a physical boot or background service installation. Default `mnet up` behavior is unchanged.
+
 ## Nodes
 
 Linux with systemd:
