@@ -9,9 +9,12 @@ import (
 
 // oidcState binds one login round trip to the node waiting for approval.
 type oidcState struct {
-	NodeID string
-	Exp    time.Time
+	NodeID   string
+	Exp      time.Time
+	Provider *OIDCProvider
 }
+
+const maxPendingOIDCStates = 1024
 
 // SetOIDC enables SSO login: joins without an auth key send the user
 // through the provider instead of waiting for manual approval.
@@ -34,6 +37,9 @@ func (s *Server) publicURL(path string) string { return s.publicBase + path }
 // handleOIDCStart kicks off the login: the node must prove its identity
 // with its join token, then the browser goes to the provider.
 func (s *Server) handleOIDCStart(w http.ResponseWriter, r *http.Request) {
+	if !oidcGET(w, r) {
+		return
+	}
 	p := s.oidcProvider()
 	if p == nil {
 		writeErr(w, http.StatusNotFound, "sso is not configured")
@@ -47,11 +53,17 @@ func (s *Server) handleOIDCStart(w http.ResponseWriter, r *http.Request) {
 	state := newOIDCState()
 	s.oidcStatesMu.Lock()
 	for k, st := range s.oidcStates {
-		if time.Now().After(st.Exp) {
+		if !time.Now().Before(st.Exp) {
 			delete(s.oidcStates, k)
 		}
 	}
-	s.oidcStates[state] = oidcState{NodeID: node.ID, Exp: time.Now().Add(10 * time.Minute)}
+	if len(s.oidcStates) >= maxPendingOIDCStates {
+		s.oidcStatesMu.Unlock()
+		w.Header().Set("Retry-After", "60")
+		writeErr(w, http.StatusTooManyRequests, "too many pending logins; try again later")
+		return
+	}
+	s.oidcStates[state] = oidcState{NodeID: node.ID, Exp: time.Now().Add(10 * time.Minute), Provider: p}
 	s.oidcStatesMu.Unlock()
 	http.Redirect(w, r, p.AuthURL(state, s.publicURL("/oidc/callback")), http.StatusFound)
 }
@@ -59,6 +71,9 @@ func (s *Server) handleOIDCStart(w http.ResponseWriter, r *http.Request) {
 // handleOIDCCallback finishes the login: verified identity approves the
 // waiting node.
 func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
+	if !oidcGET(w, r) {
+		return
+	}
 	p := s.oidcProvider()
 	if p == nil {
 		writeErr(w, http.StatusNotFound, "sso is not configured")
@@ -71,7 +86,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		delete(s.oidcStates, state)
 	}
 	s.oidcStatesMu.Unlock()
-	if !ok || time.Now().After(st.Exp) {
+	if !ok || !time.Now().Before(st.Exp) || st.Provider != p {
 		writeErr(w, http.StatusBadRequest, "login state unknown or expired; try connecting again")
 		return
 	}
@@ -99,4 +114,15 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 <h1>Device connected</h1>
 <p>Signed in as <b>%s</b>. This device is now on the mesh. You can close this tab.</p>
 <footer><small>Mnet is provided by Fintex Australia Pty Ltd (ABN 60 688 406 108), New South Wales, Australia.</small></footer>`, html.EscapeString(user))
+}
+
+// Only the query-based authorization-code flow is supported. Reject other
+// methods before allocating or consuming state.
+func oidcGET(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		writeErr(w, http.StatusMethodNotAllowed, "GET only")
+		return false
+	}
+	return true
 }
