@@ -3,6 +3,7 @@ package control
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 )
 
 // NetworkMember is an explicit operator-managed principal binding. Approval
@@ -80,4 +81,28 @@ func (s *Store) IdentityDevices(networkID, issuer, subject string) ([]IdentityDe
 		return nil, ErrUnauthorized
 	}
 	return s.approvedDevicesForIdentityLocked(networkID, issuer, subject), nil
+}
+
+// OperatorMemberships returns explicit grants for one exact existing network.
+// It includes private principal identifiers for the authenticated operator,
+// not for member/device routes, and never infers grants from approvals.
+func (s *Store) OperatorMemberships(networkID string) ([]NetworkMember, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.data.Networks[networkID] == nil {
+		return nil, ErrNotFound
+	}
+	result := []NetworkMember{}
+	for _, member := range s.data.Memberships {
+		if member.NetworkID == networkID {
+			result = append(result, member)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Issuer != result[j].Issuer {
+			return result[i].Issuer < result[j].Issuer
+		}
+		return result[i].Subject < result[j].Subject
+	})
+	return result, nil
 }

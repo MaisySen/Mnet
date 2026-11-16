@@ -199,3 +199,7 @@ All five jobs passed in [b455910 CI](https://github.com/MaisySen/Mnet/actions/ru
 ## Sign-in failure recovery (verified browser source)
 
 All five jobs passed in [fa00aca CI](https://github.com/MaisySen/Mnet/actions/runs/43816760633), including native account checks and real Chrome rejection-page/return-navigation validation without private callback echo. Three full kernel VPN regression fixtures passed with 118/108/144 later loss-profile drops. The failure screenshot was inspected. No live provider/account was changed.
+
+## Two-device account summary scope (verified browser extension)
+
+All five jobs passed in [7299060 CI](https://github.com/MaisySen/Mnet/actions/runs/43817883961), including real Chrome signed-provider login with two owned device records and same-email/different-subject, other-network, other-issuer and expired outsiders. Actual JSON plus DOM contain exactly the two owned approved/unexpired summaries despite attempted query widening. Desktop/narrow screenshots were inspected. Full kernel VPN regression fixtures passed with 155/123/147 later loss-profile drops. These are control summaries, not two new physical running VPN devices.

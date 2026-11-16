@@ -405,7 +405,7 @@ func (s *Server) adminOnly(next http.HandlerFunc) http.HandlerFunc {
 		} else if r.URL.Path == "/admin/api/acl" {
 			method = http.MethodPut
 		}
-		if r.Method != method && !(r.URL.Path == "/admin/api/acl" && r.Method == http.MethodGet) {
+		if r.Method != method && !((r.URL.Path == "/admin/api/acl" || r.URL.Path == "/admin/api/memberships") && r.Method == http.MethodGet) {
 			w.Header().Set("Allow", method)
 			writeErr(w, http.StatusMethodNotAllowed, "unsupported admin method")
 			return

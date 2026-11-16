@@ -32,7 +32,7 @@ func TestAdminWriteOriginAndMethodBoundary(t *testing.T) {
 			rec := httptest.NewRecorder()
 			app.Handler().ServeHTTP(rec, req)
 			expected := 405
-			if method == "GET" && (path == "state" || path == "metrics" || path == "acl") {
+			if method == "GET" && (path == "state" || path == "metrics" || path == "acl" || path == "memberships") {
 				if rec.Code == 405 || rec.Code == 403 || rec.Code == 401 {
 					t.Fatalf("read endpoint blocked: %s %d", path, rec.Code)
 				}

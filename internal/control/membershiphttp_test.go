@@ -52,7 +52,7 @@ func TestAdminMembershipHTTPBoundaries(t *testing.T) {
 		{"anonymous", "POST", payload, "", "application/json", "", "", 401},
 		{"forged session", "POST", payload, "forged", "application/json", "", "", 401},
 		{"expired session", "POST", payload, "expired", "application/json", "", "", 401},
-		{"get forbidden", "GET", payload, "valid", "application/json", "", "", 405},
+		{"get requires network", "GET", payload, "valid", "application/json", "", "", 400},
 		{"form forbidden", "POST", payload, "valid", "text/plain", "", "", 415},
 		{"cross origin", "POST", payload, "valid", "application/json", "https://other.invalid", "", 403},
 		{"null origin", "POST", payload, "valid", "application/json", "null", "", 403},
@@ -118,5 +118,57 @@ func TestAdminMembershipHTTPBoundaries(t *testing.T) {
 	}
 	if _, err := reopened.IdentityDevices(network.ID, "https://principal.invalid", "private-subject"); err != ErrUnauthorized {
 		t.Fatal("revocation did not persist")
+	}
+}
+
+func TestAdminMembershipReadScopeAndCopies(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, _ := st.CreateNetwork("first")
+	second, _ := st.CreateNetwork("second")
+	for _, grant := range [][3]string{{first.ID, "https://issuer.example", "b"}, {first.ID, "https://issuer.example", "a"}, {second.ID, "https://issuer.example", "hidden"}} {
+		if err := st.SetNetworkMember(grant[0], grant[1], grant[2], true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	members, err := st.OperatorMemberships(first.ID)
+	if err != nil || len(members) != 2 || members[0].Subject != "a" || members[1].Subject != "b" {
+		t.Fatal("operator grants not sorted/scoped")
+	}
+	members[0].Subject = "mutated"
+	next, _ := st.OperatorMemberships(first.ID)
+	if next[0].Subject != "a" {
+		t.Fatal("operator read aliases private store")
+	}
+	app, _, _ := NewServer(st, nil, "https://control.invalid", "fixture")
+	app.sessions["valid"] = time.Now().Add(time.Hour)
+	for _, cookie := range []string{"", "account-session", "device-token", "valid"} {
+		req := httptest.NewRequest("GET", "https://control.invalid/admin/api/memberships?network_id="+first.ID, nil)
+		if cookie != "" {
+			req.AddCookie(&http.Cookie{Name: "mnet_admin", Value: cookie})
+		}
+		rec := httptest.NewRecorder()
+		app.Handler().ServeHTTP(rec, req)
+		if cookie != "valid" {
+			if rec.Code != 401 {
+				t.Fatal("non-operator read private principals")
+			}
+			continue
+		}
+		if rec.Code != 200 || rec.Header().Get("Cache-Control") != "no-store" {
+			t.Fatal("operator membership read failed")
+		}
+		if strings.Contains(rec.Body.String(), "hidden") || strings.Contains(rec.Body.String(), "approval_identities") {
+			t.Fatal("operator read crossed requested network/scope")
+		}
+	}
+	if err := st.SetNetworkMember(first.ID, "https://issuer.example", "a", false); err != nil {
+		t.Fatal(err)
+	}
+	members, _ = st.OperatorMemberships(first.ID)
+	if len(members) != 1 || members[0].Subject != "b" {
+		t.Fatal("revoked grant remained listed")
 	}
 }

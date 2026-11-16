@@ -11,6 +11,20 @@ import (
 // self-service enrollment. The supplied principal is the grant target, never
 // authentication for the caller. adminOnly must wrap this handler.
 func (s *Server) handleAdminMembership(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		network := r.URL.Query().Get("network_id")
+		if network == "" {
+			writeErr(w, 400, "network_id required")
+			return
+		}
+		members, err := s.store.OperatorMemberships(network)
+		if err != nil {
+			writeErr(w, 404, "unknown network")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"memberships": members})
+		return
+	}
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		writeErr(w, http.StatusMethodNotAllowed, "POST only")

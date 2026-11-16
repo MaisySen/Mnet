@@ -562,4 +562,8 @@ Failed/expired account callbacks now return a generic browser recovery page with
 
 ## Two-device account scope browser extension (pending)
 
-The real signed-provider fixture now includes two owned devices plus same-email/different-subject, different-network, different-issuer and expired records. The actual account JSON and rendered table must contain exactly the two owned approved/unexpired devices, even with attempted scope-widening query parameters. Local Chrome passed and desktop/390px screenshots were inspected; extended CI is pending. This is authenticated account-summary scope proof, not two new physical running VPN devices or fleet capacity.
+The real signed-provider fixture now includes two owned devices plus same-email/different-subject, different-network, different-issuer and expired records. The actual account JSON and rendered table must contain exactly the two owned approved/unexpired devices, even with attempted scope-widening query parameters. All five jobs passed in [7299060 CI](https://github.com/MaisySen/Mnet/actions/runs/43817883961), including real Chrome scope checks and full kernel regression fixtures with 155/123/147 later loss-profile drops. Desktop/390px screenshots were inspected. This is authenticated account-summary scope proof, not two new physical running VPN devices or fleet capacity.
+
+## Operator membership inspection (new source)
+
+GET `/admin/api/memberships?network_id=...` now returns only explicit grants for an exact existing network to an authenticated operator session. The response is sorted and copied, no-store and contains private issuer/subject identifiers. It does not expose approval provenance or infer membership, and account/device tokens cannot use it. Existing guarded POST grant/revoke behavior remains separate. Local tests cover network scoping, stable order, copies, authentication and revoked grant removal. Full/native CI pending. There is no operator membership UI yet.
