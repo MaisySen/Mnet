@@ -56,7 +56,9 @@ code{background:#161b22;padding:.15rem .4rem;border-radius:6px}
 <h1>Mnet</h1>
 <p>Your devices, one private mesh. WireGuard encrypted, peer to peer when possible, relayed when it has to be.</p>
 <p>Get the client, then run <code>mnet up</code> and point it at this server.</p>
-<p>Admins: <a href="/admin">open the dashboard</a>.</p>
+<p>Already a network member? <a href="/account/">View your approved devices</a>.</p>
+<p>Use the network ID from your operator. Signing in does not enroll a device or grant membership; device approval is not live connectivity.</p>
+<p>Operators: <a href="/admin">open the admin dashboard</a>.</p>
 <p style="margin-top:2rem;font-size:.85rem">Mnet is provided by <a href="https://fintex.au">Fintex Australia Pty Ltd</a> (ABN 60 688 406 108), New South Wales, Australia. Contact: contact@fintex.au.</p>
 </div>
 </body>

@@ -457,7 +457,8 @@ Up and mobile Prepare now restore the prior server/network/device-name settings 
 
 ## Account HTTP flow
 
-New source adds separate account endpoints, not an admin-session or device-token shortcut:
+New source adds separate account endpoints, not an admin-session or device-token shortcut. The service landing page links to the member view at `/account/` separately from the operator dashboard; it explains that login neither enrolls a device nor grants membership. Real-Chrome entry-navigation coverage is pending CI:
+
 
 1. On the configured origin, POST JSON `{"network_id":"exact-network-id"}` to `/account/api/login`. OIDC must already be configured. The response supplies `authorization_url`; open it in the same browser, retaining the private login cookie. Unknown networks are not distinguished at start.
 2. Register `/account/oidc/callback` as an additional redirect URI with the existing provider before using the flow. The callback validates state, originating browser proof, provider/nonce and explicit network membership. Approval provenance alone is not membership. Operator membership setup remains separate.

@@ -22,7 +22,11 @@ try{
  const target=await until(async()=>{const tabs=await(await fetch('http://127.0.0.1:'+debugPort+'/json')).json();return tabs.find(t=>t.type==='page');},'Chrome target');
  ws=new WebSocket(target.webSocketDebuggerUrl);await new Promise((r,j)=>{ws.onopen=r;ws.onerror=j;});ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id&&pending.has(m.id)){const p=pending.get(m.id);pending.delete(m.id);m.error?p.reject(new Error(m.error.message)):p.resolve(m.result);}};
  await cdp('Page.enable');await cdp('Runtime.enable');await cdp('Network.enable');
- await cdp('Page.navigate',{url:base+'/account/'});
+ await cdp('Page.navigate',{url:base+'/'});
+ await until(()=>js(`document.querySelector('a[href="/account/"]')`),'landing member entry visible');
+ if(!await js(`document.querySelector('a[href="/admin"]') && document.body.textContent.includes('does not enroll a device or grant membership') && document.body.textContent.includes('not live connectivity')`))throw new Error('landing mixed member/operator scope');
+ await shot('account-landing');
+ await js(`document.querySelector('a[href="/account/"]').click()`);
  await until(()=>js(`document.querySelector('#login') && !document.querySelector('#login').hidden`),'member sign-in visible');
  await shot('account-signed-out');
  await js(`document.querySelector('#network').value=${JSON.stringify(network)};document.querySelector('#loginForm').requestSubmit()`);

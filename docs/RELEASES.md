@@ -222,7 +222,11 @@ Local real Chrome now commits the actual disposable POST but drops its response,
 
 ## Operator removal account/node boundary (fixture extension)
 
-A signed-provider HTTP test now checks the actual operator removal endpoint: rejected cross-origin removal leaves an active account query usable; accepted removal denies it without changing the original approved node's map authentication. Local focused three-repetition and full race/vet checks pass; CI pending. No production API or live membership changes.
+A signed-provider HTTP test now checks the actual operator removal endpoint: rejected cross-origin removal leaves an active account query usable; accepted removal denies it without changing the original approved node's map authentication. Local focused three-repetition and full race/vet checks pass. All five jobs passed in [f81b124 CI](https://github.com/MaisySen/Mnet/actions/runs/43825558997), including native account HTTP cases and three kernel regressions with 129/123/150 later loss-profile drops. No production API or live membership changes.
+
+## Member entry from the landing page (new source)
+
+The service landing page now separates the member account link from operator administration and explains that login neither enrolls a device nor grants membership or proves connectivity. The local real-Chrome fixture starts at the landing page, follows its actual member link and completes signed-provider login. Full CI pending. No provider/deployment changes.
 
 ## v0.8.2-test.1 - 2026-11-16
 
