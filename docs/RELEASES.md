@@ -236,6 +236,10 @@ Validate the complete device-summary list and ID/name/address types before rende
 
 Local actual Chrome now signs in again, commits the real fixture logout but drops its response, then checks private rows stay cleared without a false confirmation. Old-token replay fails and an idempotent actual logout retry confirms sign-out. All five jobs passed in [ec2892d CI](https://github.com/MaisySen/Mnet/actions/runs/43830783982), including the actual account browser step and three complete kernel regressions with 139/155/142 later loss-profile drops. No production logout or live account changes.
 
+## Account login rejected-input allocation proof (fixture extension)
+
+Local repeated handler tests verify malformed/missing/null/wrong-type/unknown-field/trailing/oversized input allocates no pending flow, session or cookie. Valid-shaped known/unknown network IDs share start behavior and create only pending flows, not account sessions. Full race/vet checks pass; CI pending. No production/live account changes.
+
 ## v0.8.2-test.1 - 2026-11-16
 
 Source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11, Android 0.8.2/code 14. [Release and 16 assets](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1), [exact-source CI](https://github.com/MaisySen/Mnet/actions/runs/43756253912).

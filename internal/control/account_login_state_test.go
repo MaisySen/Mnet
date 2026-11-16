@@ -63,3 +63,28 @@ func TestAccountLoginStateExpiryProviderAndCapacity(t *testing.T) {
 		t.Fatal("account login cookie missing isolation flags")
 	}
 }
+
+func TestAccountLoginStateRejectedInputDoesNotAllocate(t *testing.T) {
+	app, _, network, _ := accountFixture(t)
+	for _, body := range []string{"", `null`, `{}`, `{"network_id":null}`, `{"network_id":7}`, `{"network_id":""}`, `{"network_id":"unknown","subject":"owner"}`, `{"network_id":"unknown"}{}`, `{"network_id":"` + strings.Repeat("x", 4096) + `"}`} {
+		req := httptest.NewRequest("POST", "https://control.example/account/api/login", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		app.Handler().ServeHTTP(rec, req)
+		if rec.Code != 400 || rec.Header().Get("Set-Cookie") != "" || len(app.accounts.pending) != 0 || len(app.accounts.byToken) != 0 {
+			t.Fatalf("rejected input created login/cookie/session: %d", rec.Code)
+		}
+	}
+	for _, id := range []string{network, "unknown-network"} {
+		req := httptest.NewRequest("POST", "https://control.example/account/api/login", strings.NewReader(`{"network_id":"`+id+`"}`))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		app.Handler().ServeHTTP(rec, req)
+		if rec.Code != 200 || len(rec.Result().Cookies()) != 1 || len(app.accounts.byToken) != 0 {
+			t.Fatal("start exposed network existence or issued account session")
+		}
+	}
+	if len(app.accounts.pending) != 2 {
+		t.Fatal("valid-shaped login starts not independently pending")
+	}
+}
