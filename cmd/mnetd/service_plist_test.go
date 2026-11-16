@@ -23,7 +23,13 @@ func TestDarwinServicePlistSavedStateOnly(t *testing.T) {
 			t.Fatal("missing startup contract", want)
 		}
 	}
-	for _, name := range []string{"mnet0", "utun", "utun-1", "utun01", "utun9junk", "utun65536", "utun9<key>"} {
+	auto := base
+	auto.ifname = "utun"
+	if out, err := darwinServicePlist("/usr/local/bin/mnetd", auto); err != nil || !strings.Contains(out, "<string>-ifname</string><string>utun</string>") {
+		t.Fatal("automatic utun rejected", err)
+	}
+
+	for _, name := range []string{"mnet0", "utun-1", "utun01", "utun9junk", "utun65536", "utun9<key>"} {
 		o := base
 		o.ifname = name
 		if s, e := darwinServicePlist("/usr/local/bin/mnetd", o); e == nil || s != "" {

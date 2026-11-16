@@ -22,8 +22,12 @@ with tempfile.TemporaryDirectory(prefix='mnet-plist-check-') as root:
     plist = Path(root) / 'au.fintex.mnet.mnetd.plist'
     plist.write_bytes(result.stdout)
     subprocess.run(['/usr/bin/plutil', '-lint', str(plist)], check=True)
+    auto = subprocess.run([binary, '-state', str(state), '-service', 'print-plist'], check=True, capture_output=True)
+    expected['ProgramArguments'] = [binary, '-state', str(state), '-ifname', 'utun', '-up']
+    assert plistlib.loads(auto.stdout) == expected, 'default automatic utun argv mismatch'
+    assert not state.exists(), 'automatic generation initialized state'
     for extra in [['-auth-key', 'fixture-private-value'], ['-network', 'fixture'],
-                  ['-ifname', 'mnet0'], ['-ifname', 'utun'], ['-service', 'install'],
+                  ['-ifname', 'mnet0'], ['-service', 'install'],
                   ['-service', 'remove'], ['-service', 'run']]:
         rejected = subprocess.run(base + extra, capture_output=True)
         assert rejected.returncode != 0 and not rejected.stdout, 'unsupported generation accepted'

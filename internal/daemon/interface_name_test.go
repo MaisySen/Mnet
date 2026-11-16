@@ -1,0 +1,79 @@
+package daemon
+
+import (
+	"errors"
+	"golang.zx2c4.com/wireguard/tun"
+	"runtime"
+	"testing"
+)
+
+type namedFixtureTUN struct {
+	tun.Device
+	name string
+	err  error
+}
+
+func (t namedFixtureTUN) Name() (string, error) { return t.name, t.err }
+
+func TestKernelInterfaceName(t *testing.T) {
+	for _, requested := range []string{"utun", "utun35"} {
+		got, err := kernelInterfaceName(namedFixtureTUN{name: "utun57"}, requested, "darwin")
+		if err != nil || got != "utun57" {
+			t.Fatal("actual kernel name not propagated", got, err)
+		}
+	}
+	for _, name := range []string{"", "utun", "utun-1", "utun01", "utun65536", "mnet0", "utun1\n"} {
+		if _, err := kernelInterfaceName(namedFixtureTUN{name: name}, "utun", "darwin"); err == nil {
+			t.Fatal("invalid kernel name accepted")
+		}
+	}
+	if _, err := kernelInterfaceName(namedFixtureTUN{err: errors.New("fixture")}, "utun", "darwin"); err == nil {
+		t.Fatal("kernel Name error lost")
+	}
+	for _, platform := range []string{"linux", "windows"} {
+		got, err := kernelInterfaceName(namedFixtureTUN{err: errors.New("must not query")}, "mnet0", platform)
+		if err != nil || got != "mnet0" {
+			t.Fatal("non-Darwin behavior changed")
+		}
+	}
+	want := "mnet0"
+	if runtime.GOOS == "darwin" {
+		want = "utun"
+	}
+	if DefaultInterfaceName() != want {
+		t.Fatal("wrong platform default")
+	}
+}
+
+func TestActualInterfaceStatus(t *testing.T) {
+	d, err := New(Config{StateDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Status().Interface != "" {
+		t.Fatal("down daemon reports requested interface as actual")
+	}
+	d.interfaceName = "utun57"
+	if d.actualInterfaceName() != "utun57" || d.Status().Interface != "utun57" {
+		t.Fatal("status lost actual interface")
+	}
+	d.stopDevice()
+	if d.Status().Interface != "" {
+		t.Fatal("teardown retained interface name")
+	}
+}
+
+func TestStartDeviceFailureClearsInterfaceStatus(t *testing.T) {
+	d, err := New(Config{StateDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.interfaceName = "utun57"
+	d.state.PrivateKey = "invalid"
+	if err := d.startDevice(); err == nil {
+		t.Fatal("invalid key accepted")
+	}
+	if d.Status().Interface != "" {
+		t.Fatal("failed startup retained stale interface")
+	}
+}

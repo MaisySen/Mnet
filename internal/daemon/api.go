@@ -17,7 +17,8 @@ import (
 
 // Status is the CLI's view of the daemon.
 type Status struct {
-	Status      string       `json:"status"` // down, preparing, joining, waiting-approval, up, key-expired
+	Interface   string       `json:"interface,omitempty"` // actual managed kernel device, not requested alias
+	Status      string       `json:"status"`              // down, preparing, joining, waiting-approval, up, key-expired
 	Version     string       `json:"version"`
 	Server      string       `json:"server,omitempty"`
 	Network     string       `json:"network,omitempty"`
@@ -34,6 +35,7 @@ func (d *Daemon) Status() *Status {
 	d.mu.Lock()
 	st := &Status{
 		Status:      d.status,
+		Interface:   d.interfaceName,
 		Version:     version.Version,
 		Server:      d.state.Server,
 		Network:     d.state.Network,

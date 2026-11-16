@@ -321,9 +321,13 @@ Require 4MiB both ways with both receiver SHA256 ACKs at every recovery stage. A
 
 Force received authorization denial using only a stopped disposable control snapshot. Running kernel daemon must withdraw peers, report waiting-approval and fail three fresh TCP connects. Reapproval must restore bidirectional 4MiB hash/ACK, same identity/IP/API token and no stale approval link. All five jobs passed in [bbb8bb8 CI](https://github.com/MaisySen/Mnet/actions/runs/43863430835), including native denial/reapproval and three Linux kernel regressions (145/127/159 drops). Not unseen offline revocation or two physical hosts.
 
-## macOS known expiry offline enforcement (fixture extension, CI pending)
+## macOS known expiry offline enforcement (verified fixture extension)
 
-Fresh generated launchd Up consumes a 45-second future key expiry from its disposable control. Require direct bidirectional traffic before the deadline after control/relay stops, then local key-expired/no peers and three failed fresh TCP connects without control returning or saved identity changes. Python/source checks pass; native execution pending. Not unseen offline revocation, long-duration or two-kernel-host proof.
+Fresh generated launchd Up consumes a 45-second future key expiry from its disposable control. Require direct bidirectional traffic before the deadline after control/relay stops, then local key-expired/no peers and three failed fresh TCP connects without control returning or saved identity changes. All five jobs passed in [7e573f0 CI](https://github.com/MaisySen/Mnet/actions/runs/43865116996), including native offline expiry and three Linux kernel regressions (141/142/133 drops). Not unseen offline revocation, long-duration or two-kernel-host proof.
+
+## Automatic macOS utun startup (new source, CI pending)
+
+Use Darwin default utun, resolve/validate the actual assigned kernel name before configuring it, expose/clear status interface, and allow automatic utun in generated launchd argv. Keep explicit-interface and non-Darwin behavior. Add native CLI default checks and a second full kernel/peer/recovery/denial/expiry fixture omitting ifname flags. Repeated local name/status/generator race tests, full race/vet and cross-builds pass; native automatic execution pending. Not physical boot or two kernel hosts.
 
 ## v0.8.2-test.1 - 2026-11-16
 

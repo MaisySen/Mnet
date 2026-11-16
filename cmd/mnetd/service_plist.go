@@ -12,12 +12,12 @@ func darwinServicePlist(exe string, o options) (string, error) {
 	if err := validateSavedService(exe, o); err != nil {
 		return "", err
 	}
-	// The current daemon configures exactly its requested name. Auto-assigned
-	// "utun" is not safe until actual TUN names flow through configuration.
+	// Automatic utun requests are resolved from the actual kernel device name
+	// before host configuration. Explicit canonical names remain supported.
 	index := strings.TrimPrefix(o.ifname, "utun")
 	n, err := strconv.ParseUint(index, 10, 16)
-	if !strings.HasPrefix(o.ifname, "utun") || err != nil || strconv.FormatUint(n, 10) != index {
-		return "", fmt.Errorf("print-plist requires an explicit canonical utun interface name, for example -ifname utun9; availability must be checked on the host")
+	if o.ifname != "utun" && (!strings.HasPrefix(o.ifname, "utun") || err != nil || strconv.FormatUint(n, 10) != index) {
+		return "", fmt.Errorf("print-plist requires utun for automatic assignment or an explicit canonical utunN name")
 	}
 	// validateSavedService permits no XML delimiters, quotes or control bytes.
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>

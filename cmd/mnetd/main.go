@@ -59,7 +59,7 @@ type options struct {
 func main() {
 	var (
 		stateDir  = flag.String("state", defaultStateDir(), "state directory")
-		ifname    = flag.String("ifname", "mnet0", "TUN interface name")
+		ifname    = flag.String("ifname", daemon.DefaultInterfaceName(), "TUN interface name (macOS utun selects an available kernel name)")
 		verbose   = flag.Bool("verbose", false, "verbose wireguard logging")
 		showVer   = flag.Bool("version", false, "print version and exit")
 		up        = flag.Bool("up", false, "join immediately using saved state or the flags below")

@@ -104,6 +104,10 @@ if has_mesh_route(initial_routes):
 name = next(('utun' + str(i) for i in range(30, 200) if 'utun' + str(i) not in interfaces()), None)
 if name is None:
     raise RuntimeError('no free explicit utun fixture interface')
+auto_interface = os.environ.get('MNET_AUTO_UTUN') == '1'
+interface_args = [] if auto_interface else ['-ifname', name]
+requested_name = 'utun' if auto_interface else name
+print('native kernel interface mode: ' + ('automatic default utun' if auto_interface else 'explicit utunN'))
 try:
     with socket.socket() as probe:
         probe.bind(('127.0.0.1', 0))
@@ -119,14 +123,23 @@ try:
     admin('/admin/api/login', {'password': 'native-tun-fixture-only'})
     network = admin('/admin/api/networks', {'name': 'native-utun'})
     key = admin('/admin/api/authkeys', {'network_id': network['id'], 'reusable': True})['key']
-    daemon = start([binary, '-state', state, '-ifname', name], 'daemon')
+    daemon = start([binary, '-state', state] + interface_args, 'daemon')
     wait_for(api, 'authenticated native daemon API')
     api('up', {'server': base, 'network': 'native-utun', 'name': 'native-utun', 'auth_key': key})
     def up():
+        global name
         value = api()
         if value.get('last_error'):
             raise RuntimeError('native setup failed: ' + value['last_error'])
-        return value if value['status'] == 'up' else None
+        if value['status'] != 'up':
+            return None
+        actual = value.get('interface', '')
+        assert actual.startswith('utun') and actual[4:].isdigit(), 'missing actual kernel utun status'
+        if auto_interface:
+            name = actual
+        else:
+            assert actual == name, 'explicit kernel interface name changed'
+        return value
     status = wait_for(up, 'actual macOS utun Up')
     address = status['ipv4']
     info = run('/sbin/ifconfig', name)
@@ -188,7 +201,7 @@ try:
     assert daemon.wait(timeout=15) == 0, 'daemon clean stop failed'
     wait_for(lambda: name not in interfaces(), 'utun removed after process stop')
     assert not (state / 'mnetd.sock').exists()
-    daemon = start([binary, '-state', state, '-ifname', name, '-up'], 'restarted')
+    daemon = start([binary, '-state', state, '-up'] + interface_args, 'restarted')
     status = wait_for(up, 'fresh process saved-state automatic utun Up')
     assert status['ipv4'] == address
     wait_for(transfer, 'kernel peer TCP after saved process restart', 60)
@@ -203,7 +216,7 @@ try:
     assert not (state / 'mnetd.sock').exists()
     print('PASS actual macOS utun Down/Up, clean process restart/saved identity and final interface/route teardown; no peer VPN/boot proof')
     def pid():
-        expected = ' '.join([str(binary), '-state', str(state), '-ifname', name, '-up'])
+        expected = ' '.join([str(binary), '-state', str(state), '-ifname', requested_name, '-up'])
         matches = []
         for line in run('/bin/ps', '-ww', '-axo', 'pid=,command=').splitlines():
             parts = line.strip().split(None, 1)
@@ -229,7 +242,7 @@ try:
 
     # Generate unchanged saved-state production argv/recovery settings. Only
     # the unique test label differs; no /Library or persistent enable setting.
-    config = plistlib.loads(run(str(binary), '-state', str(state), '-ifname', name,
+    config = plistlib.loads(run(str(binary), '-state', str(state), *interface_args,
                                '-service', 'print-plist').encode())
     config['Label'] = label
     plist = root / (label + '.plist')

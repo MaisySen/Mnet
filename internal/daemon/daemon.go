@@ -32,7 +32,7 @@ const MTU = 1280
 // Config starts a daemon.
 type Config struct {
 	StateDir string
-	IfName   string // TUN name, default mnet0
+	IfName   string // requested TUN name; platform default when empty
 	Verbose  bool
 
 	// TUN, when set, is used instead of creating one: mobile VPN APIs
@@ -53,8 +53,9 @@ type Daemon struct {
 	applyMu     sync.Mutex // serialize peer replacement and path refresh
 	deviceMu    sync.RWMutex
 
-	mu     sync.Mutex
-	status string // down, preparing, joining, waiting-approval, up, key-expired
+	mu            sync.Mutex
+	status        string // down, preparing, joining, waiting-approval, up, key-expired
+	interfaceName string // actual kernel TUN name; protected by mu
 	// joinMu serializes join and rejoin: the control-plane identity
 	// (node id, token, auth key, control client) swaps as one step,
 	// never concurrently from two loops.
@@ -86,7 +87,7 @@ type Daemon struct {
 // New makes a stopped daemon.
 func New(cfg Config) (*Daemon, error) {
 	if cfg.IfName == "" {
-		cfg.IfName = "mnet0"
+		cfg.IfName = DefaultInterfaceName()
 	}
 	st, err := LoadState(cfg.StateDir)
 	if err != nil {
@@ -244,7 +245,7 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 	d.lastMap = m
 	d.mu.Unlock()
 	if d.cfg.ManagedIface {
-		if err := ifacectl.Configure(d.cfg.IfName, m.Self.IPv4, MTU); err != nil {
+		if err := ifacectl.Configure(d.actualInterfaceName(), m.Self.IPv4, MTU); err != nil {
 			d.stopDevice()
 			d.setDown()
 			cancel()
@@ -404,6 +405,14 @@ func (d *Daemon) rejoin(ctx context.Context) {
 }
 
 func (d *Daemon) startDevice() error {
+	started := false
+	defer func() {
+		if !started {
+			d.mu.Lock()
+			d.interfaceName = ""
+			d.mu.Unlock()
+		}
+	}()
 	priv, err := base64DecodeKey(d.state.PrivateKey)
 	if err != nil {
 		return err
@@ -415,6 +424,16 @@ func (d *Daemon) startDevice() error {
 		if err != nil {
 			return fmt.Errorf("create tun: %w (need root or admin, and wintun.dll on Windows)", err)
 		}
+	}
+	if d.cfg.ManagedIface {
+		name, err := kernelInterfaceName(t, d.cfg.IfName, runtime.GOOS)
+		if err != nil {
+			t.Close()
+			return err
+		}
+		d.mu.Lock()
+		d.interfaceName = name
+		d.mu.Unlock()
 	}
 	b := bind.New()
 	level := device.LogLevelError
@@ -438,10 +457,12 @@ func (d *Daemon) startDevice() error {
 		dev.Close()
 		return fmt.Errorf("device up: %w", err)
 	}
+	started = true
 	return nil
 }
 
 func (d *Daemon) stopDevice() {
+	defer func() { d.mu.Lock(); d.interfaceName = ""; d.mu.Unlock() }()
 	d.applyMu.Lock()
 	defer d.applyMu.Unlock()
 	if d.serving != nil {
