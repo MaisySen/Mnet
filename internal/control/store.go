@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"fintex.au/mnet/internal/netmap"
+	"fintex.au/mnet/internal/privatefs"
 )
 
 var (
@@ -72,6 +73,13 @@ func Open(path string) (*Store, error) {
 		NodeTokens: map[string]string{},
 		NextIP:     map[string]int{},
 	}
+	if _, err := os.Lstat(path); err == nil {
+		if err = privatefs.ProtectFile(path); err != nil {
+			return nil, fmt.Errorf("store: private state file required: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
 	b, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return s, nil
@@ -97,6 +105,13 @@ func (s *Store) saveLocked() error {
 	if err != nil {
 		return err
 	}
+	if info, err := os.Lstat(s.path); err == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("store: state destination must be a regular file")
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
 	dir := filepath.Dir(s.path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
@@ -108,6 +123,9 @@ func (s *Store) saveLocked() error {
 	tmp := f.Name()
 	defer os.Remove(tmp)
 	defer f.Close()
+	if err = privatefs.ProtectFile(tmp); err != nil {
+		return err
+	}
 	if _, err = f.Write(b); err != nil {
 		return err
 	}
