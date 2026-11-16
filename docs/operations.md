@@ -96,7 +96,7 @@ New source offers read-only generation: `/absolute/path/to/mnetd -state /var/lib
 
 Actual disposable systemd start/stop and forced-crash restart with the generated argv restored saved identity, direct VPN and LAN in [6fc9839 CI](https://github.com/MaisySen/Mnet/actions/runs/43847999930), all five jobs passed. The fixture adds only namespace/hosts isolation, never enables the unit and does not prove OS boot/reboot or a live-host installation.
 
-New source (CI pending) protects one Linux `mnetd` per state directory with a private kernel lock before identity/API setup. A duplicate exits without replacing the active daemon's socket/token. `daemon.lock` is a stable empty regular file, not a PID record; its continued presence after shutdown is normal. Do not delete/replace it while a daemon may be running. Clean exit or process death releases ownership. The CLI still uses the authenticated API normally. Use separate private state directories for truly separate device identities, never to bypass ownership for a copied identity. Other platforms/mobile do not gain this guard.
+Verified [9b6c459 CI](https://github.com/MaisySen/Mnet/actions/runs/43849057244) protects one Linux `mnetd` per state directory with a private kernel lock before identity/API setup. A duplicate exits without replacing the active daemon's socket/token. `daemon.lock` is a stable empty regular file, not a PID record; its continued presence after shutdown is normal. Do not delete/replace it while a daemon may be running. Clean exit or process death releases ownership. The CLI still uses the authenticated API normally. Use separate private state directories for truly separate device identities, never to bypass ownership for a copied identity. Other platforms/mobile do not gain this guard.
 
 The manual example below remains supported:
 
@@ -128,7 +128,16 @@ mnet --state /var/lib/mnet up --server https://control.example.com \
 or leave the key off and open the private approval link from authenticated
 `mnet status`. Do not paste that credential-bearing URL into shared logs.
 
-macOS: run mnetd with sudo or a LaunchDaemon. Windows: run mnetd.exe as
+macOS: run mnetd with sudo or an administrator-reviewed LaunchDaemon. New source adds read-only configuration generation:
+
+```bash
+/absolute/path/to/mnetd -state /var/lib/mnet -ifname utun9 -service print-plist > au.fintex.mnet.mnetd.plist
+plutil -lint au.fintex.mnet.mnetd.plist
+```
+
+The explicit canonical `utunN` name is required; choose an unused host interface and use the same name and dedicated state path for enrollment and service operation. `utun9` is an example, not an availability promise. The current daemon uses the requested interface name for host setup, so automatic `utun` selection is deliberately refused here. Linux's default `mnet0` is not a macOS utun name. Generation never creates identity, writes an installed plist, invokes `launchctl`, loads or starts a job. It prints exact saved-state argv, RunAtLoad, failure-only KeepAlive, ten-second restart throttling and decimal Umask 63 (octal 0077). Never add auth keys or credential URLs. Literal absolute paths only; overrides/expansion/XML delimiters reject. Keep the binary, parent directories and any installed system configuration writable only by administrators. Local generation/XML/race checks pass; native CLI/plutil CI is pending. This is configuration setup, not actual launchd/VPN/physical boot verification. The [Apple launchd format reference](https://github.com/apple-oss-distributions/launchd/blob/main/man/launchd.plist.5) defines these keys; native syntax checks do not prove service behavior.
+
+Windows: run mnetd.exe as
 Administrator with wintun.dll next to it. Basic SCM install/start/stop/restart/crash recovery/removal passes on a disposable native runner; actual Wintun/VPN service operation and physical-host verification remain open. Use an explicit
 absolute state path consistently, initialize/join it in an elevated console,
 then install with `mnetd.exe -state C:\MnetState -service install` and start

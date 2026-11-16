@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+"""Native Darwin read-only CLI/plutil verification; never loads a launchd job."""
+from pathlib import Path
+import plistlib
+import subprocess
+import sys
+import tempfile
+
+if sys.platform != 'darwin':
+    raise RuntimeError('requires native macOS for actual CLI/plutil checks')
+binary = str(Path(sys.argv[1]).resolve())
+with tempfile.TemporaryDirectory(prefix='mnet-plist-check-') as root:
+    state = Path(root) / 'not-initialized'
+    base = [binary, '-state', str(state), '-ifname', 'utun9', '-service', 'print-plist']
+    result = subprocess.run(base, check=True, capture_output=True)
+    expected = {'Label': 'au.fintex.mnet.mnetd',
+                'ProgramArguments': [binary, '-state', str(state), '-ifname', 'utun9', '-up'],
+                'RunAtLoad': True, 'KeepAlive': {'SuccessfulExit': False},
+                'ThrottleInterval': 10, 'Umask': 63}
+    assert plistlib.loads(result.stdout) == expected, 'plist keys/argv/recovery contract mismatch'
+    assert not state.exists() and not result.stderr, 'generation changed state or printed diagnostics'
+    plist = Path(root) / 'au.fintex.mnet.mnetd.plist'
+    plist.write_bytes(result.stdout)
+    subprocess.run(['/usr/bin/plutil', '-lint', str(plist)], check=True)
+    for extra in [['-auth-key', 'fixture-private-value'], ['-network', 'fixture'],
+                  ['-ifname', 'mnet0'], ['-ifname', 'utun'], ['-service', 'install'],
+                  ['-service', 'remove'], ['-service', 'run']]:
+        rejected = subprocess.run(base + extra, capture_output=True)
+        assert rejected.returncode != 0 and not rejected.stdout, 'unsupported generation accepted'
+        assert b'fixture-private-value' not in rejected.stderr, 'secret echoed'
+        assert not state.exists(), 'rejected action initialized state'
+print('actual native macOS CLI: plist exact argv/keys, plutil syntax, no state writes and rejected actions passed; no job loaded')

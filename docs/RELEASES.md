@@ -285,9 +285,13 @@ The first kernel CI repetition opts into a unique runtime systemd test unit gene
 Preparing actual systemd validation reproduced a clean-exit ordering bug: a stopped offline daemon returned zero but left its Unix socket file in 30/30 fresh-process checks. The new in-process regression failed before the fix. Console/service shutdown now waits for the local API goroutine after cancellation and Down. Thirty race-test repetitions (ten lifecycles each) and 30 fresh actual process checks pass locally with no socket remnants; full source/native checks passed in [6fc9839 CI](https://github.com/MaisySen/Mnet/actions/runs/43847999930), including 30 macOS repetitions and Windows SCM lifecycle. This is clean process shutdown proof, not forced-crash file cleanup or physical boot proof.
 
 
-## Linux daemon state ownership (new source, CI pending)
+## Linux daemon state ownership (verified)
 
-Reject duplicate Linux `mnetd` processes for the same private state directory before identity/API setup. Stable private no-follow regular-file flock rejects aliases; descriptor close/crash releases ownership without deleting the lock inode. Repeated race and actual-process checks preserve the first API/socket/token and allow clean/crash restart; full local race/vet/cross-builds pass. Other platforms/mobile do not gain the guard. No live device state changed.
+Reject duplicate Linux `mnetd` processes for the same private state directory before identity/API setup. Stable private no-follow regular-file flock rejects aliases; descriptor close/crash releases ownership without deleting the lock inode. Repeated race and actual-process checks preserve the first API/socket/token and allow clean/crash restart; all five jobs passed in [9b6c459 CI](https://github.com/MaisySen/Mnet/actions/runs/43849057244), including actual process/active API preservation and systemd VPN recovery, plus three full kernel regressions (158/157/148 drops). Other platforms/mobile do not gain the guard. No live device state changed.
+
+## Read-only macOS launchd configuration (new source, native CI pending)
+
+Add `-service print-plist` on Darwin, generating exact saved-state argv with an explicit canonical `utunN`, RunAtLoad, failure-only KeepAlive, throttling and decimal umask 63. Shared conservative path/override validation keeps secrets/enrollment/routing/session arguments out of both generated service formats. Repeated local XML/generator tests, full race/vet/cross-builds pass. Native actual CLI/plutil checks pending. No install/load/start effects, no actual launchd/VPN/boot proof.
 
 ## v0.8.2-test.1 - 2026-11-16
 

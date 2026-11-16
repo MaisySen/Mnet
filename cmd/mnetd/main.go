@@ -78,7 +78,7 @@ func main() {
 		sessRec   = flag.String("session-record", "", "record hosted sessions as MJPEG videos in this directory")
 		sessProof = flag.Bool("session-proof", false, "validation rigs: run a full two-node session over the mesh on userspace tunnels and exit")
 		proofDir  = flag.String("proof-dir", "/tmp/mnet-session-proof", "artifact directory for -session-proof")
-		service   = flag.String("service", "", "service control: Windows install/remove/run; Linux print-unit (read-only)")
+		service   = flag.String("service", "", "service control: Windows install/remove/run; Linux print-unit; macOS print-plist (read-only)")
 	)
 	flag.Parse()
 	if *showVer {
