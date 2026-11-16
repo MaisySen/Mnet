@@ -62,10 +62,11 @@ func TestQueuedFileSeesStartupOptions(t *testing.T) {
 }
 
 func TestQueuedScreenSeesViewerOptions(t *testing.T) {
+	jpegBytes := fixtureJPEG(t, 0)
 	client, host := pipe(t)
 	defer client.Close()
 	defer host.Close()
-	if err := host.SendJSON(StreamScreen, PriScreen, ScreenFrame{Seq: 1, Full: true, Image: []byte("first-frame")}); err != nil {
+	if err := host.SendJSON(StreamScreen, PriScreen, ScreenFrame{Seq: 1, Full: true, Image: jpegBytes}); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(time.Second)
@@ -85,7 +86,7 @@ func TestQueuedScreenSeesViewerOptions(t *testing.T) {
 	ConnectViewerWithOptions(client, ViewerOptions{OnFrame: func(fr ScreenFrame) { received <- fr }})
 	select {
 	case fr := <-received:
-		if fr.Seq != 1 || string(fr.Image) != "first-frame" {
+		if fr.Seq != 1 || !bytes.Equal(fr.Image, jpegBytes) {
 			t.Fatalf("frame=%+v", fr)
 		}
 	case <-time.After(time.Second):

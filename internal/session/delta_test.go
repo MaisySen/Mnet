@@ -118,3 +118,63 @@ func TestViewerDeltaCompositing(t *testing.T) {
 		t.Fatalf("composited green %d, want ~250", gg>>8)
 	}
 }
+
+func TestViewerRejectsBrokenKeyframeAndWaitsForRecovery(t *testing.T) {
+	for _, broken := range [][]byte{nil, []byte("not-jpeg")} {
+		v := &Viewer{base: solid(16, 16, color.RGBA{R: 99, A: 255})}
+		fr := ScreenFrame{Full: true, Image: broken}
+		if v.resolveFrame(&fr) {
+			t.Fatal("broken keyframe delivered")
+		}
+		if v.base != nil {
+			t.Fatal("broken keyframe left stale delta base")
+		}
+		var encoded bytes.Buffer
+		if err := jpeg.Encode(&encoded, solid(16, 16, color.RGBA{G: 99, A: 255}), nil); err != nil {
+			t.Fatal(err)
+		}
+		delta := ScreenFrame{Tiles: []Tile{{Rect: Rect{W: 16, H: 16}, Image: encoded.Bytes()}}}
+		if v.resolveFrame(&delta) {
+			t.Fatal("delta accepted after broken keyframe")
+		}
+		good := ScreenFrame{Full: true, Image: encoded.Bytes()}
+		if !v.resolveFrame(&good) {
+			t.Fatal("valid keyframe did not recover")
+		}
+		if !v.resolveFrame(&delta) {
+			t.Fatal("valid delta after recovery rejected")
+		}
+	}
+}
+
+func TestCompositeRejectsInvalidTileGeometry(t *testing.T) {
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, solid(8, 8, color.RGBA{G: 99, A: 255}), nil); err != nil {
+		t.Fatal(err)
+	}
+	base := solid(16, 16, color.RGBA{R: 99, A: 255})
+	if _, err := CompositeTiles(nil, nil); err == nil {
+		t.Fatal("nil base accepted")
+	}
+	for _, rect := range []Rect{{X: -1, W: 8, H: 8}, {Y: -1, W: 8, H: 8}, {W: 0, H: 8}, {W: 8, H: -1}, {X: 12, W: 8, H: 8}, {Y: 12, W: 8, H: 8}, {W: 7, H: 8}, {W: 8, H: 7}, {X: 1, W: int(^uint(0) >> 1), H: 8}} {
+		if _, err := CompositeTiles(base, []Tile{{Rect: rect, Image: encoded.Bytes()}}); err == nil {
+			t.Fatalf("invalid tile accepted: %+v", rect)
+		}
+	}
+}
+
+func TestViewerBrokenDeltaClearsChain(t *testing.T) {
+	v := &Viewer{base: solid(16, 16, color.RGBA{R: 99, A: 255})}
+	bad := ScreenFrame{Tiles: []Tile{{Rect: Rect{W: 8, H: 8}, Image: []byte("broken")}}}
+	if v.resolveFrame(&bad) || v.base != nil {
+		t.Fatal("broken delta left a usable chain")
+	}
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, solid(8, 8, color.RGBA{G: 99, A: 255}), nil); err != nil {
+		t.Fatal(err)
+	}
+	next := ScreenFrame{Tiles: []Tile{{Rect: Rect{W: 8, H: 8}, Image: encoded.Bytes()}}}
+	if v.resolveFrame(&next) {
+		t.Fatal("delta accepted without recovered keyframe")
+	}
+}

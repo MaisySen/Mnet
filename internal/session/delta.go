@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/jpeg"
 )
@@ -66,7 +67,28 @@ func EncodeTiles(img *image.RGBA, rects []Rect, quality int) ([]Tile, error) {
 
 // CompositeTiles decodes tiles and paints them onto a copy of base.
 func CompositeTiles(base *image.RGBA, tiles []Tile) (*image.RGBA, error) {
-	out := image.NewRGBA(base.Bounds())
+	if base == nil {
+		return nil, fmt.Errorf("delta has no base")
+	}
+	bounds := base.Bounds()
+	// Validate every rectangle/header before decoding or painting any tile.
+	// Subtraction avoids overflow in attacker-controlled X+W / Y+H.
+	for _, tile := range tiles {
+		r := tile.Rect
+		if r.W <= 0 || r.H <= 0 || r.X < bounds.Min.X || r.Y < bounds.Min.Y ||
+			r.X >= bounds.Max.X || r.Y >= bounds.Max.Y ||
+			r.W > bounds.Max.X-r.X || r.H > bounds.Max.Y-r.Y {
+			return nil, fmt.Errorf("tile rectangle outside base")
+		}
+		config, err := jpeg.DecodeConfig(bytes.NewReader(tile.Image))
+		if err != nil {
+			return nil, err
+		}
+		if config.Width != r.W || config.Height != r.H {
+			return nil, fmt.Errorf("tile JPEG dimensions do not match rectangle")
+		}
+	}
+	out := image.NewRGBA(bounds)
 	copy(out.Pix, base.Pix)
 	for _, t := range tiles {
 		img, err := jpeg.Decode(bytes.NewReader(t.Image))

@@ -128,18 +128,20 @@ func (v *Viewer) resolveFrame(fr *ScreenFrame) bool {
 	v.frameMu.Lock()
 	defer v.frameMu.Unlock()
 	if fr.Full || len(fr.Tiles) == 0 {
-		if len(fr.Image) > 0 {
-			if img, err := jpeg.Decode(bytes.NewReader(fr.Image)); err == nil {
-				v.base = imageToRGBA(img)
-			}
+		img, err := jpeg.Decode(bytes.NewReader(fr.Image))
+		if err != nil {
+			v.base = nil // Deltas after a broken keyframe cannot use an older base.
+			return false
 		}
-		return len(fr.Image) > 0
+		v.base = imageToRGBA(img)
+		return true
 	}
 	if v.base == nil {
 		return false
 	}
 	merged, err := CompositeTiles(v.base, fr.Tiles)
 	if err != nil {
+		v.base = nil // A missed delta also breaks the following delta chain.
 		return false
 	}
 	v.base = merged

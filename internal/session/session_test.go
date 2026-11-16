@@ -2,6 +2,8 @@ package session
 
 import (
 	"bytes"
+	"image/color"
+	"image/jpeg"
 	"net"
 	"os"
 	"path/filepath"
@@ -9,6 +11,21 @@ import (
 	"testing"
 	"time"
 )
+
+// Valid JPEG fixture. Optional trailing padding keeps transport segmentation
+// tests large without asking the viewer to accept fake image bytes.
+func fixtureJPEG(t *testing.T, size int) []byte {
+	t.Helper()
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, solid(320, 240, color.RGBA{R: 80, A: 255}), nil); err != nil {
+		t.Fatal(err)
+	}
+	data := encoded.Bytes()
+	if len(data) < size {
+		data = append(data, make([]byte, size-len(data))...)
+	}
+	return data
+}
 
 type fakeCapturer struct{ img []byte }
 
@@ -28,6 +45,7 @@ func (f *fakeInjector) Inject(ev InputEvent) error {
 }
 
 func TestFullSession(t *testing.T) {
+	jpegBytes := fixtureJPEG(t, 0)
 	c1, c2 := net.Pipe()
 	ln := &oneShotListener{ch: make(chan net.Conn, 1)}
 	ln.ch <- c2
@@ -43,7 +61,7 @@ func TestFullSession(t *testing.T) {
 		if hostErr != nil {
 			return
 		}
-		host = ServeHost(m, fakeCapturer{img: []byte("jpeg-bytes")}, inj, 20)
+		host = ServeHost(m, fakeCapturer{img: jpegBytes}, inj, 20)
 		host.SetOnChat(func(cm ChatMessage) { chatAtHost <- cm })
 		host.SetFileDir(fileDir)
 	}()
@@ -63,7 +81,7 @@ func TestFullSession(t *testing.T) {
 	// Screen: host streams frames, viewer decodes them.
 	select {
 	case fr := <-frames:
-		if string(fr.Image) != "jpeg-bytes" || fr.Seq == 0 {
+		if !bytes.Equal(fr.Image, jpegBytes) || fr.Seq == 0 {
 			t.Fatalf("bad frame %+v", fr)
 		}
 	case <-time.After(2 * time.Second):

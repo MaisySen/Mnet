@@ -14,6 +14,7 @@ import (
 // kernel buffering and segmentation. Frame reassembly and priority
 // draining must survive both.
 func TestSessionOverTCP(t *testing.T) {
+	jpegBytes := fixtureJPEG(t, 120000)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -29,7 +30,7 @@ func TestSessionOverTCP(t *testing.T) {
 			t.Errorf("listen: %v", err)
 			return
 		}
-		h := ServeHost(m, fakeCapturer{img: bytes.Repeat([]byte{0xff, 0xd8, 0xff}, 40000)}, inj, 10)
+		h := ServeHost(m, fakeCapturer{img: jpegBytes}, inj, 10)
 		h.SetFileDir(fileDir)
 		hostReady <- h
 	}()

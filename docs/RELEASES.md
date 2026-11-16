@@ -479,11 +479,18 @@ The Android host now refuses input when frame dimensions are uninitialized or th
 Two added service tests across simulated API24/25/26/33/34 use reflected capture state and an explicit fake accessibility sink. Initial-dimension and display-width mismatch assertions each failed before the guard. The fixed tests cover width/height/rotation refusal and the refusal latch.59 framework cases pass in all-five [a1b761c CI](https://github.com/MaisySen/Mnet/actions/runs/43924405581) (55 service/helper,4 Activity); API34 Activity exclusion remains. Full Android34 resources/Java and min-api24 dex compile against current-Go arm64 bindings. No physical display rotation, injected gesture, real projection or JNI executes, and no actual Android UI pixels were inspected. Published APK/AAB and live service are unchanged.
 
 
-## Android host pointer validation (new source, CI pending)
+## Android host pointer validation (fa9ec75 all-five CI verified)
 
 The host now checks pointer payloads before forwarding to the accessibility endpoint: only completed click and fixed scroll actions with integer, finite, nonnegative coordinates inside the capture frame are accepted. Missing x/y remain zero for Go omitempty compatibility. Malformed JSON, non-pointer input, string/null/fractional/out-of-frame coordinates and unsupported down/up/move are refused. The accessibility source no longer converts down/up into separate clicks and also checks scale/coordinate finiteness. Older senders relying on that incorrect behavior must send completed clicks instead; held-pointer forwarding is still unsupported.
 
-One added service test across simulated API24/25/26/33/34 failed before validation, then passed its invalid/valid payload assertions after the fix.64 local framework cases pass (60 service/helper,4 Activity), with a fake accessibility sink. Full Android34 resource/Java/min-api24 dex compilation passes against current-Go arm64 bindings. The real accessibility-service changes have source/build checks only, not gesture runtime or physical input proof. API34 Activity simulation remains excluded. No release artifacts or deployment changed.
+One added service test across simulated API24/25/26/33/34 failed before validation, then passed its invalid/valid payload assertions after the fix.64 framework cases pass in all-five [fa9ec75 CI](https://github.com/MaisySen/Mnet/actions/runs/43926681146) (60 service/helper,4 Activity), with a fake accessibility sink. Full Android34 resource/Java/min-api24 dex compilation passes against current-Go arm64 bindings. The real accessibility-service changes have source/build checks only, not gesture runtime or physical input proof. API34 Activity simulation remains excluded. No release artifacts or deployment changed.
+
+
+## Go viewer invalid-frame and tile bounds (new source, CI pending)
+
+The Go viewer rejects undecodable full JPEGs and clears its old composition base. A failed delta also clears the base; subsequent deltas wait for a valid keyframe rather than mixing stale state. Tile rectangles must be positive, inside the base using overflow-safe comparisons and exactly match JPEG header dimensions before decoding/painting. This prevents unbounded rectangle loops and silent clipping/mismatched tile dimensions. It is not a general image-memory cap or a full untrusted-codec audit.
+
+New stale-keyframe and invalid-tile regressions failed before fixing. Recovery, malformed-delta, nil-base, out-of-bounds/overflow and header/rectangle mismatch tests pass. Targeted race checks passed30 repeats; fresh session/mobile and full-repository race tests pass. Three pre-existing transport tests had placeholder image bytes, now replaced with real synthetic JPEGs; the TCP case retains120000-byte payloads using trailing padding to test segmentation. These are local Go tests, not physical screen capture or GUI pixels. No fresh Android bindings, APK/AAB, release or live deployment were produced for this change; prior Java/dex checks apply only to their named earlier source.
 
 ## v0.8.2-test.1 - 2026-11-16
 
