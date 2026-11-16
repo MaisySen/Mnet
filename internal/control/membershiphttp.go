@@ -4,9 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"mime"
 	"net/http"
-	"strings"
 )
 
 // handleAdminMembership is explicit operator management, not identity login or
@@ -18,17 +16,7 @@ func (s *Server) handleAdminMembership(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusMethodNotAllowed, "POST only")
 		return
 	}
-	// JSON-only plus same-origin browser checks prevent cookie-authenticated
-	// cross-site form submissions. Non-browser operator clients may omit Origin.
-	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || media != "application/json" {
-		writeErr(w, http.StatusUnsupportedMediaType, "application/json required")
-		return
-	}
-	origin := r.Header.Get("Origin")
-	site := r.Header.Get("Sec-Fetch-Site")
-	if (origin != "" && origin != strings.TrimRight(s.publicBase, "/")) || (site != "" && site != "same-origin" && site != "none") {
-		writeErr(w, http.StatusForbidden, "same-origin request required")
+	if !s.requireAdminJSON(w, r) {
 		return
 	}
 	var body struct {
@@ -53,7 +41,7 @@ func (s *Server) handleAdminMembership(w http.ResponseWriter, r *http.Request) {
 	if *body.Allow {
 		event = "membership_grant"
 	}
-	err = s.store.SetNetworkMember(body.NetworkID, body.Issuer, body.Subject, *body.Allow)
+	err := s.store.SetNetworkMember(body.NetworkID, body.Issuer, body.Subject, *body.Allow)
 	s.audit(r, event, "admin", body.NetworkID, err == nil)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {

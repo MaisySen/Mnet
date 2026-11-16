@@ -324,6 +324,9 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusMethodNotAllowed, "POST only")
 		return
 	}
+	if !s.requireAdminJSON(w, r) {
+		return
+	}
 	var body struct {
 		Password string `json:"password"`
 	}
@@ -349,6 +352,7 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		Value:    tok,
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   strings.HasPrefix(s.publicBase, "https://"),
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Add(24 * time.Hour),
 	})
@@ -367,6 +371,21 @@ func (s *Server) adminOnly(next http.HandlerFunc) http.HandlerFunc {
 		}
 		if !ok {
 			writeErr(w, http.StatusUnauthorized, "sign in first")
+			return
+		}
+		readOnly := r.URL.Path == "/admin/api/state" || r.URL.Path == "/admin/api/metrics"
+		method := http.MethodPost
+		if readOnly {
+			method = http.MethodGet
+		} else if r.URL.Path == "/admin/api/acl" {
+			method = http.MethodPut
+		}
+		if r.Method != method && !(r.URL.Path == "/admin/api/acl" && r.Method == http.MethodGet) {
+			w.Header().Set("Allow", method)
+			writeErr(w, http.StatusMethodNotAllowed, "unsupported admin method")
+			return
+		}
+		if r.Method != http.MethodGet && !s.requireAdminJSON(w, r) {
 			return
 		}
 		next(w, r)

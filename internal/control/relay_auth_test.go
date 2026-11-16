@@ -125,6 +125,7 @@ func TestHTTPAdminExpiryClosesExistingRelay(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.AddCookie(&http.Cookie{Name: "mnet_admin", Value: "fixture-session"})
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)

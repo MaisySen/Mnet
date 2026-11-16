@@ -78,7 +78,7 @@ func TestDaemonRejoinsAfterNodeDelete(t *testing.T) {
 	defer func() { d.Down(); close(stopStatus); <-statusDone }()
 
 	state := func() []netmap.Node {
-		req, _ := http.NewRequest(http.MethodPost, base+"/admin/api/state", nil)
+		req, _ := http.NewRequest(http.MethodGet, base+"/admin/api/state", nil)
 		req.Header.Set("Cookie", cookie)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
