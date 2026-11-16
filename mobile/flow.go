@@ -31,6 +31,7 @@ func (n *Node) StartFlow(flow PacketFlow, server, network, name, authKey string)
 		return err
 	}
 	if err := n.d.Up(server, network, name, authKey); err != nil {
+		n.d.Down()
 		t.Close()
 		return err
 	}

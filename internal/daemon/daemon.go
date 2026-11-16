@@ -434,6 +434,7 @@ func (d *Daemon) startDevice() error {
 		return err
 	}
 	t := d.cfg.TUN
+	d.cfg.TUN = nil // ownership moves from pending slot into this device attempt
 	if t == nil {
 		var err error
 		t, err = tun.CreateTUN(d.cfg.IfName, MTU)
@@ -478,6 +479,10 @@ func (d *Daemon) startDevice() error {
 }
 
 func (d *Daemon) stopDevice() {
+	if pending := d.cfg.TUN; pending != nil {
+		d.cfg.TUN = nil
+		_ = pending.Close()
+	}
 	defer func() { d.mu.Lock(); d.interfaceName = ""; d.mu.Unlock() }()
 	d.applyMu.Lock()
 	defer d.applyMu.Unlock()

@@ -18,6 +18,8 @@ import (
 // SetTUN injects an already established tunnel device. Valid while down;
 // the daemon takes ownership and closes it on Down.
 func (d *Daemon) SetTUN(t tun.Device) error {
+	d.lifecycleMu.Lock()
+	defer d.lifecycleMu.Unlock()
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.closed {
@@ -25,6 +27,12 @@ func (d *Daemon) SetTUN(t tun.Device) error {
 	}
 	if d.status != "down" {
 		return fmt.Errorf("already %s", d.status)
+	}
+	if t == nil {
+		return fmt.Errorf("nil tunnel")
+	}
+	if d.cfg.TUN != nil {
+		return fmt.Errorf("an injected tunnel is already pending; call Down before replacing it")
 	}
 	d.cfg.TUN = t
 	return nil

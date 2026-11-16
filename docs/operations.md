@@ -510,4 +510,8 @@ A canceled worker retains its process-wide startup ticket until it exits. A seco
 
 ### Permanent mobile disposal (new source)
 
-Use Node.Close when disposing a canceled Android worker; it permanently rejects later startup on that object. Stop/Down remain reusable for callers that intentionally restart the same node. A new node object is required after Close. Android source now uses Close in stop/final cleanup. Fresh arm64 Go binding/full Java compile and repeated local cancellation tests pass; native CI and physical Android runtime remain distinct checks. No new APK/AAB published.
+Use Node.Close when disposing a canceled Android worker; it permanently rejects later startup on that object. Stop/Down remain reusable for callers that intentionally restart the same node. A new node object is required after Close. Android source now uses Close in stop/final cleanup. Fresh arm64 Go binding/full Java compile and repeated local cancellation tests pass; native cancellation passed in [3932c31 CI](https://github.com/MaisySen/Mnet/actions/runs/43880900442); physical Android runtime remains unverified. No new APK/AAB published.
+
+### Pending tunnel ownership (new source)
+
+SetTUN now owns at most one unconsumed injected tunnel. Call Down before replacing it; nil and silent replacement are refused. Down/Close close a pending tunnel even when Up has not consumed it, and device creation transfers that ownership to WireGuard. A rejected SetTUN leaves the offered tunnel owned by its caller. Local repeated race tests/full suite pass; native extension pending.

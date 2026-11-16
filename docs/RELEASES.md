@@ -349,9 +349,13 @@ Remove private server/network/IP, full status JSON and exception stacks from gen
 
 Keep a process-wide worker ticket through cancellation until actual exit. Refuse overlapping replacement, check canceled publication/prepare/establish checkpoints, keep local node references and compare shared-node identity on cleanup. Local JVM stale/canceled ownership plus100 x16 contender tests and Android34 Java compile pass. Cross-language cancellation before a blocking Go call remains open; no physical runtime/always-on claim. All five jobs passed in [9c05393 CI](https://github.com/MaisySen/Mnet/actions/runs/43878415619), including JVM worker policy and three Linux regressions154/161/128. No APK/AAB published.
 
-## Permanent node disposal (new source, CI pending)
+## Permanent node disposal (verified native source)
 
-Add shared/mobile Close that cannot be revived by later Prepare/Up/tunnel injection; recheck disposal before Up context publication. Android worker stop/finally uses Close; rejected mobile start paths close consumed tunnel adapters. Repeated local cancellation/restart/FD tests and fresh arm64 AAR/full Android34 Java compile pass, not published artifacts or physical runtime. Native cancellation CI pending. Stop/Down remain reusable.
+Add shared/mobile Close that cannot be revived by later Prepare/Up/tunnel injection; recheck disposal before Up context publication. Android worker stop/finally uses Close; rejected mobile start paths close consumed tunnel adapters. Repeated local cancellation/restart/FD tests and fresh arm64 AAR/full Android34 Java compile pass, not published artifacts or physical runtime. All five jobs passed in [3932c31 CI](https://github.com/MaisySen/Mnet/actions/runs/43880900442), including native cancellation and kernel regressions120/138/154. Stop/Down remain reusable.
+
+## Pending injected tunnel ownership (new source, CI pending)
+
+Fix two reproduced leaks: Close before Up left an injected tunnel open, and another injection silently replaced it. Serialize with lifecycle, refuse nil/pending replacement, transfer ownership at device creation, close pending on Down/Close and allow a new injection after Down. Repeated local race/full suite/vet/cross-builds pass; native extension pending. No APK/AAB published.
 
 ## v0.8.2-test.1 - 2026-11-16
 

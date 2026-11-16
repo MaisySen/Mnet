@@ -114,7 +114,7 @@ jobs:
       - name: native local key expiry and daemon restart
         run: go test -race -count=3 -timeout=5m ./internal/daemon -run 'TestMapAuthorizationDenialWithdrawsAndRecovers|TestApplyMapRejectsExpiredAuthorization|TestLocalExpiryWithoutControlResponse|TestExpiryGuardRenewsAndWakesFromNoDeadline|TestExpiryEqualityAndNoDeadlineCompatibility|TestDaemonExpiryWithBlockedControlAndRestart|TestReapprovedMapRestoresRunningStatus|TestSuccessfulRetryClearsPreviousError|TestUnsupportedRoutingFailsBeforeControlOrDevice|TestPrepareSerializesIdentityAndPublishesStatus|TestDownCancelsBlockedPrepare'
       - name: native permanent node disposal and startup cancellation
-        run: go test -race -count=10 -timeout=3m ./internal/daemon -run '^TestClosedNode|^TestClose'
+        run: go test -race -count=10 -timeout=3m ./internal/daemon -run '^TestClosedNode|^TestClose|^TestPendingTunnel|^TestDownReleasesPending'
       - name: native OS TCP session and file transfer
         run: go test -race -count=3 -timeout=5m ./internal/session -run 'TestSessionOverTCP|TestQueuedFileSeesStartupOptions|TestRepeatedFileTransfersReleaseStreams|TestFrameTraceBoundedMetadataOnly|TestTrace'
       - name: native macOS read-only launchd plist generation and syntax

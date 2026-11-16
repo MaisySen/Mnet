@@ -80,6 +80,7 @@ func (n *Node) Start(tunFD int, server, network, name, authKey string) error {
 		return err
 	}
 	if err := n.d.Up(server, network, name, authKey); err != nil {
+		n.d.Down()
 		t.Close()
 		return err
 	}
