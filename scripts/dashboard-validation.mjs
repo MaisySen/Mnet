@@ -29,6 +29,10 @@ try{
  await js(`document.querySelector('#pw').value='local-browser-fixture';document.querySelector('#loginBtn').click()`);
  await until(()=>js(`getComputedStyle(document.querySelector('#app')).display!=='none' && getComputedStyle(document.querySelector('#login')).display==='none'`),'signed-in app only');
  await until(()=>js(`document.querySelector('#nets tbody').textContent.includes('fixture')`),'real network rendered');if(!await js(`document.querySelector('#app').textContent.includes('Exit-node selection and internet routing are unsupported') && !document.querySelector('#app').textContent.includes('0.0.0.0/0 for exit-node internet access')`))throw new Error('ACL help implies unsupported exit routing');await shot('dashboard-signed-in');
+ // Exercise actual key creation without recording or printing its credential.
+ await js(`window.prompt=()=>null;document.querySelector('#keyNote').value='cleanup-fixture';document.querySelector('#keyTTL').value='1';document.querySelector('#newKey').requestSubmit()`);
+ await until(()=>js(`document.querySelector('#keys tbody').textContent.includes('cleanup-fixture') && /[0-9]+[ms] left/.test(document.querySelector('#keys tbody').textContent)`),'populated unexpired key row');
+ if(!await js(`(()=>{const now=Date.now();return expires('',now)==='never' && expires('invalid',now)==='unknown' && expires(new Date(now).toISOString(),now)==='expired' && expires(new Date(now-1000).toISOString(),now)==='expired' && expires(new Date(now+30000).toISOString(),now)==='30s left' && expires(new Date(now+120000).toISOString(),now)==='2m left' && expires(new Date(now+7200000).toISOString(),now)==='2h left' && expires(new Date(now+172800000).toISOString(),now)==='2d left';})()`))throw new Error('expiry formatting boundary failed');
  const cookies=(await cdp('Network.getCookies',{urls:[base]})).cookies;const token=cookies.find(c=>c.name==='mnet_admin')?.value;if(!token)throw new Error('session cookie missing');
  // Capture a valid old state response and hold a refresh after logout starts.
  await js(`(async()=>{window.savedFetch=window.fetch;window.heldResponse=await (await savedFetch('/admin/api/state')).text();window.releaseHeld=null;window.fetch=(input,options)=>input==='/admin/api/state'?new Promise(resolve=>{window.releaseHeld=()=>resolve(new Response(heldResponse,{status:200,headers:{'Content-Type':'application/json'}}));}):savedFetch(input,options);window.pendingRefresh=load();})()`);
@@ -39,5 +43,5 @@ try{
  const replay=await fetch(base+'/admin/api/state',{headers:{Cookie:'mnet_admin='+token}});if(replay.status!==401)throw new Error('logged-out cookie replay accepted');
  const remaining=(await cdp('Network.getCookies',{urls:[base]})).cookies;if(remaining.some(c=>c.name==='mnet_admin'))throw new Error('logout cookie not cleared');
  await shot('dashboard-signed-out');
- console.log('PASS real Chrome dashboard: login visibility, same-origin sign-in, network render, sign-out, cleared private UI, delayed-refresh suppression and logged-out token replay');
+ console.log('PASS real Chrome dashboard: login visibility, same-origin sign-in, network/key render, expiry boundaries, sign-out, cleared populated private UI, delayed-refresh suppression and logged-out token replay');
 }finally{ws?.close();chrome?.kill();control?.kill();await delay(150);rmSync(dir,{recursive:true,force:true});}

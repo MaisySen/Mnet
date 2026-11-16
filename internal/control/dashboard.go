@@ -180,6 +180,17 @@ function showLogin(){ viewGeneration++; state=null; $('#pw').value=''; $('#login
 
 function showApp(){ $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); $('#refresh').classList.remove('hidden'); $('#logout').classList.remove('hidden'); }
 function esc(s){ const d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
+function expires(t,now=Date.now()){
+  if(!t) return 'never';
+  const deadline=new Date(t).getTime();
+  if(!Number.isFinite(deadline)) return 'unknown';
+  let seconds=Math.floor((deadline-now)/1000);
+  if(seconds<=0) return 'expired';
+  if(seconds<60) return seconds+'s left';
+  if(seconds<3600) return Math.floor(seconds/60)+'m left';
+  if(seconds<86400) return Math.floor(seconds/3600)+'h left';
+  return Math.floor(seconds/86400)+'d left';
+}
 function ago(t){ if(!t) return ''; const s=(Date.now()-new Date(t).getTime())/1000; if(s<60) return Math.floor(s)+'s ago'; if(s<3600) return Math.floor(s/60)+'m ago'; if(s<86400) return Math.floor(s/3600)+'h ago'; return Math.floor(s/86400)+'d ago'; }
 let state=null;
 async function load(){
@@ -198,8 +209,8 @@ function render(){
   $('#noPending').style.display = pending.length? 'none':'block';
   $('#pending tbody').innerHTML = pending.map(n=>'<tr id="pending-'+esc(n.id)+'"><td>'+esc(n.name)+'</td><td><code>'+esc(n.ipv4)+'</code></td><td><code>'+esc(n.pubkey.slice(0,12))+'...</code></td><td>'+ago(n.created_at)+'</td><td><button onclick="approve(\''+esc(n.id)+'\')">Approve</button> <button class="danger" onclick="delNode(\''+esc(n.id)+'\')">Deny</button></td></tr>').join('');
   const approved = nodes.filter(n=>n.approved);
-  $('#nodes tbody').innerHTML = approved.map(n=>'<tr><td>'+esc(n.name)+'</td><td>'+esc(netName(n.network_id))+'</td><td><code>'+esc(n.ipv4)+'</code></td><td>'+esc(n.user||'')+'</td><td>'+(online[n.pubkey]?'<span class="badge on">online</span>':'<span class="badge off">offline</span>')+'</td><td class="muted">'+esc((n.endpoints||[]).join(', '))+'</td><td>'+ago(n.last_seen)+'</td><td>'+(n.key_expiry?ago(n.key_expiry).replace(' ago',' left'):'never')+'</td><td><button onclick="expireNode(\''+esc(n.id)+'\')">Expire key</button> <button class="danger" onclick="delNode(\''+esc(n.id)+'\')">Remove</button></td></tr>').join('') || '<tr><td colspan="10" class="muted">No approved nodes.</td></tr>';
-  $('#keys tbody').innerHTML = keys.map(k=>'<tr><td class="key"><code>'+esc(k.key)+'</code></td><td>'+esc(netName(k.network_id))+'</td><td>'+esc(k.note)+'</td><td>'+(k.reusable?'yes':'no')+'</td><td>'+k.uses+'</td><td>'+(k.expires_at?ago(k.expires_at).replace(' ago',' left'):'never')+'</td><td><button class="danger" onclick="delKey(\''+esc(k.id)+'\')">Delete</button></td></tr>').join('') || '<tr><td colspan="7" class="muted">No keys.</td></tr>';
+  $('#nodes tbody').innerHTML = approved.map(n=>'<tr><td>'+esc(n.name)+'</td><td>'+esc(netName(n.network_id))+'</td><td><code>'+esc(n.ipv4)+'</code></td><td>'+esc(n.user||'')+'</td><td>'+(online[n.pubkey]?'<span class="badge on">online</span>':'<span class="badge off">offline</span>')+'</td><td class="muted">'+esc((n.endpoints||[]).join(', '))+'</td><td>'+ago(n.last_seen)+'</td><td>'+expires(n.key_expiry)+'</td><td><button onclick="expireNode(\''+esc(n.id)+'\')">Expire key</button> <button class="danger" onclick="delNode(\''+esc(n.id)+'\')">Remove</button></td></tr>').join('') || '<tr><td colspan="10" class="muted">No approved nodes.</td></tr>';
+  $('#keys tbody').innerHTML = keys.map(k=>'<tr><td class="key"><code>'+esc(k.key)+'</code></td><td>'+esc(netName(k.network_id))+'</td><td>'+esc(k.note)+'</td><td>'+(k.reusable?'yes':'no')+'</td><td>'+k.uses+'</td><td>'+expires(k.expires_at)+'</td><td><button class="danger" onclick="delKey(\''+esc(k.id)+'\')">Delete</button></td></tr>').join('') || '<tr><td colspan="7" class="muted">No keys.</td></tr>';
   $('#keyNet').innerHTML = nets.map(n=>'<option value="'+esc(n.id)+'">'+esc(n.name)+'</option>').join('');
   $('#aclNet').innerHTML = $('#keyNet').innerHTML;
   loadACL();
@@ -238,7 +249,7 @@ $('#logout').onclick = async ()=>{
   finally { signingOut=false; $('#logout').disabled=false; }
 };
 $('#newNet').onsubmit = async (e)=>{ e.preventDefault(); try{ await api('/admin/api/networks',{name:$('#netName').value}); $('#netName').value=''; load(); }catch(err){ alert(err.message); } };
-$('#newKey').onsubmit = async (e)=>{ e.preventDefault(); try{ const k=await api('/admin/api/authkeys',{network_id:$('#keyNet').value,note:$('#keyNote').value,reusable:$('#keyReusable').checked,ttl_hours:parseInt($('#keyTTL').value||'0')}); $('#keyNote').value=''; $('#keyTTL').value=''; load(); prompt('New auth key (shown once, copy it now):', k.key); }catch(err){ alert(err.message); } };
+$('#newKey').onsubmit = async (e)=>{ e.preventDefault(); try{ const k=await api('/admin/api/authkeys',{network_id:$('#keyNet').value,note:$('#keyNote').value,reusable:$('#keyReusable').checked,ttl_hours:parseInt($('#keyTTL').value||'0')}); $('#keyNote').value=''; $('#keyTTL').value=''; load(); prompt('New auth key (also visible in the admin key table):', k.key); }catch(err){ alert(err.message); } };
 load();
 setInterval(()=>{ if(!$('#app').classList.contains('hidden')) load(); }, 10000);
 </script>
