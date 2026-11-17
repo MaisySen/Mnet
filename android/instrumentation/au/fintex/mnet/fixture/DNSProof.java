@@ -30,7 +30,7 @@ final class DNSProof {
             String source=socket.getLocalAddress().getHostAddress();sourceMesh=source.startsWith("100.");sourceResolver="198.18.0.54".equals(source);sourceUnderlay=source.startsWith("10.");sourceAny=socket.getLocalAddress().isAnyLocalAddress();
             socket.setSoTimeout(5000);
             step=3;
-            socket.send(new DatagramPacket(query,query.length));
+            socket.send(new DatagramPacket(query,query.length,InetAddress.getByAddress(new byte[]{100,64,0,0}),53));
             byte[] data = new byte[4096]; DatagramPacket packet = new DatagramPacket(data,data.length);
             step=4;
             socket.receive(packet);udp=Arrays.copyOf(data,packet.getLength());
