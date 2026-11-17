@@ -98,6 +98,18 @@ public class MeshInstrumentation extends Instrumentation {
             stage = "actual-apk-launch";
             Intent launch = new Intent(getTargetContext(), MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             activity = startActivitySync(launch);
+            // startActivitySync may return before the first display traversal.
+            // Wait for a laid-out field, then let SurfaceFlinger present it.
+            await(() -> {
+                java.util.concurrent.atomic.AtomicBoolean drawn = new java.util.concurrent.atomic.AtomicBoolean();
+                runOnMainSync(() -> {
+                    android.view.View field = activity.findViewById(R.id.server_url);
+                    drawn.set(field != null && field.isShown() && field.getWidth() > 0 && field.getHeight() > 0);
+                });
+                return drawn.get();
+            }, "first-layout");
+            waitForIdleSync();
+            SystemClock.sleep(500);
             // Capture before fixture keys enter the UI. Never export app state,
             // enrollment keys, full status or logcat as public CI artifacts.
             Bitmap launchImage = getUiAutomation().takeScreenshot();

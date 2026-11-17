@@ -6,6 +6,9 @@ on:
     paths:
       - '.github/workflows/android-emulator.yml'
       - 'android/instrumentation/**'
+      - 'android/app/**'
+      - 'mobile/**'
+      - 'cmd/mnetd/native_peer_test.go'
       - 'scripts/android-emulator-validation.py'
   workflow_dispatch:
 
