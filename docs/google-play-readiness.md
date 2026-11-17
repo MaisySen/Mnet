@@ -19,7 +19,7 @@ Use the existing developer account and a named-audience Internal testing track f
 | VPN policy | Mesh networking/remote access matches a listed permitted purpose in policy | Verify precise listing, device-to-endpoint encryption, data disclosures and declaration against final binary |
 | Privacy | Source has real metadata and user-content flows, not a zero-data claim | Final inventory, operator retention/deletion route, privacy-policy destination and truthful declaration answers |
 | Export | Standard-crypto public-source notification rule researched | Whole-binary restricted-beta route and certification basis still unresolved; do not manufacture compliance |
-| Commercial direction | Not selected | User owns permanent Free/Paid direction; free cannot become paid after publication |
+| Commercial direction | Free to download selected by owner on2026-11-17; intended future Multies use is context, not implemented integration | Apply Free in the intended app setup; no in-app purchase/subscription or broader commercial plan is authorized by this choice. Published free apps cannot switch to paid downloads |
 | Audience | Not selected | Ground exact tester Google account(s); an earlier build-email recipient is not a standing broader tester grant |
 
 ## Source-backed disclosure inventory
