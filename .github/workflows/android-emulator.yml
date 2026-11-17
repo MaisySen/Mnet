@@ -41,7 +41,7 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
           echo 'no' | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force --name mnet-fixture --package 'system-images;android-34;google_apis;x86_64' --device 'pixel_2' --path "$ANDROID_AVD_HOME/mnet-fixture.avd"
           test -s "$ANDROID_AVD_HOME/mnet-fixture.ini"
-          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx 'mnet-fixture' 
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx 'mnet-fixture'
       - name: enable standard Linux KVM access
         run: |
           test -c /dev/kvm
