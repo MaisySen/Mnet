@@ -14,9 +14,17 @@ const port=server.address().port;
 const profile=await mkdtemp(join(tmpdir(),'mnet-prototype-'));
 const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>k!=='LD_PRELOAD'&&!k.startsWith('FAKETIME')));
 const chrome=spawn(process.env.CHROME_BIN||'google-chrome',['--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--disable-background-networking','--no-first-run','--remote-debugging-pipe',`--user-data-dir=${profile}`,'about:blank'],{stdio:['ignore','ignore','pipe','pipe','pipe'],env,detached:true});
-let next=0,buf='',session,errors=[];const pending=new Map();
+let next=0,buf='',session,errors=[],transportFailure;const pending=new Map();
+// Drain Chrome diagnostics so a full stderr pipe cannot freeze the process.
+// Never dump environment/browser output into public logs on transport failure.
+chrome.stderr.resume();
+function failTransport(error){transportFailure ||= error;for(const p of pending.values()){clearTimeout(p.timer);p.reject(transportFailure);}pending.clear();}
+chrome.on('error',()=>failTransport(Error('Chrome could not start')));
+chrome.on('exit',()=>failTransport(Error('Chrome exited during verification')));
+for(const pipe of [chrome.stdio[3],chrome.stdio[4]])pipe.on('error',()=>failTransport(Error('Chrome debugging transport failed')));
+const exited=new Promise(r=>chrome.once('close',r));
 chrome.stdio[4].setEncoding('utf8');chrome.stdio[4].on('data',s=>{buf+=s;let i;while((i=buf.indexOf('\0'))>=0){const m=JSON.parse(buf.slice(0,i));buf=buf.slice(i+1);if(m.id){const p=pending.get(m.id);if(p){pending.delete(m.id);clearTimeout(p.timer);m.error?p.reject(Error(JSON.stringify(m.error))):p.resolve(m.result);}}else if(m.method==='Runtime.exceptionThrown'){errors.push(m.params.exceptionDetails.text);}}});
-function send(method,params={},sid=session){const id=++next;return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{pending.delete(id);reject(Error('CDP timeout: '+method));},15000);pending.set(id,{resolve,reject,timer});chrome.stdio[3].write(JSON.stringify({id,method,params,...(sid?{sessionId:sid}:{})})+'\0');});}
+function send(method,params={},sid=session){const id=++next;return new Promise((resolve,reject)=>{if(transportFailure){reject(transportFailure);return;}const timer=setTimeout(()=>{pending.delete(id);reject(Error('CDP timeout: '+method));},15000);pending.set(id,{resolve,reject,timer});chrome.stdio[3].write(JSON.stringify({id,method,params,...(sid?{sessionId:sid}:{})})+'\0');});}
 const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(r.exceptionDetails.text);return r.result.value;};
 const click=async a=>assert.equal(await evaluate(`(()=>{const b=document.querySelector('[data-action="${a}"]');if(!b)return false;b.click();return true;})()`),true,'missing action '+a);
 const setup=['SIGN_IN','RETURN','CHOOSE','ADD','ALLOW','CHECK','VERIFY','DONE'];
@@ -46,4 +54,4 @@ try{
   }
  }
  assert.deepEqual(errors,[],'browser exceptions');console.log(`PASS: ${checked} screen/width checks, no horizontal overflow, minimum44px buttons, heading focus and no browser exceptions.`);
-}finally{const exited=new Promise(r=>chrome.once('exit',r));try{process.kill(-chrome.pid,'SIGKILL');}catch{}server.close();await exited;await rm(profile,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
+}finally{try{process.kill(-chrome.pid,'SIGKILL');}catch{}server.close();await exited;await rm(profile,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
