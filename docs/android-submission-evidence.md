@@ -19,7 +19,7 @@ Updated 2026-11-17. Preparation only. This is not a completed Play declaration, 
 4. Actual Mnet accessibility disclosure, Agree, Android Settings enablement, separate MediaProjection consent, and per-viewer Allow.
 5. Real Go peer fully decodes screen JPEGs, sends a remote mesh gesture that clicks a disposable Android button through the actual AccessibilityService, and observes transport closure after hosting stops.
 
-These are disposable emulator tests, not physical-phone, OEM battery-policy, long-soak, radio handover, reboot/unlock or Play Protect approval. A later API36 repeat timed out at frame readiness while API34 passed, so one success is not a universal reliability guarantee. The fixture now starts its viewer timeout only after projection approval to avoid counting Settings/recording preparation against the viewer window. Repeat results must be recorded before closing that issue.
+These are disposable emulator tests, not physical-phone, OEM battery-policy, long-soak, radio handover, reboot/unlock or Play Protect approval. A later API36 repeat timed out at frame readiness while API34 passed, so one success is not a universal reliability guarantee. The fixture now starts its viewer timeout only after projection approval to avoid counting Settings/recording preparation against the viewer window. A later full matrix atbee0906 passes both APIs again, but88d73f8 also had an intermittent API36 TCP-connect timeout. Continue final-candidate repeats and distinguish frame-readiness timing from TCP startup.
 
 ## VPN declaration draft basis
 
@@ -35,7 +35,7 @@ Validate that last sentence against the final dependency/binary inventory, opera
 
 Mnet is not an accessibility tool for people with disabilities. Its optional service dispatches supported remote pointer gestures while the phone hosts a session. It does not retrieve window text/contents, subscribe to accessibility events or type text. Screen capture uses separate Android MediaProjection permission. Declining accessibility leaves mesh VPN, viewing and screen-sharing routes available, but disables remote gestures.
 
-The declaration demonstration must show the real disclosure, decline/agree behavior, Settings enablement, screen capture, per-viewer approval, remote gesture and stop. A controlled emulator demonstration is evidence of that flow, not a physical device claim. The current recording stage is still being validated. Never include enrollment screens, keys, account data or private screens in a demonstration.
+The declaration demonstration must show the real disclosure, decline/agree behavior, Settings enablement, screen capture, per-viewer approval, remote gesture and stop. A controlled emulator demonstration is evidence of that flow, not a physical device claim. The current recording stage is still being validated. Native Android screenrecord ended early across Settings/projection transitions even when the full integration passed. The new demonstration samples real screenshots through the controlled flow; it must be described as a sampled walkthrough, not uninterrupted video. The encoder must be present on the runner and the actual frames inspected before using it. Never include enrollment screens, keys, account data or private screens in a demonstration.
 
 ## Privacy/deletion review
 
@@ -56,6 +56,11 @@ Three paths are being compared against actual distribution:
 | Restricted beta | 740.9(c) covers eligible beta software with stated conditions | Importer statement, testing destination/end-user, test-period/disposal obligations and intended public product. These obligations have not been imposed or accepted. |
 
 No filing, importer undertaking or legal certification has been made. Do not treat a general "yes" to app work as factual proof of these conditions.
+
+## Repeated engineering evidence
+
+- [bee0906 actual API34/36 full matrix](https://github.com/MaisySen/Mnet/actions/runs/44038715928) and [general CI](https://github.com/MaisySen/Mnet/actions/runs/44038716115).
+- Fresh uncached full repository `go test -race -count=1 ./...` passes at3fba224. This is local engineering evidence, not a phone or policy decision.
 
 ## Official and specialist sources
 
