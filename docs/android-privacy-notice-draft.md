@@ -4,7 +4,7 @@ Updated2026-11-17. **Not published or ready to use as a privacy-policy URL.** Th
 
 ## Provider and scope
 
-Mnet is provided by Fintex Australia Pty Ltd (ABN60 688 406 108), New South Wales, Australia. Contact: contact@fintex.au.
+Operator and privacy-contact identity remain unverified for this test. Existing project publishing conventions name Fintex Australia Pty Ltd and a support address, but neither those conventions nor the developer display name establish who operates this service or handles deletion requests. Do not adopt that provider line or publish a support address until the responsible party and authorized route are confirmed.
 
 Mnet connects approved devices on a private mesh network and supports optional, user-approved screen sharing and remote gestures. The current development test is restricted to the owner's selected test account. A future Multies integration is planned, not part of this notice or a present data-sharing claim.
 
@@ -34,7 +34,7 @@ The app's latest encoded host screen frame and displayed viewer/chat state are h
 
 Saved local enrollment/identity can remain until app data is removed. Current source disables platform app backup and excludes app domains from cloud/device transfer rules, but OEM behavior and earlier backups are not covered by a universal no-backup promise.
 
-The current control service has no automatic audit-retention limit. Removing a node does not remove every audit event or account-membership record. Do not treat a disconnect, logout, node-removal action or test-service restart as a complete deletion workflow. Contact contact@fintex.au to ask about access, correction or deletion. The operator must establish and document the actual supported handling, retention and backup process before adopting this notice. No response-time or deletion-deadline promise is made by this review draft.
+The current control service has no automatic audit-retention limit. Removing a node does not remove every audit event or account-membership record. Do not treat a disconnect, logout, node-removal action or test-service restart as a complete deletion workflow. The authorized route for access, correction or deletion requests remains to be confirmed. The operator must establish and document the actual supported handling, retention and backup process before adopting this notice. No response-time or deletion-deadline promise is made by this review draft.
 
 ## Operator verification required before adoption
 
