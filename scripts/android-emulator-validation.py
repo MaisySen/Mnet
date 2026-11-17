@@ -165,7 +165,7 @@ def main():
             raise RuntimeError('sanitized launch screenshot unavailable')
         (ARTIFACTS / 'launch.png').write_bytes(screenshot.stdout)
         safe = [line for line in output.splitlines() if line.startswith('INSTRUMENTATION_RESULT: summary=')]
-        if len(safe) != 1 or 'actual APK/JNI/VPN consent' not in safe[0] or 'summary=PASS target36 runtimeAPI=' not in safe[0] or 'INSTRUMENTATION_CODE: -1' not in output:
+        if len(safe) != 1 or 'actual APK/JNI/VPN consent' not in safe[0] or 'summary=PASS self-bound target36 runtimeAPI=' not in safe[0] or 'INSTRUMENTATION_CODE: -1' not in output:
             # Only explicit whitelist summary is exported, never the whole am
             # output (which can include private runner arguments on a crash).
             if safe:

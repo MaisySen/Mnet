@@ -55,7 +55,7 @@ class Guards(unittest.TestCase):
         self.assertEqual(2, test.count('            osVpnReady();'))
         self.assertIn('TRANSPORT_VPN', test)
         self.assertLess(source.index('screenshot = subprocess.run'), source.index('safe = [line for line'))
-        self.assertIn('summary=PASS target36 runtimeAPI=', source)
+        self.assertIn('summary=PASS self-bound target36 runtimeAPI=', source)
     def test_hash_before_and_after_real_reconnect(self):
         source = (ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
         self.assertEqual(2, source.count('            hashRoundTrip();'))

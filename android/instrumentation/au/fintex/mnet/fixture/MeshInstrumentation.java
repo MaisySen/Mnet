@@ -87,6 +87,10 @@ public class MeshInstrumentation extends Instrumentation {
         byte[] unit = "kernel-peer-proof".getBytes("UTF-8");
         for (int i = 0; i < sent.length; i++) sent[i] = unit[i % unit.length];
         try (Socket socket = new Socket()) {
+            stage = "mesh-tcp-local-bind";
+            // Isolate source-address selection from encrypted transport. This
+            // experiment does not prove unbound third-party socket behavior.
+            socket.bind(new InetSocketAddress(MnetVpnService.currentNode().meshIPv4(), 0));
             stage = "mesh-tcp-connect";
             socket.connect(new InetSocketAddress(options.getString("peer"), 45993), 45000);
             socket.setSoTimeout(45000);
@@ -158,7 +162,7 @@ public class MeshInstrumentation extends Instrumentation {
             await(() -> MnetVpnService.currentNode() == null, "final-stop");
             if (!consentClicked) throw new IllegalStateException("no actual initial VPN consent click observed");
             stage = "complete";
-            result.putString("summary", "PASS target36 runtimeAPI=" + android.os.Build.VERSION.SDK_INT + " actual APK/JNI/VPN consent, bidirectional 4MiB hash, manual stop/reconnect and repeat hash; emulator only, no physical reboot/capture/control proof");
+            result.putString("summary", "PASS self-bound target36 runtimeAPI=" + android.os.Build.VERSION.SDK_INT + " actual APK/JNI/VPN consent, bidirectional 4MiB hash, manual stop/reconnect and repeat hash; emulator only, no physical reboot/capture/control proof");
             finish(Activity.RESULT_OK, result);
         } catch (Throwable failure) {
             // Deliberately omit exception messages, app state and arguments.
