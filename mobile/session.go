@@ -1,13 +1,17 @@
 package mobile
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
+	"strings"
 	"sync"
 	"time"
 
+	"fintex.au/mnet/internal/daemon"
 	"fintex.au/mnet/internal/session"
 )
 
@@ -35,7 +39,9 @@ type HostCallbacks interface {
 	Inject(evJSON string)
 	// AcceptSession decides whether an incoming session from the named
 	// peer node may start. Called on a worker goroutine; the app shows
-	// its consent UI here and blocks on the answer.
+	// its consent UI here and blocks on the answer. The label has been
+	// matched to the encrypted mesh TCP source/current peer map; it is not
+	// proof of a Multies person, workspace membership or separate control consent.
 	AcceptSession(peerNodeName string) bool
 	// OnChat delivers one incoming chat message, JSON-encoded.
 	OnChat(msgJSON string)
@@ -77,6 +83,7 @@ type sessionHostRun struct {
 	stopped      bool
 	done         chan struct{}
 	helloTimeout time.Duration
+	peerLookup   func() []daemon.SessionPeer
 }
 
 var (
@@ -125,6 +132,17 @@ func (n *Node) startSessionHost(ln net.Listener, name string, cb HostCallbacks) 
 	return n.startSessionHostTimeout(ln, name, cb, 15*time.Second)
 }
 func (n *Node) startSessionHostTimeout(ln net.Listener, name string, cb HostCallbacks, helloTimeout time.Duration) error {
+	return n.startSessionHostWithPeerLookup(ln, name, cb, helloTimeout, func() []daemon.SessionPeer {
+		if n.d == nil {
+			return nil
+		}
+		return n.d.SessionPeers()
+	})
+}
+
+// The lookup is supplied by the owning daemon in production. Tests inject a
+// fixed peer map, never an accept-all fallback when daemon state is missing.
+func (n *Node) startSessionHostWithPeerLookup(ln net.Listener, name string, cb HostCallbacks, helloTimeout time.Duration, lookup func() []daemon.SessionPeer) error {
 	if cb == nil {
 		ln.Close()
 		return errors.New("session callbacks required")
@@ -140,7 +158,7 @@ func (n *Node) startSessionHostTimeout(ln net.Listener, name string, cb HostCall
 		ln.Close()
 		return errors.New("session host already running")
 	}
-	run := &sessionHostRun{owner: n, listener: ln, done: make(chan struct{}), helloTimeout: helloTimeout}
+	run := &sessionHostRun{owner: n, listener: ln, done: make(chan struct{}), helloTimeout: helloTimeout, peerLookup: lookup}
 	hosting = run
 	sessMu.Unlock()
 	go run.serve(name, cb)
@@ -151,12 +169,19 @@ func (r *sessionHostRun) serve(name string, cb HostCallbacks) {
 	defer close(r.done)
 	defer r.owner.stopSessionRun(r)
 	for {
-		m, err := session.Listen(r, name, func(h session.Hello, _ net.Addr) (bool, string) {
+		m, err := session.Listen(r, name, func(h session.Hello, from net.Addr) (bool, string) {
 			sessMu.Lock()
 			valid := !r.stopped && hosting == r
 			sessMu.Unlock()
 			if !valid {
 				return false, "host stopped"
+			}
+			if r.peerLookup == nil {
+				return false, "identity check failed"
+			}
+			verifiedName, verifiedKey, ok := verifiedSessionPeer(r.peerLookup(), h.NodeName, from)
+			if !ok {
+				return false, "identity check failed"
 			}
 			// Android's consent UI waits up to60 seconds. Give its reply a
 			// separate bounded write window after the initial hello deadline.
@@ -166,7 +191,7 @@ func (r *sessionHostRun) serve(name string, cb HostCallbacks) {
 			if conn == nil || conn.SetDeadline(time.Now().Add(70*time.Second)) != nil {
 				return false, "host stopped"
 			}
-			accepted := cb.AcceptSession(h.NodeName)
+			accepted := cb.AcceptSession(verifiedName)
 			sessMu.Lock()
 			valid = !r.stopped && hosting == r
 			sessMu.Unlock()
@@ -175,6 +200,11 @@ func (r *sessionHostRun) serve(name string, cb HostCallbacks) {
 			}
 			if !accepted {
 				return false, "refused"
+			}
+			// Approval may outlive a map update. Resolve again before admission.
+			currentName, currentKey, current := verifiedSessionPeer(r.peerLookup(), h.NodeName, from)
+			if !current || currentName != verifiedName || currentKey != verifiedKey {
+				return false, "identity check failed"
 			}
 			return true, ""
 		})
@@ -405,4 +435,43 @@ func dialMeshTCP(self, target string, timeout time.Duration) (net.Conn, error) {
 	}
 	dialer := net.Dialer{Timeout: timeout, LocalAddr: &net.TCPAddr{IP: ip}}
 	return dialer.Dial("tcp4", target)
+}
+
+// verifiedSessionPeer authenticates only a current mesh-map label, not a Multies
+// person. The TCP source belongs to the encrypted mesh; a claimed hello label
+// alone must never choose who the host sees in a consent prompt.
+func verifiedSessionPeer(peers []daemon.SessionPeer, claim string, from net.Addr) (string, string, bool) {
+	tcp, ok := from.(*net.TCPAddr)
+	if !ok || tcp == nil {
+		return "", "", false
+	}
+	source, ok := netip.AddrFromSlice(tcp.IP)
+	if !ok {
+		return "", "", false
+	}
+	source = source.Unmap()
+	if claim == "" || strings.TrimSpace(claim) != claim {
+		return "", "", false
+	}
+	result := ""
+	key := ""
+	sourceMatches, nameMatches := 0, 0
+	for _, peer := range peers {
+		ip, err := netip.ParseAddr(peer.IPv4)
+		sameSource := err == nil && ip.Unmap() == source
+		sameName := strings.EqualFold(peer.Name, claim)
+		if sameSource {
+			sourceMatches++
+		}
+		if sameName {
+			nameMatches++
+		}
+		if sameSource && sameName {
+			result = peer.Name
+			key = peer.PublicKey
+		}
+	}
+	raw, err := base64.StdEncoding.Strict().DecodeString(key)
+	validKey := err == nil && len(raw) == 32 && base64.StdEncoding.EncodeToString(raw) == key
+	return result, key, result != "" && sourceMatches == 1 && nameMatches == 1 && validKey
 }

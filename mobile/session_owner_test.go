@@ -1,6 +1,7 @@
 package mobile
 
 import (
+	"fintex.au/mnet/internal/daemon"
 	"fintex.au/mnet/internal/session"
 	"fmt"
 	"net"
@@ -52,7 +53,7 @@ func TestSessionLateConsentCannotReviveStoppedHost(t *testing.T) {
 		t.Fatal(err)
 	}
 	cb := &ownerCallbacks{entered: make(chan struct{}), release: make(chan struct{})}
-	if err := owner.startSessionHost(ln, "fixture", cb); err != nil {
+	if err := startFixtureSessionHost(owner, ln, "fixture", cb, 15*time.Second); err != nil {
 		t.Fatal(err)
 	}
 	defer owner.StopSessionHost()
@@ -90,7 +91,7 @@ func TestSessionLateConsentCannotReviveStoppedHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := other.startSessionHost(replacement, "new", cb); err != nil {
+	if err := startFixtureSessionHost(other, replacement, "new", cb, 15*time.Second); err != nil {
 		t.Fatal(err)
 	}
 	defer other.StopSessionHost()
@@ -146,7 +147,7 @@ func TestSessionStopActiveHostClosesMux(t *testing.T) {
 	}
 	cb := &ownerCallbacks{entered: make(chan struct{}), release: make(chan struct{})}
 	close(cb.release)
-	if err := owner.startSessionHost(ln, "fixture", cb); err != nil {
+	if err := startFixtureSessionHost(owner, ln, "fixture", cb, 15*time.Second); err != nil {
 		t.Fatal(err)
 	}
 	defer owner.StopSessionHost()
@@ -206,7 +207,7 @@ func TestSessionHostSurvivesRefusedAndMalformedPeer(t *testing.T) {
 		t.Fatal(err)
 	}
 	cb := &retryCallbacks{}
-	if err := owner.startSessionHost(ln, "fixture", cb); err != nil {
+	if err := startFixtureSessionHost(owner, ln, "fixture", cb, 15*time.Second); err != nil {
 		t.Fatal(err)
 	}
 	defer owner.StopSessionHost()
@@ -218,7 +219,7 @@ func TestSessionHostSurvivesRefusedAndMalformedPeer(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.SetDeadline(time.Now().Add(time.Second))
-	if m, err := session.Dial(c, "refused"); err == nil {
+	if m, err := session.Dial(c, "viewer"); err == nil {
 		m.Close()
 		t.Fatal("refusal accepted")
 	}
@@ -235,7 +236,7 @@ func TestSessionHostSurvivesRefusedAndMalformedPeer(t *testing.T) {
 	}
 	defer c.Close()
 	c.SetDeadline(time.Now().Add(2 * time.Second))
-	m, err := session.Dial(c, "approved")
+	m, err := session.Dial(c, "viewer")
 	if err != nil {
 		t.Fatal("later approved peer failed:", err)
 	}
@@ -259,7 +260,7 @@ func TestSessionSilentPeerDeadlineAndApprovedRecovery(t *testing.T) {
 	}
 	cb := &retryCallbacks{}
 	cb.decisions.Store(1)
-	if err := owner.startSessionHostTimeout(ln, "fixture", cb, 40*time.Millisecond); err != nil {
+	if err := startFixtureSessionHost(owner, ln, "fixture", cb, 40*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	defer owner.StopSessionHost()
@@ -280,7 +281,7 @@ func TestSessionSilentPeerDeadlineAndApprovedRecovery(t *testing.T) {
 	}
 	defer conn.Close()
 	conn.SetDeadline(time.Now().Add(time.Second))
-	m, err := session.Dial(conn, "approved")
+	m, err := session.Dial(conn, "viewer")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +311,7 @@ func TestSessionCaptureFailureCleansAndAcceptsNextViewer(t *testing.T) {
 		t.Fatal(err)
 	}
 	cb := &failingCaptureCallbacks{}
-	if err := owner.startSessionHost(ln, "fixture", cb); err != nil {
+	if err := startFixtureSessionHost(owner, ln, "fixture", cb, 15*time.Second); err != nil {
 		t.Fatal(err)
 	}
 	defer owner.StopSessionHost()
@@ -352,4 +353,10 @@ func TestSessionCaptureFailureCleansAndAcceptsNextViewer(t *testing.T) {
 	if cb.captures.Load() != 2 || cb.ends.Load() != 2 {
 		t.Fatalf("unexpected callbacks: captures%d ends%d", cb.captures.Load(), cb.ends.Load())
 	}
+}
+
+func startFixtureSessionHost(n *Node, ln net.Listener, name string, cb HostCallbacks, timeout time.Duration) error {
+	return n.startSessionHostWithPeerLookup(ln, name, cb, timeout, func() []daemon.SessionPeer {
+		return []daemon.SessionPeer{{Name: "viewer", IPv4: "127.0.0.1", PublicKey: fixturePeerKey}}
+	})
 }
