@@ -163,6 +163,13 @@ def main():
             # Only explicit whitelist summary is exported, never the whole am
             # output (which can include private runner arguments on a crash).
             if safe:
+                # Fixed booleans only, not a blind export of a private file.
+                try:
+                    packets = json.loads((root / 'peer-packets.json').read_text())
+                    names = ('peerInboundTCP', 'peerOutboundTCP', 'peerInboundSYN', 'peerOutboundSYNACK')
+                    safe[0] += ''.join(' ' + name + '=' + str(packets.get(name) is True).lower() for name in names)
+                except (OSError, ValueError):
+                    safe[0] += ' peerDiagnosticsUnavailable=true'
                 (ARTIFACTS / 'instrumentation.txt').write_text('\n'.join(safe) + '\n')
             raise RuntimeError('actual Android integration not passed')
         (ARTIFACTS / 'instrumentation.txt').write_text(safe[0] + '\n')

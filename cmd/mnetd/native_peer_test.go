@@ -6,12 +6,14 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/json"
+	"golang.zx2c4.com/wireguard/tun"
 	"io"
 	"net"
 	"net/netip"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -33,7 +35,8 @@ func TestNativeKernelPeerFixture(t *testing.T) {
 	if json.Unmarshal(data, &config) != nil || config.Server == "" || config.Network == "" || config.Key == "" || config.Root == "" {
 		t.Fatal("invalid private fixture configuration")
 	}
-	peer, err := newProofNode(config.Root, "userspace-peer", config.Server, config.Network, "userspace-peer", config.Key, false)
+	trace := &nativePeerTrace{}
+	peer, err := newProofNodeWithTUN(config.Root, "userspace-peer", config.Server, config.Network, "userspace-peer", config.Key, false, func(dev tun.Device) tun.Device { trace.Device = dev; return trace })
 	if err != nil {
 		t.Fatal("proof peer setup failed")
 	}
@@ -59,7 +62,18 @@ func TestNativeKernelPeerFixture(t *testing.T) {
 			go serveNativePeerHash(conn)
 		}
 	}()
-	<-done
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
+			data, _ := json.Marshal(trace.snapshot())
+			// Private staging file is read only through a fixed boolean allowlist.
+			_ = os.WriteFile(filepath.Join(config.Root, "peer-packets.json"), data, 0o600)
+		}
+	}
 }
 
 func nativePeerResponse() []byte {
@@ -156,5 +170,78 @@ func TestNativePeerHashRejectsReverseMismatch(t *testing.T) {
 	ack := make([]byte, 2)
 	if n, err := client.Read(ack); n != 0 || err == nil {
 		t.Fatal("invalid reverse receiver hash accepted")
+	}
+}
+
+// Traces only the disposable fixture's packet boundaries, never packet bytes.
+type nativePeerTrace struct {
+	tun.Device
+	inboundTCP, outboundTCP, inboundSYN, outboundSYNACK atomic.Bool
+}
+
+func nativePeerTCP(packet []byte) (tcp, syn, synack bool) {
+	if len(packet) < 40 || packet[0]>>4 != 4 || packet[9] != 6 {
+		return
+	}
+	h := int(packet[0]&15) * 4
+	if h < 20 || len(packet) < h+20 {
+		return
+	}
+	src, dst := int(packet[h])<<8|int(packet[h+1]), int(packet[h+2])<<8|int(packet[h+3])
+	if src != 45993 && dst != 45993 {
+		return
+	}
+	flags := packet[h+13]
+	return true, flags&2 != 0 && flags&16 == 0, flags&18 == 18
+}
+func (p *nativePeerTrace) Read(b [][]byte, sizes []int, offset int) (int, error) {
+	n, err := p.Device.Read(b, sizes, offset)
+	for i := 0; i < n; i++ {
+		tcp, _, ack := nativePeerTCP(b[i][offset : offset+sizes[i]])
+		if tcp {
+			p.outboundTCP.Store(true)
+		}
+		if ack {
+			p.outboundSYNACK.Store(true)
+		}
+	}
+	return n, err
+}
+func (p *nativePeerTrace) Write(b [][]byte, offset int) (int, error) {
+	for _, packet := range b {
+		tcp, syn, _ := nativePeerTCP(packet[offset:])
+		if tcp {
+			p.inboundTCP.Store(true)
+		}
+		if syn {
+			p.inboundSYN.Store(true)
+		}
+	}
+	return p.Device.Write(b, offset)
+}
+func (p *nativePeerTrace) snapshot() map[string]bool {
+	return map[string]bool{"peerInboundTCP": p.inboundTCP.Load(), "peerOutboundTCP": p.outboundTCP.Load(), "peerInboundSYN": p.inboundSYN.Load(), "peerOutboundSYNACK": p.outboundSYNACK.Load()}
+}
+func TestNativePeerTCPFlags(t *testing.T) {
+	packet := make([]byte, 40)
+	packet[0] = 0x45
+	packet[9] = 6
+	packet[22] = byte(45993 >> 8)
+	packet[23] = byte(45993 & 255)
+	packet[33] = 2
+	if tcp, syn, ack := nativePeerTCP(packet); !tcp || !syn || ack {
+		t.Fatal("SYN classification")
+	}
+	packet[33] = 18
+	if tcp, syn, ack := nativePeerTCP(packet); !tcp || syn || !ack {
+		t.Fatal("SYNACK classification")
+	}
+	for _, bad := range [][]byte{nil, packet[:30], make([]byte, 40)} {
+		if tcp, _, _ := nativePeerTCP(bad); tcp {
+			t.Fatal("invalid packet accepted")
+		}
+	}
+	if len((&nativePeerTrace{}).snapshot()) != 4 {
+		t.Fatal("diagnostic disclosure changed")
 	}
 }
