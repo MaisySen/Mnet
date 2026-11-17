@@ -36,7 +36,9 @@ class Guards(unittest.TestCase):
         source = (ROOT / 'scripts/android-emulator-validation.py').read_text()
         self.assertIn("'missing_shared_library':", source)
         self.assertIn("'emulator_exited': emulator.poll() is not None", source)
-        self.assertIn("json.dumps({'boot_diagnostics': categories})", source)
+        self.assertIn("'pre_boot_free_mib': free_mib", source)
+        self.assertIn("'not enough space'", source)
+        self.assertIn("'-partition-size', '2048'", source)
     def test_hash_before_and_after_real_reconnect(self):
         source = (ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
         self.assertEqual(2, source.count('            hashRoundTrip();'))

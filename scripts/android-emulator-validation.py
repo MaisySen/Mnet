@@ -126,7 +126,8 @@ def main():
         peer = wait(lambda: json.loads(ready.read_text()) if ready.exists() else None, 'real-go-peer')
 
         stage = 'emulator-boot'
-        emulator = start([SDK / 'emulator/emulator', '-avd', 'mnet-fixture', '-port', '5554', '-no-window', '-no-audio', '-no-boot-anim', '-no-snapshot', '-gpu', 'swiftshader_indirect', '-memory', '2048', '-cores', '2'], 'emulator')
+        free_mib = shutil.disk_usage(root).free // (1024 * 1024)
+        emulator = start([SDK / 'emulator/emulator', '-avd', 'mnet-fixture', '-port', '5554', '-no-window', '-no-audio', '-no-boot-anim', '-no-snapshot', '-gpu', 'swiftshader', '-partition-size', '2048', '-memory', '2048', '-cores', '2'], 'emulator')
         adb = [ADB, '-s', 'emulator-5554']
         def booted():
             if emulator.poll() is not None:
@@ -139,12 +140,17 @@ def main():
             text = (root / 'emulator.log').read_text(errors='replace').lower()
             categories = {
                 'missing_shared_library': 'error while loading shared libraries' in text,
-                'disk_space': 'not enough disk' in text or 'no space left' in text,
+                'disk_space': any(marker in text for marker in ('not enough disk', 'not enough space', 'no space left', 'insufficient disk')),
+                'avd_missing': 'unknown avd name' in text or 'cannot find avd' in text,
+                'unsupported_gpu': 'invalid gpu mode' in text or 'invalid gpu option' in text,
+                'cpu_feature': 'requires avx' in text or 'requires x86_64 cpu' in text,
+                'avd_lock': 'multiple emulators' in text or 'another emulator' in text,
+                'image_missing': 'broken avd system path' in text or 'cannot find system' in text,
                 'acceleration_unavailable': 'kvm is not installed' in text or 'kvm permission denied' in text,
                 'gpu_initialization': 'failed to initialize' in text and ('vulkan' in text or 'opengl' in text),
                 'emulator_exited': emulator.poll() is not None,
             }
-            (ARTIFACTS / 'instrumentation.txt').write_text(json.dumps({'boot_diagnostics': categories}) + '\n')
+            (ARTIFACTS / 'instrumentation.txt').write_text(json.dumps({'boot_diagnostics': categories, 'emulator_exit_code': emulator.poll(), 'pre_boot_free_mib': free_mib}) + '\n')
             raise
         run(adb + ['shell', 'input', 'keyevent', '82'])
         run(adb + ['reverse', 'tcp:8080', 'tcp:8080'])
