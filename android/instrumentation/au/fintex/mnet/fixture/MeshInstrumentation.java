@@ -237,6 +237,11 @@ public class MeshInstrumentation extends Instrumentation {
             stage = "actual-apk-launch";
             Intent launch = new Intent(getTargetContext(), MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             activity = startActivitySync(launch);
+            click(R.id.privacy_support_button);
+            await(() -> {
+                AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
+                return root != null && clickText(root, "Close");
+            }, "privacy-support-close");
             // startActivitySync may return before the first display traversal.
             // Wait for a laid-out field, then let SurfaceFlinger present it.
             await(() -> {

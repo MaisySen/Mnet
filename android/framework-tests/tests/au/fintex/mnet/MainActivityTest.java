@@ -37,4 +37,21 @@ public class MainActivityTest {
  @Test public void downStateLeavesConnectAvailableEvenWhenManaged()throws Exception{
   status("up",true);status("down",true);assertTrue(((Button)activity.findViewById(R.id.connect_button)).isEnabled());assertFalse((Boolean)field("connected"));assertNull(Shadows.shadowOf(activity).getNextStartedService());
  }
+ @Test public void privacySupportRequiresUserActionAndDoesNotAttachSecrets() {
+  ((Button)activity.findViewById(R.id.privacy_support_button)).performClick();
+  android.app.AlertDialog dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+  String message=Shadows.shadowOf(dialog).getMessage().toString();
+  assertTrue(message.contains("contact@fintex.au"));assertTrue(message.contains("Disconnecting does not delete"));
+  assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
+  dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+  Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+  Intent email=Shadows.shadowOf(activity).getNextStartedActivity();
+  assertEquals(Intent.ACTION_SENDTO,email.getAction());assertEquals("mailto:contact@fintex.au",email.getDataString());
+  assertNull(email.getExtras());
+ }
+ @Test public void closingPrivacySupportDoesNotSendOrDisconnect() {
+  ((Button)activity.findViewById(R.id.privacy_support_button)).performClick();
+  org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog().getButton(android.app.AlertDialog.BUTTON_NEGATIVE).performClick();
+  assertNull(Shadows.shadowOf(activity).getNextStartedActivity());assertNull(Shadows.shadowOf(activity).getNextStartedService());
+ }
 }

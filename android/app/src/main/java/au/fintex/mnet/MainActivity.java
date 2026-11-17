@@ -115,6 +115,12 @@ public class MainActivity extends Activity {
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         root.addView(sessionRow);
 
+        Button privacy = new Button(this);
+        privacy.setId(R.id.privacy_support_button);
+        privacy.setText("Privacy and support");
+        privacy.setOnClickListener(v -> showPrivacySupport());
+        root.addView(privacy);
+
         ScrollView scroll = new ScrollView(this);
         status = new TextView(this);
         status.setTypeface(Typeface.MONOSPACE);
@@ -128,6 +134,31 @@ public class MainActivity extends Activity {
 
         ContentInsets.install(root);
         setContentView(root);
+    }
+
+    // Development notice, not a replacement for the final hosted policy.
+    private void showPrivacySupport() {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Privacy and support")
+                .setMessage("Mnet is operated by Fintex Australia Pty Ltd. " +
+                        "For support or data-deletion requests, contact contact@fintex.au. " +
+                        "The inbox is monitored. Never send passwords, enrollment keys or private node keys.\n\n" +
+                        "Mnet stores enrollment settings and device identity on this phone. " +
+                        "The configured control service processes device and connection metadata. " +
+                        "Screen sharing sends screen images to an approved viewer; optional accessibility access permits remote gestures. " +
+                        "Disconnecting does not delete saved identity or server records. " +
+                        "Other endpoints may retain content you send.\n\n" +
+                        "This is a development build. The full privacy notice and complete retention/deletion handling are still being finalized. " +
+                        "Opening an email app does not send a request or delete data.")
+                .setPositiveButton("Open email app", (d, w) -> {
+                    Intent email = new Intent(Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:contact@fintex.au"));
+                    try { startActivity(email); }
+                    catch (android.content.ActivityNotFoundException unavailable) {
+                        android.widget.Toast.makeText(this, "No email app found. Contact contact@fintex.au.", android.widget.Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton("Close", null)
+                .show();
     }
 
     private EditText field(LinearLayout root, int hint) {
