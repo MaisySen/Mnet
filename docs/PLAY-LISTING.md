@@ -1,6 +1,6 @@
 # Android store listing draft
 
-Not approved for upload or ready to paste. Mnet is a development test build, with physical-platform, privacy-disclosure and store-policy review outstanding. Do not present planned routing/session capabilities as verified store features. See [STATUS](STATUS.md).
+Not approved for upload or ready to paste. Mnet is a development test build, with physical-platform, privacy-disclosure and store-policy review outstanding. Do not present planned routing/session capabilities as verified store features. See [STATUS](STATUS.md) and the [current Play readiness gates](google-play-readiness.md).
 
 ## Candidate text for review
 
@@ -31,4 +31,4 @@ Session endpoints handle screen frames, input, chat and files; optional recordin
 
 ## Artifact checkpoint
 
-Published test artifacts are Android 0.8.2/code 14 in v0.8.2-test.1. Newer source fixes are not in that download until rebuilt and released. AAB generation requires a freshly generated matching AAR; see [operations](operations.md#android). Store graphics and app metadata must be reviewed against the selected release, not historical screenshots alone.
+The older public test artifact is Android0.8.2/code14 in v0.8.2-test.1. A recipient-restricted0.8.3-dev/code15 APK was separately delivered on2026-11-17 and blocked by Play Protect. Newer source permission/disclosure/native-alignment/inset fixes are not in that delivered APK. Do not retry it or treat local debug builds as replacement releases. AAB generation requires a freshly generated matching AAR; see [operations](operations.md#android). Store graphics and app metadata must be reviewed against the selected release, not historical screenshots alone.

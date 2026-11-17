@@ -13,6 +13,7 @@ These documents describe a development project, not a production-readiness guara
 | [Native platform validation](native-platform-validation.md) | Exact platform checks and physical-device gaps. |
 | [Scale testing](scale-testing.md) | Dated synthetic measurements, methods, raw benchmark references and limits. |
 | [Releases and development history](RELEASES.md) | Shipped test versions and historical work, not a current feature guarantee. |
+| [Google Play readiness](google-play-readiness.md) | Internal-beta route, source-backed disclosure inventory, release gates and unresolved owner decisions. |
 | [Android store draft](PLAY-LISTING.md) | Unapproved listing and data-disclosure work, not ready-to-publish claims. |
 | [Android installation and Play Protect](android-installation.md) | Current install blocker, minimum permissions, consent and supported review/testing route. |
 | [Android emulator integration](../android/instrumentation/README.md) | Pending actual APK/JNI/VPN + real-peer proof; disposable fixture controls and physical-device gaps. |
