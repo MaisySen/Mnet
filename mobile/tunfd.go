@@ -3,7 +3,9 @@
 package mobile
 
 import (
+	"encoding/binary"
 	"encoding/json"
+	"net/netip"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -26,6 +28,8 @@ type fdTun struct {
 	writes      atomic.Uint64
 	readIPv4    atomic.Bool
 	readTCP     atomic.Bool
+	readTCPSrc  atomic.Uint32
+	readTCPDst  atomic.Uint32
 	readSYN     atomic.Bool
 	readFailed  atomic.Bool
 	writeFailed atomic.Bool
@@ -109,7 +113,7 @@ func (n *Node) Start(tunFD int, server, network, name, authKey string) error {
 	return nil
 }
 
-// Packet classes only. Never retains or exports addresses or payloads.
+// Packet classes and private last-TCP endpoints. Never exports addresses or payloads.
 func (t *fdTun) observePacket(packet []byte) {
 	if len(packet) < 20 || packet[0]>>4 != 4 {
 		return
@@ -122,9 +126,18 @@ func (t *fdTun) observePacket(packet []byte) {
 	if packet[9] != 6 || len(packet) < h+20 {
 		return
 	}
+	t.readTCPSrc.Store(binary.BigEndian.Uint32(packet[12:16]))
+	t.readTCPDst.Store(binary.BigEndian.Uint32(packet[16:20]))
 	t.readTCP.Store(true)
 	flags := packet[h+13]
 	if flags&2 != 0 && flags&16 == 0 {
 		t.readSYN.Store(true)
 	}
+}
+
+func (t *fdTun) packetEndpoints() (netip.Addr, netip.Addr) {
+	var src, dst [4]byte
+	binary.BigEndian.PutUint32(src[:], t.readTCPSrc.Load())
+	binary.BigEndian.PutUint32(dst[:], t.readTCPDst.Load())
+	return netip.AddrFrom4(src), netip.AddrFrom4(dst)
 }

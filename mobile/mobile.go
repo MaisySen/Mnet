@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/netip"
 	"sync"
 
 	"fintex.au/mnet/internal/daemon"
@@ -95,5 +96,24 @@ func (n *Node) PacketDiagnostics() string {
 	if n.packetDiag == nil {
 		return "{}"
 	}
-	return n.packetDiag.packetDiagnostics()
+	result := n.packetDiag.packetDiagnostics()
+	if endpoints, ok := n.packetDiag.(interface {
+		packetEndpoints() (netip.Addr, netip.Addr)
+	}); ok && n.d != nil {
+		var flags map[string]bool
+		if json.Unmarshal([]byte(result), &flags) == nil {
+			src, dst := endpoints.packetEndpoints()
+			state := n.d.Status()
+			flags["read_source_self"] = src.String() == state.IPv4
+			flags["read_destination_peer"] = false
+			for _, peer := range state.Peers {
+				if dst.String() == peer.IPv4 {
+					flags["read_destination_peer"] = true
+				}
+			}
+			data, _ := json.Marshal(flags)
+			return string(data)
+		}
+	}
+	return result
 }

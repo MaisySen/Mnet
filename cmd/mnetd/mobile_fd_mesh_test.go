@@ -133,7 +133,7 @@ func TestMobileFDMeshTCP(t *testing.T) {
 	}
 	var d map[string]bool
 	json.Unmarshal([]byte(node.PacketDiagnostics()), &d)
-	if !d["read_packet"] || !d["wrote_packet"] || d["read_failed"] || d["write_failed"] {
+	if !d["read_source_self"] || !d["read_destination_peer"] || !d["read_packet"] || !d["wrote_packet"] || d["read_failed"] || d["write_failed"] {
 		t.Fatal("mobile fd packet evidence missing")
 	}
 }
