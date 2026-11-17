@@ -1,14 +1,39 @@
 # Product scope and current gaps
 
-Updated 2026-11-17, Australia/Sydney. This page records the desired experience separately from implementation. See [STATUS](STATUS.md) for exact verification and source versus download/deployment state.
+Updated 2026-11-18, Australia/Sydney. This page separates the intended consumer product from current engineering builds. [STATUS](STATUS.md) records individual commits/checks; the whole-product plan remains the design direction, not proof that these gates passed.
 
-## Desired experience
+## Product direction: a Multies-only companion
 
-The user clarified that Mnet should connect multiple devices under one account in one private mesh/network, reconnect in the background and work with device startup. This is a product target, not a claim of finished Tailscale parity.
+Mnet is intended to be a downloadable companion for eligible Multies users, not an independent public remote-access service. Multies supplies identity, workspace membership and shared product/navigation context. Mnet supplies native device connectivity, capture/input and OS permission handling. There is no intended second signup, guest enrollment or parallel account ownership model.
 
-An architecture blueprint shared as reference on 2026-11-16 describes personal/business use and hosted/self-hosted directions. It is reference material, not an adopted stack, budget, deadline, migration plan or authorization to provision services.
+The consumer journey is:
 
-## Multiple devices and one account
+1. Install the companion and choose **Continue with Multies**.
+2. Complete Multies sign-in and, when necessary, choose an eligible workspace. Do not type a server URL, network name or enrollment key.
+3. Review the device identity and relevant OS permission disclosure. Declining an optional capability keeps unrelated supported capabilities available.
+4. See eligible devices within that workspace, with honest connecting, offline, approval-required and unavailable states.
+5. Request a session, get host view approval, and request control separately. View approval must not silently grant control, file transfer or recording.
+6. Keep a visible stop action. End, revocation or permission loss must stop the affected real resources, not merely change a UI label.
+
+These are requirements, not descriptions of the current APK. Store download visibility is a separate distribution decision; Multies-only eligibility does not by itself change who can see a store listing or authorize a wider beta.
+
+## Current capability and release gates
+
+| Journey | Current evidence | What still blocks the consumer claim |
+| --- | --- | --- |
+| Setup and devices | A clickable 28-state prototype exists; current builds retain manual engineering enrollment. | Real Multies sign-in, eligible-workspace/device data, no manual-network fallback, and end-to-end failure/recovery checks. Prototype state is simulated. |
+| Identity and workspace | Mnet-side exact workspace/device/capability policy and native intent binding have local tests but no production verifier or caller. | A scoped Multies authorization bridge and revocation contract. Multies source is not changed. Identity-provider login, MCP OAuth or an old enrollment key cannot substitute. |
+| VPN and DNS | Kernel fixtures and individual Android API34/API36 checks have passed at recorded commits. | A reliable complete Android matrix, default-network separate-app DNS, physical recovery/reconnect and supported platform lifecycle evidence. Current Android native matrix remains failed. |
+| Attended view/control | Current transport has host admission and OS capture/accessibility handling. A separate-consent model is tested but inactive. | Authenticated workspace/session binding, distinct view/control UI and real input enforcement, plus revocation/stop resource cleanup. Current combined admission is not the target separate-consent journey. |
+| Incoming files | Configured desktop destinations use bounded transfer, portable names, digest validation and atomic no-overwrite publication. | Real destination selection and approval. Empty destinations refuse; current mobile-host and viewer default file reception is unavailable. A directory setting is not per-file consent or Multies authority. |
+| Stop and recovery | Local transport/worker/capture cleanup regressions exist. | Physical phone recovery, OS permission revocation, sleep/reboot and membership-loss behavior across the real integrated journey. Local Up is not traffic proof. |
+| Distribution | Existing test artifacts remain separate from current source. | No new production or wider beta release is implied by source/CI. Signed iOS delivery and broader rollout readiness remain open. |
+
+The [Multies boundary](multies-boundary.md) explains the inactive foundations and required bridge. Legacy test enrollment and account administration below describe engineering capability only; they do not meet these release gates. No mock verifier or successful prototype screen may be presented as live authorization.
+
+## Existing engineering model and evidence
+
+### Multiple devices and one account
 
 Implemented: a network contains separately keyed devices, each with its own identity and mesh IP. Approved, unexpired peers and relay traffic are scoped to that network. Enrollment uses a server URL, network and enrollment key or individual approval. Optional OIDC records the approving display identity on the device. Newer source also preserves the verified issuer/subject privately as approval provenance, without inferring it from old email labels or exposing it in peer maps; that addition passed [c2fe64c CI](https://github.com/MaisySen/Mnet/actions/runs/43780929040).
 
@@ -16,7 +41,7 @@ Not finished: a consumer account/organization ownership and membership model tha
 
 Three fresh [799f3a1 kernel fixtures](https://github.com/MaisySen/Mnet/actions/runs/43778473220) exercise three independently keyed VPN devices in one network, all six directed mesh pings and third-device OS TCP, plus a separate LAN host. The later [e0a8f84 CI](https://github.com/MaisySen/Mnet/actions/runs/43780009817) passed three full fixtures that also keep a second network isolated on the same control service. Synthetic control-plane scale fixtures are not evidence of an active-device fleet.
 
-## Startup by platform
+### Startup by platform
 
 | Platform | Implemented | Verified limit / remaining work |
 | --- | --- | --- |
@@ -28,16 +53,16 @@ Three fresh [799f3a1 kernel fixtures](https://github.com/MaisySen/Mnet/actions/r
 
 A desktop service reporting running means its local API is available, not that its VPN has joined. Sleep/wake, loss of connectivity, credential expiry and boot ordering need dedicated end-to-end validation.
 
-## Boundaries
+### Engineering boundaries
 
 Current builds remain test-only. The bounded Linux LAN fixture requires operator-enabled forwarding and permissive forwarding policy. Exit internet routing is unsupported. Account isolation, real-device validation, durable hosted storage, recovery and independent security review remain work, not implied guarantees.
 
-## Android startup follow-up
+### Historical Android startup follow-up
 
 [Android VPN guidance](https://developer.android.com/develop/connectivity/vpn) says always-on can start the VPN at boot, must reuse saved configuration and requires adapting disconnect controls. [VpnService reference](https://developer.android.com/reference/android/net/VpnService) says the always-on metadata defaults true when absent, with isAlwaysOn available from API29. [Enterprise guidance](https://developer.android.com/work/dpc/network-telephony) explicitly recommends the system lifecycle rather than an app boot receiver. The current manifest does not opt out; that is not verification that all always-on UX/reconnect paths work. Do not claim boot support from START_STICKY. Worker ownership and permanent disposal now have source/JVM/native evidence as recorded in [native validation](native-platform-validation.md). Follow-up includes disconnect-control behavior and physical cancellation/reconnect/always-on/reboot testing. New API-level guards have local fake/build checks, not device verification.
 
 
-## Current Android always-on and lifecycle validation
+### Earlier Android always-on and lifecycle validation
 
 API29+ source uses VpnService.isAlwaysOn to omit notification disconnect, disable connected main-screen disconnect, explain Settings ownership and ignore stale service disconnect intents. Manual mode retains disconnect. System revoke/destroy/failure cleanup is unchanged; the app does not change always-on/lockdown settings. API24-28 detection remains unknown with earlier behavior, rather than inferring mode from a null restart intent.
 

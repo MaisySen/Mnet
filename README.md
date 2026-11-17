@@ -1,12 +1,15 @@
 # Mnet
 
-A development mesh VPN and remote-session project. Devices use WireGuard-encrypted direct UDP or an encrypted relay, with a self-hosted control plane for enrollment, approval, maps and access policies.
+A development companion for Multies, intended to let eligible Multies users connect their devices and start approved remote sessions. The intended setup is install, sign in through Multies, choose an eligible workspace and approve the relevant OS permissions. No separate Mnet signup or guest service, and no server, network or enrollment-key chores in the consumer journey.
+
+**That integrated journey is not implemented yet.** Current engineering builds still use a mesh VPN and remote-session stack with manual enrollment. Devices use WireGuard-encrypted direct UDP or an encrypted relay. Existing test enrollment/account routes are not production Multies-only enforcement. The control-plane/server instructions below are developer tooling, not the intended consumer setup.
 
 **Test builds only. Do not use Mnet for sensitive traffic or important file transfers yet.** It is not complete, independently audited, or a demonstrated replacement for Tailscale or a production remote-desktop service.
 
 ## Start here
 
 - [Documentation index](docs/README.md): guides, design, evidence and history.
+- [Consumer scope and release gates](docs/product-scope.md): intended journey versus current capability.
 - [Project status](docs/STATUS.md): source versus published builds, verified checks and open work.
 - [Latest published test build](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1): update the CLI and daemon together.
 - [Operations](docs/operations.md): configuration, credentials, enrollment and security limits.
@@ -22,7 +25,7 @@ A development mesh VPN and remote-session project. Devices use WireGuard-encrypt
 
 The control-plane operator sees device identities, addresses, endpoints and topology. A hosting operator can also observe that metadata. The relay sees encrypted WireGuard packets and traffic metadata, not their plaintext. Sessions may use the relay too. A compromised endpoint or control plane is outside a promise of absolute privacy.
 
-## Build and try locally
+## Build and try locally (engineering only)
 
 Use the Go version pinned in [go.mod](go.mod), currently Go 1.26.11. Linux needs `iproute2` and access to `/dev/net/tun`; macOS needs a supported utun interface; Windows needs `wintun.dll` beside the daemon. Interface setup requires root or the appropriate administrative capabilities. Native build/CI does not imply every platform's VPN setup has passed.
 
@@ -46,7 +49,7 @@ sudo ./mnet --state /var/lib/mnet-test status
 
 Approve the pending device in the dashboard. For multiple machines, use a reachable control-plane URL behind HTTPS, not loopback; see [operations](docs/operations.md). Enrollment keys are secrets. Do not copy them into documentation or service commands. Use a dedicated private state directory consistently for both CLI and daemon.
 
-Addresses come from `100.64.0.0/10`. This range can conflict with an existing VPN or carrier network; check your environment. Magic DNS listens on the node's mesh IP and requires client resolver configuration.
+Addresses come from `100.64.0.0/10`. This range can conflict with an existing VPN or carrier network; check your environment. Desktop Magic DNS uses a mesh-IP listener and requires resolver configuration. Mobile source uses a routed userspace DNS endpoint instead; Android default-network reliability is still a release blocker. See [status](docs/STATUS.md).
 
 ## Remote sessions
 

@@ -48,13 +48,15 @@ Handshake on the control stream, then framed messages:
       u8  message type: 1=OPEN 2=DATA 3=FIN 4=RST 5=PING 6=PONG
       u8  priority class (0-3)
       u16 flags (reserved, zero)
-      u32 payload length (max 1 MiB)
+      u32 payload length (max 1 MiB DATA, 16 KiB OPEN)
     payload
 
 OPEN carries a JSON object describing the stream (codec, dimensions,
 file name and size, ...). DATA on screen/input/chat/file carries the
 payloads above. FIN half-closes, RST aborts. PING/PONG keep the path
 warm and measure latency.
+
+Current source caps active stream-table entries at 256, per-stream inbound queues at 16 frames, aggregate queued inbound DATA at 16 MiB, and individual OPEN metadata at 16 KiB before allocation/read. Inbound overflow closes the session. Queue credits return on consumption or stream release, including completion after FIN. These are separate retention limits, not a total session/process memory guarantee or protection from one blocked stream delaying the shared decoder. Decoded images and application-held copies have separate limits/lifetimes. The wire framing remains version 1; peers sending oversized OPEN metadata are now refused.
 
 ## Screen v1
 
@@ -68,7 +70,7 @@ A screen-production failure now ends the host session transport instead of leavi
 
 JSON events: {"kind":"pointer","x":..,"y":..,"button":..,"action":..}
 and {"kind":"key","text":..} in host coordinates. Host injection:
-Android accessibility gestures and key events; Linux XTEST.
+Android accessibility gestures (not text typing); Linux XTEST.
 
 ## Chat v1
 
@@ -76,7 +78,7 @@ UTF-8 text, one DATA message per line.
 
 ## File v1
 
-Offer (name, size, sha256), acceptance, 256KiB chunks and final digest ACK. Priority class 3. Receiver acceptance starts from offset zero; resumable transfers are not implemented.
+Offer (name, size, sha256), acceptance, 256KiB chunks and final digest ACK. Priority class 3. Receiver acceptance starts from offset zero; resumable transfers are not implemented. Reception requires an explicit configured destination. An empty destination refuses before storage rather than writing into the process working directory; mobile-host and viewer defaults therefore cannot currently receive files. Configured desktop reception is not per-file user consent. Names use a shared portable basename rejection policy, and completed files are published atomically without overwrite after length/digest validation.
 
 ## Security model
 
