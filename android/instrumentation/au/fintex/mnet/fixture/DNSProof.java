@@ -18,7 +18,7 @@ final class DNSProof {
         byte[] query = query(name);
         byte[] udp;
         try (DatagramSocket socket = new DatagramSocket()) {
-            socket.connect(InetAddress.getByAddress(new byte[]{(byte)198,18,0,53}),53);
+            socket.connect(InetAddress.getByAddress(new byte[]{(byte)100,64,0,0}),53);
             String source=socket.getLocalAddress().getHostAddress();sourceMesh=source.startsWith("100.");sourceResolver="198.18.0.54".equals(source);sourceUnderlay=source.startsWith("10.");sourceAny=socket.getLocalAddress().isAnyLocalAddress();
             socket.setSoTimeout(5000);
             socket.send(new DatagramPacket(query,query.length));
@@ -28,7 +28,7 @@ final class DNSProof {
         check(udp,expected);
         phase="tcp";
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(InetAddress.getByAddress(new byte[]{(byte)198,18,0,53}),53),5000);
+            socket.connect(new InetSocketAddress(InetAddress.getByAddress(new byte[]{(byte)100,64,0,0}),53),5000);
             socket.setSoTimeout(5000);
             DataOutputStream output = new DataOutputStream(socket.getOutputStream());
             output.writeShort(query.length);output.write(query);output.flush();
