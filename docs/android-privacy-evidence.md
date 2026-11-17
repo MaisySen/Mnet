@@ -10,6 +10,7 @@ Updated 2026-11-17. Submission preparation only. This is not a published privacy
 | Device identity | mobile/mobile.go and internal/daemon/state.go save node keys and join credentials under the app's private files/mnet directory. | Stop/Close release the running node, not its saved identity. Do not describe disconnect as deletion. |
 | Network/control metadata | The control service processes device names, public keys, assigned/underlay addresses, endpoints, approval and network membership. OIDC code can process identity-provider subject, email and display name. | Actual operator storage, backups and retention must be specified. Admin node removal is not deletion of every related log or account membership. |
 | NAT discovery | internal/daemon/peers.go sends STUN binding requests to public Google and Cloudflare server names from internal/stun/stun.go to discover the device's reachable endpoint. The20-byte request contains a transaction ID, not screen/chat payload. | Those services can observe the source IP/port and request metadata. Provider retention has not been verified; do not imply only Mnet endpoints process connection data. |
+| DNS | MnetVpnService adds the mesh IP as VPN DNS; internal/dns/dns.go answers .mnet locally and forwards other queries through upstream.go to /etc/resolv.conf or Cloudflare1.1.1.1 fallback. | The upstream resolver can receive queried names and source metadata, potentially from other apps using the VPN DNS. Do not imply only STUN/control connections leave the device. |
 | Screen frames | HostSessionService captures after Android MediaProjection consent. It holds the latest JPEG in memory and supplies frames to the session engine. ViewerActivity decodes received frames for display. | Stopping hosting clears the service's latest-frame reference and stops projection. This does not prove erasure of copies made by viewers, platform buffers or a separate desktop recording feature. |
 | Remote gestures | MnetAccessibilityService dispatches supported pointer gestures only while hosting. It does not retrieve window contents or consume accessibility events. | Accessibility is an optional remote-control mechanism, not a disability-support tool. Host consent and the separate Android permission remain required. |
 | Chat | ViewerActivity sends chat through the session. HostSessionService displays incoming chat through an app-scoped broadcast; the viewing UI keeps visible chat text in memory. | No universal no-retention promise: another endpoint can retain content, and other platforms have different features. |
@@ -24,7 +25,7 @@ Evidence: three XML policy tests, a negative control that removes the cloud Shar
 
 Source: https://developer.android.com/identity/data/autobackup
 
-A [notice review draft](android-privacy-notice-draft.md) now assembles those facts without inventing a retention period or adopted policy. Its operator verification table remains a publication gate.
+A [notice review draft](android-privacy-notice-draft.md) now assembles those facts without inventing a retention period or adopted policy. The static internal-test policy in index.html uses bounded statements for provider-controlled retention instead of inventing an exact duration. Wider production readiness remains separate.
 
 ## Decisions and evidence still needed
 
