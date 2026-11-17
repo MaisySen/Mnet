@@ -77,6 +77,8 @@ def main():
         namespace = '{http://schemas.android.com/apk/res/android}'
         app.set(namespace + 'usesCleartextTraffic', 'true')
         app.set(namespace + 'debuggable', 'true')
+        # Read OS VPN publication in instrumentation, not a production permission.
+        ET.SubElement(tree.getroot(), 'uses-permission', {namespace + 'name': 'android.permission.ACCESS_NETWORK_STATE'})
         tree.write(manifest, encoding='utf-8', xml_declaration=True)
         env = os.environ.copy()
         env.pop('MNET_RELEASE_KEYSTORE', None)

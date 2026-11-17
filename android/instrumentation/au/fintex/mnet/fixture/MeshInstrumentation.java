@@ -63,6 +63,22 @@ public class MeshInstrumentation extends Instrumentation {
         try { return "up".equals(new JSONObject(MnetVpnService.currentNode().status()).optString("status")); }
         catch (Exception unavailable) { return false; }
     }
+    private void osVpnReady() throws Exception {
+        // Node.up is engine state. Android publishes the VPN network separately;
+        // opening a socket before that can cache an underlay source address.
+        await(() -> {
+            android.net.ConnectivityManager cm = getTargetContext().getSystemService(android.net.ConnectivityManager.class);
+            android.net.Network network = cm.getActiveNetwork();
+            android.net.NetworkCapabilities caps = cm.getNetworkCapabilities(network);
+            android.net.LinkProperties props = cm.getLinkProperties(network);
+            if (caps == null || props == null || !caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)) return false;
+            String self = MnetVpnService.currentNode().meshIPv4();
+            for (android.net.LinkAddress address : props.getLinkAddresses()) {
+                if (self.equals(address.getAddress().getHostAddress())) return true;
+            }
+            return false;
+        }, "os-vpn-published");
+    }
     private void hashRoundTrip() throws Exception {
         stage = "mesh-hash-round-trip";
         // This address has no host TCP listener. Reaching it requires the real
@@ -126,6 +142,7 @@ public class MeshInstrumentation extends Instrumentation {
             click(R.id.connect_button);
             vpnConsent();
             await(this::up, "initial-vpn-up");
+            osVpnReady();
             hashRoundTrip();
             click(R.id.connect_button);
             await(() -> MnetVpnService.currentNode() == null, "manual-stop");
@@ -135,6 +152,7 @@ public class MeshInstrumentation extends Instrumentation {
             click(R.id.connect_button);
             vpnConsent();
             await(this::up, "reconnect-vpn-up");
+            osVpnReady();
             hashRoundTrip();
             click(R.id.connect_button);
             await(() -> MnetVpnService.currentNode() == null, "final-stop");
