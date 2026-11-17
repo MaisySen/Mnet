@@ -276,7 +276,7 @@ def main():
         diagnostic = {'result': 'fail', 'stage': stage, 'error_type': type(failure).__name__}
         try:
             flags = json.loads((root / 'screen-proof.json').read_text())
-            diagnostic['peer_screen'] = {name: flags.get(name) is True for name in ('viewer_connected', 'one_decoded_frame', 'decoded_frames', 'closed_after_stop')}
+            diagnostic['peer_screen'] = {name: flags.get(name) is True for name in ('viewer_connected', 'geometry_received', 'one_decoded_frame', 'decoded_frames', 'closed_after_stop')}
         except (OSError, ValueError):
             pass
         # Stage is written from fixture-controlled literal await labels only.

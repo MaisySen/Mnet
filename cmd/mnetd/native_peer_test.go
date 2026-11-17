@@ -295,7 +295,7 @@ func nativePeerScreenProof(peer *proofNodeT, root string) {
 			}
 		}})
 		for time.Now().Before(deadline) {
-			flags := map[string]bool{"decoded_frames": frames.Load() >= 2, "one_decoded_frame": frames.Load() >= 1, "viewer_connected": true, "closed_after_stop": false}
+			flags := map[string]bool{"decoded_frames": frames.Load() >= 2, "one_decoded_frame": frames.Load() >= 1, "viewer_connected": true, "geometry_received": viewer.Geometry() != nil, "closed_after_stop": false}
 			if frames.Load() >= 2 {
 				var point struct{ X, Y, Width, Height int }
 				if data, e := os.ReadFile(filepath.Join(root, "input-target.json")); e == nil && json.Unmarshal(data, &point) == nil && point.Width > 0 && point.Height > 0 {

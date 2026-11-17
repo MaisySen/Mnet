@@ -320,6 +320,22 @@ public class MeshInstrumentation extends Instrumentation {
                         + " handshake=" + handshake + " received=" + received + " transmitted=" + transmitted + " relay=" + relay;
                 }
             } catch (Exception ignored) { diagnostics = " diagnosticsUnavailable=true"; }
+            try {
+                Class<?> type = au.fintex.mnet.HostSessionService.class;
+                java.lang.reflect.Field current = type.getDeclaredField("diagnosticInstance"); current.setAccessible(true);
+                java.lang.ref.WeakReference<?> reference = (java.lang.ref.WeakReference<?>) current.get(null);
+                Object host = reference == null ? null : reference.get();
+                if (host != null) {
+                    for (String name : new String[]{"running", "captureImageSeen", "captureEncodingFailed"}) {
+                        java.lang.reflect.Field field = type.getDeclaredField(name); field.setAccessible(true);
+                        diagnostics += " " + name + "=" + field.getBoolean(host);
+                    }
+                    for (String name : new String[]{"latestSeq", "servedSeq"}) {
+                        java.lang.reflect.Field field = type.getDeclaredField(name); field.setAccessible(true);
+                        diagnostics += " " + name + "Present=" + (field.getLong(host) > 0);
+                    }
+                }
+            } catch (Exception ignored) { diagnostics += " captureDiagnosticsUnavailable=true"; }
             result.putString("summary", "FAIL stage=" + stage + " type=" + failure.getClass().getSimpleName() + diagnostics);
             finish(Activity.RESULT_CANCELED, result);
         }

@@ -66,6 +66,9 @@ public class HostSessionService extends Service implements HostCallbacks {
     private volatile byte[] latestJpeg;
     private volatile long latestSeq;
     private volatile long servedSeq;
+    private volatile boolean captureImageSeen;
+    private volatile boolean captureEncodingFailed;
+    private static volatile java.lang.ref.WeakReference<HostSessionService> diagnosticInstance;
     private volatile boolean running;
     private boolean stopping;
     private boolean hostStarted;
@@ -91,6 +94,7 @@ public class HostSessionService extends Service implements HostCallbacks {
             return START_NOT_STICKY;
         }
         try {
+            diagnosticInstance = new java.lang.ref.WeakReference<>(this);
             startFg();
             int resultCode = intent.getIntExtra("resultCode", 0);
             Intent data = intent.getParcelableExtra("data");
@@ -179,7 +183,9 @@ public class HostSessionService extends Service implements HostCallbacks {
             Image img = null;
             try {
                 img = r.acquireLatestImage();
-                if (img == null || !running) return;
+                if (img == null) return;
+                captureImageSeen = true;
+                if (!running) return;
                 Image.Plane plane = img.getPlanes()[0];
                 byte[] encoded = CaptureEncoder.jpeg(plane.getBuffer(), frameW, frameH,
                         plane.getPixelStride(), plane.getRowStride());
@@ -190,6 +196,7 @@ public class HostSessionService extends Service implements HostCallbacks {
                     }
                 }
             } catch (Exception ignored) {
+                captureEncodingFailed = true;
             } finally {
                 if (img != null) img.close();
             }
