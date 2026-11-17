@@ -1,0 +1,70 @@
+name: android-emulator
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/android-emulator.yml'
+      - 'android/instrumentation/**'
+      - 'scripts/android-emulator-validation.py'
+  workflow_dispatch:
+
+# This is engineering instrumentation, not a release or Play Protect verdict.
+permissions:
+  contents: read
+
+concurrency:
+  group: android-emulator-fixture
+  cancel-in-progress: false
+
+jobs:
+  actual-vpn-peer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: install pinned Android fixture toolchain
+        run: |
+          sdkmanager 'platform-tools' 'emulator' 'platforms;android-34' 'build-tools;34.0.0' 'ndk;27.2.12479018' 'system-images;android-34;google_apis;x86_64'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo 'no' | avdmanager create avd --force --name mnet-fixture --package 'system-images;android-34;google_apis;x86_64' --device 'pixel_2'
+      - name: enable standard Linux KVM access
+        run: |
+          test -c /dev/kvm
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: build current shared engine and isolated real peer
+        run: |
+          mobile_version=$(go list -m -f '{{.Version}}' golang.org/x/mobile)
+          go install "golang.org/x/mobile/cmd/gomobile@$mobile_version"
+          go install "golang.org/x/mobile/cmd/gobind@$mobile_version"
+          gomobile init
+          mkdir -p "$RUNNER_TEMP/mnet-android-bin"
+          gomobile bind -target android/amd64 -androidapi 24 -o "$RUNNER_TEMP/mnet-android-fixture.aar" fintex.au/mnet/mobile
+          go build -o "$RUNNER_TEMP/mnet-android-bin/mnet-control" ./cmd/mnet-control
+          go test -c -o "$RUNNER_TEMP/mnet-android-bin/native-peer" ./cmd/mnetd
+      - name: actual APK and JNI VPN hash round trip, stop and reconnect
+        env:
+          MNET_ANDROID_AAR: ${{ runner.temp }}/mnet-android-fixture.aar
+          MNET_ANDROID_BIN: ${{ runner.temp }}/mnet-android-bin
+          MNET_ANDROID_ARTIFACTS: ${{ runner.temp }}/mnet-android-artifacts
+        run: python3 scripts/android-emulator-validation.py
+      - name: retain allowlisted non-secret diagnostics only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-emulator-proof
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/mnet-android-artifacts/summary.json
+            ${{ runner.temp }}/mnet-android-artifacts/instrumentation.txt
+            ${{ runner.temp }}/mnet-android-artifacts/launch.png

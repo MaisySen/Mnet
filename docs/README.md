@@ -15,6 +15,7 @@ These documents describe a development project, not a production-readiness guara
 | [Releases and development history](RELEASES.md) | Shipped test versions and historical work, not a current feature guarantee. |
 | [Android store draft](PLAY-LISTING.md) | Unapproved listing and data-disclosure work, not ready-to-publish claims. |
 | [Android installation and Play Protect](android-installation.md) | Current install blocker, minimum permissions, consent and supported review/testing route. |
+| [Android emulator integration](../android/instrumentation/README.md) | Pending actual APK/JNI/VPN + real-peer proof; disposable fixture controls and physical-device gaps. |
 | [Android framework guide](../android/framework-tests/README.md) | Current simulation matrix, run command, explicit fakes and device/JNI gaps. |
 | [iOS source guide](../ios/README.md) | Source integration, toolchain and remaining signing/device validation. |
 

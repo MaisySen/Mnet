@@ -12,6 +12,8 @@ The privately delivered0.8.3-dev APK received the Play Protect sensitive-data in
 
 Newer source removes unnecessary accessibility window-content retrieval and event subscriptions, retains remote gestures and adds separate in-app Agree/Not now disclosure before Settings. Current simulation passes136cases (88selected service/activity +48VPN), including12disclosure cases. Full resource/Java/minAPI24dex compile and compiled accessibility metadata checks pass. These changes are not yet in the delivered APK, do not establish Google approval, and may not clear the installation block. Official review/distribution remains separate. See [installation investigation](android-installation.md).
 
+A new [disposable emulator integration rig](../android/instrumentation/README.md) is prepared for standard free public CI: actual APK/JNI/VPN consent plus a real Go peer, bidirectional hashed traffic and manual stop/reconnect. Local build/guard checks pass, but its first CI execution is pending. Remote capture/input and physical-device proof are not covered yet.
+
 ## Source, downloads and deployment
 
 | Layer | Recorded state | Evidence / limit |
