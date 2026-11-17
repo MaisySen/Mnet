@@ -23,7 +23,7 @@ class Guards(unittest.TestCase):
         workflow = (ROOT / '.github/workflows/android-emulator.yml').read_text()
         outputs = workflow.split('path: |')[1]
         self.assertNotIn('*', outputs)
-        self.assertEqual({'summary.json', 'instrumentation.txt', 'launch.png'}, {x.strip().split('/')[-1] for x in outputs.splitlines() if x.strip()})
+        self.assertEqual({'summary.json', 'instrumentation.txt', 'launch.png', 'consent.png'}, {x.strip().split('/')[-1] for x in outputs.splitlines() if x.strip()})
         self.assertIn('runs-on: ubuntu-latest', workflow)
     def test_real_consent_and_no_protection_disable(self):
         source = (ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()

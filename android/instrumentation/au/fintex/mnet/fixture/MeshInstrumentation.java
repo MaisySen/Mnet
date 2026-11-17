@@ -209,6 +209,16 @@ public class MeshInstrumentation extends Instrumentation {
             result.putString("summary", "PASS self-bound target36 runtimeAPI=" + android.os.Build.VERSION.SDK_INT + " actual APK/JNI/VPN consent, projection/viewer consent and decoded frames/stop, bidirectional 4MiB hash, manual stop/reconnect and repeat hash; emulator only, no physical reboot/capture/control proof");
             finish(Activity.RESULT_OK, result);
         } catch (Throwable failure) {
+            // Only these controlled hosting/OS consent screens contain no
+            // enrollment UI or secrets. Never capture a general failure screen.
+            if (stage.equals("screen-projection-consent") || stage.equals("screen-viewer-consent")) {
+                try {
+                    Bitmap image = getUiAutomation().takeScreenshot();
+                    try (FileOutputStream file = new FileOutputStream(new File(getTargetContext().getFilesDir(), "fixture-consent.png"))) {
+                        if (image != null) image.compress(Bitmap.CompressFormat.PNG, 100, file);
+                    }
+                } catch (Exception ignored) { }
+            }
             // Deliberately omit exception messages, app state and arguments.
             String diagnostics = "";
             try {
