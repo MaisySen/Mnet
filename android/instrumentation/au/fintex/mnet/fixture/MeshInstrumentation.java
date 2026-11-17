@@ -50,16 +50,23 @@ public class MeshInstrumentation extends Instrumentation {
     // Callers use pre-enrollment or dedicated host screens with no credentials. Require visible
     // actions and consecutive equal compositor frames, not only a ready tree.
     private AccessibilityNodeInfo captureSettledDialog(String title, String filename, String... actions) throws Exception {
+        final android.graphics.Rect dialogBounds = new android.graphics.Rect();
         await(() -> {
             AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
             if (root == null || !"au.fintex.mnet".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())
                     || root.findAccessibilityNodeInfosByText(title).isEmpty()) return false;
+            dialogBounds.setEmpty();
+            for (AccessibilityNodeInfo node : root.findAccessibilityNodeInfosByText(title)) {
+                android.graphics.Rect bounds = new android.graphics.Rect();
+                node.getBoundsInScreen(bounds);
+                if (node.isVisibleToUser() && !bounds.isEmpty()) dialogBounds.union(bounds);
+            }
             for (String action : actions) {
                 boolean visible = false;
                 for (AccessibilityNodeInfo node : root.findAccessibilityNodeInfosByText(action)) {
                     android.graphics.Rect bounds = new android.graphics.Rect();
                     node.getBoundsInScreen(bounds);
-                    visible |= node.isVisibleToUser() && !bounds.isEmpty();
+                    if (node.isVisibleToUser() && !bounds.isEmpty()) { visible = true; dialogBounds.union(bounds); }
                 }
                 if (!visible) return false;
             }
@@ -74,15 +81,25 @@ public class MeshInstrumentation extends Instrumentation {
                 SystemClock.sleep(350);
                 Bitmap current = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).takeScreenshot();
                 if (current == null) throw new IOException("dialog screenshot unavailable");
-                equalFrames = previous != null && previous.sameAs(current) ? equalFrames + 1 : 0;
+                // The status-bar recording timer and disposable tap target keep changing.
+                // Compare the visible dialog content, not unrelated live screen pixels.
+                android.graphics.Rect crop = new android.graphics.Rect(dialogBounds);
+                if (!crop.intersect(0, 0, current.getWidth(), current.getHeight()) || crop.isEmpty()) {
+                    current.recycle();
+                    throw new IOException("dialog capture bounds unavailable");
+                }
+                Bitmap sample = Bitmap.createBitmap(current, crop.left, crop.top, crop.width(), crop.height());
+                equalFrames = previous != null && previous.sameAs(sample) ? equalFrames + 1 : 0;
                 if (previous != null) previous.recycle();
-                previous = current;
+                previous = sample;
                 if (equalFrames >= 3) {
                     try (FileOutputStream file = new FileOutputStream(new File(getTargetContext().getFilesDir(), filename))) {
                         if (!current.compress(Bitmap.CompressFormat.PNG, 100, file)) throw new IOException("dialog screenshot failed");
                     }
+                    current.recycle();
                     return getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
                 }
+                current.recycle();
             }
             throw new IOException("dialog compositor did not settle");
         } finally { if (previous != null) previous.recycle(); }
@@ -405,7 +422,7 @@ public class MeshInstrumentation extends Instrumentation {
         } catch (Throwable failure) {
             // Only these controlled hosting/OS consent screens contain no
             // enrollment UI or secrets. Never capture a general failure screen.
-            if (stage.equals("screen-projection-consent") || stage.equals("screen-viewer-consent") || stage.startsWith("screen-control-") || stage.startsWith("accessibility-")) {
+            if (stage.equals("screen-projection-consent") || stage.equals("screen-viewer-consent") || stage.startsWith("screen-control-") || stage.equals("dialog-ready-fixture-consent.png") || stage.startsWith("accessibility-")) {
                 try {
                     Bitmap image = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).takeScreenshot();
                     try (FileOutputStream file = new FileOutputStream(new File(getTargetContext().getFilesDir(), "fixture-consent.png"))) {
