@@ -75,18 +75,20 @@ java -jar "$BUNDLETOOL" build-bundle \
 if [ -n "${MNET_RELEASE_KEYSTORE:-}" ]; then
     KS="$MNET_RELEASE_KEYSTORE"
     ALIAS="${MNET_RELEASE_ALIAS:-mnet-upload}"
-    PASS=$(cat "${MNET_RELEASE_PASS_FILE:?set MNET_RELEASE_PASS_FILE}")
+    PASS_FILE="${MNET_RELEASE_PASS_FILE:?set MNET_RELEASE_PASS_FILE}"
+    test -r "$PASS_FILE"
 else
     KS="$ROOT/android/debug.keystore"
     ALIAS="mnet-debug"
-    PASS="android"
+    PASS_FILE="$OUT/debug-pass"
+    (umask 077; printf '%s\n' android > "$PASS_FILE")
     if [ ! -f "$KS" ]; then
         keytool -genkeypair -v -keystore "$KS" -storepass android -keypass android \
             -alias mnet-debug -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=Mnet Debug, O=Fintex Australia" >/dev/null 2>&1
     fi
 fi
-jarsigner -keystore "$KS" -storepass "$PASS" -keypass "$PASS" \
+jarsigner -keystore "$KS" -storepass:file "$PASS_FILE" -keypass:file "$PASS_FILE" \
     "$OUT/mnet.aab" "$ALIAS"
 jarsigner -verify "$OUT/mnet.aab" | head -3
 

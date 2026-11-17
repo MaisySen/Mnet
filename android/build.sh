@@ -69,8 +69,9 @@ cd "$ROOT"
 if [ -n "${MNET_RELEASE_KEYSTORE:-}" ]; then
     KS="$MNET_RELEASE_KEYSTORE"
     ALIAS="${MNET_RELEASE_ALIAS:-mnet-upload}"
-    PASS=$(cat "${MNET_RELEASE_PASS_FILE:?set MNET_RELEASE_PASS_FILE}")
-    PASS_ARG="pass:$PASS"
+    PASS_FILE="${MNET_RELEASE_PASS_FILE:?set MNET_RELEASE_PASS_FILE}"
+    test -r "$PASS_FILE"
+    PASS_ARG="file:$PASS_FILE"
 else
     KS="$ROOT/android/debug.keystore"
     ALIAS="mnet-debug"
