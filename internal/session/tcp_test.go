@@ -44,10 +44,16 @@ func TestSessionOverTCP(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.Close()
-	v := ConnectViewer(m)
-
 	frames := make(chan ScreenFrame, 4)
-	v.SetOnFrame(func(fr ScreenFrame) { frames <- fr })
+	v := ConnectViewerWithOptions(m, ViewerOptions{OnFrame: func(fr ScreenFrame) {
+		// This test observes the first frame, then exercises input/file I/O.
+		// Do not block its screen receiver on an undrained test channel:
+		// filling that stream's bounded queue stalls the shared mux reader.
+		select {
+		case frames <- fr:
+		default:
+		}
+	}})
 	select {
 	case fr := <-frames:
 		if len(fr.Image) != 120000 {
@@ -85,8 +91,12 @@ func TestSessionOverTCP(t *testing.T) {
 		t.Fatal(err)
 	}
 	host := <-hostReady
+	t.Cleanup(host.Stop)
 	done := make(chan string, 1)
 	host.SetOnFile(func(name string, size int64) { done <- name })
+	// Keep the observer undrained past both its own capacity and the
+	// screen-stream queue capacity before testing a different stream.
+	time.Sleep(3 * time.Second)
 	if err := SendFile(m, src); err != nil {
 		t.Fatal(err)
 	}

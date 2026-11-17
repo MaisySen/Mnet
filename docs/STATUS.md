@@ -12,7 +12,11 @@ Updated 2026-11-17, Australia/Sydney. Development/testing only. No production-re
 
 ## Newer source after the preserved Android candidate
 
-A local regression reproduced unanswered STUN transactions accumulating when every server is silent: cleanup previously ran only when a response arrived. New source expires old transactions before registering each discovery probe and shares expiry logic with response handling. Four tests cover10,000 silent probe cycles, the10-second boundary, malformed/mismatched/expired replies and concurrent probe/response handling. Removing the pre-probe cleanup makes two regressions fail; restoration passes20race repetitions. Fresh full-repository uncached race tests pass. CI for this newer source is pending. It is not in the preserved signed code15 owner candidate and is not deployed live.
+A local regression reproduced unanswered STUN transactions accumulating when every server is silent: cleanup previously ran only when a response arrived. New source expires old transactions before registering each discovery probe and shares expiry logic with response handling. Four tests cover10,000 silent probe cycles, the10-second boundary, malformed/mismatched/expired replies and concurrent probe/response handling. Removing the pre-probe cleanup makes two regressions fail; restoration passes20race repetitions. Fresh full-repository uncached race tests pass. All5jobs pass for this newer source: https://github.com/MaisySen/Mnet/actions/runs/44062550967 . It is not in the preserved signed code15 owner candidate and is not deployed live.
+
+Capture-only98344b6 produced settled opaque privacy dialogs and complete VPN action rows on both APIs, all four visually inspected. Its API34 full flow passes; API36 failed at OS VPN consent, so that matrix is not green: https://github.com/MaisySen/Mnet/actions/runs/44062185056 . New fixture code verifies the app acceptance flag after its UI action and emits fixed boolean consent diagnostics, not enrollment screenshots or raw window text. The cause of that API36 failure is not yet established.
+
+The98344b6 general CI failure was a TCP session test whose first-frame observer stopped draining its bounded channel. A delayed-file regression reproduces the timeout before correction; making that test observer nonblocking passes10race repetitions with the same deliberate delay. This fixes the fixture, not production mux backpressure: a blocked real callback can still stall a stream and its shared reader. Do not claim arbitrary slow-consumer isolation.
 
 ## Private Android test candidate
 

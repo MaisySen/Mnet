@@ -96,6 +96,17 @@ public class MeshInstrumentation extends Instrumentation {
             }
             return clickText(root, agree ? "Agree" : "Not now");
         }, agree ? "vpn-disclosure-agree" : "vpn-disclosure-decline");
+        if (agree) {
+            await(() -> {
+                if (getTargetContext().getSharedPreferences("mnet", 0).getBoolean("vpn_disclosure_v1", false)) return true;
+                // An accessibility click acknowledgement is not proof that
+                // the app ran its listener. Retry only while still unaccepted.
+                AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
+                if (root != null && "au.fintex.mnet".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())
+                        && !root.findAccessibilityNodeInfosByText("VPN data disclosure").isEmpty()) clickText(root, "Agree");
+                return false;
+            }, "vpn-disclosure-accepted");
+        }
     }
     private void vpnConsent() throws Exception {
         await(() -> {
@@ -108,7 +119,7 @@ public class MeshInstrumentation extends Instrumentation {
             for (AccessibilityNodeInfo button : buttons) {
                 if ("OK".equals(String.valueOf(button.getText()))) {
                     consentClicked = button.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                    return true;
+                    return consentClicked;
                 }
             }
             return false;
@@ -381,6 +392,22 @@ public class MeshInstrumentation extends Instrumentation {
             }
             // Deliberately omit exception messages, app state and arguments.
             String diagnostics = "";
+            if (stage.startsWith("vpn-")) {
+                try {
+                    AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
+                    String pkg = root == null ? "" : String.valueOf(root.getPackageName());
+                    diagnostics += " disclosureAccepted=" + getTargetContext().getSharedPreferences("mnet", 0).getBoolean("vpn_disclosure_v1", false)
+                        + " rootMnet=" + "au.fintex.mnet".equals(pkg) + " rootVpnDialog=" + "com.android.vpndialogs".equals(pkg)
+                        + " rootSystemUI=" + "com.android.systemui".equals(pkg)
+                        + " disclosureVisible=" + (root != null && !root.findAccessibilityNodeInfosByText("VPN data disclosure").isEmpty());
+                    boolean ok = false, enabled = false, clickable = false;
+                    if (root != null) for (AccessibilityNodeInfo button : root.findAccessibilityNodeInfosByViewId("android:id/button1")) {
+                        ok |= "OK".equals(String.valueOf(button.getText()));
+                        enabled |= button.isEnabled(); clickable |= button.isClickable();
+                    }
+                    diagnostics += " positiveOK=" + ok + " positiveEnabled=" + enabled + " positiveClickable=" + clickable;
+                } catch (Exception ignored) { diagnostics += " vpnDiagnosticsUnavailable=true"; }
+            }
             try {
                 if (MnetVpnService.currentNode() != null) {
                     JSONObject state = new JSONObject(MnetVpnService.currentNode().status());

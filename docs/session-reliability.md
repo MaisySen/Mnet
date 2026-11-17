@@ -4,6 +4,12 @@ Mnet is still a development build. Do not rely on file transfer for important fi
 
 The proof checks changed screen content, chat, the receiver's SHA256, and the sender's verified final ACK. Received bytes alone are not a pass. The isolated X11 rig creates its own temporary directory, X display and local control-plane port. It keeps diagnostics after a failure and stops its child processes.
 
+## TCP test observer correction (2026-11-17)
+
+A general-CI repetition failed while awaiting a file ACK. The test observed one screen frame but left its callback feeding an undrained4-slot channel. Once that callback blocked, the bounded screen stream filled and the shared mux reader could no longer deliver unrelated file replies. A deliberate3-second delay before file transfer reproduces the timeout. Changing only the test observer to nonblocking delivery passes10race repetitions with that delay retained. Callbacks are installed at viewer creation and host cleanup is registered before transfer.
+
+This is a fixture correction, not a new production-isolation guarantee. Real slow/blocking callbacks can still backpressure the shared reader; callback consumers must return promptly. A future scheduler/flow-control change needs separate design and regression coverage, not silent frame drops that break delta chains.
+
 ## Commands
 
 ```sh
