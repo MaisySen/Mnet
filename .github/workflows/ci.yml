@@ -59,6 +59,8 @@ jobs:
           java -cp "$RUNNER_TEMP/mnet-android-policy" au.fintex.mnet.ViewerTapTest
       - name: Android selected-service framework simulation (no device/JNI)
         run: sh scripts/test-android-framework.sh
+      - name: Android VPN service framework simulation (fake system mode and node)
+        run: sh scripts/test-android-framework.sh vpn
       - name: Android always-on mode policy (JVM fakes and source only)
         run: python3 scripts/test-android-always-on.py
       - name: Android API compatibility matrix (JVM fakes and source only)

@@ -10,10 +10,19 @@ trap 'rm -rf "$OUT"' EXIT HUP INT TERM
 cp "$ROOT/android/framework-tests/pom.xml" "$OUT/pom.xml"
 mkdir -p "$OUT/src/main/java/au/fintex/mnet" "$OUT/src/test/java" "$OUT/libs"
 cp -R "$ROOT/android/framework-tests/stubs/." "$OUT/src/main/java/"
-cp -R "$ROOT/android/framework-tests/tests/." "$OUT/src/test/java/"
+if [ "${1:-}" = vpn ]; then
+    cp -R "$ROOT/android/framework-tests/vpn-tests/." "$OUT/src/test/java/"
+else
+    cp -R "$ROOT/android/framework-tests/tests/." "$OUT/src/test/java/"
+fi
 for source in MainActivity HostSessionService SessionConsent ProjectionGuard VpnPlatform CaptureEncoder ViewerActivity ViewerGate ViewerTap; do
     cp "$ROOT/android/app/src/main/java/au/fintex/mnet/$source.java" "$OUT/src/main/java/au/fintex/mnet/"
 done
+if [ "${1:-}" = vpn ]; then
+    for source in MnetVpnService VpnAlwaysOn VpnWorkerGate VpnStartupConfig; do
+        cp "$ROOT/android/app/src/main/java/au/fintex/mnet/$source.java" "$OUT/src/main/java/au/fintex/mnet/"
+    done
+fi
 cd "$OUT"
 "$MVN" -B -Dmaven.repo.local="$REPO" test-compile
 # Maven resolves AARs but does not put their nested classes.jar on its JVM
@@ -29,4 +38,8 @@ for source, name in [
         (output / name).write_bytes(archive.read('classes.jar'))
 PY
 "$MVN" -B -Dmaven.repo.local="$REPO" test
-printf '%s\n' 'PASS selected Android service/helper/Activity framework simulation; Go/VPN/accessibility/viewer transport are fakes, no emulator/device/capture/manifest permission enforcement proof'
+if [ "${1:-}" = vpn ]; then
+    printf '%s\n' 'PASS actual VPN service notification/disconnect simulation; system mode, resources and Go node are fakes; no tunnel/device/JNI/UI pixel proof'
+else
+    printf '%s\n' 'PASS selected Android service/helper/Activity framework simulation; Go/VPN/accessibility/viewer transport are fakes, no emulator/device/capture/manifest permission enforcement proof'
+fi

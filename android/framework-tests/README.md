@@ -2,7 +2,7 @@
 
 ## Run
 
-Run `sh scripts/test-android-framework.sh` with JDK17, Python3, Maven and network access to Maven Central/Google Maven. `MVN` can name the Maven executable; `MNET_MAVEN_REPO` selects the dependency cache. The script copies current production sources into a fresh temporary project, resolves pinned dependencies, runs tests and removes the temporary project.
+Run `sh scripts/test-android-framework.sh` and `sh scripts/test-android-framework.sh vpn` with JDK17, Python3, Maven and network access to Maven Central/Google Maven. `MVN` can name the Maven executable; `MNET_MAVEN_REPO` selects the dependency cache. The script copies current production sources into a fresh temporary project, resolves pinned dependencies, runs tests and removes the temporary project.
 
 CI caches Maven dependencies using the framework POM as its dependency key, reducing repeated downloads. A cache does not skip compilation/tests, change pinned versions or make a network failure a pass.
 
@@ -10,7 +10,7 @@ The harness uses Robolectric4.18. Its AAR extraction is limited to pinned Androi
 
 ## Current coverage
 
-76 cases pass in the new local source run (CI pending). All five jobs passed in [5f0e92b CI](https://github.com/MaisySen/Mnet/actions/runs/43998045061) before this coverage follow-up.
+100 cases pass in two fresh local suites (76 selected service/activity +24 VPN service; CI pending). All five jobs passed in [ec8450a CI](https://github.com/MaisySen/Mnet/actions/runs/43999580991) before this VPN coverage follow-up.
 
 | Actual application source | Simulated API levels | Cases | Checks |
 | --- | --- | --- | --- |
@@ -18,6 +18,10 @@ The harness uses Robolectric4.18. Its AAR extraction is limited to pinned Androi
 | ViewerActivity, ViewerGate, ViewerTap |24,25,26,33|4 (one per API)|Actual asynchronous connection publication, simulated down/up/cancel/drag dispatch, synthetic JPEG callback, no input before a decoded frame, resize cancellation, disconnect clearing and destruction|
 
 | MainActivity |24,25,26,33|12 (three per API)|Managed up/joining/waiting disables disconnect and explains Settings, stale handler calls cannot send stop, mode refresh restores manual stop, down keeps Connect available|
+
+| MnetVpnService, VpnAlwaysOn, VpnPlatform |24,25,26,29,33,34|24 (four per API)|Manual notification action/stop, managed notification omission/stale stop refusal, no-node request and system revoke cleanup|
+
+The separate `vpn` mode replaces the fake VPN endpoint with actual application source, while system mode is shadowed and Go/resource values remain fake. It does not run the tunnel worker, VPN interface setup, actual Settings transitions or pixels. Removing both always-on service/notification conditions fails six cases; restored source passes24.
 
 Service tests use reflection to set capture/running state rather than start a valid projection. The geometry-refusal latch resets in actual capture setup according to source checks; that restart path is not executed here. Pointer checks preserve omitted-zero coordinates and reject malformed/unsupported/out-of-frame values.
 
