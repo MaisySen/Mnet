@@ -88,6 +88,8 @@ class Guards(unittest.TestCase):
         self.assertIn('recorder_stop.set()', source)
         self.assertLess(source.index('recording.join(timeout=15)'), source.index("'files/fixture-record-stopped'"))
         self.assertIn('sampled walkthrough', source)
+        workflow = (ROOT / '.github/workflows/android-emulator.yml').read_text()
+        self.assertIn('install --no-install-recommends -y ffmpeg', workflow)
     def test_hash_before_and_after_real_reconnect(self):
         source = (ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
         self.assertEqual(2, source.count('            hashRoundTrip();'))

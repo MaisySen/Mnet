@@ -69,6 +69,11 @@ jobs:
           CGO_LDFLAGS="-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384" gomobile bind -target android/amd64 -androidapi 24 -o "$RUNNER_TEMP/mnet-android-fixture.aar" fintex.au/mnet/mobile
           go build -o "$RUNNER_TEMP/mnet-android-bin/mnet-control" ./cmd/mnet-control
           go test -c -o "$RUNNER_TEMP/mnet-android-bin/native-peer" ./cmd/mnetd
+      - name: install walkthrough encoder
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --no-install-recommends -y ffmpeg
+          ffmpeg -version
       - name: actual APK and JNI VPN hash round trip, stop and reconnect
         env:
           MNET_ANDROID_AAR: ${{ runner.temp }}/mnet-android-fixture.aar
