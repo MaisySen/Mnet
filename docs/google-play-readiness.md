@@ -35,6 +35,8 @@ This inventory guides review; it is not a completed Data safety form. Internal-o
 
 The detailed [Android privacy evidence](android-privacy-evidence.md) separates current platform data paths, new backup exclusions, operator retention/deletion gaps and unverified features.
 
+See the [submission evidence pack](android-submission-evidence.md) for current runtime/signing results, draft declaration basis and the restricted-binary export decision table.
+
 ## Declaration preparation
 
 Before Create app, the console requires a Developer Program Policies confirmation and an export-law certification, including software with encryption functions. Do not treat draft creation as legally empty preparation. Record a supported factual basis first.

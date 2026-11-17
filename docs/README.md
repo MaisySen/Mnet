@@ -14,6 +14,7 @@ These documents describe a development project, not a production-readiness guara
 | [Scale testing](scale-testing.md) | Dated synthetic measurements, methods, raw benchmark references and limits. |
 | [Releases and development history](RELEASES.md) | Shipped test versions and historical work, not a current feature guarantee. |
 | [Google Play readiness](google-play-readiness.md) | Internal-beta route, source-backed disclosure inventory, release gates and unresolved owner decisions. |
+| [Android submission evidence](android-submission-evidence.md) | Actual runtime/signing evidence, declaration drafts, operator-policy gaps and export-route facts. |
 | [Android privacy evidence](android-privacy-evidence.md) | Android source data paths, backup controls, retention boundaries and unresolved operator-policy facts. |
 | [Android store draft](PLAY-LISTING.md) | Unapproved listing and data-disclosure work, not ready-to-publish claims. |
 | [Android installation and Play Protect](android-installation.md) | Current install blocker, minimum permissions, consent and supported review/testing route. |
