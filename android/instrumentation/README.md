@@ -12,7 +12,7 @@ Expected outputs are explicit PASS summary and a pre-credential launch screensho
 
 ## Current evidence
 
-Instrumentation compiles against the actual app classes/Android34 SDK and dexes at minimumAPI24. Python/YAML parsing and six fixture guard tests pass locally. No emulator is installed locally and KVM is unavailable there. The first CI execution is pending, so no Android emulator integration pass is claimed yet.
+Instrumentation compiles against the actual app classes/Android34 SDK and dexes at minimumAPI24. Python/YAML parsing and six fixture guard tests pass locally. No emulator is installed locally and KVM is unavailable there. The first CI run failed during toolchain setup with exit127, before building or booting: the runner did not resolve the bare SDK CLI command. The follow-up uses explicit installed SDK CLI paths. No Android emulator integration pass is claimed yet.
 
 ## Limits and next stages
 

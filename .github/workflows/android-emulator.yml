@@ -32,9 +32,10 @@ jobs:
           java-version: '17'
       - name: install pinned Android fixture toolchain
         run: |
-          sdkmanager 'platform-tools' 'emulator' 'platforms;android-34' 'build-tools;34.0.0' 'ndk;27.2.12479018' 'system-images;android-34;google_apis;x86_64'
+          test -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platform-tools' 'emulator' 'platforms;android-34' 'build-tools;34.0.0' 'ndk;27.2.12479018' 'system-images;android-34;google_apis;x86_64'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
-          echo 'no' | avdmanager create avd --force --name mnet-fixture --package 'system-images;android-34;google_apis;x86_64' --device 'pixel_2'
+          echo 'no' | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force --name mnet-fixture --package 'system-images;android-34;google_apis;x86_64' --device 'pixel_2'
       - name: enable standard Linux KVM access
         run: |
           test -c /dev/kvm
