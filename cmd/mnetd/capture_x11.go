@@ -134,6 +134,10 @@ func (x *x11Host) CaptureDelta() ([]byte, []session.Tile, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	// A new canvas cannot be sent as deltas against the old dimensions.
+	if x.lastRGBA != nil && x.lastRGBA.Bounds() != img.Bounds() {
+		x.lastRGBA = nil
+	}
 	rects := session.DiffTiles(x.lastRGBA, img, 64)
 	b := img.Bounds()
 	total := ((b.Dx() + 63) / 64) * ((b.Dy() + 63) / 64)

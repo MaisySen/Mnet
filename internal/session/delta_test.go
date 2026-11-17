@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/jpeg"
 	"net"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -275,6 +276,24 @@ func TestViewerScreenExitReleasesFrameBase(t *testing.T) {
 			v.frameMu.Unlock()
 			if retained {
 				t.Fatal("screen exit retained decoded pixels")
+			}
+		})
+	}
+}
+
+func TestDiffTilesChangedBoundsRequestsFullRefresh(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		prev, curr *image.RGBA
+	}{
+		{"grow", solid(8, 8, color.RGBA{}), solid(16, 16, color.RGBA{})},
+		{"shrink", solid(16, 16, color.RGBA{}), solid(8, 8, color.RGBA{})},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := DiffTiles(tc.prev, tc.curr, 8)
+			want := DiffTiles(nil, tc.curr, 8)
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("bounds change not full refresh: %+v want %+v", got, want)
 			}
 		})
 	}

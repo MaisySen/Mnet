@@ -29,6 +29,9 @@ type Tile struct {
 // prev and curr. A nil prev reports every tile (a full refresh).
 func DiffTiles(prev, curr *image.RGBA, size int) []Rect {
 	b := curr.Bounds()
+	if prev != nil && prev.Bounds() != b {
+		prev = nil
+	} // A changed canvas needs a full refresh.
 	w, h := b.Dx(), b.Dy()
 	var out []Rect
 	for ty := 0; ty*size < h; ty++ {

@@ -187,3 +187,8 @@ Source writes latest.jpg through a private same-directory temporary file and ren
 ## CLI connect option validation
 
 New source validates optional arguments before connecting. Only --save-frames DIR and --send-file PATH are accepted, each at most once. Unknown options, missing/empty values, repeated options and trailing positional text reject rather than being silently ignored. Options may appear in either order. A path beginning with -- must be written with a ./ prefix so it is not mistaken for another option. Values with spaces are preserved when shell-quoted. This does not change peer lookup, file-send retry policy or other subcommands.
+
+
+## Desktop dirty-tile canvas changes
+
+New source treats different prior/current capture bounds as a full refresh rather than comparing pixels against the older canvas. X11 and portal capture discard the old delta base before their full-versus-tile choice, so a size change goes through full-frame encoding. This prevents the reproduced local image-growth slice panic and stale shrink comparisons. Synthetic unit tests and compilation do not certify physical display resize, portal renegotiation or input-coordinate safety. Android's separate geometry-refusal policy remains unchanged.

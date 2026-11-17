@@ -187,6 +187,10 @@ func (c *portalCapturer) CaptureDelta() ([]byte, []session.Tile, error) {
 	}
 	c.raw = raw
 	img := bgraToRGBA(raw, c.pump.Width, c.pump.Height)
+	// A new canvas cannot be sent as deltas against the old dimensions.
+	if c.lastRGBA != nil && c.lastRGBA.Bounds() != img.Bounds() {
+		c.lastRGBA = nil
+	}
 	rects := session.DiffTiles(c.lastRGBA, img, 64)
 	b := img.Bounds()
 	total := ((b.Dx() + 63) / 64) * ((b.Dy() + 63) / 64)
