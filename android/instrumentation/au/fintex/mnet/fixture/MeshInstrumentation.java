@@ -134,7 +134,7 @@ public class MeshInstrumentation extends Instrumentation {
                 if (clickText(root, "Share entire screen") || clickText(root, "Entire screen")) { entireScreenSelected = true; return false; }
                 if (clickText(root, "Share one app")) return false;
             }
-            return clickText(root, "Start now") || clickText(root, "Start");
+            return clickText(root, "Start now") || clickText(root, "Start") || clickText(root, "Share screen");
         }, "screen-projection-consent");
         await(() -> {
             AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
@@ -217,7 +217,7 @@ public class MeshInstrumentation extends Instrumentation {
             await(() -> MnetVpnService.currentNode() == null, "final-stop");
             if (!consentClicked) throw new IllegalStateException("no actual initial VPN consent click observed");
             stage = "complete";
-            result.putString("summary", "PASS self-bound target36 runtimeAPI=" + android.os.Build.VERSION.SDK_INT + " actual APK/JNI/VPN consent, projection/viewer consent and decoded frames/stop, bidirectional 4MiB hash, manual stop/reconnect and repeat hash; emulator only, no physical reboot/capture/control proof");
+            result.putString("summary", "PASS self-bound target36 runtimeAPI=" + android.os.Build.VERSION.SDK_INT + " actual APK/JNI/VPN consent, projection/viewer consent and decoded frames/stop, bidirectional 4MiB hash, manual stop/reconnect and repeat hash; emulator only, no physical reboot/control proof");
             finish(Activity.RESULT_OK, result);
         } catch (Throwable failure) {
             // Only these controlled hosting/OS consent screens contain no
