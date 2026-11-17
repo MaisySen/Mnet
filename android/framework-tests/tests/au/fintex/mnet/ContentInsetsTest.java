@@ -19,6 +19,8 @@ public class ContentInsetsTest {
         View root = new View(activity);
         root.setPadding(7, 11, 13, 17);
         ContentInsets.install(root);
+        assertTrue((root.getSystemUiVisibility() & View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR) != 0);
+        if (android.os.Build.VERSION.SDK_INT >= 26) assertTrue((root.getSystemUiVisibility() & View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR) != 0);
         WindowInsets insets = new WindowInsets(new Rect(2, 24, 3, 40));
         assertSame(insets, root.dispatchApplyWindowInsets(insets));
         assertEquals(9, root.getPaddingLeft());
@@ -51,6 +53,8 @@ public class ContentInsetsTest {
         View root = new View(activity);
         root.setPadding(5, 6, 7, 8);
         ContentInsets.install(root);
+        assertTrue((root.getSystemUiVisibility() & View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR) != 0);
+        if (android.os.Build.VERSION.SDK_INT >= 26) assertTrue((root.getSystemUiVisibility() & View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR) != 0);
         WindowInsets insets = new WindowInsets.Builder()
             .setInsets(WindowInsets.Type.systemBars(), android.graphics.Insets.of(0, 24, 0, 30))
             .setInsets(WindowInsets.Type.ime(), android.graphics.Insets.of(0, 0, 0, 300))

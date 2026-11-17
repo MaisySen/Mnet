@@ -91,9 +91,9 @@ def main():
         test.mkdir()
         (test / 'classes').mkdir()
         (test / 'dex').mkdir()
-        (test / 'AndroidManifest.xml').write_text('''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="au.fintex.mnet.fixture"><uses-sdk android:minSdkVersion="24" android:targetSdkVersion="36"/><application android:label="Mnet disposable fixture"/><instrumentation android:name="au.fintex.mnet.fixture.MeshInstrumentation" android:targetPackage="au.fintex.mnet"/></manifest>''')
+        (test / 'AndroidManifest.xml').write_text('''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="au.fintex.mnet.fixture"><uses-sdk android:minSdkVersion="24" android:targetSdkVersion="36"/><application android:label="Mnet disposable fixture"/><instrumentation android:name="au.fintex.mnet.fixture.IndependentAppInstrumentation" android:targetPackage="au.fintex.mnet.fixture"/><instrumentation android:name="au.fintex.mnet.fixture.MeshInstrumentation" android:targetPackage="au.fintex.mnet"/></manifest>''')
         run([bt / 'aapt2', 'link', '-o', test / 'base.apk', '-I', android, '--manifest', test / 'AndroidManifest.xml'])
-        run(['javac', '-source', '11', '-target', '11', '-cp', str(android) + ':' + str(appout / 'classes') + ':' + str(appout / 'aar/classes.jar'), '-d', test / 'classes', staged / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java'])
+        run(['javac', '-source', '11', '-target', '11', '-cp', str(android) + ':' + str(appout / 'classes') + ':' + str(appout / 'aar/classes.jar'), '-d', test / 'classes', *sorted((staged / 'android/instrumentation').rglob('*.java'))])
         run(['jar', 'cf', test / 'target.jar', '-C', appout / 'classes', '.'])
         run([bt / 'd8', '--min-api', '24', '--lib', android, '--classpath', test / 'target.jar', '--classpath', appout / 'aar/classes.jar', '--output', test / 'dex', *sorted((test / 'classes').rglob('*.class'))])
         shutil.copy(test / 'base.apk', test / 'unaligned.apk')
@@ -178,7 +178,14 @@ def main():
                     safe[0] += ' peerDiagnosticsUnavailable=true'
                 (ARTIFACTS / 'instrumentation.txt').write_text('\n'.join(safe) + '\n')
             raise RuntimeError('actual Android integration not passed')
-        (ARTIFACTS / 'instrumentation.txt').write_text(safe[0] + '\n')
+        stage = 'independent-app-unbound-tcp'
+        independent = run(adb + ['shell', 'am', 'instrument', '-w', '-r', '-e', 'peer', peer['ipv4'], 'au.fintex.mnet.fixture/au.fintex.mnet.fixture.IndependentAppInstrumentation'], timeout=180)
+        second = [line for line in independent.splitlines() if line.startswith('INSTRUMENTATION_RESULT: summary=')]
+        run(adb + ['shell', 'am', 'force-stop', 'au.fintex.mnet'])
+        if len(second) != 1 or 'summary=PASS independent app unbound TCP' not in second[0] or 'INSTRUMENTATION_CODE: -1' not in independent:
+            (ARTIFACTS / 'instrumentation.txt').write_text('\n'.join(safe + second) + '\n')
+            raise RuntimeError('independent app mesh TCP failed')
+        (ARTIFACTS / 'instrumentation.txt').write_text('\n'.join(safe + second) + '\n')
         (ARTIFACTS / 'summary.json').write_text(json.dumps({'result': 'pass', 'scope': 'actual disposable emulator APK/JNI/VPN, 4MiB hash both directions twice, manual disconnect/reconnect', 'physical_device': False, 'remote_capture_input': False, 'play_protect_install': False}, indent=2))
         print('PASS actual emulator VPN/JNI and real Go peer; physical/capture/input/Play Protect proof remains open')
     except Exception as failure:

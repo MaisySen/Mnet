@@ -275,7 +275,11 @@ func (n *Node) ConnectSession(peerIP string, cb ViewerCallbacks) (*SessionViewer
 	if cb == nil {
 		return nil, errors.New("viewer callbacks required")
 	}
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(peerIP, fmt.Sprint(SessionPort)), 10*time.Second)
+	state := n.d.Status()
+	if state.Status != "up" {
+		return nil, errors.New("mesh is not up")
+	}
+	conn, err := dialMeshTCP(state.IPv4, net.JoinHostPort(peerIP, fmt.Sprint(SessionPort)), 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -390,4 +394,15 @@ func (a *appInjector) Inject(ev session.InputEvent) error {
 	b, _ := json.Marshal(ev)
 	a.cb.Inject(string(b))
 	return nil
+}
+
+// Select this node's assigned source explicitly. Android can otherwise choose
+// an underlay source for sockets opened by the VPN app itself.
+func dialMeshTCP(self, target string, timeout time.Duration) (net.Conn, error) {
+	ip := net.ParseIP(self)
+	if ip == nil || ip.To4() == nil || ip.IsUnspecified() {
+		return nil, errors.New("assigned mesh IPv4 required")
+	}
+	dialer := net.Dialer{Timeout: timeout, LocalAddr: &net.TCPAddr{IP: ip}}
+	return dialer.Dial("tcp4", target)
 }

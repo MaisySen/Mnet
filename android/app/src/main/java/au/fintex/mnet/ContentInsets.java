@@ -8,6 +8,10 @@ final class ContentInsets {
     private ContentInsets() {}
 
     static void install(View root) {
+        // This app uses a light canvas. Keep system icons legible when
+        // target35+ edge-to-edge removes the old colored status-bar surface.
+        root.setSystemUiVisibility(root.getSystemUiVisibility() | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                | (Build.VERSION.SDK_INT >= 26 ? View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR : 0));
         final int left = root.getPaddingLeft(), top = root.getPaddingTop();
         final int right = root.getPaddingRight(), bottom = root.getPaddingBottom();
         root.setOnApplyWindowInsetsListener((view, window) -> {
