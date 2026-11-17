@@ -4,7 +4,7 @@ Updated 2026-11-17. This is an engineering and submission-preparation checklist,
 
 ## Intended route
 
-The existing developer account now contains Mnet, set to Free, and an internal-release draft. The sole approved owner test account is the only selected tester list; it contains one person. No binary has reached Play and no release is published. The supported bundle chooser repeatedly timed out, including a fresh-session recovery. The exact signed AAB is preserved for manual file selection; no API-write workaround or alternate account was used.
+Mnet is Free in the intended existing account. The preserved signed code15 bundle was manually uploaded by the owner, then validated and published to the restricted internal track at22:27 Australia/Sydney on2026-11-17. Console shows Active and Available to internal testers. Only the single approved owner list is selected, containing one account. The test link was delivered privately; the invited account's opt-in and installation remain unverified. No service-account key, alternate account or API-write workaround was used.
 
 Internal testing can begin before full store setup and supports up to100 testers, but this plan authorizes only one. It may not receive ordinary policy/security review and is not proof of Play Protect clearance. The12-testers/14-days closed-test rule concerns production access for qualifying personal accounts, not this initial internal test.
 
@@ -18,14 +18,14 @@ The published Android internal-test privacy policy is https://maisysen.github.io
 
 | Gate | Verified state | Remaining work |
 | --- | --- | --- |
-| Account/app | Mnet exists in the intended existing account as Free; draft internal release exists | Do not change unrelated apps or expand audience |
-| Candidate | Upload-signed0.8.3-dev/code15 AAB validates; SHA256 b8abf192457c4a02bd652e347024d764869ae1fb6aaa3105afe7c34d436aeae3; all4ABIs have16KiB ELF LOAD alignment | Actual Play upload/processing validation; structural checks are not16KiB-device runtime proof |
+| Account/app | Mnet exists as Free; code15 restricted internal release is active | Do not change unrelated apps or expand audience |
+| Candidate | Upload-signed0.8.3-dev/code15 AAB validates; SHA256 b8abf192457c4a02bd652e347024d764869ae1fb6aaa3105afe7c34d436aeae3; all4ABIs have16KiB ELF LOAD alignment | Play processed the upload and reports16KB support; this is not16KiB-device runtime proof |
 | Signing | Automatic Play app-signing key differs from earlier sideload signer | Do not change keys or promise in-place sideload upgrade |
 | Runtime | Actual target36 API34/36 matrices pass at8def887 and2ddb11e, including independent-app traffic, reconnect, capture/control and stop | Earlier intermittent failures, physical/OEM/radio/reboot/soak remain open; some screenshot frames are not final visual proof |
 | VPN/privacy | Separate first-connect disclosure, decline/save refusal and background service acceptance gate; published policy and explicit in-app link | Apply truthful declarations if Console requires them; no exact provider-log duration invented |
 | Export | Owner confirmed bounded Australian private-sector internal-development facts; narrow route assessed before Create app | Preserve owner-only purpose and restrictions; not general worldwide clearance |
 | Audience | Only the approved owner list with one account is saved and selected | No additional testers or public launch |
-| Upload/release | Draft exists but no bundle uploaded; supported chooser times out after bounded recovery | Manual file selection handoff, then actual validation, restricted rollout and usable install-link verification |
+| Upload/release | Owner upload completed; Console validation passed with two optional symbol/deobfuscation warnings; restricted release available to internal testers | Owner-account opt-in/install, propagation and physical-device behavior remain unverified |
 
 ## Source-backed disclosure inventory
 

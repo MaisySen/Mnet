@@ -1,13 +1,13 @@
 # Android submission evidence pack
 
-Updated 2026-11-17. Preparation only. This is not a completed Play declaration, legal certification, production launch or security approval.
+Updated 2026-11-17. Restricted internal release evidence. This is not a completed Play declaration, legal certification, production launch or security approval.
 
 ## Candidate and distribution boundary
 
 - Package au.fintex.mnet, target36/minimum24, version0.8.3-dev/code15. Exact signed AAB SHA256 b8abf192457c4a02bd652e347024d764869ae1fb6aaa3105afe7c34d436aeae3; bundletool/signature checks pass, all4ABIs have16KiB ELF LOAD alignment. This AAB is for Play upload, not direct phone installation.
-- Mnet now exists as Free in the intended developer account with a draft internal release. Only the approved owner tester list is saved and selected, containing one account. Its address and account identifiers stay private.
+- Mnet is Free in the intended developer account with code15 published to the restricted internal track at22:27 Australia/Sydney on2026-11-17. Only the approved owner tester list is saved and selected, containing one account. Its address and account identifiers stay private.
 - Play automatically provisioned a different app-signing key from the old sideload signer. No key change was requested. Do not promise an in-place upgrade over the old APK.
-- No bundle has reached Play: supported file chooser dispatch times out after bounded fresh-session recovery. The exact candidate is preserved for manual selection. No release has been published and no usable opt-in/install link has been verified. No public launch, billing or broader tester audience follows from this setup.
+- Owner manual upload succeeded. Console reports Active and Available to internal testers, with a temporary unreviewed package-name label. Validation had no blocking errors; only optional missing deobfuscation data and native debug symbols warnings. Console also reports16KB page support. The provided test link resolves to Google's account-restricted testing page and was delivered privately. Owner-account opt-in, installation, propagation and Play Protect behavior remain unverified. No public launch, billing or broader tester audience follows from this release.
 
 ## Actual runtime evidence
 

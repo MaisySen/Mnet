@@ -20,7 +20,7 @@ Fresh tests execute actual HostingActivity button/dialog/navigation in simulatio
 
 The latest target36/minimum24 candidate has fresh16KiB-aligned4ABI bindings, separate VPN data disclosure and actual API34/36 full traffic/consent/capture/control/reconnect tests. It is separate from the earlier blocked target34 APK. See [current status](STATUS.md) and [submission evidence](android-submission-evidence.md) for exact candidate and run links.
 
-Mnet now exists as Free in the intended developer account with a draft internal release. Only the approved owner tester list is selected and saved. No bundle upload succeeded: supported chooser dispatch timed out after bounded fresh-session recovery. Manual selection of the exact signed AAB is the current handoff. No release, usable install link or Play Protect clearance is claimed. The AAB cannot be directly installed on a phone.
+Mnet is Free in the intended existing account. The owner manually uploaded the preserved signed target36 code15 AAB, then the restricted internal release was published at22:27 Australia/Sydney on2026-11-17. Console shows Active and Available to internal testers. Only the approved single-owner list is selected. The owner received the test link privately; it resolves to Google's testing page, but the collaborator account is correctly not invited. Owner opt-in, installation and Play Protect behavior remain unverified. The temporary store name is au.fintex.mnet (unreviewed). The AAB cannot be directly installed on a phone.
 
 Play automatically provisioned an app-signing key different from the old sideload signer; do not promise an in-place upgrade. Do not disable install protection, rename artifacts to evade it, misstate accessibility usage or upload a private artifact to VirusTotal. The appeal route remains on hold.
 
@@ -29,7 +29,7 @@ Internal testing may begin before full store setup, but is not normal policy/sec
 ## Supported next steps
 
 1. Finish source/security/privacy review and keep permissions limited to intended functions. These fixes alone may not clear the block because accessibility remains declared.
-2. Use an authorized existing Google Play developer account for internal testing with named testers, once account access, declarations, signing and release requirements are met. Google's official internal testing route is Play Store distribution, not an assurance of review or approval. No new developer-account signup/payment or release was performed during this investigation.
+2. Use an authorized existing Google Play developer account for internal testing with named testers, once account access, declarations, signing and release requirements are met. Google's official internal testing route is Play Store distribution, not an assurance of review or approval. The restricted internal release is now published; no new developer-account signup/payment, public launch or broader tester access was performed.
 3. If the reviewed app is still believed to be incorrectly blocked, use Google's Play Protect appeal process. The currently fetched appeal form requires the SHA256 of an APK uploaded to VirusTotal. Uploading a private test artifact to an additional service needs explicit disclosure approval. No such upload or appeal was submitted.
 
 ## Sources
