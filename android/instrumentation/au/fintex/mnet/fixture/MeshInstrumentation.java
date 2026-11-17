@@ -32,11 +32,12 @@ public class MeshInstrumentation extends Instrumentation {
     private boolean entireScreenSelected;
     @Override public void onCreate(Bundle args) { super.onCreate(args); options = args; start(); }
     private interface Probe { boolean ready() throws Exception; }
+    private void checkpoint(String label) throws Exception {
+        stage=label;
+        try(FileOutputStream file=new FileOutputStream(new File(getTargetContext().getFilesDir(),"fixture-stage"))){file.write(label.getBytes("UTF-8"));}
+    }
     private void await(Probe probe, String label) throws Exception {
-        stage = label;
-        try (FileOutputStream file = new FileOutputStream(new File(getTargetContext().getFilesDir(), "fixture-stage"))) {
-            file.write(label.getBytes("UTF-8"));
-        }
+        checkpoint(label);
         long deadline = SystemClock.elapsedRealtime() + 60000;
         while (SystemClock.elapsedRealtime() < deadline) {
             if (probe.ready()) return;
@@ -286,6 +287,7 @@ public class MeshInstrumentation extends Instrumentation {
         await(() -> new File(getTargetContext().getFilesDir(), "fixture-screen-closed").exists(), "screen-stop-closed-peer");
         new File(getTargetContext().getFilesDir(), "fixture-record-stop").createNewFile();
         await(() -> new File(getTargetContext().getFilesDir(), "fixture-record-stopped").exists(), "consent-record-stopped");
+        checkpoint("hosting-activity-finish");
         runOnMainSync(() -> activity.finish());
     }
     @Override public void onStart() {
@@ -376,12 +378,14 @@ public class MeshInstrumentation extends Instrumentation {
             Activity mainActivity = activity;
             screenShareProof();
             activity = mainActivity;
+            checkpoint("main-activity-idle-after-hosting");
             waitForIdleSync();
+            checkpoint("final-stop-click");
             click(R.id.connect_button);
             await(() -> MnetVpnService.currentNode() == null, "final-stop");
             if (!consentClicked) throw new IllegalStateException("no actual initial VPN consent click observed");
-            stage = "complete";
-            result.putString("summary", "PASS self-bound target36 runtimeAPI=" + android.os.Build.VERSION.SDK_INT + " actual APK/JNI/VPN consent, accessibility/projection/viewer consent, real mesh gesture click and decoded frames/stop, bidirectional 4MiB hash, manual stop/reconnect and repeat hash; emulator only, no physical reboot/OEM proof");
+            checkpoint("complete");
+            result.putString("summary", "PASS self-bound target36 runtimeAPI=" + android.os.Build.VERSION.SDK_INT + " actual APK/JNI/VPN consent, accessibility/projection/viewer consent, real mesh gesture click and decoded frames/stop, OS/UDP/TCP DNS, bidirectional 4MiB hash, manual stop/reconnect and repeat hash; emulator only, no physical reboot/OEM proof");
             finish(Activity.RESULT_OK, result);
         } catch (Throwable failure) {
             // Only these controlled hosting/OS consent screens contain no

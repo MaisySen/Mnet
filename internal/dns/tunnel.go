@@ -36,6 +36,7 @@ type Tunnel struct {
 	writeMu sync.Mutex
 	mu      sync.RWMutex
 	local   *localEndpoint
+	pending [][]byte // bounded DNS packets received while the first map is loading
 	closed  bool
 	once    sync.Once
 }
@@ -125,7 +126,17 @@ func (t *Tunnel) StartDNS(s *Server, mtu int) error {
 			}
 		}
 	}()
+	for _, data := range t.pending {
+		injectLocalDNS(ep, data)
+	}
+	t.pending = nil
 	return nil
+}
+
+func injectLocalDNS(ep *channel.Endpoint, packet []byte) {
+	pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: buffer.MakeWithData(append([]byte(nil), packet...))})
+	ep.InjectInbound(ipv4.ProtocolNumber, pkt)
+	pkt.DecRef()
 }
 
 // localDNSPacket checks only classification. The userspace stack validates IP,
@@ -160,17 +171,23 @@ func (t *Tunnel) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
 		keep := 0
 		for i := 0; i < n; i++ {
 			packet := bufs[i][offset : offset+sizes[i]]
-			t.mu.RLock()
+			t.mu.Lock()
 			local := t.local
 			// Never leak traffic for the reserved local endpoint to an exit
 			// peer, including before activation or for malformed/non-DNS data.
 			intercepted := localDNSDestination(packet)
-			if intercepted && local != nil && localDNSPacket(packet, local.ip) {
-				pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: buffer.MakeWithData(append([]byte(nil), packet...))})
-				local.ep.InjectInbound(ipv4.ProtocolNumber, pkt)
-				pkt.DecRef()
+
+			if intercepted && localDNSPacket(packet, [4]byte{198, 18, 0, 53}) {
+				if local != nil {
+					injectLocalDNS(local.ep, packet)
+				} else if !t.closed && len(t.pending) < 32 && len(packet) <= 1280 {
+					// Android netd can probe immediately after establish(),
+					// before the first control map starts this resolver.
+					// Retain only a small DNS startup window, never mesh data.
+					t.pending = append(t.pending, append([]byte(nil), packet...))
+				}
 			}
-			t.mu.RUnlock()
+			t.mu.Unlock()
 			if !intercepted {
 				if keep != i {
 					copy(bufs[keep][offset:], packet)
@@ -196,6 +213,7 @@ func (t *Tunnel) Close() error {
 		t.closed = true
 		local := t.local
 		t.local = nil
+		t.pending = nil
 		t.mu.Unlock()
 		if local != nil {
 			local.cancel()

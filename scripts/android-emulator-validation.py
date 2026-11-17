@@ -178,8 +178,8 @@ def main():
             stage = 'independent-app-unbound-tcp'
             independent = run(adb + ['shell', 'am', 'instrument', '-w', '-r', '-e', 'peer', peer['ipv4'], 'au.fintex.mnet.fixture/au.fintex.mnet.fixture.IndependentAppInstrumentation'], timeout=150)
             # Keep this fixed summary even if a later recorder step fails.
-            independent_safe = [line for line in independent.splitlines() if line.startswith('INSTRUMENTATION_RESULT: summary=')]
-            (root / 'independent-summary.txt').write_text('\n'.join(independent_safe) + '\n')
+            independent_summary_lines = [line for line in independent.splitlines() if line.startswith('INSTRUMENTATION_RESULT: summary=')]
+            (root / 'independent-summary.txt').write_text('\n'.join(independent_summary_lines) + '\n')
             stage = 'actual-screen-projection'
             run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-peer-done'])
             def screen_flag(name):
@@ -308,7 +308,7 @@ def main():
         except (OSError, ValueError):
             pass
         # Stage is written from fixture-controlled literal await labels only.
-        allowed = {'consent-record-ready', 'accessibility-disclosure', 'accessibility-system-enable', 'accessibility-return-host', 'screen-projection-consent', 'screen-viewer-consent', 'screen-decoded-by-peer', 'remote-mesh-gesture-click', 'screen-stop-closed-peer', 'consent-record-stopped'}
+        allowed = {'hosting-activity-finish', 'main-activity-idle-after-hosting', 'final-stop-click', 'final-stop', 'complete', 'consent-record-ready', 'accessibility-disclosure', 'accessibility-system-enable', 'accessibility-return-host', 'screen-projection-consent', 'screen-viewer-consent', 'screen-decoded-by-peer', 'remote-mesh-gesture-click', 'screen-stop-closed-peer', 'consent-record-stopped'}
         if 'adb' in locals():
             try:
                 probe = subprocess.run(list(map(str, adb + ['exec-out', 'run-as', 'au.fintex.mnet', 'cat', 'files/fixture-stage'])), capture_output=True, timeout=10)
@@ -317,6 +317,23 @@ def main():
                     diagnostic['android_stage'] = value
             except (OSError, subprocess.TimeoutExpired):
                 diagnostic['android_stage_unavailable'] = True
+        if 'instrument' in locals():
+            diagnostic['instrument_process_exited'] = instrument.poll() is not None
+            primary = (root / 'instrumentation.log').read_text(errors='replace')
+            diagnostic['primary_summary_present'] = 'INSTRUMENTATION_RESULT: summary=' in primary
+            diagnostic['primary_code_success'] = 'INSTRUMENTATION_CODE: -1' in primary
+            diagnostic['primary_short_error'] = 'shortMsg=' in primary
+            diagnostic['primary_process_crash'] = 'Process crashed' in primary or 'process has crashed' in primary
+            diagnostic['primary_code_zero'] = 'INSTRUMENTATION_CODE: 0' in primary
+        if 'adb' in locals():
+            try:
+                crash = subprocess.run(list(map(str, adb + ['logcat', '-b', 'crash', '-d', '-t', '300'])), capture_output=True, timeout=10).stdout.decode(errors='replace')
+                diagnostic['native_signal'] = 'Fatal signal' in crash or 'signal 11' in crash
+                diagnostic['go_panic'] = 'panic:' in crash or 'fatal error:' in crash
+                diagnostic['java_fatal'] = 'FATAL EXCEPTION' in crash
+                diagnostic['crash_oom'] = 'OutOfMemoryError' in crash
+            except (OSError, subprocess.TimeoutExpired):
+                diagnostic['crash_diagnostics_unavailable'] = True
         (ARTIFACTS / 'summary.json').write_text(json.dumps(diagnostic, indent=2))
         raise RuntimeError('Android fixture failed at ' + stage) from None
     finally:

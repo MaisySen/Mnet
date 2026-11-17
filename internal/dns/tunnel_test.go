@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -61,6 +62,9 @@ func (r *testRawTUN) Write(bufs [][]byte, offset int) (int, error) {
 func (r *testRawTUN) Close() error { r.once.Do(func() { close(r.done) }); return nil }
 
 func newTunnelPair(t *testing.T) (*Tunnel, *Server, *stack.Stack, <-chan []byte) {
+	return newTunnelPairState(t, true)
+}
+func newTunnelPairState(t *testing.T, start bool) (*Tunnel, *Server, *stack.Stack, <-chan []byte) {
 	t.Helper()
 	client := stack.New(stack.Options{NetworkProtocols: []stack.NetworkProtocolFactory{ipv4.NewProtocol}, TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol}})
 	ep := channel.New(128, 1280, "")
@@ -79,8 +83,10 @@ func newTunnelPair(t *testing.T) (*Tunnel, *Server, *stack.Stack, <-chan []byte)
 	wrapped := NewTunnel(raw)
 	s, _ := New(LocalIPv4)
 	s.Update(testMap())
-	if err := wrapped.StartDNS(s, 1280); err != nil {
-		t.Fatal(err)
+	if start {
+		if err := wrapped.StartDNS(s, 1280); err != nil {
+			t.Fatal(err)
+		}
 	}
 	forwarded := make(chan []byte, 16)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -396,5 +402,47 @@ func TestLimitedDNSListenerReleasesSlotsExactlyOnce(t *testing.T) {
 	}
 	if len(listener.slots) != 0 {
 		t.Fatal("connection slot leaked")
+	}
+}
+
+func TestTunnelRetainsEarlyAndroidDNSUntilFirstMapIsReady(t *testing.T) {
+	for _, transport := range []string{"udp", "tcp"} {
+		t.Run(transport, func(t *testing.T) {
+			wrapped, s, client, _ := newTunnelPairState(t, false)
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				r := testDNSQuery(t, client, transport, "server.home.mnet.")
+				if len(r.Answer) != 1 {
+					t.Error("startup query lost")
+				}
+			}()
+			deadline := time.Now().Add(time.Second)
+			for {
+				wrapped.mu.Lock()
+				pending := len(wrapped.pending)
+				wrapped.mu.Unlock()
+				if pending > 0 {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("query not queued")
+				}
+				runtime.Gosched()
+			}
+			if err := wrapped.StartDNS(s, 1280); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-done:
+			case <-time.After(3 * time.Second):
+				t.Fatal("startup query not answered")
+			}
+			wrapped.mu.Lock()
+			defer wrapped.mu.Unlock()
+			if len(wrapped.pending) != 0 {
+				t.Fatal("startup queue leaked")
+			}
+		})
 	}
 }
