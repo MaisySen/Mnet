@@ -158,7 +158,7 @@ public class MeshInstrumentation extends Instrumentation {
                         relay |= peer.optBoolean("relay");
                     }
                     JSONObject packets = new JSONObject(MnetVpnService.currentNode().packetDiagnostics());
-                    diagnostics = " tunRead=" + packets.optBoolean("read_packet") + " tunWrite=" + packets.optBoolean("wrote_packet") + " tunReadError=" + packets.optBoolean("read_failed") + " tunWriteError=" + packets.optBoolean("write_failed") + " peersPresent=" + (peers != null && peers.length() > 0)
+                    diagnostics = " tunIPv4=" + packets.optBoolean("read_ipv4") + " tunTCP=" + packets.optBoolean("read_tcp") + " tunSYN=" + packets.optBoolean("read_syn") + " tunRead=" + packets.optBoolean("read_packet") + " tunWrite=" + packets.optBoolean("wrote_packet") + " tunReadError=" + packets.optBoolean("read_failed") + " tunWriteError=" + packets.optBoolean("write_failed") + " peersPresent=" + (peers != null && peers.length() > 0)
                         + " handshake=" + handshake + " received=" + received + " transmitted=" + transmitted + " relay=" + relay;
                 }
             } catch (Exception ignored) { diagnostics = " diagnosticsUnavailable=true"; }

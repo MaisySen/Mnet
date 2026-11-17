@@ -47,7 +47,7 @@ func TestFDTunPacketDiagnostics(t *testing.T) {
 	if err := json.Unmarshal([]byte(node.PacketDiagnostics()), &status); err != nil || !status["read_failed"] || !status["write_failed"] {
 		t.Fatal("error booleans wrong")
 	}
-	if len(status) != 4 {
+	if len(status) != 7 {
 		t.Fatal("unexpected diagnostics disclosure")
 	}
 }
@@ -55,5 +55,23 @@ func TestFDTunPacketDiagnostics(t *testing.T) {
 func TestNodePacketDiagnosticsWithoutNativeTunnel(t *testing.T) {
 	if got := (&Node{}).PacketDiagnostics(); got != "{}" {
 		t.Fatal("unexpected native diagnostics")
+	}
+}
+
+func TestFDTunPacketClasses(t *testing.T) {
+	tun := &fdTun{}
+	for _, bad := range [][]byte{nil, make([]byte, 19), {0x65}, append([]byte{0x4f}, make([]byte, 19)...)} {
+		tun.observePacket(bad)
+	}
+	if tun.readIPv4.Load() || tun.readTCP.Load() || tun.readSYN.Load() {
+		t.Fatal("invalid packet class")
+	}
+	packet := make([]byte, 40)
+	packet[0] = 0x45
+	packet[9] = 6
+	packet[33] = 2
+	tun.observePacket(packet)
+	if !tun.readIPv4.Load() || !tun.readTCP.Load() || !tun.readSYN.Load() {
+		t.Fatal("valid TCP SYN class absent")
 	}
 }
