@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -399,4 +400,64 @@ func TestFileRefusalDoesNotDiscloseReceiverStoragePath(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("receiver did not stop")
 	}
+}
+
+func TestPortableTransferNames(t *testing.T) {
+	for _, name := range []string{"report.pdf", "photo 01.jpg", ".notes", "resume-final_2.txt", "résumé.pdf", "COM10.txt", "ordinary.file.name"} {
+		if !safeTransferName(name) {
+			t.Errorf("safe name rejected: %q", name)
+		}
+	}
+	for _, name := range []string{"", ".", "..", "../x", "x\\y", "x:stream", "C:x", "NUL", "nul.txt", "NUL .txt", "CON", "con.tar.gz", "PRN", "AUX", "COM1.txt", "lpt9", "COM¹.log", "LPT²", "CONIN$", "CONOUT$", "trailing.", "trailing ", "new\nline", "tab\tname", "zero\x00name", "delete\x7fname", "question?", "wild*", "quote\"", "less<", "greater>", "pipe|", string([]byte{0xff})} {
+		if safeTransferName(name) {
+			t.Errorf("unsafe name accepted: %q", name)
+		}
+	}
+}
+func TestUnsafePortableOffersAreRefusedBeforeStorage(t *testing.T) {
+	for _, name := range []string{"safe.txt:secret", "NUL.txt", "COM¹.log", "trailing.", "new\nline"} {
+		t.Run(fmt.Sprintf("case-%x", []byte(name)), func(t *testing.T) {
+			client, host := pipe(t)
+			defer client.Close()
+			defer host.Close()
+			dir := filepath.Join(t.TempDir(), "not-created")
+			done := make(chan struct{})
+			host.OnStream(func(s Stream) { defer close(done); FileReceiver{Mux: host, Dir: dir}.Handle(s) })
+			stream, err := client.Open(PriBulk, FileOffer{Name: name, Size: 0})
+			if err != nil {
+				t.Fatal(err)
+			}
+			frame, err := stream.Recv(time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var refusal FileAccept
+			if err = json.Unmarshal(frame.Payload, &refusal); err != nil {
+				t.Fatal(err)
+			}
+			if refusal.OK || refusal.Reason != "invalid file name" {
+				t.Fatal("unsafe offer accepted")
+			}
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+				t.Fatal("receiver not stopped")
+			}
+			if _, err = os.Stat(dir); !os.IsNotExist(err) {
+				t.Fatal("unsafe offer touched storage")
+			}
+		})
+	}
+}
+func FuzzPortableTransferName(f *testing.F) {
+	for _, seed := range []string{"safe.txt", "file:stream", "NUL.txt", "name.", "a/b"} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, name string) {
+		if safeTransferName(name) {
+			if filepath.Base(name) != name || strings.ContainsAny(name, "/\\:\x00\n\r\t") || strings.HasSuffix(name, ".") || strings.HasSuffix(name, " ") {
+				t.Fatal("unsafe accepted")
+			}
+		}
+	})
 }

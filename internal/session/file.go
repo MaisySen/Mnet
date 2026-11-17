@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const fileChunk = 256 * 1024
@@ -45,7 +46,7 @@ func (r FileReceiver) Handle(s Stream) {
 		limit = DefaultMaxFileBytes
 	}
 	name := offer.Name
-	if name == "" || name == "." || name == ".." || len(name) > 255 || strings.ContainsAny(name, "/\\\x00") || filepath.Base(name) != name {
+	if !safeTransferName(name) {
 		refuse("invalid file name")
 		return
 	}
@@ -237,4 +238,30 @@ func SendFile(m *Mux, path string) error {
 		return fmt.Errorf("session: receiver digest mismatch")
 	}
 	return nil
+}
+
+// Use one portable filename policy on every host. In particular, a remote
+// offer must not select Windows alternate streams, device names or normalized
+// aliases such as a trailing dot/space, even when tested on a Unix host.
+func safeTransferName(name string) bool {
+	if !utf8.ValidString(name) || name == "" || name == "." || name == ".." || len(name) > 255 || filepath.Base(name) != name || strings.ContainsAny(name, "/\\:<>\"|?*") || strings.HasSuffix(name, ".") || strings.HasSuffix(name, " ") {
+		return false
+	}
+	for _, r := range name {
+		if r < 32 || r == 127 {
+			return false
+		}
+	}
+	stem := strings.ToUpper(strings.TrimRight(strings.SplitN(name, ".", 2)[0], " "))
+	switch stem {
+	case "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$":
+		return false
+	}
+	if len(stem) == 4 && (strings.HasPrefix(stem, "COM") || strings.HasPrefix(stem, "LPT")) && stem[3] >= '0' && stem[3] <= '9' {
+		return false
+	}
+	if stem == "COM¹" || stem == "COM²" || stem == "COM³" || stem == "LPT¹" || stem == "LPT²" || stem == "LPT³" {
+		return false
+	}
+	return true
 }
