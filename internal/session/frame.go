@@ -46,10 +46,12 @@ const (
 
 // Frame is one message on one stream.
 type Frame struct {
-	StreamID uint32
-	Type     byte
-	Priority uint8
-	Payload  []byte
+	queueOwner *streamState
+	queueCost  int64 // local inbound accounting only; never serialized
+	StreamID   uint32
+	Type       byte
+	Priority   uint8
+	Payload    []byte
 }
 
 func writeFrame(w io.Writer, f Frame) error {

@@ -47,26 +47,30 @@ type Mux struct {
 	closed      chan struct{}
 	closeMu     sync.Once
 
-	lastRead   atomic.Int64 // unixnano; any inbound frame proves liveness
-	lastRTT    atomic.Int64 // nanoseconds; last keepalive round trip
-	onStreamMu sync.RWMutex
-	onStream   func(Stream)
-	nextID     uint32 // dynamic stream ids, partitioned by side
-	idMu       sync.Mutex
-	started    bool                    // frames queue for the write loop only after start()
-	opened     map[uint32]bool         // streams this side has OPENed
-	streams    map[uint32]*streamState // inbound delivery, both directions
-	streamMu   sync.Mutex
+	inboundBytes atomic.Int64 // queued DATA payloads across all streams
+	lastRead     atomic.Int64 // unixnano; any inbound frame proves liveness
+	lastRTT      atomic.Int64 // nanoseconds; last keepalive round trip
+	onStreamMu   sync.RWMutex
+	onStream     func(Stream)
+	nextID       uint32 // dynamic stream ids, partitioned by side
+	idMu         sync.Mutex
+	started      bool                    // frames queue for the write loop only after start()
+	opened       map[uint32]bool         // streams this side has OPENed
+	streams      map[uint32]*streamState // inbound delivery, both directions
+	streamMu     sync.Mutex
 }
 
 // streamState is one known stream. Streams opened by the peer before
 // an OnStream handler exists wait in handled=false state; OnStream
 // dispatches them when it is registered.
 type streamState struct {
-	ch      chan Frame
-	done    chan struct{} // closes on local release to unblock read-loop delivery
-	open    json.RawMessage
-	handled bool
+	accountMu   sync.Mutex
+	queuedBytes int64
+	released    bool
+	ch          chan Frame
+	done        chan struct{} // closes on local release to unblock read-loop delivery
+	open        json.RawMessage
+	handled     bool
 }
 
 // Stream is one opened stream, delivered to the registered handler.
@@ -75,8 +79,9 @@ type Stream struct {
 	ID       uint32
 	OpenJSON json.RawMessage
 
-	in  chan Frame // DATA payloads and FIN
-	err error
+	state *streamState
+	in    chan Frame // DATA payloads and FIN
+	err   error
 }
 
 // Dial opens a session to a host and performs the handshake.
@@ -185,7 +190,7 @@ func (m *Mux) OnStream(h func(Stream)) {
 	for id, st := range m.streams {
 		if !st.handled {
 			st.handled = true
-			pending = append(pending, Stream{Mux: m, ID: id, OpenJSON: st.open, in: st.ch})
+			pending = append(pending, Stream{Mux: m, ID: id, OpenJSON: st.open, in: st.ch, state: st})
 		}
 	}
 	m.streamMu.Unlock()
@@ -223,7 +228,8 @@ func (m *Mux) Open(priority uint8, openPayload any) (Stream, error) {
 		m.streamMu.Unlock()
 		return Stream{}, fmt.Errorf("session: active stream limit reached")
 	}
-	m.streams[id] = &streamState{ch: s.in, done: make(chan struct{}), open: raw, handled: true}
+	s.state = &streamState{ch: s.in, done: make(chan struct{}), open: raw, handled: true}
+	m.streams[id] = s.state
 	m.streamMu.Unlock()
 	if err := m.send(id, msgOpen, priority, raw); err != nil {
 		m.releaseStream(id)
@@ -254,6 +260,7 @@ func (s Stream) Recv(timeout time.Duration) (Frame, error) {
 			if !ok {
 				return Frame{}, io.EOF
 			}
+			s.Mux.releaseInbound(&f)
 			if f.Type == msgRst {
 				return Frame{}, ErrStreamReset
 			}
@@ -267,6 +274,7 @@ func (s Stream) Recv(timeout time.Duration) (Frame, error) {
 		if !ok {
 			return Frame{}, io.EOF
 		}
+		s.Mux.releaseInbound(&f)
 		if f.Type == msgRst {
 			return Frame{}, ErrStreamReset
 		}
@@ -551,7 +559,7 @@ func (m *Mux) readLoop() {
 				if h := m.streamHandler(); h != nil {
 					st.handled = true
 					m.streams[f.StreamID] = st
-					go h(Stream{Mux: m, ID: f.StreamID, OpenJSON: st.open, in: st.ch})
+					go h(Stream{Mux: m, ID: f.StreamID, OpenJSON: st.open, in: st.ch, state: st})
 				} else {
 					m.streams[f.StreamID] = st
 				}
@@ -580,13 +588,50 @@ func (m *Mux) readLoop() {
 			m.streamMu.Unlock()
 			continue
 		}
+		// Bound retained wire DATA across streams, not only each channel.
+		// Slow consumers must not turn 256 independent queues into GiBs.
+		st.accountMu.Lock()
+		if st.released {
+			st.accountMu.Unlock()
+			continue
+		}
+		f.queueOwner = st
+		f.queueCost = int64(len(f.Payload))
+		st.queuedBytes += f.queueCost
+		over := m.inboundBytes.Add(f.queueCost) > maxInboundBytes
+		st.accountMu.Unlock()
+		if over {
+			m.releaseInbound(&f)
+			m.Close()
+			return
+		}
 		select {
 		case st.ch <- f:
 		case <-st.done:
+			m.releaseInbound(&f)
 		case <-m.closed:
+			m.releaseInbound(&f)
 			return
 		}
 	}
+}
+
+// This bounds queued DATA only. OPEN metadata, one read in flight, decoded
+// images and application-owned copies have separate limits/lifetimes.
+const maxInboundBytes int64 = 16 << 20
+
+func (m *Mux) releaseInbound(f *Frame) {
+	if f.queueCost > 0 && f.queueOwner != nil {
+		st := f.queueOwner
+		st.accountMu.Lock()
+		if !st.released {
+			st.queuedBytes -= f.queueCost
+			m.inboundBytes.Add(-f.queueCost)
+		}
+		st.accountMu.Unlock()
+	}
+	f.queueCost = 0
+	f.queueOwner = nil
 }
 
 // maxActiveStreams bounds stream tables and inbound per-stream queues.
@@ -597,8 +642,11 @@ const maxActiveStreams = 256
 // delivery into its queue. Only readLoop closes the frame channel.
 func (m *Mux) releaseStream(id uint32) {
 	m.streamMu.Lock()
-	if st, ok := m.streams[id]; ok && st.done != nil {
-		close(st.done)
+	if st, ok := m.streams[id]; ok {
+		m.releaseStreamBudget(st)
+		if st.done != nil {
+			close(st.done)
+		}
 	}
 	delete(m.streams, id)
 	m.streamMu.Unlock()
@@ -609,3 +657,18 @@ func (m *Mux) releaseStream(id uint32) {
 
 // ErrStreamReset distinguishes peer cancellation from a complete FIN.
 var ErrStreamReset = errors.New("session: stream reset by peer")
+
+// release also returns charges when FIN already removed the stream table entry.
+func (s Stream) release() {
+	s.Mux.releaseStream(s.ID)
+	if s.state != nil {
+		s.Mux.releaseStreamBudget(s.state)
+	}
+}
+func (m *Mux) releaseStreamBudget(st *streamState) {
+	st.accountMu.Lock()
+	defer st.accountMu.Unlock()
+	st.released = true
+	m.inboundBytes.Add(-st.queuedBytes)
+	st.queuedBytes = 0
+}
