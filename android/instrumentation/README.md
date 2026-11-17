@@ -12,18 +12,16 @@ Expected outputs are explicit PASS summary and a pre-credential launch screensho
 
 ## Latest repeated evidence
 
-New first-connect VPN disclosure coverage is running separately. It declines and captures the disclosure before any fixture enrollment values enter the UI, verifies VPN remains off/acceptance is absent, then reopens and agrees before actual Android VPN consent. The background-start service gate independently requires prior acceptance. Only the pre-enrollment disclosure screenshot is allowlisted.
+Actual target36 APK/JNI matrices pass on both API34/36 at8def887 and2ddb11e:
 
-Full target36 APK/JNI matrices pass on actual API34/36 disposable emulators at0b3b8ff and0219d94, including opening and closing the pre-enrollment privacy/support dialog:
+- https://github.com/MaisySen/Mnet/actions/runs/44059686143
+- https://github.com/MaisySen/Mnet/actions/runs/44060519012
 
-- https://github.com/MaisySen/Mnet/actions/runs/44054549867
-- https://github.com/MaisySen/Mnet/actions/runs/44054575793
+The fixture declines the separate first-connect VPN data disclosure before entering enrollment values, verifies VPN remains off and acceptance absent, then reopens/agrees before actual OS VPN permission. It also requires own-process bidirectional4MiB hash/reconnect and independent app UID unbound TCP twice, actual accessibility decline/agree/Settings, projection and per-viewer consent, full peer JPEG decoding, real remote mesh gesture receipt and transport closure on stop.
 
-The API36 privacy dialog and API34 main screen were visually inspected as readable with complete actions and no enrollment credentials. An additional STUN-recipient sentence is being validated separately; the linked screenshots predate that sentence.
+Some privacy/VPN screenshots caught incomplete rendering despite passed action flows. They are not treated as final layout proof. New fixture-only capture waits for visible actions and consecutive equal compositor frames, with animation scales disabled and checked only in the disposable emulator. The shipping app, signed candidate and personal-device settings are unchanged. The new capture code compiles; its actual matrix and pixels still need inspection.
 
-Latest source exercises actual Not now decline and verifies Mnet remains visible with accessibility disabled, then reopens the disclosure, agrees, enables the actual service in Settings, approves Android projection and the viewer, decodes full JPEGs at the real mesh peer, sends a real gesture that changes a disposable button, and confirms peer transport closes after stop. The fixture requires own-process bidirectional4MiB hashes around manual reconnect and separate app UID ordinary unbound TCP transfers twice. Twelve local fixture guards pass.
-
-All23/25 frames of the latest sampled API34/36 walkthroughs were inspected. They show controlled test screens and no enrollment/Main credentials. They are engineering evidence, not a continuous screen recording or a completed Play declaration review. Prior intermittent TCP-connect and zero-frame failures remain open reliability risks. Private fixed boolean diagnostics separate image arrival/encoding/serving and viewer geometry/frame delivery if a later repeat fails.
+Controlled sampled walkthroughs remain engineering evidence, not continuous video, a completed Play declaration review or physical-device proof. Prior intermittent TCP-connect and zero-frame failures remain open reliability risks. Raw state/credentials/logs remain excluded from public artifacts.
 
 ## Historical setup and evidence
 

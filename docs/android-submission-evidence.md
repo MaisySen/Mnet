@@ -4,10 +4,10 @@ Updated 2026-11-17. Preparation only. This is not a completed Play declaration, 
 
 ## Candidate and distribution boundary
 
-- Package: au.fintex.mnet. Source targets Android36, minimum24.
-- Fresh current-source native bindings pass16KiB ELF LOAD checks on all4ABIs. The release-upload-key-signed AAB builds and validates with bundletool. Existing upload certificate matches the earlier delivered APK; no new signing identity or Play App Signing selection has been made.
-- Current version remains0.8.3-dev/code15, unused on Play and suitable for an internal-development test. Inspect actual Play signing enrollment before upload; a fresh version name is not itself an upload requirement. Never substitute a debug AAB for the verified upload-signed candidate.
-- No Mnet Play app record, binary upload, tester release or usable opt-in link exists. Owner selected Free to download on2026-11-17. Owner selected one restricted test account; its address stays outside this public document. This choice is not permission to add billing, subscriptions, or a public launch. Do not add tester addresses here.
+- Package au.fintex.mnet, target36/minimum24, version0.8.3-dev/code15. Exact signed AAB SHA256 b8abf192457c4a02bd652e347024d764869ae1fb6aaa3105afe7c34d436aeae3; bundletool/signature checks pass, all4ABIs have16KiB ELF LOAD alignment. This AAB is for Play upload, not direct phone installation.
+- Mnet now exists as Free in the intended developer account with a draft internal release. Only the approved owner tester list is saved and selected, containing one account. Its address and account identifiers stay private.
+- Play automatically provisioned a different app-signing key from the old sideload signer. No key change was requested. Do not promise an in-place upgrade over the old APK.
+- No bundle has reached Play: supported file chooser dispatch times out after bounded fresh-session recovery. The exact candidate is preserved for manual selection. No release has been published and no usable opt-in/install link has been verified. No public launch, billing or broader tester audience follows from this setup.
 
 ## Actual runtime evidence
 
@@ -21,9 +21,11 @@ Updated 2026-11-17. Preparation only. This is not a completed Play declaration, 
 
 These are disposable emulator tests, not physical-phone, OEM battery-policy, long-soak, radio handover, reboot/unlock or Play Protect approval. A later API36 repeat timed out at frame readiness while API34 passed, so one success is not a universal reliability guarantee. The fixture now starts its viewer timeout only after projection approval to avoid counting Settings/recording preparation against the viewer window. A later full matrix atbee0906 passes both APIs again, but88d73f8 also had an intermittent API36 TCP-connect timeout. Continue final-candidate repeats and distinguish frame-readiness timing from TCP startup.
 
+Latest product-source and capture-fixture matrices pass on both APIs at8def887 and2ddb11e: https://github.com/MaisySen/Mnet/actions/runs/44059686143 and https://github.com/MaisySen/Mnet/actions/runs/44060519012 . General8def CI passes at https://github.com/MaisySen/Mnet/actions/runs/44059686225 . Both exercise actual VPN disclosure decline/agree as well as the prior capture/control/traffic flow. Some disclosure screenshots caught incomplete compositor frames despite passing action tests; those frames are not final layout proof. Test-only capture readiness is being corrected without changing the signed candidate.
+
 ## VPN declaration draft basis
 
-Current source adds a separate first-connect VPN data disclosure before saving entered join details or requesting Android VPN permission. Agree is required; Not now/cancel do not save/join. Service preflight independently refuses saved configuration without the versioned acceptance flag. New selected-framework125 and VPN-service54 cases pass locally, including decline/cancel/reopen, unsolicited permission-result refusal, and service bypass refusal. Actual updated API34/36 verification is pending; do not call local simulations phone proof.
+Current source adds a separate first-connect VPN data disclosure before saving entered join details or requesting Android VPN permission. Agree is required; Not now/cancel do not save/join. Service preflight independently refuses saved configuration without the versioned acceptance flag. New selected-framework125 and VPN-service54 cases pass locally, including decline/cancel/reopen, unsolicited permission-result refusal, and service bypass refusal. Actual updated API34/36 full matrices pass as linked above; these are emulator results, not physical-phone or Play Protect approval.
 
 Purpose: private mesh networking and remote access between approved devices. VpnService establishes an IPv4 mesh route, not an unrestricted internet exit VPN. Source rejects the unsupported exit-node setting.
 

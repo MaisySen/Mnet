@@ -98,6 +98,17 @@ class Guards(unittest.TestCase):
         self.assertIn('sampled walkthrough', source)
         workflow = (ROOT / '.github/workflows/android-emulator.yml').read_text()
         self.assertIn('install --no-install-recommends -y ffmpeg', workflow)
+    def test_dialog_capture_waits_for_compositor_and_actions(self):
+        fixture = (ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
+        runner = (ROOT / 'scripts/android-emulator-validation.py').read_text()
+        self.assertIn('node.isVisibleToUser() && !bounds.isEmpty()', fixture)
+        self.assertIn('previous.sameAs(current)', fixture)
+        self.assertIn('equalFrames >= 3', fixture)
+        self.assertIn('captureSettledDialog("Privacy and support"', fixture)
+        self.assertIn('captureSettledDialog("VPN data disclosure"', fixture)
+        self.assertIn("'window_animation_scale', 'transition_animation_scale', 'animator_duration_scale'", runner)
+        app = (ROOT / 'android/app/src/main/java/au/fintex/mnet/MainActivity.java').read_text()
+        self.assertNotIn('animation_scale', app)
     def test_hash_before_and_after_real_reconnect(self):
         source = (ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
         self.assertEqual(2, source.count('            hashRoundTrip();'))

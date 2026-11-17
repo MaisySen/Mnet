@@ -46,21 +46,53 @@ public class MeshInstrumentation extends Instrumentation {
     }
     private void click(int id) { runOnMainSync(() -> ((Button) activity.findViewById(id)).performClick()); }
     private void set(int id, String value) { runOnMainSync(() -> ((EditText) activity.findViewById(id)).setText(value)); }
+    // All callers run before enrollment values enter the UI. Require visible
+    // actions and consecutive equal compositor frames, not only a ready tree.
+    private AccessibilityNodeInfo captureSettledDialog(String title, String filename, String... actions) throws Exception {
+        await(() -> {
+            AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
+            if (root == null || !"au.fintex.mnet".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())
+                    || root.findAccessibilityNodeInfosByText(title).isEmpty()) return false;
+            for (String action : actions) {
+                boolean visible = false;
+                for (AccessibilityNodeInfo node : root.findAccessibilityNodeInfosByText(action)) {
+                    android.graphics.Rect bounds = new android.graphics.Rect();
+                    node.getBoundsInScreen(bounds);
+                    visible |= node.isVisibleToUser() && !bounds.isEmpty();
+                }
+                if (!visible) return false;
+            }
+            return true;
+        }, "dialog-ready-" + filename);
+        waitForIdleSync();
+        Bitmap previous = null;
+        int equalFrames = 0;
+        long deadline = SystemClock.elapsedRealtime() + 15000;
+        try {
+            while (SystemClock.elapsedRealtime() < deadline) {
+                SystemClock.sleep(350);
+                Bitmap current = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).takeScreenshot();
+                if (current == null) throw new IOException("dialog screenshot unavailable");
+                equalFrames = previous != null && previous.sameAs(current) ? equalFrames + 1 : 0;
+                if (previous != null) previous.recycle();
+                previous = current;
+                if (equalFrames >= 3) {
+                    try (FileOutputStream file = new FileOutputStream(new File(getTargetContext().getFilesDir(), filename))) {
+                        if (!current.compress(Bitmap.CompressFormat.PNG, 100, file)) throw new IOException("dialog screenshot failed");
+                    }
+                    return getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
+                }
+            }
+            throw new IOException("dialog compositor did not settle");
+        } finally { if (previous != null) previous.recycle(); }
+    }
     private void vpnDisclosure(boolean agree, boolean capture) throws Exception {
         await(() -> {
             AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
             if (root == null || !"au.fintex.mnet".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())
                     || root.findAccessibilityNodeInfosByText("VPN data disclosure").isEmpty()) return false;
             if (capture) {
-                // The accessibility tree can expose the dialog before its
-                // entrance animation has drawn the action row.
-                waitForIdleSync();
-                SystemClock.sleep(1500);
-                root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
-                Bitmap image = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).takeScreenshot();
-                try (FileOutputStream file = new FileOutputStream(new File(getTargetContext().getFilesDir(), "fixture-vpn-disclosure.png"))) {
-                    if (image == null || !image.compress(Bitmap.CompressFormat.PNG, 100, file)) throw new IOException("disclosure screenshot unavailable");
-                }
+                root = captureSettledDialog("VPN data disclosure", "fixture-vpn-disclosure.png", "Agree", "Not now");
             }
             return clickText(root, agree ? "Agree" : "Not now");
         }, agree ? "vpn-disclosure-agree" : "vpn-disclosure-decline");
@@ -260,9 +292,7 @@ public class MeshInstrumentation extends Instrumentation {
             await(() -> {
                 AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
                 if (root == null || root.findAccessibilityNodeInfosByText("Privacy and support").isEmpty()) return false;
-                try (FileOutputStream file = new FileOutputStream(new File(getTargetContext().getFilesDir(), "fixture-privacy.png"))) {
-                    getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).takeScreenshot().compress(Bitmap.CompressFormat.PNG, 100, file);
-                }
+                root = captureSettledDialog("Privacy and support", "fixture-privacy.png", "Privacy policy", "Open email app", "Close");
                 return clickText(root, "Close");
             }, "privacy-support-close");
             // startActivitySync may return before the first display traversal.

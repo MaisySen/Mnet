@@ -4,7 +4,9 @@ Updated 2026-11-17. This is an engineering and submission-preparation checklist,
 
 ## Intended route
 
-Use the existing developer account and a named-audience Internal testing track for the first phone beta. Collaborator access has been verified. No Mnet app record, binary upload, testing release, public launch or pricing change has been made. Internal testing can begin before full store setup and supports up to100 testers. It may not receive ordinary policy/security review and is not proof of Play Protect clearance. The12-testers/14-days closed-test rule concerns production access for qualifying personal accounts, not this initial internal test.
+The existing developer account now contains Mnet, set to Free, and an internal-release draft. The sole approved owner test account is the only selected tester list; it contains one person. No binary has reached Play and no release is published. The supported bundle chooser repeatedly timed out, including a fresh-session recovery. The exact signed AAB is preserved for manual file selection; no API-write workaround or alternate account was used.
+
+Internal testing can begin before full store setup and supports up to100 testers, but this plan authorizes only one. It may not receive ordinary policy/security review and is not proof of Play Protect clearance. The12-testers/14-days closed-test rule concerns production access for qualifying personal accounts, not this initial internal test.
 
 ## Owner-internal upload/release path
 
@@ -14,19 +16,16 @@ The published Android internal-test privacy policy is https://maisysen.github.io
 
 ## Evidence and remaining work
 
-| Gate | Current evidence | Remaining work |
+| Gate | Verified state | Remaining work |
 | --- | --- | --- |
-| Account access | Intended existing developer account opens with invited collaborator | Confirm app-specific permissions when a draft exists; do not modify unrelated apps |
-| Current Android target | Source targets36; SDK/build-tools36 compilation and actual API34/36 APK/JNI matrix pass | Final-candidate repeat and physical/OEM behavior; do not substitute emulator evidence for phone coverage |
-| Native16KiB support | Fresh current-source AAR4ABIs pass direct ELF LOAD checks; old AAR rejected | Actual16KiB-device/runtime check, not only ELF structure |
-| App Bundle | Fresh current-source4ABI AAR passes16KiB ELF checks; upload-key-signed AAB builds and validates; signer continuity matches prior private APK | Final-source candidate and Play App Signing choice in actual flow. Code15 is unused on Play and valid for an internal development test; a fresh marketing version is not an upload requirement |
-| Actual runtime | Actual API34/36 matrix atbee0906 passes OS VPN consent, own-process bidirectional4MiB TCP hash, manual stop/reconnect, repeat hash, and separate app UID ordinary unbound TCP twice | Prior API36 repeat at88d73f8 timed out at mesh connect despite WireGuard handshake. Source-bound viewer dialing addresses source selection but does not establish every TCP startup race is closed. Continue repeat/physical/OEM/soak coverage; Linux mobile-fd test is additional, not Android proof |
-| Screen control | Feature retained. Actual API34/36 accessibility/projection/viewer consent, full peer JPEG decoding, mesh gesture click and stop closure pass at3b356e9 andbee0906 | Non-tool accessibility declaration, full inspected consent walkthrough, final-source repeat and physical-device evidence.21a3c22 also reaches final recording-stop marker on bothAPIs but lacks runner encoder, not a completed demonstration |
-| VPN policy | Mesh networking/remote access matches a listed permitted purpose in policy | Verify precise listing, device-to-endpoint encryption, data disclosures and declaration against final binary |
-| Privacy | Source has real metadata and user-content flows, not a zero-data claim | Published bounded policy and explicit in-app link; apply truthful declarations if the console requires them. Precise provider duration is not a self-imposed blocker |
-| Export | Standard-crypto public-source notification rule researched | Narrow owner-internal740.17(a)(1)(i) route; confirm actual Australian headquarters/private-sector internal-development facts before the export certification |
-| Commercial direction | Free to download selected by owner on2026-11-17; intended future Multies use is context, not implemented integration | Apply Free in the intended app setup; no in-app purchase/subscription or broader commercial plan is authorized by this choice. Published free apps cannot switch to paid downloads |
-| Audience | Owner selected one restricted Play Store account on2026-11-17; exact address stays private | Configure only that account for Internal testing after remaining gates clear. No public opt-in audience or additional testers authorized |
+| Account/app | Mnet exists in the intended existing account as Free; draft internal release exists | Do not change unrelated apps or expand audience |
+| Candidate | Upload-signed0.8.3-dev/code15 AAB validates; SHA256 b8abf192457c4a02bd652e347024d764869ae1fb6aaa3105afe7c34d436aeae3; all4ABIs have16KiB ELF LOAD alignment | Actual Play upload/processing validation; structural checks are not16KiB-device runtime proof |
+| Signing | Automatic Play app-signing key differs from earlier sideload signer | Do not change keys or promise in-place sideload upgrade |
+| Runtime | Actual target36 API34/36 matrices pass at8def887 and2ddb11e, including independent-app traffic, reconnect, capture/control and stop | Earlier intermittent failures, physical/OEM/radio/reboot/soak remain open; some screenshot frames are not final visual proof |
+| VPN/privacy | Separate first-connect disclosure, decline/save refusal and background service acceptance gate; published policy and explicit in-app link | Apply truthful declarations if Console requires them; no exact provider-log duration invented |
+| Export | Owner confirmed bounded Australian private-sector internal-development facts; narrow route assessed before Create app | Preserve owner-only purpose and restrictions; not general worldwide clearance |
+| Audience | Only the approved owner list with one account is saved and selected | No additional testers or public launch |
+| Upload/release | Draft exists but no bundle uploaded; supported chooser times out after bounded recovery | Manual file selection handoff, then actual validation, restricted rollout and usable install-link verification |
 
 ## Source-backed disclosure inventory
 

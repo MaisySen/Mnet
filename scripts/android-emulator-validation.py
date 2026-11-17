@@ -155,6 +155,12 @@ def main():
             }
             (ARTIFACTS / 'instrumentation.txt').write_text(json.dumps({'boot_diagnostics': categories, 'emulator_exit_code': emulator.poll(), 'pre_boot_free_mib': free_mib}) + '\n')
             raise
+        # Disposable emulator only: remove transition animation from evidence
+        # capture, not from the shipping app or any personal device.
+        for setting in ('window_animation_scale', 'transition_animation_scale', 'animator_duration_scale'):
+            run(adb + ['shell', 'settings', 'put', 'global', setting, '0'])
+            if run(adb + ['shell', 'settings', 'get', 'global', setting]).strip() not in ('0', '0.0'):
+                raise RuntimeError('disposable animation setting not applied')
         run(adb + ['shell', 'input', 'keyevent', '82'])
         run(adb + ['reverse', 'tcp:8080', 'tcp:8080'])
         run(adb + ['install', '-r', appout / 'mnet.apk'])
