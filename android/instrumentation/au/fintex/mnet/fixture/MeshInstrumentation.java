@@ -52,6 +52,11 @@ public class MeshInstrumentation extends Instrumentation {
             if (root == null || !"au.fintex.mnet".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())
                     || root.findAccessibilityNodeInfosByText("VPN data disclosure").isEmpty()) return false;
             if (capture) {
+                // The accessibility tree can expose the dialog before its
+                // entrance animation has drawn the action row.
+                waitForIdleSync();
+                SystemClock.sleep(1500);
+                root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
                 Bitmap image = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).takeScreenshot();
                 try (FileOutputStream file = new FileOutputStream(new File(getTargetContext().getFilesDir(), "fixture-vpn-disclosure.png"))) {
                     if (image == null || !image.compress(Bitmap.CompressFormat.PNG, 100, file)) throw new IOException("disclosure screenshot unavailable");
