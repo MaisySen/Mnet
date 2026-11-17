@@ -239,6 +239,9 @@ def main():
         if screenshot.returncode or not screenshot.stdout.startswith(b'\x89PNG\r\n\x1a\n'):
             raise RuntimeError('sanitized launch screenshot unavailable')
         (ARTIFACTS / 'launch.png').write_bytes(screenshot.stdout)
+        privacy = subprocess.run(list(map(str, adb + ['exec-out', 'run-as', 'au.fintex.mnet', 'cat', 'files/fixture-privacy.png'])), capture_output=True, timeout=15)
+        if privacy.returncode == 0 and privacy.stdout.startswith(b'\x89PNG\r\n\x1a\n'):
+            (ARTIFACTS / 'privacy.png').write_bytes(privacy.stdout)
         consent = subprocess.run(list(map(str, adb + ['exec-out', 'run-as', 'au.fintex.mnet', 'cat', 'files/fixture-consent.png'])), capture_output=True, timeout=15)
         if consent.returncode == 0 and consent.stdout.startswith(b'\x89PNG\r\n\x1a\n'):
             (ARTIFACTS / 'consent.png').write_bytes(consent.stdout)

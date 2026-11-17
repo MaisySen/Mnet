@@ -240,7 +240,11 @@ public class MeshInstrumentation extends Instrumentation {
             click(R.id.privacy_support_button);
             await(() -> {
                 AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
-                return root != null && clickText(root, "Close");
+                if (root == null || root.findAccessibilityNodeInfosByText("Privacy and support").isEmpty()) return false;
+                try (FileOutputStream file = new FileOutputStream(new File(getTargetContext().getFilesDir(), "fixture-privacy.png"))) {
+                    getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).takeScreenshot().compress(Bitmap.CompressFormat.PNG, 100, file);
+                }
+                return clickText(root, "Close");
             }, "privacy-support-close");
             // startActivitySync may return before the first display traversal.
             // Wait for a laid-out field, then let SurfaceFlinger present it.
