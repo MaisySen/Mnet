@@ -140,17 +140,11 @@ public class MainActivity extends Activity {
     private void showPrivacySupport() {
         new android.app.AlertDialog.Builder(this)
                 .setTitle("Privacy and support")
-                .setMessage("Mnet is operated by Fintex Australia Pty Ltd. " +
-                        "For support or data-deletion requests, contact contact@fintex.au. " +
-                        "The inbox is monitored. Never send passwords, enrollment keys or private node keys.\n\n" +
-                        "Mnet stores enrollment settings and device identity on this phone. " +
-                        "The configured control service processes device and connection metadata. " +
-                        "NAT discovery also sends connection requests to Google and Cloudflare STUN servers, which can see your source IP address and port. " +
-                        "Screen sharing sends screen images to an approved viewer; optional accessibility access permits remote gestures. " +
-                        "Disconnecting does not delete saved identity or server records. " +
-                        "Other endpoints may retain content you send.\n\n" +
-                        "This is an internal-development test. Read the privacy policy for DNS forwarding, provider-controlled retention and manual deletion-request limits. " +
-                        "Opening an email app does not send a request or delete data.")
+                .setMessage("Mnet is operated by Fintex Australia Pty Ltd. Support/deletion: contact@fintex.au (monitored). Never email passwords or keys.\n\n" +
+                        "Mnet saves enrollment and identity on this phone. The control service processes device/connection data. " +
+                        "Google and Cloudflare STUN see your source IP address and port; upstream DNS sees queried names.\n\n" +
+                        "Sharing and remote gestures require consent. Peers may keep content. Disconnecting does not delete data.\n\n" +
+                        "Read the policy for retention and manual-request limits. Opening email does not send or delete data.")
                 .setNeutralButton("Privacy policy", (d, w) -> {
                     Intent policy = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://maisysen.github.io/Mnet/"));
                     try { startActivity(policy); }
