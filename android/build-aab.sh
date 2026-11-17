@@ -90,6 +90,12 @@ else
 fi
 jarsigner -keystore "$KS" -storepass:file "$PASS_FILE" -keypass:file "$PASS_FILE" \
     "$OUT/mnet.aab" "$ALIAS"
-jarsigner -verify "$OUT/mnet.aab" | head -3
+# Do not pipe verifier status into head: a failed verifier must fail the build.
+LC_ALL=C jarsigner -verify "$OUT/mnet.aab" > "$OUT/signature-verification.txt" 2>&1
+if ! grep -Fxq 'jar verified.' "$OUT/signature-verification.txt"; then
+    printf '%s\n' 'App Bundle signature verification did not confirm a signed archive' >&2
+    exit 1
+fi
+head -3 "$OUT/signature-verification.txt"
 
 echo "OK: $OUT/mnet.aab"
