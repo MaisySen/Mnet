@@ -245,6 +245,9 @@ def main():
         consent = subprocess.run(list(map(str, adb + ['exec-out', 'run-as', 'au.fintex.mnet', 'cat', 'files/fixture-consent.png'])), capture_output=True, timeout=15)
         if consent.returncode == 0 and consent.stdout.startswith(b'\x89PNG\r\n\x1a\n'):
             (ARTIFACTS / 'consent.png').write_bytes(consent.stdout)
+        vpn_disclosure = subprocess.run(list(map(str, adb + ['exec-out', 'run-as', 'au.fintex.mnet', 'cat', 'files/fixture-vpn-disclosure.png'])), capture_output=True, timeout=15)
+        if vpn_disclosure.returncode == 0 and vpn_disclosure.stdout.startswith(b'\x89PNG'):
+            (ARTIFACTS / 'vpn-disclosure.png').write_bytes(vpn_disclosure.stdout)
         safe = [line for line in output.splitlines() if line.startswith('INSTRUMENTATION_RESULT: summary=')]
         if len(safe) != 1 or 'actual APK/JNI/VPN consent' not in safe[0] or 'summary=PASS self-bound target36 runtimeAPI=' not in safe[0] or 'INSTRUMENTATION_CODE: -1' not in output:
             # Only explicit whitelist summary is exported, never the whole am

@@ -46,6 +46,20 @@ public class MeshInstrumentation extends Instrumentation {
     }
     private void click(int id) { runOnMainSync(() -> ((Button) activity.findViewById(id)).performClick()); }
     private void set(int id, String value) { runOnMainSync(() -> ((EditText) activity.findViewById(id)).setText(value)); }
+    private void vpnDisclosure(boolean agree, boolean capture) throws Exception {
+        await(() -> {
+            AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
+            if (root == null || !"au.fintex.mnet".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())
+                    || root.findAccessibilityNodeInfosByText("VPN data disclosure").isEmpty()) return false;
+            if (capture) {
+                Bitmap image = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).takeScreenshot();
+                try (FileOutputStream file = new FileOutputStream(new File(getTargetContext().getFilesDir(), "fixture-vpn-disclosure.png"))) {
+                    if (image == null || !image.compress(Bitmap.CompressFormat.PNG, 100, file)) throw new IOException("disclosure screenshot unavailable");
+                }
+            }
+            return clickText(root, agree ? "Agree" : "Not now");
+        }, agree ? "vpn-disclosure-agree" : "vpn-disclosure-decline");
+    }
     private void vpnConsent() throws Exception {
         await(() -> {
             if (MnetVpnService.currentNode() != null) return true;
@@ -269,12 +283,23 @@ public class MeshInstrumentation extends Instrumentation {
             try (FileOutputStream file = new FileOutputStream(new File(getTargetContext().getFilesDir(), "fixture-launch.png"))) {
                 if (launchImage == null || !launchImage.compress(Bitmap.CompressFormat.PNG, 100, file)) throw new IOException("screenshot unavailable");
             }
+            // Exercise decline before any enrollment values enter the UI.
+            click(R.id.connect_button);
+            vpnDisclosure(false, true);
+            await(() -> {
+                AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
+                return root != null && "au.fintex.mnet".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())
+                        && root.findAccessibilityNodeInfosByText("VPN data disclosure").isEmpty()
+                        && MnetVpnService.currentNode() == null
+                        && !getTargetContext().getSharedPreferences("mnet", 0).getBoolean("vpn_disclosure_v1", false);
+            }, "vpn-disclosure-decline-stays-off");
             set(R.id.server_url, options.getString("server"));
             set(R.id.network_name, "android-emulator");
             set(R.id.auth_key, options.getString("key"));
             set(R.id.device_name, "android-emulator");
             set(R.id.exit_node, "");
             click(R.id.connect_button);
+            vpnDisclosure(true, false);
             vpnConsent();
             await(this::up, "initial-vpn-up");
             osVpnReady();

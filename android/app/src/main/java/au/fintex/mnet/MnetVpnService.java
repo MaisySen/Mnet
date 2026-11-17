@@ -21,6 +21,7 @@ public class MnetVpnService extends VpnService {
     public static final String ACTION_STATUS = "au.fintex.mnet.STATUS";
     public static final String EXTRA_STATUS = "status_json";
     public static final String EXTRA_ALWAYS_ON = "always_on";
+    static final String VPN_DISCLOSURE_KEY = "vpn_disclosure_v1";
 
     private static final String TAG = "MnetVPN";
     private static final String CHANNEL = "mesh";
@@ -85,6 +86,9 @@ public class MnetVpnService extends VpnService {
                     prefs.getString("server", ""), prefs.getString("network", ""),
                     prefs.getString("authkey", ""), prefs.getString("name", android.os.Build.MODEL),
                     prefs.getString("exitnode", ""));
+            if (!prefs.getBoolean(VPN_DISCLOSURE_KEY, false)) {
+                throw new IllegalStateException("Open Mnet and accept the VPN data disclosure before connecting.");
+            }
             String server = config.server;
             String network = config.network;
             String authKey = config.authKey;

@@ -20,7 +20,7 @@ public class VpnServiceTest {
  @After public void destroy()throws Exception{service.onDestroy();awaitWorker();mobile.Mobile.factory=mobile.Node::new;Mode.managed=false;}
  private Thread worker()throws Exception{java.lang.reflect.Field f=MnetVpnService.class.getDeclaredField("worker");f.setAccessible(true);return(Thread)f.get(service);}
  private void awaitWorker()throws Exception{Thread w=worker();if(w!=null){long end=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);while(w.isAlive()&&System.nanoTime()<end){Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();w.join(5);}assertFalse("worker must exit",w.isAlive());}}
- private void configure(){service.getSharedPreferences("mnet",0).edit().putString("server","https://test.invalid").putString("network","test").apply();}
+ private void configure(){service.getSharedPreferences("mnet",0).edit().putBoolean(MnetVpnService.VPN_DISCLOSURE_KEY,true).putString("server","https://test.invalid").putString("network","test").apply();}
  private boolean running()throws Exception{java.lang.reflect.Field f=MnetVpnService.class.getDeclaredField("running");f.setAccessible(true);return f.getBoolean(service);}
  private java.util.List<Intent> broadcasts(){return Shadows.shadowOf((Application)service.getApplicationContext()).getBroadcastIntents();}
  private void errorContains(String text){assertTrue(broadcasts().stream().anyMatch(i->i.getStringExtra(MnetVpnService.EXTRA_STATUS)!=null&&i.getStringExtra(MnetVpnService.EXTRA_STATUS).contains(text)));}
@@ -28,6 +28,12 @@ public class VpnServiceTest {
   for(String name:new String[]{"node","sharedNode"}){java.lang.reflect.Field f=MnetVpnService.class.getDeclaredField(name);f.setAccessible(true);f.set(service,value);}
  }
  private Notification notification()throws Exception{java.lang.reflect.Method m=MnetVpnService.class.getDeclaredMethod("buildNotification",String.class);m.setAccessible(true);return(Notification)m.invoke(service,"test");}
+ @Test public void savedConfigCannotBypassProminentDisclosure()throws Exception{
+  configure();service.getSharedPreferences("mnet",0).edit().remove(MnetVpnService.VPN_DISCLOSURE_KEY).apply();
+  java.util.concurrent.atomic.AtomicInteger created=new java.util.concurrent.atomic.AtomicInteger();mobile.Mobile.factory=()->{created.incrementAndGet();return new mobile.Node();};
+  assertEquals(Service.START_STICKY,service.onStartCommand(null,0,1));awaitWorker();
+  assertEquals(0,created.get());assertFalse(running());assertNull(MnetVpnService.currentNode());errorContains("accept the VPN data disclosure");
+ }
  @Test public void missingSavedConfigFailsBeforeNodeCreationAndCanRetry()throws Exception{
   java.util.concurrent.atomic.AtomicInteger created=new java.util.concurrent.atomic.AtomicInteger();mobile.Mobile.factory=()->{created.incrementAndGet();return new mobile.Node();};
   service.getSharedPreferences("mnet",0).edit().clear().apply();

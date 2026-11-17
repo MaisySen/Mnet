@@ -23,7 +23,7 @@ class Guards(unittest.TestCase):
         workflow = (ROOT / '.github/workflows/android-emulator.yml').read_text()
         outputs = workflow.split('path: |')[1]
         self.assertNotIn('*', outputs)
-        self.assertEqual({'summary.json', 'instrumentation.txt', 'launch.png', 'privacy.png', 'consent.png', 'consent.mp4'}, {x.strip().split('/')[-1] for x in outputs.splitlines() if x.strip()})
+        self.assertEqual({'summary.json', 'instrumentation.txt', 'launch.png', 'privacy.png', 'vpn-disclosure.png', 'consent.png', 'consent.mp4'}, {x.strip().split('/')[-1] for x in outputs.splitlines() if x.strip()})
         self.assertIn('runs-on: ubuntu-latest', workflow)
     def test_real_consent_and_no_protection_disable(self):
         source = (ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
@@ -32,6 +32,12 @@ class Guards(unittest.TestCase):
         self.assertIn('root.findAccessibilityNodeInfosByViewId("android:id/button1")', source)
         self.assertNotIn('package_verifier_enable', source)
         self.assertNotIn('verifier_verify_adb_installs', source)
+    def test_vpn_disclosure_decline_is_captured_before_enrollment(self):
+        source = (ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
+        self.assertLess(source.index('vpnDisclosure(false, true);'), source.index('set(R.id.auth_key,'))
+        self.assertIn('vpn-disclosure-decline-stays-off', source)
+        self.assertIn('vpnDisclosure(true, false);', source)
+        self.assertIn('MnetVpnService.currentNode() == null', source)
     def test_boot_diagnostics_are_fixed_categories_only(self):
         source = (ROOT / 'scripts/android-emulator-validation.py').read_text()
         self.assertIn("'missing_shared_library':", source)

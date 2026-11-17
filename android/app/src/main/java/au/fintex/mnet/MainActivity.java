@@ -185,6 +185,28 @@ public class MainActivity extends Activity {
             toggle.setText(R.string.connect);
             return;
         }
+        if (!getSharedPreferences("mnet", MODE_PRIVATE).getBoolean(MnetVpnService.VPN_DISCLOSURE_KEY, false)) {
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("VPN data disclosure")
+                    .setMessage("Mnet uses Android's VPN service for encrypted private-mesh traffic and remote access. " +
+                            "It processes mesh traffic and DNS queries. " +
+                            "The control service and approved peers receive public device identity and connection metadata to establish and secure connections. " +
+                            "Google and Cloudflare STUN receive source IP/port metadata for NAT discovery. " +
+                            "DNS names outside .mnet, including queries from other apps, go to the configured resolver or Cloudflare 1.1.1.1, which sees those names and connection metadata. " +
+                            "Mnet does not tunnel all internet traffic or use traffic for advertising. " +
+                            "Agree continues to Android's separate VPN permission. Not now leaves the VPN off without saving join details.")
+                    .setPositiveButton("Agree", (d, w) -> {
+                        getSharedPreferences("mnet", MODE_PRIVATE).edit().putBoolean(MnetVpnService.VPN_DISCLOSURE_KEY, true).apply();
+                        connectAfterDisclosure();
+                    })
+                    .setNegativeButton("Not now", null)
+                    .show();
+            return;
+        }
+        connectAfterDisclosure();
+    }
+
+    private void connectAfterDisclosure() {
         SharedPreferences.Editor ed = getSharedPreferences("mnet", MODE_PRIVATE).edit();
         ed.putString("server", server.getText().toString().trim());
         ed.putString("network", network.getText().toString().trim());
@@ -203,7 +225,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
-        if (req == 1 && res == RESULT_OK) {
+        if (req == 1 && res == RESULT_OK && getSharedPreferences("mnet", MODE_PRIVATE).getBoolean(MnetVpnService.VPN_DISCLOSURE_KEY, false)) {
             connected = true;
             toggle.setText(R.string.disconnect);
             status.setText("Joining...");

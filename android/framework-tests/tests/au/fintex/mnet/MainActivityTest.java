@@ -37,6 +37,31 @@ public class MainActivityTest {
  @Test public void downStateLeavesConnectAvailableEvenWhenManaged()throws Exception{
   status("up",true);status("down",true);assertTrue(((Button)activity.findViewById(R.id.connect_button)).isEnabled());assertFalse((Boolean)field("connected"));assertNull(Shadows.shadowOf(activity).getNextStartedService());
  }
+ @Test public void vpnDisclosureDeclineAndCancelDoNotSaveOrStart() {
+  ((EditText)activity.findViewById(R.id.auth_key)).setText("fixture-not-to-save");
+  Button connect=activity.findViewById(R.id.connect_button);connect.performClick();
+  android.app.AlertDialog first=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+  String text=Shadows.shadowOf(first).getMessage().toString();
+  assertTrue(text.contains("DNS names outside .mnet"));assertTrue(text.contains("queries from other apps"));assertTrue(text.contains("Google and Cloudflare STUN"));
+  assertFalse(activity.getSharedPreferences("mnet",0).contains("authkey"));
+  first.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).performClick();
+  assertFalse(activity.getSharedPreferences("mnet",0).getBoolean(MnetVpnService.VPN_DISCLOSURE_KEY,false));
+  assertNull(Shadows.shadowOf(activity).getNextStartedService());assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
+  connect.performClick();android.app.AlertDialog reopened=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();assertNotSame(first,reopened);reopened.cancel();
+  assertFalse(activity.getSharedPreferences("mnet",0).contains("authkey"));assertNull(Shadows.shadowOf(activity).getNextStartedService());
+ }
+ @Test public void vpnDisclosureAgreePersistsOnlyAfterExplicitAction() {
+  ((Button)activity.findViewById(R.id.connect_button)).performClick();
+  assertFalse(activity.getSharedPreferences("mnet",0).getBoolean(MnetVpnService.VPN_DISCLOSURE_KEY,false));
+  org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog().getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+  Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+  assertTrue(activity.getSharedPreferences("mnet",0).getBoolean(MnetVpnService.VPN_DISCLOSURE_KEY,false));
+  assertTrue(activity.getSharedPreferences("mnet",0).contains("server"));
+ }
+ @Test public void unsolicitedVpnPermissionResultCannotStartWithoutDisclosure() {
+  activity.onActivityResult(1,android.app.Activity.RESULT_OK,null);
+  assertNull(Shadows.shadowOf(activity).getNextStartedService());
+ }
  @Test public void privacySupportRequiresUserActionAndDoesNotAttachSecrets() {
   ((Button)activity.findViewById(R.id.privacy_support_button)).performClick();
   android.app.AlertDialog dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
