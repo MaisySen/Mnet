@@ -8,6 +8,8 @@ on:
       - 'android/instrumentation/**'
       - 'android/app/**'
       - 'mobile/**'
+      - 'internal/dns/**'
+      - 'internal/daemon/**'
       - 'cmd/mnetd/native_peer_test.go'
       - 'scripts/android-emulator-validation.py'
   workflow_dispatch:

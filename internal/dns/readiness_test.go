@@ -137,3 +137,29 @@ func TestConcurrentDNSStartAndCloseCannotLeakOrRevive(t *testing.T) {
 		}
 	}
 }
+
+func TestKnownIPv4NameHasNoAAAAInsteadOfNXDOMAIN(t *testing.T) {
+	s, _ := New("127.0.0.1")
+	s.Update(testMap())
+	if err := s.startAt("127.0.0.1:0"); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for _, transport := range []string{"udp", "tcp"} {
+		for _, kind := range []uint16{dns.TypeAAAA, dns.TypeTXT, dns.TypeA} {
+			q := new(dns.Msg)
+			q.SetQuestion("server.home.mnet.", kind)
+			r, _, err := (&dns.Client{Net: transport, Timeout: time.Second}).Exchange(q, s.listener.Addr().String())
+			if err != nil || r == nil || r.Rcode != dns.RcodeSuccess {
+				t.Fatalf("known name denied for type%d: %v / %v", kind, r, err)
+			}
+			want := 0
+			if kind == dns.TypeA {
+				want = 1
+			}
+			if len(r.Answer) != want {
+				t.Fatalf("type%d answer count%d", kind, len(r.Answer))
+			}
+		}
+	}
+}

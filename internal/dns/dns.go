@@ -225,11 +225,15 @@ func (s *Server) handle(w dns.ResponseWriter, r *dns.Msg) {
 	ip, mine := s.records[name]
 	s.mu.RUnlock()
 
-	if mine && q.Qtype == dns.TypeA {
-		m.Answer = append(m.Answer, &dns.A{
-			Hdr: dns.RR_Header{Name: name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 30},
-			A:   net.ParseIP(ip).To4(),
-		})
+	if mine {
+		// Existing IPv4-only names have no AAAA record, but do exist. NXDOMAIN
+		// here can poison a parallel A lookup in the OS negative-name cache.
+		if q.Qtype == dns.TypeA {
+			m.Answer = append(m.Answer, &dns.A{
+				Hdr: dns.RR_Header{Name: name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 30},
+				A:   net.ParseIP(ip).To4(),
+			})
+		}
 		w.WriteMsg(m)
 		return
 	}
