@@ -28,6 +28,13 @@ func FuzzParseResponse(f *testing.F) {
 		if err != nil {
 			return
 		}
+		declared := 20 + int(binary.BigEndian.Uint16(packet[2:]))
+		// Trimming bytes outside the declared STUN message cannot invalidate
+		// or change an accepted endpoint.
+		trimmed, trimErr := ParseResponse(packet[:declared], id)
+		if trimErr != nil || trimmed != endpoint {
+			t.Fatal("accepted reply depended on trailing bytes")
+		}
 		if endpoint == "" {
 			t.Fatal("accepted reply has no endpoint")
 		}

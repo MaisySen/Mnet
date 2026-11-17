@@ -59,13 +59,22 @@ func ParseResponse(msg []byte, txid TxID) (string, error) {
 	if len(msg) < 20+length {
 		return "", errors.New("short message")
 	}
+	if length%4 != 0 {
+		return "", errors.New("unaligned message length")
+	}
+	// A UDP datagram may contain trailing bytes. They are not part of the
+	// header-declared STUN message and must never satisfy an attribute body.
+	end := 20 + length
+	endpoint := ""
 	off := 20
-	for off+4 <= 20+length {
+	for off+4 <= end {
 		typ := binary.BigEndian.Uint16(msg[off:])
 		l := int(binary.BigEndian.Uint16(msg[off+2:]))
-		if off+4+l > len(msg) {
-			break
+		padded := (l + 3) &^ 3
+		if off+4+padded > end {
+			return "", errors.New("attribute exceeds message")
 		}
+
 		val := msg[off+4 : off+4+l]
 		switch typ {
 		case attrXorMapped:
@@ -76,18 +85,22 @@ func ParseResponse(msg []byte, txid TxID) (string, error) {
 				for i := 0; i < 4; i++ {
 					ip[i] = val[4+i] ^ cookie[i]
 				}
-				return fmt.Sprintf("%s:%d", ip, port), nil
+				if endpoint == "" {
+					endpoint = fmt.Sprintf("%s:%d", ip, port)
+				}
 			}
 		case attrMapped:
 			if len(val) >= 8 && val[1] == 0x01 {
 				port := binary.BigEndian.Uint16(val[2:])
-				return fmt.Sprintf("%s:%d", net.IP(val[4:8]), port), nil
+				if endpoint == "" {
+					endpoint = fmt.Sprintf("%s:%d", net.IP(val[4:8]), port)
+				}
 			}
 		}
-		off += 4 + l
-		if l%4 != 0 {
-			off += 4 - l%4
-		}
+		off += 4 + padded
+	}
+	if endpoint != "" {
+		return endpoint, nil
 	}
 	return "", errors.New("no mapped address in response")
 }
