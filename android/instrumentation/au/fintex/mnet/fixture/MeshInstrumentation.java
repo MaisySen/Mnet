@@ -128,6 +128,15 @@ public class MeshInstrumentation extends Instrumentation {
     private void enableRemoteControl() throws Exception {
         stage = "accessibility-disclosure";
         await(() -> clickText(getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow(), "Open accessibility settings"), "accessibility-open-disclosure");
+        SystemClock.sleep(3500);
+        await(() -> clickText(getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow(), "Not now"), "accessibility-decline");
+        await(() -> {
+            AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
+            return root != null && "au.fintex.mnet".contentEquals(root.getPackageName()) && !au.fintex.mnet.MnetAccessibilityService.available();
+        }, "accessibility-decline-stays-in-app");
+        SystemClock.sleep(1500);
+        await(() -> clickText(getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow(), "Open accessibility settings"), "accessibility-reopen-disclosure");
+        SystemClock.sleep(3500);
         await(() -> clickText(getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow(), "Agree"), "accessibility-agree");
         await(() -> {
             if (au.fintex.mnet.MnetAccessibilityService.available()) return true;

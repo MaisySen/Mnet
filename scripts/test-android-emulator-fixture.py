@@ -72,6 +72,8 @@ class Guards(unittest.TestCase):
         peer = (ROOT / 'cmd/mnetd/native_peer_test.go').read_text()
         self.assertIn('screen-projection-consent', test)
         self.assertIn('screen-viewer-consent', test)
+        self.assertIn('accessibility-decline-stays-in-app', test)
+        self.assertIn('accessibility-reopen-disclosure', test)
         self.assertIn('screen-stop-closed-peer', test)
         self.assertIn('jpeg.Decode(', peer)
         self.assertIn('frames.Load() >= 2', peer)
