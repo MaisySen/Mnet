@@ -25,9 +25,9 @@ These behaviors describe newer source, not the older published APK. Check [STATU
 4. If the host reports that the display changed, restart hosting and obtain fresh capture consent before controlling again. Input stays refused after a width/height/rotation mismatch. There is no dynamic rotation/capture-resize implementation.
 5. A disconnected viewer clears its old frame and retries with capped backoff while open. Leaving it closes owned connection state. This has source/simulation/native transport evidence, not physical Android reconnect proof.
 
-Malformed, unsupported or out-of-capture-frame pointer events are refused. Go omitted zero coordinates remain valid. Accessibility must be enabled by the user. Actual permission/gesture flow now passes API34/36 disposable emulator matrices; physical-phone behavior remains a validation gap. See [current Android evidence](android-submission-evidence.md), including prior intermittent startup failures.
+Malformed, unsupported or out-of-capture-frame pointer events are refused. Go omitted zero coordinates remain valid. Accessibility must be enabled by the user. Earlier permission/gesture fixtures passed on API34/36 at their dated revisions. Newer private DNS and separate-control/revoke fixtures are not a passing matrix; see [current status](STATUS.md). Physical-phone behavior remains a validation gap. See [current Android evidence](android-submission-evidence.md), including prior intermittent startup failures.
 
-For developers: use the [framework guide](../android/framework-tests/README.md) for the exact64-case matrix, replacements and API34 Activity exclusion. Java/dex and arm64 binding builds do not execute JNI. Historical implementation notes below are evidence history, not extra setup steps.
+For developers: use the [framework guide](../android/framework-tests/README.md) for the simulation scope, replacements and API34 Activity exclusion; counts in historical sections refer to their dated revisions. Java/dex and arm64 binding builds do not execute JNI. Historical implementation notes below are evidence history, not extra setup steps.
 
 ## Control plane
 

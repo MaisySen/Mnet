@@ -1,5 +1,13 @@
 # Mnet project status
 
+## Current source limits (2026-11-18)
+
+The newer source is not the preserved owner-only code15 AAB below. Current Android private DNS reliability and separate remote-control revoke validation remain open. At `df7a179`, the API34 native fixture timed out receiving an own-process underlay DNS response; API36 decoded peer frames but its control-dialog screenshot helper failed before control approval, and the independent-app UDP DNS send was denied. Neither native matrix passed: https://github.com/MaisySen/Mnet/actions/runs/44155049103 . No crash/panic/OOM flags were reported. General session, kernel, Windows and macOS jobs passed, but the Go job later failed the prototype browser transport timeout: https://github.com/MaisySen/Mnet/actions/runs/44155049179 .
+
+Fixture-only `f97188a` compares stable dialog pixels without unrelated changing recording-timer/background pixels and preserves safe failure screenshots. Native CI results for that change are pending. Fresh local framework simulation passes138selected app cases and78VPN cases, with fake Go/system/accessibility inputs; the unchanged browser prototype passes84screen/width checks and15model tests. These are not physical/native DNS, revoke, security certification or production Multies integration proof.
+
+Multies workspace-native architecture has been studied read-only. Actual workspace-owned device enrollment/capabilities/revocation and the production verifier are not implemented; inactive policy foundations do not secure the existing manual engineering flow. Legacy empty mesh ACLs allow all peer pairs, and existing ACLs are not application-port rules. Do not automatically import legacy approvals as workspace access.
+
 ## Current Android source candidate (2026-11-17)
 
 The target36/minimum24 candidate retains screen control, explicit backup exclusions and separate accessibility, projection, viewer and VPN disclosure/consent gates. Actual API34/36 matrices pass at8def887 and2ddb11e, covering APK/JNI startup, OS VPN permission, own-process bidirectional4MiB transfers/reconnect, separate app UID unbound TCP twice, accessibility decline/agree/Settings, projection/viewer approval, decoded JPEGs, mesh gesture receipt and stop closure. [Product-source matrix](https://github.com/MaisySen/Mnet/actions/runs/44059686143), [capture-fixture repeat](https://github.com/MaisySen/Mnet/actions/runs/44060519012), [general CI](https://github.com/MaisySen/Mnet/actions/runs/44059686225). Earlier intermittent TCP/frame failures remain reliability risks. Earlier disclosure screenshots caught incomplete rendering; later fixture repeats below settle current screenshot evidence without changing this preserved binary.
