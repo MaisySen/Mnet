@@ -648,8 +648,15 @@ The full local gate bundle passed with this test addition: build, Windows/macOS 
 No signed/published APK/AAB, deployment or existing user-device state changed. Physical-platform/JNI/capture/input/Android UI/boot gaps remain unchanged.
 
 
-## CLI saved-frame private replacement (new source, CI pending)
+## CLI saved-frame private replacement (a1f503c all-five CI verified)
 
 The CLI's intentional latest.jpg replacement now uses a mode-0600 same-directory temporary file, checks the write/close result, then renames over the destination. It does not open/truncate or follow the destination's final symlink. New save directories request 0700 rather than 0755. Existing parent directory permissions are not changed; parent paths must be trusted. Windows permission/rename semantics remain platform-specific, not Unix privacy/atomicity certification.
 
 Before-fix tests reproduced mode0644 snapshots and symlink-target overwriting. Private-mode checks (non-Windows), repeated latest-frame replacement, target preservation and no temporary-file leak pass 50 race repetitions. Symlink tests can skip when platform rights are unavailable; executed locally. Fresh full-repository race tests pass. Fixtures use plain byte strings to test filesystem handling, not actual display pixels. This does not guarantee durability, harden parent-directory substitution, alter older snapshots elsewhere or show write errors in an immediate UI. All-five [c7dd7b3 CI](https://github.com/MaisySen/Mnet/actions/runs/43983110424) is verified. Shared Go/mobile source and its 0396795 bindings are unchanged. No release, deployment or existing user file changed.
+
+
+## Snapshot replacement failure and permission regression coverage
+
+Additional tests refuse replacement of a nonempty destination directory, preserve its sentinel bytes and verify no same-directory temporary file is left. Replacing an older0644 regular snapshot creates a new0600 file on non-Windows platforms rather than inheriting broad mode bits. All snapshot filesystem tests pass 50 race repetitions. Full local gates pass with these additions: build, Windows/macOS cross-builds, vet, vulnerability scan, uncached full race suite, normal/burst mesh-file stress, source-gate tests and secret scan.
+
+All five [a1f503c CI jobs](https://github.com/MaisySen/Mnet/actions/runs/43984790512) passed. Its native Windows/macOS jobs execute the CLI tests, with symlink/Unix-mode checks conditional on platform capability. The additional failure-path revision is not yet CI verified. Shared Go/mobile source and the0396795 binding build are unchanged. No new physical capture/UI/privacy-ACL certification, signed release, deployment or existing user snapshot mutation is implied.

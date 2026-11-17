@@ -49,3 +49,42 @@ func TestSavedSessionFrameDoesNotWriteThroughSymlink(t *testing.T) {
 		t.Fatalf("temporary file leak: %v %v", entries, err)
 	}
 }
+
+func TestSavedSessionFrameFailedReplacementCleansTemporary(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "latest.jpg")
+	if err := os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(path, "preserve")
+	if err := os.WriteFile(sentinel, []byte("old-destination"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveSessionFrame(path, []byte("new-frame")); err == nil {
+		t.Fatal("replaced nonempty directory")
+	}
+	got, err := os.ReadFile(sentinel)
+	if err != nil || string(got) != "old-destination" {
+		t.Fatalf("old destination changed: %q %v", got, err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 1 || entries[0].Name() != "latest.jpg" {
+		t.Fatalf("failed replacement leaked temporary: %v %v", entries, err)
+	}
+}
+func TestSavedSessionFrameReplacesBroadFileWithPrivateFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "latest.jpg")
+	if err := os.WriteFile(path, []byte("older"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveSessionFrame(path, []byte("new")); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
+		t.Fatalf("inherited old permissions: %v", info.Mode())
+	}
+}
