@@ -295,7 +295,7 @@ func nativePeerScreenProof(peer *proofNodeT, root string) {
 			}
 		}})
 		for time.Now().Before(deadline) {
-			flags := map[string]bool{"decoded_frames": frames.Load() >= 2, "closed_after_stop": false}
+			flags := map[string]bool{"decoded_frames": frames.Load() >= 2, "one_decoded_frame": frames.Load() >= 1, "viewer_connected": true, "closed_after_stop": false}
 			if frames.Load() >= 2 {
 				var point struct{ X, Y, Width, Height int }
 				if data, e := os.ReadFile(filepath.Join(root, "input-target.json")); e == nil && json.Unmarshal(data, &point) == nil && point.Width > 0 && point.Height > 0 {
@@ -308,15 +308,23 @@ func nativePeerScreenProof(peer *proofNodeT, root string) {
 			case <-mux.Closed():
 				flags["closed_after_stop"] = true
 				data, _ := json.Marshal(flags)
-				os.WriteFile(filepath.Join(root, "screen-proof.json"), data, 0o600)
+				writeScreenProof(root, data)
 				return
 			default:
 			}
 			data, _ := json.Marshal(flags)
-			os.WriteFile(filepath.Join(root, "screen-proof.json"), data, 0o600)
+			writeScreenProof(root, data)
 			time.Sleep(200 * time.Millisecond)
 		}
 		mux.Close()
 		return
+	}
+}
+
+// Atomic replacement avoids transient empty JSON while the runner reads flags.
+func writeScreenProof(root string, data []byte) {
+	path := filepath.Join(root, "screen-proof.next")
+	if os.WriteFile(path, data, 0o600) == nil {
+		_ = os.Rename(path, filepath.Join(root, "screen-proof.json"))
 	}
 }

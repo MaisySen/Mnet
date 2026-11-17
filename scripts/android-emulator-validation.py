@@ -274,6 +274,11 @@ def main():
                 if lines:
                     (ARTIFACTS / 'instrumentation.txt').write_text('\n'.join(lines) + '\n')
         diagnostic = {'result': 'fail', 'stage': stage, 'error_type': type(failure).__name__}
+        try:
+            flags = json.loads((root / 'screen-proof.json').read_text())
+            diagnostic['peer_screen'] = {name: flags.get(name) is True for name in ('viewer_connected', 'one_decoded_frame', 'decoded_frames', 'closed_after_stop')}
+        except (OSError, ValueError):
+            pass
         # Stage is written from fixture-controlled literal await labels only.
         allowed = {'consent-record-ready', 'accessibility-disclosure', 'accessibility-system-enable', 'accessibility-return-host', 'screen-projection-consent', 'screen-viewer-consent', 'screen-decoded-by-peer', 'remote-mesh-gesture-click', 'screen-stop-closed-peer', 'consent-record-stopped'}
         if 'adb' in locals():

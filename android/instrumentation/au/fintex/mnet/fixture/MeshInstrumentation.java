@@ -177,6 +177,18 @@ public class MeshInstrumentation extends Instrumentation {
         try (FileOutputStream file = new FileOutputStream(new File(getTargetContext().getFilesDir(), "fixture-input-target.json"))) {
             file.write(point.toString().getBytes("UTF-8"));
         }
+        // A static screen is allowed to produce one image only. Animate a
+        // disposable marker so the two-decoded-frame proof tests real updates,
+        // rather than depending on incidental OS animation timing.
+        android.os.Handler pulseHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+        pulseHandler.post(new Runnable() {
+            int pulse;
+            public void run() {
+                if (remoteTapped.get() || activity.isFinishing()) return;
+                target[0].setText("Disposable remote tap target " + (++pulse));
+                pulseHandler.postDelayed(this, 500);
+            }
+        });
         click(R.id.start_hosting_button);
         await(() -> {
             AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
