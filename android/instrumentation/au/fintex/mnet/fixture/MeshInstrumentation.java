@@ -186,6 +186,7 @@ public class MeshInstrumentation extends Instrumentation {
             }
             return clickText(root, "Start now") || clickText(root, "Start") || clickText(root, "Share screen");
         }, "screen-projection-consent");
+        new File(getTargetContext().getFilesDir(), "fixture-projection-ready").createNewFile();
         await(() -> {
             AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
             if (root == null || !"au.fintex.mnet".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())) return false;

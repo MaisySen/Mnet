@@ -171,7 +171,6 @@ def main():
             stage = 'independent-app-unbound-tcp'
             independent = run(adb + ['shell', 'am', 'instrument', '-w', '-r', '-e', 'peer', peer['ipv4'], 'au.fintex.mnet.fixture/au.fintex.mnet.fixture.IndependentAppInstrumentation'], timeout=150)
             stage = 'actual-screen-projection'
-            (root / 'screen-start').touch()
             run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-peer-done'])
             def screen_flag(name):
                 try:
@@ -193,10 +192,12 @@ def main():
                 (root / 'input-target.json').write_text(json.dumps(point))
                 return True
             wait(lambda: input_target() or instrument.poll() is not None, 'input-target', 90)
+            wait(lambda: subprocess.run(list(map(str, adb + ['shell', 'run-as', 'au.fintex.mnet', 'test', '-f', 'files/fixture-projection-ready'])), capture_output=True, timeout=10).returncode == 0 or instrument.poll() is not None, 'projection-ready', 90)
+            (root / 'screen-start').touch()
             wait(lambda: screen_flag('decoded_frames') or instrument.poll() is not None, 'screen-frames', 100)
             if instrument.poll() is None:
                 run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-screen-received'])
-                wait(lambda: screen_flag('closed_after_stop'), 'screen-stop', 30)
+                wait(lambda: screen_flag('closed_after_stop') or instrument.poll() is not None, 'screen-stop', 75)
                 run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-screen-closed'])
                 wait(lambda: subprocess.run(list(map(str, adb + ['shell', 'run-as', 'au.fintex.mnet', 'test', '-f', 'files/fixture-record-stop'])), capture_output=True, timeout=10).returncode == 0 or instrument.poll() is not None, 'consent-record-stop', 15)
                 if recording is not None:
@@ -237,6 +238,14 @@ def main():
         (ARTIFACTS / 'summary.json').write_text(json.dumps({'result': 'pass', 'scope': 'actual target36 APK/JNI/VPN, independent app unbound TCP, hash reconnect, accessibility/projection/viewer consent, remote mesh gesture, decoded frames and stop', 'physical_device': False, 'remote_capture': True, 'remote_input': True, 'play_protect_install': False}, indent=2))
         print('PASS actual emulator VPN/JNI and real Go peer; physical/capture/input/Play Protect proof remains open')
     except Exception as failure:
+        # Preserve only the existing fixed summary if an orchestration wait
+        # fails before the normal collection point. Never expose raw am output.
+        for name in ('instrumentation',):
+            path = root / (name + '.log')
+            if path.exists():
+                lines = [line for line in path.read_text(errors='replace').splitlines() if line.startswith('INSTRUMENTATION_RESULT: summary=')]
+                if lines:
+                    (ARTIFACTS / 'instrumentation.txt').write_text('\n'.join(lines) + '\n')
         (ARTIFACTS / 'summary.json').write_text(json.dumps({'result': 'fail', 'stage': stage, 'error_type': type(failure).__name__}, indent=2))
         raise RuntimeError('Android fixture failed at ' + stage) from None
     finally:
