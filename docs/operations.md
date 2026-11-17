@@ -691,3 +691,8 @@ New source stops recording after an output error and keeps any partial file for 
 ### Always-on disconnect controls on API 29+
 
 New source reads Android's always-on mode on API 29+. The notification omits disconnect, the connected main-screen disconnect button is disabled, and the service ignores stale disconnect requests. Use Android Settings to change always-on/disconnect. The app does not change those system settings or lockdown mode. Status refresh carries mode changes to the UI; no immediate Settings-toggle timing guarantee is verified. API 24-28 keeps earlier behavior while legacy detection remains open. Source/JVM-fake/compile checks only; actual Settings/notification/main-screen pixels, VPN lifecycle and reboot are unverified, and published downloads are unchanged.
+
+
+### Always-on main-screen framework follow-up
+
+New framework tests execute actual MainActivity code on simulated API24/25/26/33 with a fake VPN endpoint, placeholder resources and direct private-status receiver invocation. Twelve new cases check managed connected states, stale-click rejection, mode refresh back to manual disconnect and Connect availability when down. The full suite passes76cases. Removing either disabled-state wiring or stale-handler rejection independently fails four cases. This does not query real system mode, prove receiver permission enforcement, validate app strings/layout/pixels, execute MnetVpnService notification/disconnect code or establish device/reboot support. A volatile node snapshot also avoids reading a cleared service reference twice when handling a managed stale disconnect. All-five5f0e92bCI is verified: https://github.com/MaisySen/Mnet/actions/runs/43998045061 . New coverage follow-up CI is pending.

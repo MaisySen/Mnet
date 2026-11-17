@@ -11,7 +11,7 @@ cp "$ROOT/android/framework-tests/pom.xml" "$OUT/pom.xml"
 mkdir -p "$OUT/src/main/java/au/fintex/mnet" "$OUT/src/test/java" "$OUT/libs"
 cp -R "$ROOT/android/framework-tests/stubs/." "$OUT/src/main/java/"
 cp -R "$ROOT/android/framework-tests/tests/." "$OUT/src/test/java/"
-for source in HostSessionService SessionConsent ProjectionGuard VpnPlatform CaptureEncoder ViewerActivity ViewerGate ViewerTap; do
+for source in MainActivity HostSessionService SessionConsent ProjectionGuard VpnPlatform CaptureEncoder ViewerActivity ViewerGate ViewerTap; do
     cp "$ROOT/android/app/src/main/java/au/fintex/mnet/$source.java" "$OUT/src/main/java/au/fintex/mnet/"
 done
 cd "$OUT"

@@ -1,1 +1,1 @@
-package au.fintex.mnet;public class MnetVpnService{public static mobile.Node node;public static mobile.Node currentNode(){return node;}}
+package au.fintex.mnet;public class MnetVpnService{public static final String ACTION_STATUS="au.fintex.mnet.STATUS", EXTRA_STATUS="status_json", EXTRA_ALWAYS_ON="always_on";public static mobile.Node node;public static mobile.Node currentNode(){return node;}}

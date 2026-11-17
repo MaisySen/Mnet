@@ -44,7 +44,8 @@ public class MnetVpnService extends VpnService {
         if (intent != null && "disconnect".equals(intent.getAction())) {
             if (VpnAlwaysOn.managed(this)) {
                 // The system/Settings owns always-on stop, including stale actions.
-                if (node != null) broadcast(node.status());
+                Node current = node;
+                if (current != null) broadcast(current.status());
                 return START_STICKY;
             }
             stopMesh();

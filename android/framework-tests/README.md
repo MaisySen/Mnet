@@ -10,18 +10,22 @@ The harness uses Robolectric4.18. Its AAR extraction is limited to pinned Androi
 
 ## Current coverage
 
-64 cases pass in a fresh local run at `d0afcb6`. All five jobs passed in [that revision's CI](https://github.com/MaisySen/Mnet/actions/runs/43994622318).
+76 cases pass in the new local source run (CI pending). All five jobs passed in [5f0e92b CI](https://github.com/MaisySen/Mnet/actions/runs/43998045061) before this coverage follow-up.
 
 | Actual application source | Simulated API levels | Cases | Checks |
 | --- | --- | --- | --- |
 | HostSessionService, SessionConsent, ProjectionGuard, VpnPlatform, CaptureEncoder |24,25,26,33,34|60 (12 per API)|Notification/channel construction, receiver registration, nonsticky restart/stop, missing-consent cleanup, blocking consent cancellation/exact-answer isolation, instance-local auto-accept/reset, synthetic RGBA-to-JPEG row bounds, host input geometry refusal and pointer validation|
 | ViewerActivity, ViewerGate, ViewerTap |24,25,26,33|4 (one per API)|Actual asynchronous connection publication, simulated down/up/cancel/drag dispatch, synthetic JPEG callback, no input before a decoded frame, resize cancellation, disconnect clearing and destruction|
 
+| MainActivity |24,25,26,33|12 (three per API)|Managed up/joining/waiting disables disconnect and explains Settings, stale handler calls cannot send stop, mode refresh restores manual stop, down keeps Connect available|
+
 Service tests use reflection to set capture/running state rather than start a valid projection. The geometry-refusal latch resets in actual capture setup according to source checks; that restart path is not executed here. Pointer checks preserve omitted-zero coordinates and reject malformed/unsupported/out-of-frame values.
 
 ## Explicit replacements
 
-`mobile.Node`, `SessionViewer`, `MnetVpnService.currentNode()` and the accessibility endpoint are test fakes. No Go JNI, real VPN or injected accessibility gesture executes. Viewer frame bytes are synthetic JPEGs, not device screen content. Encoder inputs are synthetic RGBA buffers, not an actual ImageReader. The manifest is disabled, so receiver registration execution is not proof of signature-permission enforcement.
+`mobile.Node`, `SessionViewer`, `MnetVpnService.currentNode()` and the accessibility endpoint are test fakes. No Go JNI, real VPN or injected accessibility gesture executes. Viewer frame bytes are synthetic JPEGs, not device screen content. Encoder inputs are synthetic RGBA buffers, not an actual ImageReader. MainActivity uses placeholder resource IDs mapped to Android strings, a fake HostingActivity, direct status-receiver invocation and a fake VPN endpoint. No app string/layout/pixel or system always-on query is validated by its tests. Both removal of disabled-state wiring and independent removal of stale-click rejection fail four cases, while restored code passes.
+
+The manifest is disabled, so receiver registration execution is not proof of signature-permission enforcement.
 
 ## Known gaps
 
