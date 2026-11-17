@@ -160,6 +160,10 @@ def main():
         run(adb + ['install', '-r', test / 'fixture.apk'])
         stage = 'actual-instrumentation'
         output = run(adb + ['shell', 'am', 'instrument', '-w', '-r', '-e', 'server', base, '-e', 'key', key, '-e', 'peer', peer['ipv4'], 'au.fintex.mnet.fixture/au.fintex.mnet.fixture.MeshInstrumentation'], timeout=420)
+        screenshot = subprocess.run(list(map(str, adb + ['exec-out', 'run-as', 'au.fintex.mnet', 'cat', 'files/fixture-launch.png'])), capture_output=True, timeout=15)
+        if screenshot.returncode or not screenshot.stdout.startswith(b'\x89PNG\r\n\x1a\n'):
+            raise RuntimeError('sanitized launch screenshot unavailable')
+        (ARTIFACTS / 'launch.png').write_bytes(screenshot.stdout)
         safe = [line for line in output.splitlines() if line.startswith('INSTRUMENTATION_RESULT: summary=')]
         if len(safe) != 1 or 'actual APK/JNI/VPN consent' not in safe[0] or 'summary=PASS target36 runtimeAPI=' not in safe[0] or 'INSTRUMENTATION_CODE: -1' not in output:
             # Only explicit whitelist summary is exported, never the whole am
@@ -175,10 +179,6 @@ def main():
                 (ARTIFACTS / 'instrumentation.txt').write_text('\n'.join(safe) + '\n')
             raise RuntimeError('actual Android integration not passed')
         (ARTIFACTS / 'instrumentation.txt').write_text(safe[0] + '\n')
-        screenshot = subprocess.run(list(map(str, adb + ['exec-out', 'run-as', 'au.fintex.mnet', 'cat', 'files/fixture-launch.png'])), capture_output=True, timeout=15)
-        if screenshot.returncode or not screenshot.stdout.startswith(b'\x89PNG\r\n\x1a\n'):
-            raise RuntimeError('sanitized launch screenshot unavailable')
-        (ARTIFACTS / 'launch.png').write_bytes(screenshot.stdout)
         (ARTIFACTS / 'summary.json').write_text(json.dumps({'result': 'pass', 'scope': 'actual disposable emulator APK/JNI/VPN, 4MiB hash both directions twice, manual disconnect/reconnect', 'physical_device': False, 'remote_capture_input': False, 'play_protect_install': False}, indent=2))
         print('PASS actual emulator VPN/JNI and real Go peer; physical/capture/input/Play Protect proof remains open')
     except Exception as failure:

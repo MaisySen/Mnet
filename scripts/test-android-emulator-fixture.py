@@ -52,6 +52,9 @@ class Guards(unittest.TestCase):
         self.assertIn('api: [34, 36]', workflow)
         self.assertIn('targetSdkVersion != 36', test)
         self.assertIn('first-layout', test)
+        self.assertEqual(2, test.count('            osVpnReady();'))
+        self.assertIn('TRANSPORT_VPN', test)
+        self.assertLess(source.index('screenshot = subprocess.run'), source.index('safe = [line for line'))
         self.assertIn('summary=PASS target36 runtimeAPI=', source)
     def test_hash_before_and_after_real_reconnect(self):
         source = (ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()

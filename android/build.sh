@@ -14,8 +14,8 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 APP=$ROOT/android/app
 OUT=$ROOT/android/out
 SDK=${ANDROID_HOME:?"set ANDROID_HOME"}
-BT=$SDK/build-tools/${MNET_ANDROID_BUILD_TOOLS:-34.0.0}
-AJAR=$SDK/platforms/android-${MNET_ANDROID_COMPILE_API:-34}/android.jar
+BT=$SDK/build-tools/${MNET_ANDROID_BUILD_TOOLS:-36.0.0}
+AJAR=$SDK/platforms/android-${MNET_ANDROID_COMPILE_API:-36}/android.jar
 PKG=au.fintex.mnet
 
 AAR=${1:-$ROOT/mobile/mnet.aar}
