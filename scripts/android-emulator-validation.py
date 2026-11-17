@@ -255,11 +255,15 @@ def main():
                     (ARTIFACTS / 'instrumentation.txt').write_text('\n'.join(lines) + '\n')
         diagnostic = {'result': 'fail', 'stage': stage, 'error_type': type(failure).__name__}
         # Stage is written from fixture-controlled literal await labels only.
-        probe = subprocess.run(list(map(str, adb + ['exec-out', 'run-as', 'au.fintex.mnet', 'cat', 'files/fixture-stage'])), capture_output=True, timeout=10)
         allowed = {'consent-record-ready', 'accessibility-disclosure', 'accessibility-system-enable', 'accessibility-return-host', 'screen-projection-consent', 'screen-viewer-consent', 'screen-decoded-by-peer', 'remote-mesh-gesture-click', 'screen-stop-closed-peer', 'consent-record-stopped'}
-        value = probe.stdout.decode(errors='replace').strip()
-        if value in allowed:
-            diagnostic['android_stage'] = value
+        if 'adb' in locals():
+            try:
+                probe = subprocess.run(list(map(str, adb + ['exec-out', 'run-as', 'au.fintex.mnet', 'cat', 'files/fixture-stage'])), capture_output=True, timeout=10)
+                value = probe.stdout.decode(errors='replace').strip()
+                if value in allowed:
+                    diagnostic['android_stage'] = value
+            except (OSError, subprocess.TimeoutExpired):
+                diagnostic['android_stage_unavailable'] = True
         (ARTIFACTS / 'summary.json').write_text(json.dumps(diagnostic, indent=2))
         raise RuntimeError('Android fixture failed at ' + stage) from None
     finally:
