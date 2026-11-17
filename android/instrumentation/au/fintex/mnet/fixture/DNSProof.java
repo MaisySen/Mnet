@@ -26,7 +26,7 @@ final class DNSProof {
         step=1;
         try (DatagramSocket socket = new DatagramSocket()) {
             step=2;
-            socket.connect(InetAddress.getByAddress(new byte[]{(byte)100,64,0,0}),53);
+            socket.connect(new InetSocketAddress(InetAddress.getByAddress(new byte[]{100,64,0,0}),53));
             String source=socket.getLocalAddress().getHostAddress();sourceMesh=source.startsWith("100.");sourceResolver="198.18.0.54".equals(source);sourceUnderlay=source.startsWith("10.");sourceAny=socket.getLocalAddress().isAnyLocalAddress();
             socket.setSoTimeout(5000);
             step=3;
