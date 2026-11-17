@@ -6,7 +6,7 @@ Updated2026-11-17. This narrows current preparation. It is not a worldwide expor
 
 - The owner selected Free to download and one owner-controlled Play Store account for this development test. The address is kept private. No additional testers or public launch are authorized by that choice.
 - Mnet is a new product under active development. The current engineering task is to test that owner's Android device before a possible future Multies integration. The integration is not implemented or a present recipient relationship.
-- The owner confirmed Fintex Australia Pty Ltd as Mnet's legal operator, contact@fintex.au as its support/deletion route, and monitoring of that inbox on2026-11-17. That resolves operator identity for preparation; the actual export transaction, parties, internal-development restriction and remaining legal conditions still need assessment.
+- The owner confirmed Fintex Australia Pty Ltd as Mnet's legal operator, contact@fintex.au as its support/deletion route, and monitoring of that inbox on2026-11-17. The owner separately confirmed on2026-11-17 that Fintex is headquartered in Australia, this test is for its own internal product development, and the owner/Fintex act privately rather than for or controlled by a government.
 - The binary uses WireGuard and published Go cryptographic dependencies. Public source availability and standard cryptography are relevant facts, not a substitute for the conditions of a particular export authorization.
 
 ## Narrow export route to assess
@@ -15,7 +15,7 @@ Updated2026-11-17. This narrows current preparation. It is not a worldwide expor
 
 The resolved one-owner test makes this route a better fit to assess than a general public or third-party beta. Preserve its internal-development restriction. Do not silently treat an eventual production release, unrelated tester, corporate deployment or Multies rollout as covered. Section740.17 has scope and other restrictions beyond its short summary; the applicable regulations and actual parties/end use control the decision.
 
-Before accepting the Play export certification, verify the final distribution is still limited to that owner, identify all actual parties/end use, check relevant restrictions and keep the final binary/source/dependency inventory. The console's certification covers compliance and authorization for export, not merely awareness that encryption exists. No exporter filing, importer undertaking or whole-product classification has been made here.
+Keep final distribution limited to that owner and internal-development purpose, check relevant restrictions and retain the final binary/source/dependency inventory. The owner-confirmed facts support assessing this bounded transaction under740.17(a)(1)(i), not a general worldwide beta. The console's certification covers compliance and authorization for export, not merely awareness that encryption exists. No exporter filing, importer undertaking or whole-product classification has been made here.
 
 ## Hosting facts verified for privacy preparation
 

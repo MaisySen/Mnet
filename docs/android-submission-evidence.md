@@ -23,6 +23,8 @@ These are disposable emulator tests, not physical-phone, OEM battery-policy, lon
 
 ## VPN declaration draft basis
 
+Current source adds a separate first-connect VPN data disclosure before saving entered join details or requesting Android VPN permission. Agree is required; Not now/cancel do not save/join. Service preflight independently refuses saved configuration without the versioned acceptance flag. New selected-framework125 and VPN-service54 cases pass locally, including decline/cancel/reopen, unsolicited permission-result refusal, and service bypass refusal. Actual updated API34/36 verification is pending; do not call local simulations phone proof.
+
 Purpose: private mesh networking and remote access between approved devices. VpnService establishes an IPv4 mesh route, not an unrestricted internet exit VPN. Source rejects the unsupported exit-node setting.
 
 Transport: WireGuard encrypts payloads between node endpoints. Relay/control infrastructure can observe metadata. Do not say all data is invisible to the operator or that endpoints cannot retain received content.
