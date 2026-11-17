@@ -6,7 +6,7 @@ Updated2026-11-17. This narrows current preparation. It is not a worldwide expor
 
 - The owner selected Free to download and one owner-controlled Play Store account for this development test. The address is kept private. No additional testers or public launch are authorized by that choice.
 - Mnet is a new product under active development. The current engineering task is to test that owner's Android device before a possible future Multies integration. The integration is not implemented or a present recipient relationship.
-- Project publishing conventions name Fintex Australia, but the actual legal operator/exporting party and support/deletion responsibility remain unverified. The current owner-internal development purpose does not by itself establish those identities or every condition of the export route.
+- The owner confirmed Fintex Australia Pty Ltd as Mnet's legal operator, contact@fintex.au as its support/deletion route, and monitoring of that inbox on2026-11-17. That resolves operator identity for preparation; the actual export transaction, parties, internal-development restriction and remaining legal conditions still need assessment.
 - The binary uses WireGuard and published Go cryptographic dependencies. Public source availability and standard cryptography are relevant facts, not a substitute for the conditions of a particular export authorization.
 
 ## Narrow export route to assess
