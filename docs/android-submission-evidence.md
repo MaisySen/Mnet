@@ -7,7 +7,7 @@ Updated 2026-11-17. Preparation only. This is not a completed Play declaration, 
 - Package: au.fintex.mnet. Source targets Android36, minimum24.
 - Fresh current-source native bindings pass16KiB ELF LOAD checks on all4ABIs. The release-upload-key-signed AAB builds and validates with bundletool. Existing upload certificate matches the earlier delivered APK; no new signing identity or Play App Signing selection has been made.
 - Current version remains0.8.3-dev/code15. Select a fresh final candidate/version and inspect actual Play signing enrollment before upload. Never substitute a debug AAB for the verified upload-signed candidate.
-- No Mnet Play app record, binary upload, tester release or usable opt-in link exists. Owner selected Free to download on2026-11-17. Exact restricted tester audience is still being resolved outside this document. This choice is not permission to add billing, subscriptions, or a public launch. Do not add tester addresses here.
+- No Mnet Play app record, binary upload, tester release or usable opt-in link exists. Owner selected Free to download on2026-11-17. Owner selected one restricted test account; its address stays outside this public document. This choice is not permission to add billing, subscriptions, or a public launch. Do not add tester addresses here.
 
 ## Actual runtime evidence
 
