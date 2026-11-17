@@ -75,6 +75,7 @@ public class ViewerActivity extends Activity {
         });
         bar.addView(send);
         root.addView(bar);
+        ContentInsets.install(root);
         setContentView(root);
 
         screen.setOnTouchListener((v, ev) -> {

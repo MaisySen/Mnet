@@ -101,6 +101,7 @@ public class HostingActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
         root.addView(log, lp);
 
+        ContentInsets.install(root);
         setContentView(root);
     }
 

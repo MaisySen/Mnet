@@ -126,6 +126,7 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
         root.addView(scroll, sp);
 
+        ContentInsets.install(root);
         setContentView(root);
     }
 
