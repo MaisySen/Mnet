@@ -1,5 +1,9 @@
 # Mnet project status
 
+## Current Android source candidate (2026-11-17)
+
+New source, not the previously delivered APK: target36 candidate, explicit cloud/D2D backup exclusions, least-privilege remote-control consent and fresh16KiB-aligned4ABI bindings. Local SDK36 build and149framework simulations pass. A prior target34 actual emulator run at4f888b5 passed bidirectional4MiB hash, manual stop/reconnect and repeat, after earlier connect timeouts with no explanatory datapath fix. Target36 actual API34/36 matrix and reliability repeats are pending. No Mnet Play app/upload/test link exists. See [Play readiness](google-play-readiness.md), [privacy evidence](android-privacy-evidence.md) and [emulator evidence](../android/instrumentation/README.md). These source changes do not alter the delivered0.8.3 APK or clear its Play Protect block.
+
 Updated 2026-11-17, Australia/Sydney. Development/testing only. No production-readiness, parity, security-certification or supported fleet-size claim.
 
 ## Private Android test candidate

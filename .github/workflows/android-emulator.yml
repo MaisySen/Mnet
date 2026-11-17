@@ -24,6 +24,14 @@ jobs:
   actual-vpn-peer:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [34, 36]
+    env:
+      MNET_ANDROID_API: ${{ matrix.api }}
+      MNET_ANDROID_COMPILE_API: 36
+      MNET_ANDROID_BUILD_TOOLS: 36.0.0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -40,9 +48,9 @@ jobs:
       - name: install pinned Android fixture toolchain
         run: |
           test -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platform-tools' 'emulator' 'platforms;android-34' 'build-tools;34.0.0' 'ndk;27.2.12479018' 'system-images;android-34;google_apis;x86_64'
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platform-tools' 'emulator' 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.2.12479018' "system-images;android-${MNET_ANDROID_API};google_apis;x86_64"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
-          echo 'no' | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force --name mnet-fixture --package 'system-images;android-34;google_apis;x86_64' --device 'pixel_2' --path "$ANDROID_AVD_HOME/mnet-fixture.avd"
+          echo 'no' | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force --name mnet-fixture --package "system-images;android-${MNET_ANDROID_API};google_apis;x86_64" --device 'pixel_2' --path "$ANDROID_AVD_HOME/mnet-fixture.avd"
           test -s "$ANDROID_AVD_HOME/mnet-fixture.ini"
           "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx 'mnet-fixture'
       - name: enable standard Linux KVM access
@@ -71,7 +79,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: android-emulator-proof
+          name: android-emulator-proof-api${{ matrix.api }}
           retention-days: 7
           if-no-files-found: ignore
           path: |

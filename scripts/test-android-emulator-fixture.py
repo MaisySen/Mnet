@@ -45,6 +45,14 @@ class Guards(unittest.TestCase):
         self.assertIn('--path "$ANDROID_AVD_HOME/mnet-fixture.avd"', source)
         self.assertIn('test -s "$ANDROID_AVD_HOME/mnet-fixture.ini"', source)
         self.assertIn('-list-avds', source)
+    def test_current_target_and_actual_runtime_matrix(self):
+        source = (ROOT / 'scripts/android-emulator-validation.py').read_text()
+        workflow = (ROOT / '.github/workflows/android-emulator.yml').read_text()
+        test = (ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
+        self.assertIn('api: [34, 36]', workflow)
+        self.assertIn('targetSdkVersion != 36', test)
+        self.assertIn('first-layout', test)
+        self.assertIn('summary=PASS target36 runtimeAPI=', source)
     def test_hash_before_and_after_real_reconnect(self):
         source = (ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
         self.assertEqual(2, source.count('            hashRoundTrip();'))

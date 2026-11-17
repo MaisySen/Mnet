@@ -95,6 +95,8 @@ public class MeshInstrumentation extends Instrumentation {
             android.accessibilityservice.AccessibilityServiceInfo info = getUiAutomation().getServiceInfo();
             info.flags |= android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
             getUiAutomation().setServiceInfo(info);
+            stage = "target-sdk-check";
+            if (getTargetContext().getApplicationInfo().targetSdkVersion != 36) throw new IllegalStateException("target not current");
             stage = "actual-apk-launch";
             Intent launch = new Intent(getTargetContext(), MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             activity = startActivitySync(launch);
@@ -138,7 +140,7 @@ public class MeshInstrumentation extends Instrumentation {
             await(() -> MnetVpnService.currentNode() == null, "final-stop");
             if (!consentClicked) throw new IllegalStateException("no actual initial VPN consent click observed");
             stage = "complete";
-            result.putString("summary", "PASS actual APK/JNI/VPN consent, bidirectional 4MiB hash, manual stop/reconnect and repeat hash; emulator only, no physical reboot/capture/control proof");
+            result.putString("summary", "PASS target36 runtimeAPI=" + android.os.Build.VERSION.SDK_INT + " actual APK/JNI/VPN consent, bidirectional 4MiB hash, manual stop/reconnect and repeat hash; emulator only, no physical reboot/capture/control proof");
             finish(Activity.RESULT_OK, result);
         } catch (Throwable failure) {
             // Deliberately omit exception messages, app state and arguments.

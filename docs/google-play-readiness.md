@@ -11,7 +11,7 @@ Use the existing developer account and a named-audience Internal testing track f
 | Gate | Current evidence | Remaining work |
 | --- | --- | --- |
 | Account access | Intended existing developer account opens with invited collaborator | Confirm app-specific permissions when a draft exists; do not modify unrelated apps |
-| Current Android target | Source target34; SDK/build-tools36 compilation works | Migrate target36 and validate Android15/16 behavior, real consent, stop/reconnect and layouts |
+| Current Android target | Source candidate now targets36; SDK/build-tools36 compilation works | API34/36 actual candidate matrix pending; validate Android15/16 behavior, real consent, stop/reconnect and layouts |
 | Native16KiB support | Fresh current-source AAR4ABIs pass direct ELF LOAD checks; old AAR rejected | Actual16KiB-device/runtime check, not only ELF structure |
 | App Bundle | Debug AAB generation and bundletool validation pass | Fresh final-source AAR/AAB, correct version, existing upload identity; review Play App Signing choice in actual flow |
 | Actual runtime | Emulator boots, installs actual APK/JNI, performs OS VPN consent and reaches node-up | One actual API34 emulator run at4f888b5 passes bidirectional4MiB hash, stop/reconnect and repeat. Earlier runs timed out at TCP connect; no packet-semantic fix explains the later pass. Repeat reliability checks and target36 runtime remain required. Linux exact mobile-fd/WireGuard/TCP regression also passes, but is not Android proof |

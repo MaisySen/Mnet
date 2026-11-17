@@ -83,13 +83,13 @@ def main():
         env.pop('MNET_RELEASE_PASS_FILE', None)
         run(['sh', staged / 'android/build.sh', os.environ['MNET_ANDROID_AAR']], cwd=staged, env=env, timeout=180)
         appout = staged / 'android/out'
-        bt = SDK / 'build-tools/34.0.0'
-        android = SDK / 'platforms/android-34/android.jar'
+        bt = SDK / 'build-tools' / os.environ.get('MNET_ANDROID_BUILD_TOOLS', '36.0.0')
+        android = SDK / ('platforms/android-' + os.environ.get('MNET_ANDROID_COMPILE_API', '36')) / 'android.jar'
         test = root / 'test'
         test.mkdir()
         (test / 'classes').mkdir()
         (test / 'dex').mkdir()
-        (test / 'AndroidManifest.xml').write_text('''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="au.fintex.mnet.fixture"><uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34"/><application android:label="Mnet disposable fixture"/><instrumentation android:name="au.fintex.mnet.fixture.MeshInstrumentation" android:targetPackage="au.fintex.mnet"/></manifest>''')
+        (test / 'AndroidManifest.xml').write_text('''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="au.fintex.mnet.fixture"><uses-sdk android:minSdkVersion="24" android:targetSdkVersion="36"/><application android:label="Mnet disposable fixture"/><instrumentation android:name="au.fintex.mnet.fixture.MeshInstrumentation" android:targetPackage="au.fintex.mnet"/></manifest>''')
         run([bt / 'aapt2', 'link', '-o', test / 'base.apk', '-I', android, '--manifest', test / 'AndroidManifest.xml'])
         run(['javac', '-source', '11', '-target', '11', '-cp', str(android) + ':' + str(appout / 'classes') + ':' + str(appout / 'aar/classes.jar'), '-d', test / 'classes', staged / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java'])
         run(['jar', 'cf', test / 'target.jar', '-C', appout / 'classes', '.'])
@@ -159,7 +159,7 @@ def main():
         stage = 'actual-instrumentation'
         output = run(adb + ['shell', 'am', 'instrument', '-w', '-r', '-e', 'server', base, '-e', 'key', key, '-e', 'peer', peer['ipv4'], 'au.fintex.mnet.fixture/au.fintex.mnet.fixture.MeshInstrumentation'], timeout=420)
         safe = [line for line in output.splitlines() if line.startswith('INSTRUMENTATION_RESULT: summary=')]
-        if len(safe) != 1 or 'PASS actual APK/JNI/VPN consent' not in safe[0] or 'INSTRUMENTATION_CODE: -1' not in output:
+        if len(safe) != 1 or 'actual APK/JNI/VPN consent' not in safe[0] or 'summary=PASS target36 runtimeAPI=' not in safe[0] or 'INSTRUMENTATION_CODE: -1' not in output:
             # Only explicit whitelist summary is exported, never the whole am
             # output (which can include private runner arguments on a crash).
             if safe:
