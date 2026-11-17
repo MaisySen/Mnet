@@ -145,6 +145,7 @@ public class MainActivity extends Activity {
                         "The inbox is monitored. Never send passwords, enrollment keys or private node keys.\n\n" +
                         "Mnet stores enrollment settings and device identity on this phone. " +
                         "The configured control service processes device and connection metadata. " +
+                        "NAT discovery also sends connection requests to Google and Cloudflare STUN servers, which can see your source IP address and port. " +
                         "Screen sharing sends screen images to an approved viewer; optional accessibility access permits remote gestures. " +
                         "Disconnecting does not delete saved identity or server records. " +
                         "Other endpoints may retain content you send.\n\n" +

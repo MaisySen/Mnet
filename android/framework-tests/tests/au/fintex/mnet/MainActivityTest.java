@@ -42,6 +42,7 @@ public class MainActivityTest {
   android.app.AlertDialog dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
   String message=Shadows.shadowOf(dialog).getMessage().toString();
   assertTrue(message.contains("contact@fintex.au"));assertTrue(message.contains("Disconnecting does not delete"));
+  assertTrue(message.contains("Google and Cloudflare STUN"));assertTrue(message.contains("source IP address and port"));
   assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
   dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
   Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();

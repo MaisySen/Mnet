@@ -8,14 +8,16 @@ The standard `ubuntu-latest` public CI runner boots separate Android34 and Andro
 
 A real Go userspace mesh peer serves a bidirectional4MiB SHA256 protocol on its mesh IP, not on the host network. Instrumentation launches actual MainActivity, fills only fixture credentials, clicks the OS VPN consent dialog in the fresh emulator, waits for actual Node up, verifies both payload directions, manually stops and reconnects after the worker exits, then verifies both directions again. The corrected fixture keeps that instrumentation alive while a separately installed app UID performs unbound TCP transfers twice, then stops manually. The separate UID has INTERNET permission but no access to the production Node API. Passing only the self-bound phase is not a full fixture pass. It does not mock the Go node or Android VPN interface.
 
-Expected outputs are explicit PASS summary and a pre-credential launch screenshot. The public artifact allowlist contains only summary.json, instrumentation.txt, launch.png, consent.png and consent.mp4. The MP4 is a sampled screenshot walkthrough of disposable hosting/settings/system-consent screens, not uninterrupted video. Capture stops and the sampler joins before returning to credential-bearing MainActivity. consent.png is captured only on controlled hosting/projection consent failure screens. State, enrollment keys, APKs, raw instrumentation output and logcat are not uploaded. Fixture control listens on loopback, Android reaches it via adb reverse, and temporary fixture files/processes are removed. No existing service/network/account is touched, and no paid/larger runner is selected.
+Expected outputs are explicit PASS summary and a pre-credential launch screenshot. The public artifact allowlist contains only summary.json, instrumentation.txt, launch.png, privacy.png, consent.png and consent.mp4. The MP4 is a sampled screenshot walkthrough of disposable hosting/settings/system-consent screens, not uninterrupted video. Capture stops and the sampler joins before returning to credential-bearing MainActivity. consent.png is captured only on controlled hosting/projection consent failure screens. State, enrollment keys, APKs, raw instrumentation output and logcat are not uploaded. Fixture control listens on loopback, Android reaches it via adb reverse, and temporary fixture files/processes are removed. No existing service/network/account is touched, and no paid/larger runner is selected.
 
 ## Latest repeated evidence
 
-Two consecutive full target36 APK/JNI matrices pass on actual API34/36 disposable emulators atbf8e34c anda04b839:
+Full target36 APK/JNI matrices pass on actual API34/36 disposable emulators at0b3b8ff and0219d94, including opening and closing the pre-enrollment privacy/support dialog:
 
-- https://github.com/MaisySen/Mnet/actions/runs/44044246089
-- https://github.com/MaisySen/Mnet/actions/runs/44045742351
+- https://github.com/MaisySen/Mnet/actions/runs/44054549867
+- https://github.com/MaisySen/Mnet/actions/runs/44054575793
+
+The API36 privacy dialog and API34 main screen were visually inspected as readable with complete actions and no enrollment credentials. An additional STUN-recipient sentence is being validated separately; the linked screenshots predate that sentence.
 
 Latest source exercises actual Not now decline and verifies Mnet remains visible with accessibility disabled, then reopens the disclosure, agrees, enables the actual service in Settings, approves Android projection and the viewer, decodes full JPEGs at the real mesh peer, sends a real gesture that changes a disposable button, and confirms peer transport closes after stop. The fixture requires own-process bidirectional4MiB hashes around manual reconnect and separate app UID ordinary unbound TCP transfers twice. Twelve local fixture guards pass.
 
