@@ -158,7 +158,7 @@ public class MeshInstrumentation extends Instrumentation {
         runOnMainSync(() -> {
             target[0] = new Button(activity);
             target[0].setText("Disposable remote tap target");
-            target[0].setOnClickListener(v -> remoteTapped.set(true));
+            target[0].setOnClickListener(v -> { remoteTapped.set(true); target[0].setText("Remote mesh tap received"); });
             android.view.ViewGroup content = activity.findViewById(android.R.id.content);
             ((android.view.ViewGroup) content.getChildAt(0)).addView(target[0], 1);
         });
@@ -193,10 +193,12 @@ public class MeshInstrumentation extends Instrumentation {
         await(() -> {
             AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
             if (root == null || !"au.fintex.mnet".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())) return false;
+            SystemClock.sleep(1500);
             return clickText(root, "Allow");
         }, "screen-viewer-consent");
         await(() -> new File(getTargetContext().getFilesDir(), "fixture-screen-received").exists(), "screen-decoded-by-peer");
         await(remoteTapped::get, "remote-mesh-gesture-click");
+        SystemClock.sleep(2000);
         runOnMainSync(() -> getTargetContext().startService(new Intent(getTargetContext(), au.fintex.mnet.HostSessionService.class).setAction("stop")));
         await(() -> new File(getTargetContext().getFilesDir(), "fixture-screen-closed").exists(), "screen-stop-closed-peer");
         new File(getTargetContext().getFilesDir(), "fixture-record-stop").createNewFile();

@@ -11,6 +11,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -180,9 +181,26 @@ def main():
             stage = 'consent-record-start'
             wait(lambda: subprocess.run(list(map(str, adb + ['shell', 'run-as', 'au.fintex.mnet', 'test', '-f', 'files/fixture-record-start'])), capture_output=True, timeout=10).returncode == 0 or instrument.poll() is not None, 'consent-record-start', 90)
             recording = None
+            recorder_stop = threading.Event()
+            recorded_frames = []
             if instrument.poll() is None:
                 stage = 'consent-recorder-launch'
-                recording = start(adb + ['shell', 'screenrecord', '--time-limit', '180', '/sdcard/mnet-consent.mp4'], 'consent-recorder')
+                # Sample actual pixels externally: Android screenrecord on these
+                # AVDs can end early during Settings/projection transitions.
+                # This is a sampled walkthrough, never a continuous video claim.
+                def sample_consent():
+                    while not recorder_stop.is_set():
+                        try:
+                            frame = subprocess.run(list(map(str, adb + ['exec-out', 'screencap', '-p'])), capture_output=True, timeout=10)
+                            if frame.returncode == 0 and frame.stdout.startswith(b'\x89PNG\r\n\x1a\n'):
+                                path = root / ('consent-%05d.png' % len(recorded_frames))
+                                path.write_bytes(frame.stdout)
+                                recorded_frames.append(path)
+                        except (OSError, subprocess.TimeoutExpired):
+                            pass
+                        recorder_stop.wait(0.4)
+                recording = threading.Thread(target=sample_consent, daemon=True)
+                recording.start()
                 time.sleep(1)
                 run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-record-ready'])
             def input_target():
@@ -209,9 +227,11 @@ def main():
                 if recording is not None:
                     # Only the single recorder this disposable fixture started.
                     stage = 'consent-recorder-stop'
-                    run(adb + ['shell', 'pid=$(pidof screenrecord); if [ -n "$pid" ]; then kill -INT $pid; fi'])
-                    recording.wait(timeout=20)
-                    run(adb + ['pull', '/sdcard/mnet-consent.mp4', ARTIFACTS / 'consent.mp4'])
+                    recorder_stop.set()
+                    recording.join(timeout=15)
+                    if recording.is_alive() or not recorded_frames:
+                        raise RuntimeError('controlled screenshot sampler unavailable')
+                    run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-framerate', '2', '-i', root / 'consent-%05d.png', '-vf', 'scale=540:-2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', ARTIFACTS / 'consent.mp4'])
                 run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-record-stopped'])
         instrument.wait(timeout=90)
         output = (root / 'instrumentation.log').read_text()
@@ -267,6 +287,10 @@ def main():
         (ARTIFACTS / 'summary.json').write_text(json.dumps(diagnostic, indent=2))
         raise RuntimeError('Android fixture failed at ' + stage) from None
     finally:
+        if 'recorder_stop' in locals():
+            recorder_stop.set()
+        if 'recording' in locals() and recording is not None:
+            recording.join(timeout=15)
         for process in reversed(processes):
             process.terminate()
         for process in reversed(processes):
