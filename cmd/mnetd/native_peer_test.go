@@ -290,7 +290,7 @@ func nativePeerScreenProof(peer *proofNodeT, root string) {
 		conn.SetDeadline(time.Time{})
 		var frames atomic.Int32
 		session.ConnectViewerWithOptions(mux, session.ViewerOptions{OnFrame: func(frame session.ScreenFrame) {
-			if cfg, e := jpeg.DecodeConfig(bytes.NewReader(frame.Image)); e == nil && cfg.Width > 0 && cfg.Height > 0 {
+			if image, e := jpeg.Decode(bytes.NewReader(frame.Image)); e == nil && image.Bounds().Dx() > 0 && image.Bounds().Dy() > 0 {
 				frames.Add(1)
 			}
 		}})

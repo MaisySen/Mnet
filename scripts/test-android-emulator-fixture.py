@@ -73,7 +73,7 @@ class Guards(unittest.TestCase):
         self.assertIn('screen-projection-consent', test)
         self.assertIn('screen-viewer-consent', test)
         self.assertIn('screen-stop-closed-peer', test)
-        self.assertIn('jpeg.DecodeConfig', peer)
+        self.assertIn('jpeg.Decode(', peer)
         self.assertIn('frames.Load() >= 2', peer)
         self.assertNotIn('os.WriteFile(filepath.Join(root, "frame', peer)
     def test_hash_before_and_after_real_reconnect(self):

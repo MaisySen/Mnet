@@ -170,6 +170,7 @@ def main():
         if instrument.poll() is None:
             stage = 'independent-app-unbound-tcp'
             independent = run(adb + ['shell', 'am', 'instrument', '-w', '-r', '-e', 'peer', peer['ipv4'], 'au.fintex.mnet.fixture/au.fintex.mnet.fixture.IndependentAppInstrumentation'], timeout=150)
+            stage = 'actual-screen-projection'
             (root / 'screen-start').touch()
             run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-peer-done'])
             def screen_flag(name):
