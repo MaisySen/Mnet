@@ -46,7 +46,7 @@ public class MeshInstrumentation extends Instrumentation {
     private void vpnConsent() throws Exception {
         await(() -> {
             if (MnetVpnService.currentNode() != null) return true;
-            AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
+            AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
             if (root == null || !"com.android.vpndialogs".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())) return false;
             // Click the actual OS consent button, never a setting that disables
             // Play Protect or a production-phone policy. English emulator UI.
@@ -122,11 +122,35 @@ public class MeshInstrumentation extends Instrumentation {
         for (int i=0;i<root.getChildCount();i++) if (clickText(root.getChild(i), text)) return true;
         return false;
     }
+    private void enableRemoteControl() throws Exception {
+        stage = "accessibility-disclosure";
+        await(() -> clickText(getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow(), "Open accessibility settings"), "accessibility-open-disclosure");
+        await(() -> clickText(getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow(), "Agree"), "accessibility-agree");
+        await(() -> {
+            if (au.fintex.mnet.MnetAccessibilityService.available()) return true;
+            AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
+            if (root == null) return false;
+            String pkg = String.valueOf(root.getPackageName());
+            if (!pkg.equals("com.android.settings") && !pkg.equals("com.android.permissioncontroller")) return false;
+            if (clickText(root, "Allow")) return false;
+            if (clickText(root, "Use Mnet")) return false;
+            if (clickText(root, "Mnet")) return false;
+            if (clickText(root, "Downloaded apps") || clickText(root, "Installed apps")) return false;
+            return false;
+        }, "accessibility-system-enable");
+        // Return to the already-created host page, without replaying consent.
+        runOnMainSync(() -> activity.startActivity(new Intent(activity, HostingActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)));
+        await(() -> {
+            AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
+            return root != null && "au.fintex.mnet".contentEquals(root.getPackageName() == null ? "" : root.getPackageName());
+        }, "accessibility-return-host");
+    }
     private void screenShareProof() throws Exception {
         activity = startActivitySync(new Intent(getTargetContext(), HostingActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        enableRemoteControl();
         click(R.id.start_hosting_button);
         await(() -> {
-            AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
+            AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
             if (root == null || !"com.android.systemui".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())) return false;
             // API36 defaults to single-app capture and a Next button. The
             // disposable test deliberately selects this empty emulator's screen.
@@ -137,7 +161,7 @@ public class MeshInstrumentation extends Instrumentation {
             return clickText(root, "Start now") || clickText(root, "Start") || clickText(root, "Share screen");
         }, "screen-projection-consent");
         await(() -> {
-            AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
+            AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
             if (root == null || !"au.fintex.mnet".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())) return false;
             return clickText(root, "Allow");
         }, "screen-viewer-consent");
@@ -149,9 +173,9 @@ public class MeshInstrumentation extends Instrumentation {
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
-            android.accessibilityservice.AccessibilityServiceInfo info = getUiAutomation().getServiceInfo();
+            android.accessibilityservice.AccessibilityServiceInfo info = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getServiceInfo();
             info.flags |= android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
-            getUiAutomation().setServiceInfo(info);
+            getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).setServiceInfo(info);
             stage = "target-sdk-check";
             if (getTargetContext().getApplicationInfo().targetSdkVersion != 36) throw new IllegalStateException("target not current");
             stage = "actual-apk-launch";
@@ -169,14 +193,14 @@ public class MeshInstrumentation extends Instrumentation {
             }, "first-layout");
             waitForIdleSync();
             await(() -> {
-                AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
+                AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
                 return root != null && "au.fintex.mnet".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())
                     && !root.findAccessibilityNodeInfosByViewId("au.fintex.mnet:id/connect_button").isEmpty();
             }, "first-visible-window");
             SystemClock.sleep(1500);
             // Capture before fixture keys enter the UI. Never export app state,
             // enrollment keys, full status or logcat as public CI artifacts.
-            Bitmap launchImage = getUiAutomation().takeScreenshot();
+            Bitmap launchImage = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).takeScreenshot();
             try (FileOutputStream file = new FileOutputStream(new File(getTargetContext().getFilesDir(), "fixture-launch.png"))) {
                 if (launchImage == null || !launchImage.compress(Bitmap.CompressFormat.PNG, 100, file)) throw new IOException("screenshot unavailable");
             }
@@ -222,9 +246,9 @@ public class MeshInstrumentation extends Instrumentation {
         } catch (Throwable failure) {
             // Only these controlled hosting/OS consent screens contain no
             // enrollment UI or secrets. Never capture a general failure screen.
-            if (stage.equals("screen-projection-consent") || stage.equals("screen-viewer-consent")) {
+            if (stage.equals("screen-projection-consent") || stage.equals("screen-viewer-consent") || stage.startsWith("accessibility-")) {
                 try {
-                    Bitmap image = getUiAutomation().takeScreenshot();
+                    Bitmap image = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).takeScreenshot();
                     try (FileOutputStream file = new FileOutputStream(new File(getTargetContext().getFilesDir(), "fixture-consent.png"))) {
                         if (image != null) image.compress(Bitmap.CompressFormat.PNG, 100, file);
                     }
