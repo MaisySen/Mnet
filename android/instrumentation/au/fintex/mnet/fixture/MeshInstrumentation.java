@@ -110,25 +110,33 @@ public class MeshInstrumentation extends Instrumentation {
             if (input.readByte() != 'O' || input.readByte() != 'K') throw new IOException("reverse acknowledgment mismatch");
         }
     }
+    private boolean clickText(AccessibilityNodeInfo root, String text) {
+        if (root == null) return false;
+        if (text.equalsIgnoreCase(String.valueOf(root.getText()))) {
+            AccessibilityNodeInfo candidate = root;
+            for (int i=0; candidate != null && i<4; i++, candidate=candidate.getParent()) {
+                if (candidate.isClickable() && candidate.isEnabled()) return candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            }
+        }
+        for (int i=0;i<root.getChildCount();i++) if (clickText(root.getChild(i), text)) return true;
+        return false;
+    }
     private void screenShareProof() throws Exception {
         activity = startActivitySync(new Intent(getTargetContext(), HostingActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         click(R.id.start_hosting_button);
         await(() -> {
             AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
             if (root == null || !"com.android.systemui".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())) return false;
-            for (AccessibilityNodeInfo button : root.findAccessibilityNodeInfosByViewId("android:id/button1")) {
-                String text = String.valueOf(button.getText());
-                if (text.equalsIgnoreCase("Start now") || text.equalsIgnoreCase("Start")) return button.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-            }
-            return false;
+            // API36 defaults to single-app capture and a Next button. The
+            // disposable test deliberately selects this empty emulator's screen.
+            if (clickText(root, "Share entire screen") || clickText(root, "Entire screen")) return false;
+            if (clickText(root, "Share one app")) return false;
+            return clickText(root, "Start now") || clickText(root, "Start");
         }, "screen-projection-consent");
         await(() -> {
             AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
             if (root == null || !"au.fintex.mnet".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())) return false;
-            for (AccessibilityNodeInfo button : root.findAccessibilityNodeInfosByText("Allow")) {
-                if ("Allow".equals(String.valueOf(button.getText()))) return button.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-            }
-            return false;
+            return clickText(root, "Allow");
         }, "screen-viewer-consent");
         await(() -> new File(getTargetContext().getFilesDir(), "fixture-screen-received").exists(), "screen-decoded-by-peer");
         runOnMainSync(() -> getTargetContext().startService(new Intent(getTargetContext(), au.fintex.mnet.HostSessionService.class).setAction("stop")));
