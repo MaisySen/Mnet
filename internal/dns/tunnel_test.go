@@ -133,7 +133,7 @@ func newTunnelPairState(t *testing.T, start bool) (*Tunnel, *Server, *stack.Stac
 }
 func testDNSQuery(t *testing.T, client *stack.Stack, transport, name string) *mdns.Msg {
 	t.Helper()
-	addr := tcpip.FullAddress{NIC: 1, Addr: tcpip.AddrFrom4([4]byte{100, 64, 0, 0}), Port: 53}
+	addr := tcpip.FullAddress{NIC: 1, Addr: tcpip.AddrFrom4([4]byte{198, 18, 0, 53}), Port: 53}
 	var c net.Conn
 	var err error
 	if transport == "udp" {
@@ -237,7 +237,7 @@ func TestTunnelCloseAndStartGuards(t *testing.T) {
 	}
 }
 func TestLocalDNSClassification(t *testing.T) {
-	ip := [4]byte{100, 64, 0, 0}
+	ip := [4]byte{198, 18, 0, 53}
 	for n := 0; n < 48; n++ {
 		if localDNSPacket(make([]byte, n), ip) {
 			t.Fatal("zero packet classified")
@@ -290,7 +290,7 @@ func TestMobileUpstreamCannotLoopBackIntoMesh(t *testing.T) {
 func FuzzLocalDNSPacket(f *testing.F) {
 	f.Add([]byte{0x45})
 	f.Add(make([]byte, 28))
-	f.Fuzz(func(t *testing.T, p []byte) { localDNSPacket(p, [4]byte{100, 64, 0, 0}); localDNSDestination(p) })
+	f.Fuzz(func(t *testing.T, p []byte) { localDNSPacket(p, [4]byte{198, 18, 0, 53}); localDNSDestination(p) })
 }
 
 func TestTunnelReservedAddressFailsClosedOutsideDNS(t *testing.T) {
@@ -301,7 +301,7 @@ func TestTunnelReservedAddressFailsClosedOutsideDNS(t *testing.T) {
 		p := make([]byte, 28)
 		p[0] = 0x45
 		p[9] = protocol
-		copy(p[16:20], []byte{100, 64, 0, 0})
+		copy(p[16:20], []byte{198, 18, 0, 53})
 		binary.BigEndian.PutUint16(p[22:24], 9999)
 		raw.in <- p
 	}

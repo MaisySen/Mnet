@@ -48,9 +48,9 @@ public class VpnServiceTest {
  @Test public void localResolverHasExplicitRouteAndIsNotInterfaceAddress()throws Exception{
   configure();mobile.Mobile.factory=()->new mobile.Node(){@Override public void start(long fd,String a,String b,String c,String d){throw new IllegalStateException("fixture after builder");}};
   service.onStartCommand(new Intent(),0,1);awaitWorker();
-  assertTrue(FakeBuilder.addresses.contains("100.64.0.2/10"));assertTrue(FakeBuilder.routes.contains("100.64.0.0/10"));assertTrue(FakeBuilder.routes.contains("100.64.0.0/32"));
-  assertEquals(java.util.Collections.singletonList("100.64.0.0"),FakeBuilder.resolvers);
-  assertFalse(FakeBuilder.addresses.contains("100.64.0.0/32"));
+  assertTrue(FakeBuilder.addresses.contains("100.64.0.2/32"));assertTrue(FakeBuilder.routes.contains("100.64.0.0/10"));assertTrue(FakeBuilder.routes.contains("198.18.0.53/32"));
+  assertEquals(java.util.Collections.singletonList("198.18.0.53"),FakeBuilder.resolvers);
+  assertFalse(FakeBuilder.addresses.contains("198.18.0.53/32"));
  }
  @Test public void savedConfigCannotBypassProminentDisclosure()throws Exception{
   configure();service.getSharedPreferences("mnet",0).edit().remove(MnetVpnService.VPN_DISCLOSURE_KEY).apply();

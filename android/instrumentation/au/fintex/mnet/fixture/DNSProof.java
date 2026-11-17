@@ -31,11 +31,11 @@ final class DNSProof {
         try (DatagramSocket socket = new DatagramSocket()) {
             if(network!=null)network.bindSocket(socket);
             step=2;
-            socket.connect(new InetSocketAddress(InetAddress.getByAddress(new byte[]{100,64,0,0}),53));
+            socket.connect(new InetSocketAddress(InetAddress.getByAddress(new byte[]{(byte)198,18,0,53}),53));
             String source=socket.getLocalAddress().getHostAddress();sourceMesh=source.startsWith("100.");sourceResolver="198.18.0.54".equals(source);sourceUnderlay=source.startsWith("10.");sourceAny=socket.getLocalAddress().isAnyLocalAddress();
             socket.setSoTimeout(5000);
             step=3;
-            socket.send(new DatagramPacket(query,query.length,InetAddress.getByAddress(new byte[]{100,64,0,0}),53));
+            socket.send(new DatagramPacket(query,query.length,InetAddress.getByAddress(new byte[]{(byte)198,18,0,53}),53));
             byte[] data = new byte[4096]; DatagramPacket packet = new DatagramPacket(data,data.length);
             step=4;
             socket.receive(packet);udp=Arrays.copyOf(data,packet.getLength());
@@ -45,7 +45,7 @@ final class DNSProof {
         phase="tcp";
         try (Socket socket = new Socket()) {
             if(network!=null)network.bindSocket(socket);
-            socket.connect(new InetSocketAddress(InetAddress.getByAddress(new byte[]{(byte)100,64,0,0}),53),5000);
+            socket.connect(new InetSocketAddress(InetAddress.getByAddress(new byte[]{(byte)198,18,0,53}),53),5000);
             socket.setSoTimeout(5000);
             DataOutputStream output = new DataOutputStream(socket.getOutputStream());
             output.writeShort(query.length);output.write(query);output.flush();

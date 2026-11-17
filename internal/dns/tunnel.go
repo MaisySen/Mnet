@@ -22,10 +22,10 @@ import (
 	"gvisor.dev/gvisor/pkg/waiter"
 )
 
-// LocalIPv4 is a tunnel-local resolver address, the network address excluded by the mesh allocator.
+// LocalIPv4 is a tunnel-local resolver address, outside the mesh allocation and its network/broadcast addresses.
 // Platform routes must send this /32 into the VPN. It must not be assigned to
 // the OS interface itself, which would route DNS to the host's local stack.
-const LocalIPv4 = "100.64.0.0"
+const LocalIPv4 = "198.18.0.53"
 
 // Tunnel intercepts only local IPv4 DNS traffic before WireGuard. Android and
 // iOS app processes cannot bind privileged OS port53. This isolated userspace
@@ -182,7 +182,7 @@ func (t *Tunnel) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
 			if intercepted && len(packet) > 9 && packet[9] == 17 {
 				t.udpSeen.Store(true)
 			}
-			if intercepted && localDNSPacket(packet, [4]byte{100, 64, 0, 0}) {
+			if intercepted && localDNSPacket(packet, [4]byte{198, 18, 0, 53}) {
 				if local != nil {
 					injectLocalDNS(local.ep, packet)
 				} else if !t.closed && len(t.pending) < 32 && len(packet) <= 1280 {
@@ -287,7 +287,7 @@ type limitedConn struct {
 
 func (c *limitedConn) Close() error { err := c.Conn.Close(); c.once.Do(c.release); return err }
 func localDNSDestination(p []byte) bool {
-	return len(p) >= 20 && p[0]>>4 == 4 && p[16] == 100 && p[17] == 64 && p[18] == 0 && p[19] == 0
+	return len(p) >= 20 && p[0]>>4 == 4 && p[16] == 198 && p[17] == 18 && p[18] == 0 && p[19] == 53
 }
 
 // Diagnostics contains only packet-path booleans, never names or addresses.

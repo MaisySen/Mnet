@@ -113,10 +113,10 @@ public class MnetVpnService extends VpnService {
             Builder b = new Builder()
                     .setSession("Mnet")
                     .setMtu(1280)
-                    .addAddress(ipv4, 10)
+                    .addAddress(ipv4, 32)
                     .addRoute("100.64.0.0", 10)
-                    .addRoute("100.64.0.0", 32)
-                    .addDnsServer("100.64.0.0");
+                    .addRoute("198.18.0.53", 32)
+                    .addDnsServer("198.18.0.53");
             ParcelFileDescriptor pfd = b.establish();
             if (pfd == null) {
                 throw new IllegalStateException("System refused the VPN interface. Check VPN consent in Android settings.");
