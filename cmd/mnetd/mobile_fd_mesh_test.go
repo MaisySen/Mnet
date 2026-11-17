@@ -7,6 +7,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	localdns "fintex.au/mnet/internal/dns"
+	mdns "github.com/miekg/dns"
 	"io"
 	"net/http/httptest"
 	"net/netip"
@@ -118,6 +120,33 @@ func TestMobileFDMeshTCP(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+	var ready struct {
+		DNSReady bool `json:"dns_ready"`
+	}
+	if json.Unmarshal([]byte(node.Status()), &ready) != nil || !ready.DNSReady {
+		t.Fatal("mobile DNS readiness unavailable")
+	}
+	{
+		transport := "tcp"
+		resolver := netip.AddrPortFrom(netip.MustParseAddr(localdns.LocalIPv4), 53)
+		c, err := osNet.DialContextTCPAddrPort(ctx, resolver)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.SetDeadline(time.Now().Add(2 * time.Second))
+		dnsConn := &mdns.Conn{Conn: c}
+		q := new(mdns.Msg)
+		q.SetQuestion("peer.fdmesh.mnet.", mdns.TypeA)
+		if err = dnsConn.WriteMsg(q); err != nil {
+			c.Close()
+			t.Fatal(err)
+		}
+		response, e := dnsConn.ReadMsg()
+		c.Close()
+		if e != nil || response == nil || len(response.Answer) != 1 || response.Answer[0].(*mdns.A).A.String() != peer.ip.String() {
+			t.Fatalf("mobile %s DNS response failed: %v", transport, e)
+		}
+	}
 	conn, err := osNet.DialContextTCPAddrPort(ctx, netip.AddrPortFrom(peer.ip, 45993))
 	if err != nil {
 		t.Fatal(err)

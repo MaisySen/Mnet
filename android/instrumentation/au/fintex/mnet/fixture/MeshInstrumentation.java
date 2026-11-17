@@ -349,6 +349,8 @@ public class MeshInstrumentation extends Instrumentation {
             vpnConsent();
             await(this::up, "initial-vpn-up");
             osVpnReady();
+            stage = "os-udp-tcp-dns";
+            DNSProof.verify(options.getString("peer"));
             hashRoundTrip();
             click(R.id.connect_button);
             await(() -> MnetVpnService.currentNode() == null, "manual-stop");
@@ -359,6 +361,8 @@ public class MeshInstrumentation extends Instrumentation {
             vpnConsent();
             await(this::up, "reconnect-vpn-up");
             osVpnReady();
+            stage = "os-udp-tcp-dns";
+            DNSProof.verify(options.getString("peer"));
             hashRoundTrip();
             // Keep the VPN-owning instrumentation process alive while another
             // installed app UID performs ordinary unbound TCP transfers.

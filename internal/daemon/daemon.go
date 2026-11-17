@@ -42,6 +42,8 @@ type Config struct {
 	// ManagedIface says the daemon configures the OS interface itself.
 	// Mobile platforms configure it through their VPN APIs instead.
 	ManagedIface bool
+	// LocalDNS uses a narrow userspace endpoint rather than privileged OS port53.
+	LocalDNS bool
 }
 
 // Daemon is the running node.
@@ -60,16 +62,17 @@ type Daemon struct {
 	// joinMu serializes join and rejoin: the control-plane identity
 	// (node id, token, auth key, control client) swaps as one step,
 	// never concurrently from two loops.
-	joinMu  sync.Mutex
-	dev     *device.Device
-	tun     tun.Device
-	bind    *bind.Bind
-	cc      *controlclient.Client
-	relay   *controlclient.Relay
-	dns     *dns.Server
-	subnets *ifacectl.SubnetRoutes
-	serving *ifacectl.Serving
-	cancel  context.CancelFunc
+	joinMu   sync.Mutex
+	dev      *device.Device
+	tun      tun.Device
+	bind     *bind.Bind
+	cc       *controlclient.Client
+	relay    *controlclient.Relay
+	localDNS *dns.Tunnel
+	dns      *dns.Server
+	subnets  *ifacectl.SubnetRoutes
+	serving  *ifacectl.Serving
+	cancel   context.CancelFunc
 
 	mapChanged  chan struct{} // wake local authorization-expiry guard
 	lastMap     *netmap.Map
@@ -300,10 +303,18 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 
 	// DNS listener readiness is separate from a locally active tunnel. Mobile
 	// installs this address as its resolver and must stop if it is unavailable.
-	dnsSrv, dnsErr := dns.New(m.Self.IPv4)
+	dnsAddress := m.Self.IPv4
+	if d.localDNS != nil {
+		dnsAddress = dns.LocalIPv4
+	}
+	dnsSrv, dnsErr := dns.New(dnsAddress)
 	if dnsErr == nil {
 		dnsSrv.Update(m)
-		dnsErr = dnsSrv.Start()
+		if d.localDNS != nil {
+			dnsErr = d.localDNS.StartDNS(dnsSrv, MTU)
+		} else {
+			dnsErr = dnsSrv.Start()
+		}
 	}
 	if dnsErr == nil {
 		d.applyMu.Lock()
@@ -466,6 +477,11 @@ func (d *Daemon) startDevice() error {
 		d.interfaceName = name
 		d.mu.Unlock()
 	}
+	if d.cfg.LocalDNS {
+		wrapped := dns.NewTunnel(t)
+		d.localDNS = wrapped
+		t = wrapped
+	}
 	b := bind.New()
 	level := device.LogLevelError
 	if d.cfg.Verbose {
@@ -523,6 +539,7 @@ func (d *Daemon) stopDevice() {
 		d.dns.Close()
 		d.dns = nil
 	}
+	d.localDNS = nil
 }
 
 // Close permanently disposes this node. Unlike Down, later Prepare, Up and

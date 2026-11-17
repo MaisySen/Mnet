@@ -1,6 +1,8 @@
 package dns
 
 import (
+	"net"
+	"net/netip"
 	"os"
 	"strings"
 	"sync"
@@ -20,13 +22,25 @@ func upstreamServer() string {
 		if err != nil {
 			return
 		}
-		for _, line := range strings.Split(string(b), "\n") {
-			f := strings.Fields(line)
-			if len(f) >= 2 && f[0] == "nameserver" && !strings.HasPrefix(f[1], "100.64.") {
-				upstream = f[1] + ":53"
-				return
-			}
-		}
+		upstream = chooseUpstream(string(b))
 	})
 	return upstream
+}
+
+// Never forward a request back into either Mnet resolver address range.
+func chooseUpstream(config string) string {
+	mesh := netip.MustParsePrefix("100.64.0.0/10")
+	for _, line := range strings.Split(config, "\n") {
+		f := strings.Fields(line)
+
+		if len(f) < 2 || f[0] != "nameserver" {
+			continue
+		}
+		ip, err := netip.ParseAddr(f[1])
+		if err != nil || ip.Unmap().String() == LocalIPv4 || mesh.Contains(ip.Unmap()) {
+			continue
+		}
+		return net.JoinHostPort(ip.String(), "53")
+	}
+	return "1.1.1.1:53"
 }

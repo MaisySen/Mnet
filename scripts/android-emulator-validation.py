@@ -274,7 +274,7 @@ def main():
             (ARTIFACTS / 'instrumentation.txt').write_text('\n'.join(safe + second) + '\n')
             raise RuntimeError('independent app mesh TCP failed')
         (ARTIFACTS / 'instrumentation.txt').write_text('\n'.join(safe + second) + '\n')
-        (ARTIFACTS / 'summary.json').write_text(json.dumps({'result': 'pass', 'scope': 'actual target36 APK/JNI/VPN, independent app unbound TCP, hash reconnect, accessibility/projection/viewer consent, remote mesh gesture, decoded frames and stop', 'physical_device': False, 'remote_capture': True, 'remote_input': True, 'play_protect_install': False}, indent=2))
+        (ARTIFACTS / 'summary.json').write_text(json.dumps({'result': 'pass', 'scope': 'actual target36 APK/JNI/VPN, OS/UDP/TCP DNS before and after reconnect and independent app UID, independent app unbound TCP, hash reconnect, accessibility/projection/viewer consent, remote mesh gesture, decoded frames and stop', 'physical_device': False, 'remote_capture': True, 'remote_input': True, 'play_protect_install': False}, indent=2))
         print('PASS actual emulator VPN/JNI and real Go peer; physical/capture/input/Play Protect proof remains open')
     except Exception as failure:
         # Preserve only the existing fixed summary if an orchestration wait

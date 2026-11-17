@@ -20,9 +20,10 @@ import (
 type Server struct {
 	addr string
 
-	mu      sync.RWMutex
-	records map[string]string // fqdn with trailing dot -> mesh IPv4
-	suffix  string            // ".mnet"
+	mu           sync.RWMutex
+	requestSlots chan struct{}     // optional bounded mobile resolver work
+	records      map[string]string // fqdn with trailing dot -> mesh IPv4
+	suffix       string            // ".mnet"
 
 	udp      *dns.Server
 	tcp      *dns.Server
@@ -101,6 +102,11 @@ func (s *Server) startAt(addr string) error {
 		packet.Close()
 		return fmt.Errorf("DNS TCP bind: %w", err)
 	}
+	return s.startBoundLocked(packet, listener)
+}
+
+// Caller holds s.mu and owns both listeners. Supports native or in-tunnel sockets.
+func (s *Server) startBoundLocked(packet net.PacketConn, listener net.Listener) error {
 	mux := dns.NewServeMux()
 	mux.HandleFunc(".", s.handle)
 	ready := make(chan struct{}, 2)
@@ -201,6 +207,16 @@ func (s *Server) handle(w dns.ResponseWriter, r *dns.Msg) {
 		m.SetRcode(r, dns.RcodeFormatError)
 		w.WriteMsg(m)
 		return
+	}
+	if s.requestSlots != nil {
+		select {
+		case s.requestSlots <- struct{}{}:
+			defer func() { <-s.requestSlots }()
+		default:
+			m.SetRcode(r, dns.RcodeRefused)
+			w.WriteMsg(m)
+			return
+		}
 	}
 	q := r.Question[0]
 	name := strings.ToLower(q.Name)

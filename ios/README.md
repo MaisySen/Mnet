@@ -10,8 +10,8 @@ other platform, wrapped in a NetworkExtension packet tunnel.
   device name) and live VPN status.
 - `PacketTunnelProvider.swift`: the `NEPacketTunnelProvider` extension.
   It joins the mesh first to learn the assigned address, configures the
-  tunnel settings (100.64.0.0/10 route, Magic DNS on the node's own mesh
-  address, `.mnet` match domain), then hands `NEPacketTunnelFlow` to the
+  tunnel settings (100.64.0.0/10 mesh route, explicit 198.18.0.53/32
+  tunnel-local userspace DNS route, `.mnet` match domain), then hands `NEPacketTunnelFlow` to the
   Go engine through the `MobilePacketFlow` protocol (`StartFlow`).
 - `build-go.sh`: builds `Mnet.xcframework` with gomobile.
 

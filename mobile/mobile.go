@@ -34,7 +34,7 @@ func NewNode(stateDir string) (*Node, error) {
 	if stateDir == "" {
 		return nil, fmt.Errorf("state dir required")
 	}
-	d, err := daemon.New(daemon.Config{StateDir: stateDir, ManagedIface: false})
+	d, err := daemon.New(daemon.Config{StateDir: stateDir, ManagedIface: false, LocalDNS: true})
 	if err != nil {
 		return nil, err
 	}
