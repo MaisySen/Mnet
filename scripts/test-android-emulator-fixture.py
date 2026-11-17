@@ -52,7 +52,7 @@ class Guards(unittest.TestCase):
         self.assertIn('api: [34, 36]', workflow)
         self.assertIn('targetSdkVersion != 36', test)
         self.assertIn('first-layout', test)
-        self.assertEqual(3, test.count('            osVpnReady();'))
+        self.assertEqual(2, test.count('            osVpnReady();'))
         self.assertIn('TRANSPORT_VPN', test)
         self.assertLess(source.index('screenshot = subprocess.run'), source.index('safe = [line for line'))
         self.assertIn('summary=PASS self-bound target36 runtimeAPI=', source)
@@ -62,6 +62,9 @@ class Guards(unittest.TestCase):
         self.assertNotIn('socket.bind(', test)
         self.assertNotIn('MnetVpnService', test)
         self.assertIn('android:targetPackage="au.fintex.mnet.fixture"', source)
+        self.assertIn('<uses-permission android:name="android.permission.INTERNET"/>', source)
+        self.assertIn('fixture-peer-ready', source)
+        self.assertIn('fixture-peer-done', source)
         self.assertIn("stage = 'independent-app-unbound-tcp'", source)
         self.assertIn("'force-stop', 'au.fintex.mnet'", source)
     def test_hash_before_and_after_real_reconnect(self):
