@@ -131,7 +131,12 @@ public class MeshInstrumentation extends Instrumentation {
                 return drawn.get();
             }, "first-layout");
             waitForIdleSync();
-            SystemClock.sleep(500);
+            await(() -> {
+                AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
+                return root != null && "au.fintex.mnet".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())
+                    && !root.findAccessibilityNodeInfosByViewId("au.fintex.mnet:id/connect_button").isEmpty();
+            }, "first-visible-window");
+            SystemClock.sleep(1500);
             // Capture before fixture keys enter the UI. Never export app state,
             // enrollment keys, full status or logcat as public CI artifacts.
             Bitmap launchImage = getUiAutomation().takeScreenshot();
