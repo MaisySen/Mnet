@@ -76,7 +76,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
             let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
             settings.mtu = 1280
-            let v4 = NEIPv4Settings(addresses: [ipv4], subnetMasks: ["255.192.0.0"])
+            let v4 = NEIPv4Settings(addresses: [ipv4, "198.18.0.54"], subnetMasks: ["255.192.0.0", "255.255.255.255"])
             v4.includedRoutes = [NEIPv4Route(destinationAddress: "100.64.0.0", subnetMask: "255.192.0.0"),
                                  NEIPv4Route(destinationAddress: "198.18.0.53", subnetMask: "255.255.255.255")]
             if !exitNode.isEmpty {

@@ -114,6 +114,7 @@ public class MnetVpnService extends VpnService {
                     .setSession("Mnet")
                     .setMtu(1280)
                     .addAddress(ipv4, 32)
+                    .addAddress("198.18.0.54", 32)
                     .addRoute("100.64.0.0", 10)
                     .addRoute("198.18.0.53", 32)
                     .addDnsServer("198.18.0.53");

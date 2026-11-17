@@ -9,9 +9,9 @@ import java.util.Arrays;
 // summaries contain no addresses, names, status JSON or enrollment material.
 final class DNSProof {
     static volatile String phase="none";
-    static volatile boolean sourceMesh,questionMismatch,badName,badBounds;
+    static volatile boolean sourceMesh,questionMismatch,badName,badBounds,sourceResolver,sourceUnderlay,sourceAny;
     static volatile boolean shortResponse,wrongID,notResponse,rcodeError,noAnswers,addressMismatch;
-    static String diagnostics(){return " dnsUDP="+"udp".equals(phase)+" dnsTCP="+"tcp".equals(phase)+" dnsOS="+"os".equals(phase)+" dnsSourceMesh="+sourceMesh+" dnsQuestionMismatch="+questionMismatch+" dnsBadName="+badName+" dnsBadBounds="+badBounds+" dnsShort="+shortResponse+" dnsWrongID="+wrongID+" dnsNotResponse="+notResponse+" dnsRcode="+rcodeError+" dnsNoAnswers="+noAnswers+" dnsAddressMismatch="+addressMismatch;}
+    static String diagnostics(){return " dnsUDP="+"udp".equals(phase)+" dnsTCP="+"tcp".equals(phase)+" dnsOS="+"os".equals(phase)+" dnsSourceMesh="+sourceMesh+" dnsSourceResolver="+sourceResolver+" dnsSourceUnderlay="+sourceUnderlay+" dnsSourceAny="+sourceAny+" dnsQuestionMismatch="+questionMismatch+" dnsBadName="+badName+" dnsBadBounds="+badBounds+" dnsShort="+shortResponse+" dnsWrongID="+wrongID+" dnsNotResponse="+notResponse+" dnsRcode="+rcodeError+" dnsNoAnswers="+noAnswers+" dnsAddressMismatch="+addressMismatch;}
     static void verify(String expected) throws Exception {
         String name = "userspace-peer.android-emulator.mnet";
         phase="udp";
@@ -19,7 +19,7 @@ final class DNSProof {
         byte[] udp;
         try (DatagramSocket socket = new DatagramSocket()) {
             socket.connect(InetAddress.getByAddress(new byte[]{(byte)198,18,0,53}),53);
-            sourceMesh=socket.getLocalAddress().getHostAddress().startsWith("100.");
+            String source=socket.getLocalAddress().getHostAddress();sourceMesh=source.startsWith("100.");sourceResolver="198.18.0.54".equals(source);sourceUnderlay=source.startsWith("10.");sourceAny=socket.getLocalAddress().isAnyLocalAddress();
             socket.setSoTimeout(5000);
             socket.send(new DatagramPacket(query,query.length));
             byte[] data = new byte[4096]; DatagramPacket packet = new DatagramPacket(data,data.length);

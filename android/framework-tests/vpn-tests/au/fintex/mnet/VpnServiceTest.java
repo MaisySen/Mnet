@@ -17,9 +17,10 @@ public class VpnServiceTest {
  }
  @Implements(VpnService.Builder.class) public static class FakeBuilder {
   @RealObject VpnService.Builder real;
+  static final java.util.List<String> addresses = new java.util.concurrent.CopyOnWriteArrayList<>();
   static final java.util.List<String> routes = new java.util.concurrent.CopyOnWriteArrayList<>();
   static final java.util.List<String> resolvers = new java.util.concurrent.CopyOnWriteArrayList<>();
-  @Implementation protected VpnService.Builder addAddress(String address,int prefix){return real;}
+  @Implementation protected VpnService.Builder addAddress(String address,int prefix){addresses.add(address+"/"+prefix);return real;}
   @Implementation protected VpnService.Builder addRoute(String address,int prefix){routes.add(address+"/"+prefix);return real;}
   @Implementation protected VpnService.Builder addDnsServer(String address){resolvers.add(address);return real;}
   @Implementation protected android.os.ParcelFileDescriptor establish()throws java.io.IOException{
@@ -31,7 +32,7 @@ public class VpnServiceTest {
   @Implementation protected void close(){}
  }
  private MnetVpnService service;
- @Before public void create(){FakeBuilder.routes.clear();FakeBuilder.resolvers.clear();Mode.managed=false;service=Robolectric.buildService(MnetVpnService.class).create().get();}
+ @Before public void create(){FakeBuilder.addresses.clear();FakeBuilder.routes.clear();FakeBuilder.resolvers.clear();Mode.managed=false;service=Robolectric.buildService(MnetVpnService.class).create().get();}
  @After public void destroy()throws Exception{service.onDestroy();awaitWorker();mobile.Mobile.factory=mobile.Node::new;Mode.managed=false;}
  private Thread worker()throws Exception{java.lang.reflect.Field f=MnetVpnService.class.getDeclaredField("worker");f.setAccessible(true);return(Thread)f.get(service);}
  private void awaitWorker()throws Exception{Thread w=worker();if(w!=null){long end=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);while(w.isAlive()&&System.nanoTime()<end){Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();w.join(5);}assertFalse("worker must exit",w.isAlive());}}
@@ -49,6 +50,7 @@ public class VpnServiceTest {
   service.onStartCommand(new Intent(),0,1);awaitWorker();
   assertTrue(FakeBuilder.routes.contains("100.64.0.0/10"));assertTrue(FakeBuilder.routes.contains("198.18.0.53/32"));
   assertEquals(java.util.Collections.singletonList("198.18.0.53"),FakeBuilder.resolvers);
+  assertTrue(FakeBuilder.addresses.contains("198.18.0.54/32"));assertFalse(FakeBuilder.addresses.contains("198.18.0.53/32"));
  }
  @Test public void savedConfigCannotBypassProminentDisclosure()throws Exception{
   configure();service.getSharedPreferences("mnet",0).edit().remove(MnetVpnService.VPN_DISCLOSURE_KEY).apply();
