@@ -82,6 +82,10 @@ class Guards(unittest.TestCase):
         self.assertLess(test.index('fixture-record-stop'),test.index('activity.finish()'))
         self.assertLess(test.index('HostingActivity.class).addFlags'),test.index('fixture-record-start'))
         self.assertNotIn('os.WriteFile(filepath.Join(root, "frame', peer)
+    def test_recorder_stop_survives_adb_shell_argument_joining(self):
+        source = (ROOT / 'scripts/android-emulator-validation.py').read_text()
+        self.assertIn("['shell', 'pid=$(pidof screenrecord);", source)
+        self.assertNotIn("'shell', 'sh', '-c', 'kill", source)
     def test_hash_before_and_after_real_reconnect(self):
         source = (ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
         self.assertEqual(2, source.count('            hashRoundTrip();'))

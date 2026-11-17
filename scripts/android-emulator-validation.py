@@ -209,7 +209,7 @@ def main():
                 if recording is not None:
                     # Only the single recorder this disposable fixture started.
                     stage = 'consent-recorder-stop'
-                    run(adb + ['shell', 'sh', '-c', 'kill -INT $(pidof screenrecord)'])
+                    run(adb + ['shell', 'pid=$(pidof screenrecord); if [ -n "$pid" ]; then kill -INT $pid; fi'])
                     recording.wait(timeout=20)
                     run(adb + ['pull', '/sdcard/mnet-consent.mp4', ARTIFACTS / 'consent.mp4'])
                 run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-record-stopped'])
