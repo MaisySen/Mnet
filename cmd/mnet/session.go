@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -224,7 +225,7 @@ func dialSessionTry(peer string) (*session.Mux, string) {
 // wireViewer attaches the frame and chat handlers for one connection.
 func wireViewer(v *session.Viewer, name, saveDir string) {
 	if saveDir != "" {
-		must(os.MkdirAll(saveDir, 0o755))
+		must(os.MkdirAll(saveDir, 0o700))
 		var n uint32
 		v.SetOnFrame(func(fr session.ScreenFrame) {
 			if fr.Seq <= n {
@@ -232,7 +233,7 @@ func wireViewer(v *session.Viewer, name, saveDir string) {
 			}
 			n = fr.Seq
 			p := filepath.Join(saveDir, "latest.jpg")
-			if err := os.WriteFile(p, fr.Image, 0o644); err == nil {
+			if err := saveSessionFrame(p, fr.Image); err == nil {
 				fmt.Printf("\rframe %d (%d bytes) -> %s\n", fr.Seq, len(fr.Image), p)
 			}
 		})
@@ -249,4 +250,26 @@ func sessionConnectSend(peer, path string) {
 		fatal("send: " + err.Error())
 	}
 	fmt.Println("sent:", path)
+}
+
+// saveSessionFrame replaces the latest snapshot via a private same-directory
+// temporary file, never by opening/truncating the destination or its symlink.
+func saveSessionFrame(path string, data []byte) error {
+	f, err := os.CreateTemp(filepath.Dir(path), ".mnet-frame-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	defer f.Close()
+	n, err := f.Write(data)
+	if err != nil {
+		return err
+	}
+	if n != len(data) {
+		return io.ErrShortWrite
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), path)
 }
