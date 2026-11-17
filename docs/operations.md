@@ -569,7 +569,7 @@ The switch configures the next hosting start only, and resets after the capture-
 
 ### Selected Android framework check
 
-Run `sh scripts/test-android-framework.sh` with JDK17, Python3 and Maven. It runs45 selected service/helper/encoder cases across five simulated API levels with Go/VPN/accessibility fakes and no manifest. Forty cases passed8c6478e CI;5 final-row cases pass locally and await CI. This is not an emulator/device, live VPN, valid capture, permission-enforcement or UI proof. See [harness limits](../android/framework-tests/README.md).
+Run both `sh scripts/test-android-framework.sh` and `sh scripts/test-android-framework.sh vpn` with JDK17, Python3 and Maven. Current fresh suites total124cases:76selected service/activity and48VPN lifecycle/worker cases, with Go/system-mode/accessibility fakes and no manifest. New cross-instance revoke/destruction coverage awaits CI. This is not an emulator/device, live VPN, valid capture, permission-enforcement or UI proof. See [harness limits](../android/framework-tests/README.md).
 
 ### Capture frame temporary storage (new source)
 
@@ -692,4 +692,4 @@ New source stops recording after an output error and keeps any partial file for 
 
 On API29+ new source omits managed notification disconnect, disables connected main-screen disconnect and ignores stale disconnect requests. Use Android Settings to change the system-owned connection. The app changes no always-on/lockdown settings. API24-28 detection remains open. Status refresh updates the UI, without a verified immediate Settings-toggle timing guarantee.
 
-Selected worker failure/cancellation/ownership and disconnect/revoke branches now run in framework simulation with fake Go/system mode and placeholder resources. Both suites total112passes. These do not prove actual Settings/notification pixels, interface/JNI, physical reconnect or reboot. A previous worker must exit before another can start; retry after cleanup if the app reports it is still stopping. Current published downloads are unchanged. [3fdc248 CI](https://github.com/MaisySen/Mnet/actions/runs/44001182536) passed all five jobs before the new worker coverage.
+Selected worker failure/cancellation/ownership and disconnect/revoke branches now run in framework simulation with fake Go/system mode and placeholder resources. Both suites total124passes. These do not prove actual Settings/notification pixels, interface/JNI, physical reconnect or reboot. A previous worker must exit before another can start; retry after cleanup if the app reports it is still stopping. Current published downloads are unchanged. [b09858d CI](https://github.com/MaisySen/Mnet/actions/runs/44003438085) passed all five jobs before the new revoke/destruction coverage.

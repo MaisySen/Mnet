@@ -51,6 +51,29 @@ public class VpnServiceTest {
   mobile.Node next=new mobile.Node(){@Override public String prepare(String a,String b,String c,String d){throw new IllegalStateException("next worker accepted");}};
   mobile.Mobile.factory=()->{created.incrementAndGet();return next;};assertEquals(Service.START_STICKY,service.onStartCommand(null,0,5));awaitWorker();assertEquals(2,created.get());assertTrue(next.closed);errorContains("next worker accepted");
  }
+ @Test public void systemRevokeCancelsBlockedPreparation()throws Exception{cancelBlockedPreparation(true);}
+ @Test public void destructionCancelsBlockedPreparation()throws Exception{cancelBlockedPreparation(false);}
+ private void cancelBlockedPreparation(boolean revoke)throws Exception{
+  configure();Mode.managed=true;
+  java.util.concurrent.CountDownLatch entered=new java.util.concurrent.CountDownLatch(1),release=new java.util.concurrent.CountDownLatch(1);
+  java.util.concurrent.atomic.AtomicInteger starts=new java.util.concurrent.atomic.AtomicInteger(),creates=new java.util.concurrent.atomic.AtomicInteger();
+  mobile.Node blocked=new mobile.Node(){@Override public String prepare(String a,String b,String c,String d){entered.countDown();try{if(!release.await(5,java.util.concurrent.TimeUnit.SECONDS))throw new AssertionError("release timed out");}catch(InterruptedException e){throw new AssertionError(e);}return "100.64.0.2";}@Override public void start(long fd,String a,String b,String c,String d){starts.incrementAndGet();}};
+  mobile.Mobile.factory=()->{creates.incrementAndGet();return blocked;};
+  MnetVpnService replacement=Robolectric.buildService(MnetVpnService.class).create().get();
+  try{
+   service.onStartCommand(null,0,1);assertTrue(entered.await(5,java.util.concurrent.TimeUnit.SECONDS));assertSame(blocked,MnetVpnService.currentNode());
+   if(revoke)service.onRevoke();else service.onDestroy();
+   assertTrue(blocked.closed);assertNull(MnetVpnService.currentNode());assertFalse(running());assertTrue(Shadows.shadowOf(service).isStoppedBySelf());
+   // The gate belongs to the process, not only the stopped service instance.
+   assertEquals(Service.START_NOT_STICKY,replacement.onStartCommand(null,0,1));assertEquals(1,creates.get());
+   release.countDown();awaitWorker();assertEquals(0,starts.get());
+   mobile.Node next=new mobile.Node(){@Override public String prepare(String a,String b,String c,String d){throw new IllegalStateException("replacement accepted after exit");}};
+   mobile.Mobile.factory=()->{creates.incrementAndGet();return next;};
+   assertEquals(Service.START_STICKY,replacement.onStartCommand(null,0,2));
+   MnetVpnService original=service;service=replacement;try{awaitWorker();}finally{service=original;}
+   assertEquals(2,creates.get());assertTrue(next.closed);assertNull(MnetVpnService.currentNode());errorContains("replacement accepted after exit");
+  }finally{release.countDown();awaitWorker();replacement.onDestroy();}
+ }
  @Test public void manualNotificationHasDisconnectAndActionStops()throws Exception{
   Notification n=notification();assertNotNull(n.actions);assertEquals(1,n.actions.length);
   Intent action=Shadows.shadowOf(n.actions[0].actionIntent).getSavedIntent();assertEquals("disconnect",action.getAction());
