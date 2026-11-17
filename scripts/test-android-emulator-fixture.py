@@ -39,6 +39,12 @@ class Guards(unittest.TestCase):
         self.assertIn("'pre_boot_free_mib': free_mib", source)
         self.assertIn("'not enough space'", source)
         self.assertIn("'-partition-size', '2048'", source)
+    def test_avd_creation_and_boot_share_explicit_home(self):
+        source = (ROOT / '.github/workflows/android-emulator.yml').read_text()
+        self.assertIn('ANDROID_AVD_HOME=$RUNNER_TEMP/mnet-avd', source)
+        self.assertIn('--path "$ANDROID_AVD_HOME/mnet-fixture.avd"', source)
+        self.assertIn('test -s "$ANDROID_AVD_HOME/mnet-fixture.ini"', source)
+        self.assertIn('-list-avds', source)
     def test_hash_before_and_after_real_reconnect(self):
         source = (ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
         self.assertEqual(2, source.count('            hashRoundTrip();'))
