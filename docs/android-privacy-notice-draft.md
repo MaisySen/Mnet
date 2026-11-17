@@ -1,4 +1,6 @@
-# Mnet Android development-test privacy notice - review draft
+# Mnet Android privacy notice - archived review draft
+
+Superseded for the current internal-development test by the [published bounded policy](https://maisysen.github.io/Mnet/) (source: index.html). This earlier review remains historical preparation, not the policy URL.
 
 Updated2026-11-17. **Not published or ready to use as a privacy-policy URL.** The operator verification section at the end must be completed before adoption. This text describes the current source candidate, not an older installed APK or a general public service.
 

@@ -23,7 +23,7 @@ A current read of the configured service confirms Render free compute, Singapore
 
 Render documents loss of local filesystem changes on redeploy, restart or idle spin-down. That is an availability/data-loss limit, not a complete deletion process. Provider runtime logs have their own retention based on the workspace plan; a free compute instance does not establish the workspace plan or a precise provider-log retention duration. Neither provider-side backups/log streams nor support-mailbox handling have been fully verified. No service, plan, deployment, credential or logging setting was changed for this check.
 
-The [privacy notice review draft](android-privacy-notice-draft.md) still needs those actual operator details and an adopted deletion process. Do not call it a published policy or put its source-file URL into the Play privacy-policy field.
+The [published internal-test privacy policy](https://maisysen.github.io/Mnet/) describes these boundaries and manual requests without claiming a precise provider-log duration or automatic all-data deletion. The older review draft is historical. Broader provider inventory and deletion tooling remain work, not an invented fixed-period requirement before any internal upload.
 
 ## Sources
 

@@ -149,8 +149,15 @@ public class MainActivity extends Activity {
                         "Screen sharing sends screen images to an approved viewer; optional accessibility access permits remote gestures. " +
                         "Disconnecting does not delete saved identity or server records. " +
                         "Other endpoints may retain content you send.\n\n" +
-                        "This is a development build. The full privacy notice and complete retention/deletion handling are still being finalized. " +
+                        "This is an internal-development test. Read the privacy policy for DNS forwarding, provider-controlled retention and manual deletion-request limits. " +
                         "Opening an email app does not send a request or delete data.")
+                .setNeutralButton("Privacy policy", (d, w) -> {
+                    Intent policy = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://maisysen.github.io/Mnet/"));
+                    try { startActivity(policy); }
+                    catch (android.content.ActivityNotFoundException unavailable) {
+                        android.widget.Toast.makeText(this, "Open https://maisysen.github.io/Mnet/ in a browser.", android.widget.Toast.LENGTH_LONG).show();
+                    }
+                })
                 .setPositiveButton("Open email app", (d, w) -> {
                     Intent email = new Intent(Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:contact@fintex.au"));
                     try { startActivity(email); }

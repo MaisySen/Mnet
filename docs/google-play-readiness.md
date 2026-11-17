@@ -6,19 +6,25 @@ Updated 2026-11-17. This is an engineering and submission-preparation checklist,
 
 Use the existing developer account and a named-audience Internal testing track for the first phone beta. Collaborator access has been verified. No Mnet app record, binary upload, testing release, public launch or pricing change has been made. Internal testing can begin before full store setup and supports up to100 testers. It may not receive ordinary policy/security review and is not proof of Play Protect clearance. The12-testers/14-days closed-test rule concerns production access for qualifying personal accounts, not this initial internal test.
 
-## Release gates
+## Owner-internal upload/release path
+
+The immediate path is supported Create app certifications, a valid upload-signed bundle, Play App Signing, the single approved internal tester and the actual console release validation. Internal testing can start before full app setup. A production listing, production-access closed-test requirements, physical/OEM/soak completion and a precisely known provider-log duration are not automatically owner-test upload gates. Those wider checks continue independently. A real console validation error or unsupported factual certification remains a gate.
+
+The published Android internal-test privacy policy is https://maisysen.github.io/Mnet/ . It states actual handling and manual-request/provider-retention limits without inventing a duration.
+
+## Evidence and remaining work
 
 | Gate | Current evidence | Remaining work |
 | --- | --- | --- |
 | Account access | Intended existing developer account opens with invited collaborator | Confirm app-specific permissions when a draft exists; do not modify unrelated apps |
 | Current Android target | Source targets36; SDK/build-tools36 compilation and actual API34/36 APK/JNI matrix pass | Final-candidate repeat and physical/OEM behavior; do not substitute emulator evidence for phone coverage |
 | Native16KiB support | Fresh current-source AAR4ABIs pass direct ELF LOAD checks; old AAR rejected | Actual16KiB-device/runtime check, not only ELF structure |
-| App Bundle | Fresh current-source4ABI AAR passes16KiB ELF checks; upload-key-signed AAB builds and validates; signer continuity matches prior private APK | Fresh release version/final-source candidate and Play App Signing choice in actual flow; code15 remains development |
+| App Bundle | Fresh current-source4ABI AAR passes16KiB ELF checks; upload-key-signed AAB builds and validates; signer continuity matches prior private APK | Final-source candidate and Play App Signing choice in actual flow. Code15 is unused on Play and valid for an internal development test; a fresh marketing version is not an upload requirement |
 | Actual runtime | Actual API34/36 matrix atbee0906 passes OS VPN consent, own-process bidirectional4MiB TCP hash, manual stop/reconnect, repeat hash, and separate app UID ordinary unbound TCP twice | Prior API36 repeat at88d73f8 timed out at mesh connect despite WireGuard handshake. Source-bound viewer dialing addresses source selection but does not establish every TCP startup race is closed. Continue repeat/physical/OEM/soak coverage; Linux mobile-fd test is additional, not Android proof |
 | Screen control | Feature retained. Actual API34/36 accessibility/projection/viewer consent, full peer JPEG decoding, mesh gesture click and stop closure pass at3b356e9 andbee0906 | Non-tool accessibility declaration, full inspected consent walkthrough, final-source repeat and physical-device evidence.21a3c22 also reaches final recording-stop marker on bothAPIs but lacks runner encoder, not a completed demonstration |
 | VPN policy | Mesh networking/remote access matches a listed permitted purpose in policy | Verify precise listing, device-to-endpoint encryption, data disclosures and declaration against final binary |
-| Privacy | Source has real metadata and user-content flows, not a zero-data claim | Final inventory, operator retention/deletion route, privacy-policy destination and truthful declaration answers |
-| Export | Standard-crypto public-source notification rule researched | Whole-binary restricted-beta route and certification basis still unresolved; do not manufacture compliance |
+| Privacy | Source has real metadata and user-content flows, not a zero-data claim | Published bounded policy and explicit in-app link; apply truthful declarations if the console requires them. Precise provider duration is not a self-imposed blocker |
+| Export | Standard-crypto public-source notification rule researched | Narrow owner-internal740.17(a)(1)(i) route; confirm actual Australian headquarters/private-sector internal-development facts before the export certification |
 | Commercial direction | Free to download selected by owner on2026-11-17; intended future Multies use is context, not implemented integration | Apply Free in the intended app setup; no in-app purchase/subscription or broader commercial plan is authorized by this choice. Published free apps cannot switch to paid downloads |
 | Audience | Owner selected one restricted Play Store account on2026-11-17; exact address stays private | Configure only that account for Internal testing after remaining gates clear. No public opt-in audience or additional testers authorized |
 
@@ -46,11 +52,11 @@ For accessibility, use the non-accessibility-tool route, describe actual remote-
 
 Export research established that the2021 rule removed notification for standard-crypto public-source/beta software, with non-standard cryptography retaining notification. Public-source availability alone does not answer every restricted-binary question. The alternative740.9(c) beta exception has importer statements, transfer restrictions and post-test disposal conditions. No filing, tester obligation or final legal classification has been made.
 
-## Submission order
+## Wider validation work, alongside the internal release
 
 1. Repeat final target36 candidate runtime proof, including consent/capture/input. Preserve the earlier intermittent TCP failure and physical-device gaps rather than treating one green matrix as universal reliability.
 2. Finish final-binary data-flow/policy/export evidence, privacy text and declaration/video drafts. Escalate only an unresolved substantive certification, not routine preparation.
-3. Settle permanent pricing and exact named tester audience from user evidence.
+3. Free pricing and the exact sole tester are already resolved. Do not ask them again.
 4. Create the intended app draft only with supported declarations. Inspect signing/enrollment and final AAB before upload.
 5. Configure only the approved internal tester audience and release. Verify final console state and tester link without claiming production publication or security clearance.
 

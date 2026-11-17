@@ -50,6 +50,16 @@ public class MainActivityTest {
   assertEquals(Intent.ACTION_SENDTO,email.getAction());assertEquals("mailto:contact@fintex.au",email.getDataString());
   assertNull(email.getExtras());
  }
+ @Test public void privacyPolicyOpensOnlyPublicNoticeWithoutPrivateExtras() {
+  ((Button)activity.findViewById(R.id.privacy_support_button)).performClick();
+  android.app.AlertDialog dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+  assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
+  dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).performClick();
+  Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+  Intent policy=Shadows.shadowOf(activity).getNextStartedActivity();
+  assertEquals(Intent.ACTION_VIEW,policy.getAction());assertEquals("https://maisysen.github.io/Mnet/",policy.getDataString());
+  assertNull(policy.getExtras());assertNull(Shadows.shadowOf(activity).getNextStartedService());
+ }
  @Test public void closingPrivacySupportDoesNotSendOrDisconnect() {
   ((Button)activity.findViewById(R.id.privacy_support_button)).performClick();
   org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog().getButton(android.app.AlertDialog.BUTTON_NEGATIVE).performClick();
