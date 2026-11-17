@@ -40,24 +40,30 @@ func New(addr string) (*Server, error) {
 
 // Update rebuilds the record table from a network map.
 func (s *Server) Update(m *netmap.Map) {
-	recs := map[string]string{}
-	zone := "." + m.Network.Name + s.suffix + "."
-	recs[dns.Fqdn(m.Network.Name+s.suffix)] = m.Self.IPv4
-	recs[dns.Fqdn(m.Self.Name+zone[:len(zone)-1])] = m.Self.IPv4
-	recs[dns.Fqdn(m.Self.FQDN(m.Network.Name))] = m.Self.IPv4
-	for _, p := range m.Peers {
-		recs[dns.Fqdn(p.FQDN(m.Network.Name))] = p.IPv4
-		// Short form: <node>.mnet when unambiguous.
-		short := dns.Fqdn(p.Name + s.suffix)
-		if _, clash := recs[short]; !clash {
-			recs[short] = p.IPv4
-		} else {
-			delete(recs, short)
+	// DNS names are case-insensitive. Accumulate every alias before choosing
+	// records so a later peer cannot restore or override an ambiguous name.
+	candidates := map[string]map[string]struct{}{}
+	add := func(name, ip string) {
+		name = strings.ToLower(dns.Fqdn(name))
+		if candidates[name] == nil {
+			candidates[name] = map[string]struct{}{}
 		}
+		candidates[name][ip] = struct{}{}
 	}
-	short := dns.Fqdn(m.Self.Name + s.suffix)
-	if _, clash := recs[short]; !clash {
-		recs[short] = m.Self.IPv4
+	add(m.Network.Name+s.suffix, m.Self.IPv4)
+	add(m.Self.FQDN(m.Network.Name), m.Self.IPv4)
+	add(m.Self.Name+s.suffix, m.Self.IPv4)
+	for _, p := range m.Peers {
+		add(p.FQDN(m.Network.Name), p.IPv4)
+		add(p.Name+s.suffix, p.IPv4)
+	}
+	recs := map[string]string{}
+	for name, owners := range candidates {
+		if len(owners) == 1 {
+			for ip := range owners {
+				recs[name] = ip
+			}
+		}
 	}
 	s.mu.Lock()
 	s.records = recs
@@ -99,6 +105,11 @@ func (s *Server) handle(w dns.ResponseWriter, r *dns.Msg) {
 	m.Authoritative = false
 	m.RecursionAvailable = true
 
+	if len(r.Question) != 1 {
+		m.SetRcode(r, dns.RcodeFormatError)
+		w.WriteMsg(m)
+		return
+	}
 	q := r.Question[0]
 	name := strings.ToLower(q.Name)
 
