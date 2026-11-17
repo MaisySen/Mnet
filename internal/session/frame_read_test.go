@@ -71,3 +71,30 @@ func TestMalformedHeaderClosesActiveMuxWithoutPayload(t *testing.T) {
 		t.Fatal("malformed header retained active mux awaiting payload")
 	}
 }
+
+func TestOpenMetadataCapBeforeReadingOrWritingPayload(t *testing.T) {
+	h := make([]byte, headerLen)
+	h[4] = msgOpen
+	h[5] = PriBulk
+	binary.BigEndian.PutUint32(h[8:], maxOpenPayload+1)
+	if _, err := readFrame(bytes.NewReader(h)); err == nil || !strings.Contains(err.Error(), "OPEN metadata") {
+		t.Fatalf("oversized OPEN read body: %v", err)
+	}
+	var wire bytes.Buffer
+	if err := writeFrame(&wire, Frame{Type: msgOpen, Payload: make([]byte, maxOpenPayload+1)}); err == nil {
+		t.Fatal("oversized local OPEN accepted")
+	}
+	if wire.Len() != 0 {
+		t.Fatal("rejected OPEN partially written")
+	}
+	for _, frame := range []Frame{{Type: msgOpen, Payload: make([]byte, maxOpenPayload)}, {Type: msgData, Payload: make([]byte, maxPayload)}} {
+		wire.Reset()
+		if err := writeFrame(&wire, frame); err != nil {
+			t.Fatal(err)
+		}
+		got, err := readFrame(&wire)
+		if err != nil || !bytes.Equal(got.Payload, frame.Payload) {
+			t.Fatalf("valid boundary rejected: %v", err)
+		}
+	}
+}

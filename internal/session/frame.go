@@ -12,9 +12,10 @@ import (
 )
 
 const (
-	headerLen    = 12
-	maxPayload   = 1 << 20 // 1 MiB
-	protoVersion = 1
+	headerLen      = 12
+	maxPayload     = 1 << 20  // 1 MiB
+	maxOpenPayload = 16 << 10 // JSON metadata, never screen/file DATA
+	protoVersion   = 1
 )
 
 // Message types on a stream.
@@ -58,6 +59,9 @@ func writeFrame(w io.Writer, f Frame) error {
 	if len(f.Payload) > maxPayload {
 		return fmt.Errorf("session: payload %d exceeds %d", len(f.Payload), maxPayload)
 	}
+	if f.Type == msgOpen && len(f.Payload) > maxOpenPayload {
+		return fmt.Errorf("session: OPEN metadata exceeds policy")
+	}
 	var h [headerLen]byte
 	binary.BigEndian.PutUint32(h[0:4], f.StreamID)
 	h[4] = f.Type
@@ -92,6 +96,9 @@ func readFrame(r io.Reader) (Frame, error) {
 	n := binary.BigEndian.Uint32(h[8:12])
 	if n > maxPayload {
 		return Frame{}, fmt.Errorf("session: frame payload %d exceeds %d", n, maxPayload)
+	}
+	if h[4] == msgOpen && n > maxOpenPayload {
+		return Frame{}, fmt.Errorf("session: OPEN metadata exceeds policy")
 	}
 	f := Frame{
 		StreamID: binary.BigEndian.Uint32(h[0:4]),
