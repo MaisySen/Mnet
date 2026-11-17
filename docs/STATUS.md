@@ -8,9 +8,9 @@ Updated 2026-11-17, Australia/Sydney. Development/testing only. No production-re
 | --- | --- | --- |
 | Published test artifacts | v0.8.2-test.1, source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11; Android 0.8.2/code 14. | [Release](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1). Sixteen assets verified at release. Update CLI and daemon together. |
 | Hosted test control plane | Last verified 2026-11-16 at 07:12 AEDT on `2bb55f4`. | Dated deployment check, not a current availability promise. Free-host ephemeral disk/restart state loss remains a limitation. |
-| Newer verified source | `6b2fe37`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43993052318). Native/kernel controlled fixtures, not physical Android runtime/boot proof. |
-| Current Android build check | Fresh `556399f` bindings for armeabi-v7a, arm64-v8a, x86 and x86_64 (minimum API 24), Android 34 resources/application Java and min-api-24 dex compile; 64 local framework cases pass. | Build and simulation only. No JNI/device/install proof or new APK/AAB. [Framework guide](../android/framework-tests/README.md). |
-| Local source validation | Fresh build, Windows/macOS cross-build, vet, vulnerability scan, full race suite, normal/burst mesh-file stress, source-gate tests and secret scan passed at `556399f` plus portal-canvas fixture. | Local gates, not physical-platform or public-internet soak proof. |
+| Newer verified source | `d0afcb6`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/43994622318). Native/kernel controlled fixtures, not physical Android runtime/boot proof. |
+| Current Android build check | Fresh `d0afcb6` bindings for armeabi-v7a, arm64-v8a, x86 and x86_64 (minimum API 24), Android 34 resources/application Java and min-api-24 dex compile; 64 local framework cases pass. | Build and simulation only. No JNI/device/install proof or new APK/AAB. [Framework guide](../android/framework-tests/README.md). |
+| Local source validation | Fresh build, Windows/macOS cross-build, vet, vulnerability scan, full race suite, normal/burst mesh-file stress, source-gate tests and secret scan passed at `d0afcb6`. | Local gates, not physical-platform or public-internet soak proof. |
 
 ### Current mobile/session summary
 

@@ -690,8 +690,15 @@ EncodeTiles validates its full rectangle list before output allocation/encoding.
 Seven invalid rectangle regressions were accepted before fixing. Rejection, nil-source handling, a valid nonzero-origin source/rectangle and existing diff/encode tests pass 100 race repetitions. A fresh full-repository race suite passes. This does not validate malformed image.Pix/Stride buffers, bound aggregate encoding CPU or add nonzero-origin support to DiffTiles. All-five [ea9ff62 CI](https://github.com/MaisySen/Mnet/actions/runs/43991510739) is verified; latest bindings remain556399f, before this shared helper change. No release, deployment or existing user/device state changed.
 
 
-## Composite base stride preservation (new source, CI pending)
+## Composite base stride preservation (d0afcb6 all-five CI verified)
 
 CompositeTiles now copies base pixels row by row using PixOffset rather than a flat slice copy. Valid RGBA subimages can have a larger parent stride, so the previous copy could mix neighbor/padding pixels into subsequent rows. Output retains the base's bounds but does not alias its pixel buffer.
 
 A gradient subimage fixture failed before fixing at its second row. It now compares every output/base pixel and verifies output mutation does not alter the base. Composite/encode/diff checks pass 100 race repetitions, followed by fresh full-repository race tests. Synthetic image-layout evidence only; production decoded bases are normally tightly packed. This does not validate arbitrary malformed buffers, add DiffTiles offset-origin support or prove real display pixels. All-five [6b2fe37 CI](https://github.com/MaisySen/Mnet/actions/runs/43993052318) is verified; current bindings remain556399f before encoder/compositor changes. No release, deployment or user/device state changed.
+
+
+## Current encoder/compositor bindings and validation (d0afcb6 source)
+
+Fresh bindings include encoder rectangle refusal and stride-aware base copying across all four Android ABIs at minimum API 24. Archive/ELF inspection and Android 34 resources/all app Java/min-api-24 dex compilation passed. AAR SHA256: `63a069a60fb0cfb9b29f1e3d875a6cc4f79bd5c906bc4ddd689499822aff7645`. Fresh framework simulation passed 64 cases with zero failures/errors/skips. Full local gates passed: build, Windows/macOS cross-builds, vet, vulnerability scan, fresh full race suite, normal/burst mesh-file stress, source-gate tests and secret scan. All five [d0afcb6 CI jobs](https://github.com/MaisySen/Mnet/actions/runs/43994622318) passed.
+
+STATUS, the framework guide and current session-layer behavior now name this validation source. The following documentation revision has not yet completed CI. No signed/published APK/AAB, hosted deployment or existing user-device state changed. These build/simulation/controlled-fixture results do not execute JNI, physical capture/input, Android UI pixels, installation or reboot.
