@@ -91,7 +91,7 @@ def main():
         test.mkdir()
         (test / 'classes').mkdir()
         (test / 'dex').mkdir()
-        (test / 'AndroidManifest.xml').write_text('''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="au.fintex.mnet.fixture"><uses-sdk android:minSdkVersion="24" android:targetSdkVersion="36"/><application android:label="Mnet disposable fixture"/><instrumentation android:name="au.fintex.mnet.fixture.IndependentAppInstrumentation" android:targetPackage="au.fintex.mnet.fixture"/><instrumentation android:name="au.fintex.mnet.fixture.MeshInstrumentation" android:targetPackage="au.fintex.mnet"/></manifest>''')
+        (test / 'AndroidManifest.xml').write_text('''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="au.fintex.mnet.fixture"><uses-sdk android:minSdkVersion="24" android:targetSdkVersion="36"/><uses-permission android:name="android.permission.INTERNET"/><application android:label="Mnet disposable fixture"/><instrumentation android:name="au.fintex.mnet.fixture.IndependentAppInstrumentation" android:targetPackage="au.fintex.mnet.fixture"/><instrumentation android:name="au.fintex.mnet.fixture.MeshInstrumentation" android:targetPackage="au.fintex.mnet"/></manifest>''')
         run([bt / 'aapt2', 'link', '-o', test / 'base.apk', '-I', android, '--manifest', test / 'AndroidManifest.xml'])
         run(['javac', '-source', '11', '-target', '11', '-cp', str(android) + ':' + str(appout / 'classes') + ':' + str(appout / 'aar/classes.jar'), '-d', test / 'classes', *sorted((staged / 'android/instrumentation').rglob('*.java'))])
         run(['jar', 'cf', test / 'target.jar', '-C', appout / 'classes', '.'])
@@ -159,7 +159,20 @@ def main():
         run(adb + ['install', '-r', appout / 'mnet.apk'])
         run(adb + ['install', '-r', test / 'fixture.apk'])
         stage = 'actual-instrumentation'
-        output = run(adb + ['shell', 'am', 'instrument', '-w', '-r', '-e', 'server', base, '-e', 'key', key, '-e', 'peer', peer['ipv4'], 'au.fintex.mnet.fixture/au.fintex.mnet.fixture.MeshInstrumentation'], timeout=420)
+        instrument = start(adb + ['shell', 'am', 'instrument', '-w', '-r', '-e', 'server', base, '-e', 'key', key, '-e', 'peer', peer['ipv4'], 'au.fintex.mnet.fixture/au.fintex.mnet.fixture.MeshInstrumentation'], 'instrumentation')
+        def peer_ready():
+            if instrument.poll() is not None:
+                return True  # collect the safe failure below, not a raw log
+            check = subprocess.run(list(map(str, adb + ['shell', 'run-as', 'au.fintex.mnet', 'test', '-f', 'files/fixture-peer-ready'])), capture_output=True, timeout=10)
+            return check.returncode == 0
+        wait(peer_ready, 'independent-app-ready', 300)
+        independent = ''
+        if instrument.poll() is None:
+            stage = 'independent-app-unbound-tcp'
+            independent = run(adb + ['shell', 'am', 'instrument', '-w', '-r', '-e', 'peer', peer['ipv4'], 'au.fintex.mnet.fixture/au.fintex.mnet.fixture.IndependentAppInstrumentation'], timeout=150)
+            run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-peer-done'])
+        instrument.wait(timeout=90)
+        output = (root / 'instrumentation.log').read_text()
         screenshot = subprocess.run(list(map(str, adb + ['exec-out', 'run-as', 'au.fintex.mnet', 'cat', 'files/fixture-launch.png'])), capture_output=True, timeout=15)
         if screenshot.returncode or not screenshot.stdout.startswith(b'\x89PNG\r\n\x1a\n'):
             raise RuntimeError('sanitized launch screenshot unavailable')
@@ -178,8 +191,6 @@ def main():
                     safe[0] += ' peerDiagnosticsUnavailable=true'
                 (ARTIFACTS / 'instrumentation.txt').write_text('\n'.join(safe) + '\n')
             raise RuntimeError('actual Android integration not passed')
-        stage = 'independent-app-unbound-tcp'
-        independent = run(adb + ['shell', 'am', 'instrument', '-w', '-r', '-e', 'peer', peer['ipv4'], 'au.fintex.mnet.fixture/au.fintex.mnet.fixture.IndependentAppInstrumentation'], timeout=180)
         second = [line for line in independent.splitlines() if line.startswith('INSTRUMENTATION_RESULT: summary=')]
         run(adb + ['shell', 'am', 'force-stop', 'au.fintex.mnet'])
         if len(second) != 1 or 'summary=PASS independent app unbound TCP' not in second[0] or 'INSTRUMENTATION_CODE: -1' not in independent:

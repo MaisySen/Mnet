@@ -163,14 +163,17 @@ public class MeshInstrumentation extends Instrumentation {
             await(this::up, "reconnect-vpn-up");
             osVpnReady();
             hashRoundTrip();
+            // Keep the VPN-owning instrumentation process alive while another
+            // installed app UID performs ordinary unbound TCP transfers.
+            new File(getTargetContext().getFilesDir(), "fixture-peer-ready").createNewFile();
+            stage = "independent-app-wait";
+            long deadline = SystemClock.elapsedRealtime() + 180000;
+            while (!new File(getTargetContext().getFilesDir(), "fixture-peer-done").exists()) {
+                if (SystemClock.elapsedRealtime() > deadline) throw new IllegalStateException("independent app timeout");
+                SystemClock.sleep(150);
+            }
             click(R.id.connect_button);
             await(() -> MnetVpnService.currentNode() == null, "final-stop");
-            click(R.id.connect_button);
-            vpnConsent();
-            await(this::up, "independent-app-vpn-up");
-            osVpnReady();
-            // Leave VPN up only for the independent fixture UID test. The
-            // runner force-stops this disposable app immediately afterwards.
             if (!consentClicked) throw new IllegalStateException("no actual initial VPN consent click observed");
             stage = "complete";
             result.putString("summary", "PASS self-bound target36 runtimeAPI=" + android.os.Build.VERSION.SDK_INT + " actual APK/JNI/VPN consent, bidirectional 4MiB hash, manual stop/reconnect and repeat hash; emulator only, no physical reboot/capture/control proof");
