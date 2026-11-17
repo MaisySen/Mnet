@@ -326,3 +326,28 @@ func TestEncodeTilesNilAndOffsetSource(t *testing.T) {
 		t.Fatalf("geometry mismatch: %+v %v", config, err)
 	}
 }
+
+func TestCompositeTilesPreservesStridedBasePixels(t *testing.T) {
+	parent := image.NewRGBA(image.Rect(0, 0, 12, 12))
+	for y := 0; y < 12; y++ {
+		for x := 0; x < 12; x++ {
+			parent.SetRGBA(x, y, color.RGBA{R: uint8(x * 15), G: uint8(y * 15), A: 255})
+		}
+	}
+	base := parent.SubImage(image.Rect(2, 3, 10, 11)).(*image.RGBA)
+	out, err := CompositeTiles(base, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for y := base.Bounds().Min.Y; y < base.Bounds().Max.Y; y++ {
+		for x := base.Bounds().Min.X; x < base.Bounds().Max.X; x++ {
+			if out.RGBAAt(x, y) != base.RGBAAt(x, y) {
+				t.Fatalf("base pixel changed at%d,%d: %+v want %+v", x, y, out.RGBAAt(x, y), base.RGBAAt(x, y))
+			}
+		}
+	}
+	out.SetRGBA(2, 3, color.RGBA{})
+	if base.RGBAAt(2, 3) == (color.RGBA{}) {
+		t.Fatal("composite aliases base")
+	}
+}

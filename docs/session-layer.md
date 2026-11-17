@@ -197,3 +197,8 @@ New source treats different prior/current capture bounds as a full refresh rathe
 ## Tile encoder request bounds
 
 New source rejects a nil source, empty/negative tile dimensions and rectangles outside the source before encoding any output. The old SubImage clipping could encode smaller bytes while advertising the original rectangle. Valid offset-origin source rectangles are preserved by this encoder. This does not extend DiffTiles to offset-origin capture canvases or validate arbitrary malformed pixel buffers.
+
+
+## Composite base row layout
+
+New source copies valid RGBA bases row by row using their actual stride. A subimage can retain a larger parent row stride; a flat Pix copy would shift padding/neighbor pixels into later rows. Composite output remains independent of the base. This handles valid image layout, not malformed Pix/Stride buffers or a new desktop capture mode.

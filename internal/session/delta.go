@@ -118,7 +118,12 @@ func CompositeTiles(base *image.RGBA, tiles []Tile) (*image.RGBA, error) {
 		}
 	}
 	out := image.NewRGBA(bounds)
-	copy(out.Pix, base.Pix)
+	// A valid RGBA subimage can retain its parent's larger row stride.
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		source := base.PixOffset(bounds.Min.X, y)
+		target := out.PixOffset(bounds.Min.X, y)
+		copy(out.Pix[target:target+bounds.Dx()*4], base.Pix[source:source+bounds.Dx()*4])
+	}
 	for _, t := range tiles {
 		img, err := jpeg.Decode(bytes.NewReader(t.Image))
 		if err != nil {
