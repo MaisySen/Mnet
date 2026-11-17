@@ -59,6 +59,17 @@ func tileChanged(a, b *image.RGBA, r image.Rectangle) bool {
 
 // EncodeTiles cuts and JPEG-encodes each rect of img.
 func EncodeTiles(img *image.RGBA, rects []Rect, quality int) ([]Tile, error) {
+	if img == nil {
+		return nil, fmt.Errorf("tile source is nil")
+	}
+	bounds := img.Bounds()
+	// Validate the entire request before allocating/encoding output. SubImage
+	// clips rather than rejects, which would disagree with advertised geometry.
+	for _, r := range rects {
+		if r.W <= 0 || r.H <= 0 || r.X < bounds.Min.X || r.Y < bounds.Min.Y || r.X >= bounds.Max.X || r.Y >= bounds.Max.Y || r.W > bounds.Max.X-r.X || r.H > bounds.Max.Y-r.Y {
+			return nil, fmt.Errorf("tile rectangle outside source")
+		}
+	}
 	out := make([]Tile, 0, len(rects))
 	for _, r := range rects {
 		sub := img.SubImage(image.Rect(r.X, r.Y, r.X+r.W, r.Y+r.H))

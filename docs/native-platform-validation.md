@@ -681,3 +681,10 @@ A synthetic8x8-to16x16 regression panicked before fixing with an out-of-range sl
 An added portal-capturer fixture seeds smaller/larger prior image bounds, feeds one fixed-size raw frame and checks full JPEG output at the new dimensions with no delta tiles. Portal capturer tests pass 50 race repetitions. It runs the actual capturer selection/encoding code but bypasses D-Bus/GStreamer with a raw pump. This is not live display/stream renegotiation or X11 runtime proof.
 
 The full local gate bundle passed with that fixture. Fresh 556399f Android bindings cover all four ABIs at minimum API 24. Archive/ELF inspection and Android 34 resource/all app Java/min-api-24 dex compile passed. AAR SHA256: `b4e4c3fb859567f4eb5dc9e396ce4edb455d82c7430af155a423f914175cc009`. Fresh framework simulation passed 64 cases, no failures/errors/skips. All five [556399f CI jobs](https://github.com/MaisySen/Mnet/actions/runs/43989677724) passed; the new fixture/documentation revision is not yet CI verified. No signed/published APK/AAB, deployment, physical JNI/capture/input/UI/boot proof or user-device state change is added.
+
+
+## Tile encoder rejects clipped geometry (new source, CI pending)
+
+EncodeTiles validates its full rectangle list before output allocation/encoding. Nil sources and empty/negative/outside/overflow-position rectangles reject, rather than relying on SubImage clipping. Valid rectangles produce JPEG dimensions matching their advertised geometry. This is an encoder boundary check; generated desktop tile requests remain valid.
+
+Seven invalid rectangle regressions were accepted before fixing. Rejection, nil-source handling, a valid nonzero-origin source/rectangle and existing diff/encode tests pass 100 race repetitions. A fresh full-repository race suite passes. This does not validate malformed image.Pix/Stride buffers, bound aggregate encoding CPU or add nonzero-origin support to DiffTiles. All-five [ea9ff62 CI](https://github.com/MaisySen/Mnet/actions/runs/43991510739) is verified; latest bindings remain556399f, before this shared helper change. No release, deployment or existing user/device state changed.

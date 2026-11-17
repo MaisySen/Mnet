@@ -298,3 +298,31 @@ func TestDiffTilesChangedBoundsRequestsFullRefresh(t *testing.T) {
 		})
 	}
 }
+
+func TestEncodeTilesRejectsInvalidRectangles(t *testing.T) {
+	img := solid(16, 16, color.RGBA{A: 255})
+	for _, r := range []Rect{
+		{X: -1, W: 8, H: 8}, {Y: -1, W: 8, H: 8}, {X: 12, W: 8, H: 8}, {Y: 12, W: 8, H: 8},
+		{W: 0, H: 8}, {W: 8, H: -1}, {X: int(^uint(0) >> 1), W: 8, H: 8},
+	} {
+		if tiles, err := EncodeTiles(img, []Rect{r}, 80); err == nil || tiles != nil {
+			t.Errorf("invalid rectangle accepted: %+v tiles%d err%v", r, len(tiles), err)
+		}
+	}
+}
+
+func TestEncodeTilesNilAndOffsetSource(t *testing.T) {
+	if tiles, err := EncodeTiles(nil, nil, 80); err == nil || tiles != nil {
+		t.Fatal("nil source accepted")
+	}
+	img := image.NewRGBA(image.Rect(10, 20, 26, 36))
+	rect := Rect{X: 10, Y: 20, W: 8, H: 8}
+	tiles, err := EncodeTiles(img, []Rect{rect}, 80)
+	if err != nil || len(tiles) != 1 {
+		t.Fatalf("valid offset source rejected: %v", err)
+	}
+	config, err := jpeg.DecodeConfig(bytes.NewReader(tiles[0].Image))
+	if err != nil || config.Width != 8 || config.Height != 8 || tiles[0].Rect != rect {
+		t.Fatalf("geometry mismatch: %+v %v", config, err)
+	}
+}

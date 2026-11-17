@@ -192,3 +192,8 @@ New source validates optional arguments before connecting. Only --save-frames DI
 ## Desktop dirty-tile canvas changes
 
 New source treats different prior/current capture bounds as a full refresh rather than comparing pixels against the older canvas. X11 and portal capture discard the old delta base before their full-versus-tile choice, so a size change goes through full-frame encoding. This prevents the reproduced local image-growth slice panic and stale shrink comparisons. Synthetic unit tests and compilation do not certify physical display resize, portal renegotiation or input-coordinate safety. Android's separate geometry-refusal policy remains unchanged.
+
+
+## Tile encoder request bounds
+
+New source rejects a nil source, empty/negative tile dimensions and rectangles outside the source before encoding any output. The old SubImage clipping could encode smaller bytes while advertising the original rectangle. Valid offset-origin source rectangles are preserved by this encoder. This does not extend DiffTiles to offset-origin capture canvases or validate arbitrary malformed pixel buffers.
