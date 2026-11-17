@@ -88,6 +88,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: consumer journey prototype model and browser simulation
+        run: |
+          node --test prototype/model.test.mjs
+          node prototype/verify.mjs
       - name: isolated real Chrome admin login and logout
         run: node scripts/dashboard-validation.mjs
       - name: isolated real Chrome member account login and logout
