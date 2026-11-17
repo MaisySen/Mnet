@@ -55,6 +55,8 @@ Three paths are being compared against actual distribution:
 | Owner's internal development | 740.17(a)(1)(i) permits certain private-sector internal development without classification/report submission | Actual exporter/end-user, eligible headquarters and internal-development use. Not a standing route for unrelated beta testers. |
 | Restricted beta | 740.9(c) covers eligible beta software with stated conditions | Importer statement, testing destination/end-user, test-period/disposal obligations and intended public product. These obligations have not been imposed or accepted. |
 
+The resolved owner-only test is assessed separately in [owner-internal scope](owner-internal-test-scope.md); that is not an expansion to unrelated beta testers.
+
 No filing, importer undertaking or legal certification has been made. Do not treat a general "yes" to app work as factual proof of these conditions.
 
 ## Repeated engineering evidence
