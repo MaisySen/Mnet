@@ -308,7 +308,7 @@ public class HostSessionService extends Service implements HostCallbacks {
         ask.setPackage(getPackageName());
         sendBroadcast(ask);
         try {
-            boolean accepted=CONSENT.await(request,60,TimeUnit.SECONDS);
+            boolean accepted=CONSENT.await(request, 60, TimeUnit.SECONDS);
             synchronized(hostLifecycle){
                 if(!accepted||!running)return false;
                 control.begin();MnetAccessibilityService.setHosting(false);

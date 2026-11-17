@@ -295,6 +295,7 @@ public class MeshInstrumentation extends Instrumentation {
         await(remoteTapped::get, "remote-mesh-gesture-click");
         await(()->{AccessibilityNodeInfo root=getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();return root!=null&&clickText(root,"Remote control");},"screen-control-revoke-open");
         await(()->{AccessibilityNodeInfo root=getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();return root!=null&&clickText(root,"Revoke control");},"screen-control-revoke");
+        checkpoint("screen-control-revoke-state");
         SystemClock.sleep(700);remoteTapped.set(false);SystemClock.sleep(1000);
         if(au.fintex.mnet.HostSessionService.controlAllowed()||remoteTapped.get()||au.fintex.mnet.HostSessionService.controlSession()==null)throw new IllegalStateException("revoke failed or ended view");
         runOnMainSync(() -> getTargetContext().startService(new Intent(getTargetContext(), au.fintex.mnet.HostSessionService.class).setAction("stop")));
@@ -404,7 +405,7 @@ public class MeshInstrumentation extends Instrumentation {
         } catch (Throwable failure) {
             // Only these controlled hosting/OS consent screens contain no
             // enrollment UI or secrets. Never capture a general failure screen.
-            if (stage.equals("screen-projection-consent") || stage.equals("screen-viewer-consent") || stage.startsWith("accessibility-")) {
+            if (stage.equals("screen-projection-consent") || stage.equals("screen-viewer-consent") || stage.startsWith("screen-control-") || stage.startsWith("accessibility-")) {
                 try {
                     Bitmap image = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).takeScreenshot();
                     try (FileOutputStream file = new FileOutputStream(new File(getTargetContext().getFilesDir(), "fixture-consent.png"))) {
@@ -414,6 +415,7 @@ public class MeshInstrumentation extends Instrumentation {
             }
             // Deliberately omit exception messages, app state and arguments.
             String diagnostics = DNSProof.failureDiagnostics(failure);
+            diagnostics+=" controlAllowed="+au.fintex.mnet.HostSessionService.controlAllowed()+" controlSession="+(au.fintex.mnet.HostSessionService.controlSession()!=null);
             try{
                 android.net.ConnectivityManager cm=getTargetContext().getSystemService(android.net.ConnectivityManager.class);
                 android.net.LinkProperties lp=cm.getLinkProperties(cm.getActiveNetwork());
