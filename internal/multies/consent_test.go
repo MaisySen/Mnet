@@ -18,7 +18,7 @@ func consentFixture(t *testing.T) (*AttendedConsent, SessionBinding, *time.Time)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return c, b, &now
+	return c, c.Binding(), &now
 }
 func TestAttendedViewNeverImpliesControl(t *testing.T) {
 	c, b, _ := consentFixture(t)
@@ -156,6 +156,7 @@ func TestConsentZeroAndInvalidLifetimesDeny(t *testing.T) {
 		t.Fatal(got)
 	}
 	_, b, now := consentFixture(t)
+	b.SessionID = ""
 	for _, expiry := range []time.Time{*now, now.Add(-time.Second), now.Add(MaxConsentLifetime + time.Nanosecond)} {
 		if _, err := NewAttendedConsent(b, expiry, func() time.Time { return *now }); err != ErrDenied {
 			t.Fatal("invalid expiry")
@@ -197,4 +198,25 @@ func FuzzConsentCannotGrantAfterEnd(f *testing.F) {
 			}
 		}
 	})
+}
+
+func TestConsentApprovalCannotCrossNewSessionWithSameParticipants(t *testing.T) {
+	first, old, _ := consentFixture(t)
+	first.DecideView(old, old.HostUserID, true)
+	ticket, _ := first.RequestControl(old, old.ViewerUserID)
+	second, current, _ := consentFixture(t)
+	if old.SessionID == current.SessionID {
+		t.Fatal("session correlation reused")
+	}
+	if second.DecideView(old, old.HostUserID, true) != ErrDenied {
+		t.Fatal("old view approval replayed")
+	}
+	second.DecideView(current, current.HostUserID, true)
+	second.RequestControl(current, current.ViewerUserID)
+	if second.DecideControl(old, old.HostUserID, ticket, true) != ErrDenied {
+		t.Fatal("old control approval replayed")
+	}
+	if second.Snapshot().CanControl {
+		t.Fatal("cross-session control")
+	}
 }
