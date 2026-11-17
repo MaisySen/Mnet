@@ -29,6 +29,7 @@ public class MeshInstrumentation extends Instrumentation {
     private Activity activity;
     private String stage = "created";
     private boolean consentClicked;
+    private boolean entireScreenSelected;
     @Override public void onCreate(Bundle args) { super.onCreate(args); options = args; start(); }
     private interface Probe { boolean ready() throws Exception; }
     private void await(Probe probe, String label) throws Exception {
@@ -129,8 +130,10 @@ public class MeshInstrumentation extends Instrumentation {
             if (root == null || !"com.android.systemui".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())) return false;
             // API36 defaults to single-app capture and a Next button. The
             // disposable test deliberately selects this empty emulator's screen.
-            if (clickText(root, "Share entire screen") || clickText(root, "Entire screen")) return false;
-            if (clickText(root, "Share one app")) return false;
+            if (!entireScreenSelected) {
+                if (clickText(root, "Share entire screen") || clickText(root, "Entire screen")) { entireScreenSelected = true; return false; }
+                if (clickText(root, "Share one app")) return false;
+            }
             return clickText(root, "Start now") || clickText(root, "Start");
         }, "screen-projection-consent");
         await(() -> {
