@@ -32,6 +32,11 @@ class Guards(unittest.TestCase):
         self.assertIn('root.findAccessibilityNodeInfosByViewId("android:id/button1")', source)
         self.assertNotIn('package_verifier_enable', source)
         self.assertNotIn('verifier_verify_adb_installs', source)
+    def test_boot_diagnostics_are_fixed_categories_only(self):
+        source = (ROOT / 'scripts/android-emulator-validation.py').read_text()
+        self.assertIn("'missing_shared_library':", source)
+        self.assertIn("'emulator_exited': emulator.poll() is not None", source)
+        self.assertIn("json.dumps({'boot_diagnostics': categories})", source)
     def test_hash_before_and_after_real_reconnect(self):
         source = (ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
         self.assertEqual(2, source.count('            hashRoundTrip();'))

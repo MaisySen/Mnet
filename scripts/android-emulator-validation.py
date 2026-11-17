@@ -126,9 +126,26 @@ def main():
         peer = wait(lambda: json.loads(ready.read_text()) if ready.exists() else None, 'real-go-peer')
 
         stage = 'emulator-boot'
-        start([SDK / 'emulator/emulator', '-avd', 'mnet-fixture', '-port', '5554', '-no-window', '-no-audio', '-no-boot-anim', '-no-snapshot', '-gpu', 'swiftshader_indirect', '-memory', '2048', '-cores', '2'], 'emulator')
+        emulator = start([SDK / 'emulator/emulator', '-avd', 'mnet-fixture', '-port', '5554', '-no-window', '-no-audio', '-no-boot-anim', '-no-snapshot', '-gpu', 'swiftshader_indirect', '-memory', '2048', '-cores', '2'], 'emulator')
         adb = [ADB, '-s', 'emulator-5554']
-        wait(lambda: run(adb + ['shell', 'getprop', 'sys.boot_completed'], timeout=8).strip() == '1', 'emulator-boot', 300)
+        def booted():
+            if emulator.poll() is not None:
+                raise ChildProcessError('emulator exited before boot')
+            return run(adb + ['shell', 'getprop', 'sys.boot_completed'], timeout=8).strip() == '1'
+        try:
+            wait(booted, 'emulator-boot', 300)
+        except (RuntimeError, ChildProcessError):
+            # Only fixed classifications, never raw logs, paths or user data.
+            text = (root / 'emulator.log').read_text(errors='replace').lower()
+            categories = {
+                'missing_shared_library': 'error while loading shared libraries' in text,
+                'disk_space': 'not enough disk' in text or 'no space left' in text,
+                'acceleration_unavailable': 'kvm is not installed' in text or 'kvm permission denied' in text,
+                'gpu_initialization': 'failed to initialize' in text and ('vulkan' in text or 'opengl' in text),
+                'emulator_exited': emulator.poll() is not None,
+            }
+            (ARTIFACTS / 'instrumentation.txt').write_text(json.dumps({'boot_diagnostics': categories}) + '\n')
+            raise
         run(adb + ['shell', 'input', 'keyevent', '82'])
         run(adb + ['reverse', 'tcp:8080', 'tcp:8080'])
         run(adb + ['install', '-r', appout / 'mnet.apk'])
