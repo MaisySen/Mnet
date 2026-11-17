@@ -182,3 +182,8 @@ At 0396795, all five CI jobs passed. Fresh local full gates and four-ABI Android
 ## CLI saved-screen snapshots
 
 Source writes latest.jpg through a private same-directory temporary file and rename instead of truncating the destination or following its final symlink. The previous frame remains until a complete new frame is written and closed. New directories request 0700 and temporary files 0600; existing directory permissions are unchanged. Windows uses filesystem ACLs rather than Unix mode-bit privacy, and rename atomicity is not promised on non-Unix filesystems. Trusted parent directories remain required. Errors leave the previous destination alone when replacement fails, remove the temporary file and do not close the viewer. No fsync/durability guarantee or cleanup of older broad-access snapshots elsewhere is provided.
+
+
+## CLI connect option validation
+
+New source validates optional arguments before connecting. Only --save-frames DIR and --send-file PATH are accepted, each at most once. Unknown options, missing/empty values, repeated options and trailing positional text reject rather than being silently ignored. Options may appear in either order. A path beginning with -- must be written with a ./ prefix so it is not mistaken for another option. Values with spaces are preserved when shell-quoted. This does not change peer lookup, file-send retry policy or other subcommands.

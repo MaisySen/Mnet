@@ -660,3 +660,10 @@ Before-fix tests reproduced mode0644 snapshots and symlink-target overwriting. P
 Additional tests refuse replacement of a nonempty destination directory, preserve its sentinel bytes and verify no same-directory temporary file is left. Replacing an older0644 regular snapshot creates a new0600 file on non-Windows platforms rather than inheriting broad mode bits. All snapshot filesystem tests pass 50 race repetitions. Full local gates pass with these additions: build, Windows/macOS cross-builds, vet, vulnerability scan, uncached full race suite, normal/burst mesh-file stress, source-gate tests and secret scan.
 
 All five [a1f503c CI jobs](https://github.com/MaisySen/Mnet/actions/runs/43984790512) passed. Its native Windows/macOS jobs execute the CLI tests, with symlink/Unix-mode checks conditional on platform capability. The additional failure-path revision is not yet CI verified. Shared Go/mobile source and the0396795 binding build are unchanged. No new physical capture/UI/privacy-ACL certification, signed release, deployment or existing user snapshot mutation is implied.
+
+
+## CLI session connect option validation (new source, CI pending)
+
+The CLI now parses and validates connect options before entering the connection workflow. Previously unknown/trailing tokens and missing values were ignored, repeated flags silently selected a later value and a following flag could become an earlier flag's path. Only the two documented optional flags are accepted once each; missing/empty/flag-like values reject. Flag-like paths remain usable with a ./ prefix. No filesystem/network work occurs inside this parser.
+
+Ten malformed argument fixtures failed before fixing. Rejection, both valid option orders, exact preservation of space-containing/flag-like paths and empty-options compatibility pass 100 race repetitions. Fresh full-repository race tests pass. These are parser unit tests, not an interactive shell or real-peer invocation. Shared/mobile source and current0396795 bindings are unchanged. All-five [b4c78e6 CI](https://github.com/MaisySen/Mnet/actions/runs/43986500014) is verified. No release, deployment or user file/device state changed.

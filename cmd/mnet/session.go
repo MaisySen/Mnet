@@ -30,15 +30,10 @@ func runSession(args []string) {
 	switch args[0] {
 	case "connect":
 		peer := args[1]
-		saveDir := ""
-		sendFile := ""
-		for i := 2; i+1 < len(args); i++ {
-			switch args[i] {
-			case "--save-frames":
-				saveDir = args[i+1]
-			case "--send-file":
-				sendFile = args[i+1]
-			}
+		saveDir, sendFile, err := parseSessionConnectOptions(args[2:])
+		if err != nil {
+			fatal(err.Error())
+			return
 		}
 		sessionConnect(peer, saveDir, sendFile)
 	case "send":
@@ -272,4 +267,27 @@ func saveSessionFrame(path string, data []byte) error {
 		return err
 	}
 	return os.Rename(f.Name(), path)
+}
+
+func parseSessionConnectOptions(args []string) (saveDir, sendFile string, err error) {
+	seen := map[string]bool{}
+	for i := 0; i < len(args); i += 2 {
+		option := args[i]
+		if option != "--save-frames" && option != "--send-file" {
+			return "", "", fmt.Errorf("unknown session connect option: %s", option)
+		}
+		if seen[option] {
+			return "", "", fmt.Errorf("duplicate session connect option: %s", option)
+		}
+		if i+1 >= len(args) || args[i+1] == "" || strings.HasPrefix(args[i+1], "--") {
+			return "", "", fmt.Errorf("%s requires a path (prefix flag-like paths with ./)", option)
+		}
+		seen[option] = true
+		if option == "--save-frames" {
+			saveDir = args[i+1]
+		} else {
+			sendFile = args[i+1]
+		}
+	}
+	return
 }
