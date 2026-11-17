@@ -727,8 +727,13 @@ A separate framework mode compiles actual MnetVpnService/VpnAlwaysOn/VpnPlatform
 This executes notification objects and selected service branches, not notification pixels, real system mode detection, Settings transitions, VPN interface/worker, JNI, receiver security, physical reconnect or reboot. Legacy API24-28 detection remains open. Production source is unchanged from ec8450a; all five [ec8450a CI jobs](https://github.com/MaisySen/Mnet/actions/runs/43999580991) are verified. No signed release/deployment/live/device state changed.
 
 
-## VPN worker startup/stop sequencing (new tests, CI pending)
+## VPN worker startup/stop sequencing (CI passed)
 
 Actual MnetVpnService now runs worker fixtures against a factory-controlled fake Go node. Missing saved config fails before node creation; prepare failure closes/reset ownership and permits retry. A latched prepare checks active duplicate start, manual stop, refusal while the canceled worker still unwinds, no canceled tunnel start and acceptance after exit. Latches release in finally; bounded joins pump Robolectric's main looper. An initial harness run blocked that looper and timed out, so it is not counted as a pass. Corrected fresh VPN suite passes36cases across API24/25/26/29/33/34, adding12 to the existing24. Existing selected service/activity suite passes76, total112. No production source changed.
 
 Go/system mode and resources remain fake; this executes selected worker branches, not real VPN interface setup/JNI, all cancellation races, Settings transitions or physical reconnect/reboot. [3fdc248 CI](https://github.com/MaisySen/Mnet/actions/runs/44001182536) passed all five jobs before this follow-up. No released/deployed/live/device state changed.
+
+
+## Android 0.8.3-dev private candidate build
+
+The owner requested an installable test APK. Android manifest advances to code15 / version0.8.3-dev, separate from published0.8.2/code14. Built from b09858d plus that manifest-only version change, using d0afcb6 four-ABI bindings whose shared Go sources match current source. Existing Mnet upload signer SHA256: 61cfc5c891a2f8600981ece8f111e2b02c0e34ea355263f153d329373d000c6f signs APK v2/v3. Package/minSDK24/target34/launchable MainActivity, all four ABIs, ZIP integrity and alignment checks pass. APK SHA256: 22a20e5e696321eb4994c8d8e4886fc39f5888e7c66aad79744a28803e8a8158. No physical installation or Mnet phone behavior tested, and no hosted deployment/public release changed. Restricted delivery remains pending. All five [b09858d jobs](https://github.com/MaisySen/Mnet/actions/runs/44003438085) passed before this manifest/docs follow-up.

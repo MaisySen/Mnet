@@ -2,14 +2,18 @@
 
 Updated 2026-11-17, Australia/Sydney. Development/testing only. No production-readiness, parity, security-certification or supported fleet-size claim.
 
+## Private Android test candidate
+
+A new signed local APK is prepared for owner-requested restricted delivery: Android 0.8.3-dev/code15, au.fintex.mnet, minimum API24 / target34 and all four ABIs. It includes current Android always-on source and current d0afcb6 Go bindings (shared Go source unchanged since that build). Signature v2/v3, package, archive and alignment checks pass. SHA256: 22a20e5e696321eb4994c8d8e4886fc39f5888e7c66aad79744a28803e8a8158. This is a build check, not installation/physical VPN/capture/reconnect/reboot proof. Restricted download delivery is still pending; the older public release and hosted service are unchanged.
+
 ## Source, downloads and deployment
 
 | Layer | Recorded state | Evidence / limit |
 | --- | --- | --- |
 | Published test artifacts | v0.8.2-test.1, source `2bb55f4be60969a855b37fbb6d607f0831542e45`, Go 1.26.11; Android 0.8.2/code 14. | [Release](https://github.com/MaisySen/Mnet/releases/tag/v0.8.2-test.1). Sixteen assets verified at release. Update CLI and daemon together. |
 | Hosted test control plane | Last verified 2026-11-16 at 07:12 AEDT on `2bb55f4`. | Dated deployment check, not a current availability promise. Free-host ephemeral disk/restart state loss remains a limitation. |
-| Newer verified source | `3fdc248`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/44001182536). Native/kernel controlled fixtures, not physical Android runtime/boot proof. |
-| Current Android build check | Fresh `d0afcb6` bindings for armeabi-v7a, arm64-v8a, x86 and x86_64 (minimum API 24), Android 34 resources/application Java and min-api-24 dex compile; Current expanded suites pass112cases (76 selected service/activity +36 VPN); new worker tests await CI. | Build and simulation only. No JNI/device/install proof or new APK/AAB. [Framework guide](../android/framework-tests/README.md). |
+| Newer verified source | `b09858d`, all five jobs passed. | [Exact CI](https://github.com/MaisySen/Mnet/actions/runs/44003438085). Native/kernel controlled fixtures, not physical Android runtime/boot proof. |
+| Current Android build check | Fresh `d0afcb6` bindings for armeabi-v7a, arm64-v8a, x86 and x86_64 (minimum API 24), Android 34 resources/application Java and min-api-24 dex compile; Current expanded suites pass112cases (76 selected service/activity +36 VPN); b09858d CI passed. | Build and simulation only. New signed APK 0.8.3-dev/code15 prepared locally; no JNI/device/install proof. [Framework guide](../android/framework-tests/README.md). |
 | Local source validation | Fresh build, Windows/macOS cross-build, vet, vulnerability scan, full race suite, normal/burst mesh-file stress, source-gate tests and secret scan passed at `d0afcb6`. | Local gates, not physical-platform or public-internet soak proof. |
 
 ### Current mobile/session summary
