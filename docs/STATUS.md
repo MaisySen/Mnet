@@ -10,6 +10,10 @@ The bounded policy is live at https://maisysen.github.io/Mnet/ and linked in the
 
 Updated 2026-11-17, Australia/Sydney. Development/testing only. No production-readiness, parity, security-certification or supported fleet-size claim.
 
+## Newer source after the preserved Android candidate
+
+A local regression reproduced unanswered STUN transactions accumulating when every server is silent: cleanup previously ran only when a response arrived. New source expires old transactions before registering each discovery probe and shares expiry logic with response handling. Four tests cover10,000 silent probe cycles, the10-second boundary, malformed/mismatched/expired replies and concurrent probe/response handling. Removing the pre-probe cleanup makes two regressions fail; restoration passes20race repetitions. Fresh full-repository uncached race tests pass. CI for this newer source is pending. It is not in the preserved signed code15 owner candidate and is not deployed live.
+
 ## Private Android test candidate
 
 A new signed local APK is prepared for owner-requested restricted delivery: Android 0.8.3-dev/code15, au.fintex.mnet, minimum API24 / target34 and all four ABIs. It includes current Android always-on source and current d0afcb6 Go bindings (shared Go source unchanged since that build). Signature v2/v3, package, archive and alignment checks pass. SHA256: 22a20e5e696321eb4994c8d8e4886fc39f5888e7c66aad79744a28803e8a8158. This is a build check, not installation/physical VPN/capture/reconnect/reboot proof. Restricted owner-requested delivery completed; the uploaded copy was downloaded back with matching SHA256; the older public release and hosted service are unchanged.

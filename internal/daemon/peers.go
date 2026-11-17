@@ -278,14 +278,8 @@ func (d *Daemon) discoverEndpoints(ctx context.Context) {
 	port := int(d.bind.Port())
 	eps := map[string]bool{}
 
-	// Public endpoint via STUN on the WireGuard socket.
-	d.stunMu.Lock()
-	d.stunResult = ""
-	d.stunMu.Unlock()
 	req, txid := stun.NewRequest()
-	d.stunMu.Lock()
-	d.stunTx[txid] = time.Now()
-	d.stunMu.Unlock()
+	d.startStunProbe(txid, time.Now())
 	for _, srv := range stun.DefaultServers {
 		_ = d.bind.WriteStun(req, srv)
 	}
@@ -331,15 +325,31 @@ func (d *Daemon) discoverEndpoints(ctx context.Context) {
 	}
 }
 
+// startStunProbe prunes even when every STUN server is silent. Waiting for
+// onStun to prune leaves unanswered transactions growing on offline networks.
+func (d *Daemon) startStunProbe(txid stun.TxID, now time.Time) {
+	d.stunMu.Lock()
+	defer d.stunMu.Unlock()
+	d.expireStunLocked(now)
+	d.stunResult = ""
+	d.stunTx[txid] = now
+}
+
+// expireStunLocked requires stunMu.
+func (d *Daemon) expireStunLocked(now time.Time) {
+	for txid, at := range d.stunTx {
+		if now.Sub(at) > 10*time.Second {
+			delete(d.stunTx, txid)
+		}
+	}
+}
+
 // onStun handles intercepted STUN responses from the bind.
 func (d *Daemon) onStun(msg []byte) {
 	d.stunMu.Lock()
 	defer d.stunMu.Unlock()
-	for txid, at := range d.stunTx {
-		if time.Since(at) > 10*time.Second {
-			delete(d.stunTx, txid)
-			continue
-		}
+	d.expireStunLocked(time.Now())
+	for txid := range d.stunTx {
 		if ep, err := stun.ParseResponse(msg, txid); err == nil {
 			d.stunResult = ep
 			delete(d.stunTx, txid)
