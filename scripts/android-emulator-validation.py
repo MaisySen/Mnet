@@ -177,9 +177,11 @@ def main():
                     return json.loads((root / 'screen-proof.json').read_text()).get(name) is True
                 except (OSError, ValueError):
                     return False
+            stage = 'consent-record-start'
             wait(lambda: subprocess.run(list(map(str, adb + ['shell', 'run-as', 'au.fintex.mnet', 'test', '-f', 'files/fixture-record-start'])), capture_output=True, timeout=10).returncode == 0 or instrument.poll() is not None, 'consent-record-start', 90)
             recording = None
             if instrument.poll() is None:
+                stage = 'consent-recorder-launch'
                 recording = start(adb + ['shell', 'screenrecord', '--time-limit', '180', '/sdcard/mnet-consent.mp4'], 'consent-recorder')
                 time.sleep(1)
                 run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-record-ready'])
@@ -191,17 +193,22 @@ def main():
                     raise RuntimeError('invalid fixture target')
                 (root / 'input-target.json').write_text(json.dumps(point))
                 return True
+            stage = 'remote-target-ready'
             wait(lambda: input_target() or instrument.poll() is not None, 'input-target', 90)
+            stage = 'projection-ready'
             wait(lambda: subprocess.run(list(map(str, adb + ['shell', 'run-as', 'au.fintex.mnet', 'test', '-f', 'files/fixture-projection-ready'])), capture_output=True, timeout=10).returncode == 0 or instrument.poll() is not None, 'projection-ready', 90)
             (root / 'screen-start').touch()
+            stage = 'peer-frame-ready'
             wait(lambda: screen_flag('decoded_frames') or instrument.poll() is not None, 'screen-frames', 100)
             if instrument.poll() is None:
                 run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-screen-received'])
+                stage = 'peer-stop-ready'
                 wait(lambda: screen_flag('closed_after_stop') or instrument.poll() is not None, 'screen-stop', 75)
                 run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-screen-closed'])
                 wait(lambda: subprocess.run(list(map(str, adb + ['shell', 'run-as', 'au.fintex.mnet', 'test', '-f', 'files/fixture-record-stop'])), capture_output=True, timeout=10).returncode == 0 or instrument.poll() is not None, 'consent-record-stop', 15)
                 if recording is not None:
                     # Only the single recorder this disposable fixture started.
+                    stage = 'consent-recorder-stop'
                     run(adb + ['shell', 'sh', '-c', 'kill -INT $(pidof screenrecord)'])
                     recording.wait(timeout=20)
                     run(adb + ['pull', '/sdcard/mnet-consent.mp4', ARTIFACTS / 'consent.mp4'])
@@ -246,7 +253,14 @@ def main():
                 lines = [line for line in path.read_text(errors='replace').splitlines() if line.startswith('INSTRUMENTATION_RESULT: summary=')]
                 if lines:
                     (ARTIFACTS / 'instrumentation.txt').write_text('\n'.join(lines) + '\n')
-        (ARTIFACTS / 'summary.json').write_text(json.dumps({'result': 'fail', 'stage': stage, 'error_type': type(failure).__name__}, indent=2))
+        diagnostic = {'result': 'fail', 'stage': stage, 'error_type': type(failure).__name__}
+        # Stage is written from fixture-controlled literal await labels only.
+        probe = subprocess.run(list(map(str, adb + ['exec-out', 'run-as', 'au.fintex.mnet', 'cat', 'files/fixture-stage'])), capture_output=True, timeout=10)
+        allowed = {'consent-record-ready', 'accessibility-disclosure', 'accessibility-system-enable', 'accessibility-return-host', 'screen-projection-consent', 'screen-viewer-consent', 'screen-decoded-by-peer', 'remote-mesh-gesture-click', 'screen-stop-closed-peer', 'consent-record-stopped'}
+        value = probe.stdout.decode(errors='replace').strip()
+        if value in allowed:
+            diagnostic['android_stage'] = value
+        (ARTIFACTS / 'summary.json').write_text(json.dumps(diagnostic, indent=2))
         raise RuntimeError('Android fixture failed at ' + stage) from None
     finally:
         for process in reversed(processes):

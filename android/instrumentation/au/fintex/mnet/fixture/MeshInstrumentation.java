@@ -34,6 +34,9 @@ public class MeshInstrumentation extends Instrumentation {
     private interface Probe { boolean ready() throws Exception; }
     private void await(Probe probe, String label) throws Exception {
         stage = label;
+        try (FileOutputStream file = new FileOutputStream(new File(getTargetContext().getFilesDir(), "fixture-stage"))) {
+            file.write(label.getBytes("UTF-8"));
+        }
         long deadline = SystemClock.elapsedRealtime() + 60000;
         while (SystemClock.elapsedRealtime() < deadline) {
             if (probe.ready()) return;
