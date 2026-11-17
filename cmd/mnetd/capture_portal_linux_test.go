@@ -149,3 +149,18 @@ func TestPortalCapturerQualityClamp(t *testing.T) {
 		t.Fatalf("high clamp = %d", got)
 	}
 }
+
+func TestPortalCapturerMismatchedBaseReturnsFullJPEG(t *testing.T) {
+	for _, oldSize := range []int{8, 32} {
+		c := portalCapturerFromPump(portal.NewRawPump(bytes.NewReader(solidFrame(16, 16, 0, 0, 0)), 16, 16))
+		c.lastRGBA = image.NewRGBA(image.Rect(0, 0, oldSize, oldSize))
+		full, tiles, err := c.CaptureDelta()
+		if err != nil || len(full) == 0 || len(tiles) != 0 {
+			t.Fatalf("old%d: expected full frame, got full%d tiles%d %v", oldSize, len(full), len(tiles), err)
+		}
+		config, err := jpeg.DecodeConfig(bytes.NewReader(full))
+		if err != nil || config.Width != 16 || config.Height != 16 {
+			t.Fatalf("new canvas not encoded: %+v %v", config, err)
+		}
+	}
+}

@@ -176,7 +176,7 @@ The first output error stops recording, closes the writer and releases pixels; c
 
 The behavior above is newer source, not a claim about unchanged v0.8.2-test.1 downloads or the last dated hosted deployment. [STATUS](STATUS.md) owns current source/build/release/deployment state. [Native validation](native-platform-validation.md) owns exact regression history, CI URLs and fixture limits, so this guide does not repeat stale per-commit pending/build notes.
 
-At 0396795, all five CI jobs passed. Fresh local full gates and four-ABI Android binding/resource/Java/min-api-24 dex checks passed, plus 64 framework simulation cases. This does not execute JNI, physical capture/input, Android UI pixels, install or boot. No signed APK/AAB or release/deployment followed these checks.
+At 556399f, all five CI jobs passed. Fresh local full gates and four-ABI Android binding/resource/Java/min-api-24 dex checks passed, plus 64 framework simulation cases. This does not execute JNI, physical capture/input, Android UI pixels, install or boot. No signed APK/AAB or release/deployment followed these checks.
 
 
 ## CLI saved-screen snapshots

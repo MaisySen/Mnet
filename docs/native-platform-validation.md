@@ -669,8 +669,15 @@ The CLI now parses and validates connect options before entering the connection 
 Ten malformed argument fixtures failed before fixing. Rejection, both valid option orders, exact preservation of space-containing/flag-like paths and empty-options compatibility pass 100 race repetitions. Fresh full-repository race tests pass. These are parser unit tests, not an interactive shell or real-peer invocation. Shared/mobile source and current0396795 bindings are unchanged. All-five [b4c78e6 CI](https://github.com/MaisySen/Mnet/actions/runs/43986500014) is verified. No release, deployment or user file/device state changed.
 
 
-## Dirty-tile canvas-size change handling (new source, CI pending)
+## Dirty-tile canvas-size change handling (556399f all-five CI verified)
 
 DiffTiles now treats different prior/current bounds as a full refresh. Previously image growth could index past the old pixel buffer; shrink could report no changed tiles for an incompatible canvas. Both X11 and portal capture callers clear their prior delta base when bounds differ, ensuring full-frame encoding rather than minority-tile selection. Android capture/input policy is unchanged.
 
 A synthetic8x8-to16x16 regression panicked before fixing with an out-of-range slice. Growth and shrink now produce the same tile list as a fresh image. DiffTiles checks pass 100 race repetitions, followed by fresh full-repository race tests. Caller changes compile in the local build/test surface; no actual desktop display resize, portal renegotiation, physical output pixels or input geometry behavior was exercised. This does not validate arbitrary tile sizes, nonzero-origin images or all malformed image buffers. All-five [f3c9d87 CI](https://github.com/MaisySen/Mnet/actions/runs/43988086926) is verified. Current Android bindings still name0396795 before this shared Go helper change. No release, deployment or existing user/device state changed.
+
+
+## Portal canvas fixture and current bindings (556399f source)
+
+An added portal-capturer fixture seeds smaller/larger prior image bounds, feeds one fixed-size raw frame and checks full JPEG output at the new dimensions with no delta tiles. Portal capturer tests pass 50 race repetitions. It runs the actual capturer selection/encoding code but bypasses D-Bus/GStreamer with a raw pump. This is not live display/stream renegotiation or X11 runtime proof.
+
+The full local gate bundle passed with that fixture. Fresh 556399f Android bindings cover all four ABIs at minimum API 24. Archive/ELF inspection and Android 34 resource/all app Java/min-api-24 dex compile passed. AAR SHA256: `b4e4c3fb859567f4eb5dc9e396ce4edb455d82c7430af155a423f914175cc009`. Fresh framework simulation passed 64 cases, no failures/errors/skips. All five [556399f CI jobs](https://github.com/MaisySen/Mnet/actions/runs/43989677724) passed; the new fixture/documentation revision is not yet CI verified. No signed/published APK/AAB, deployment, physical JNI/capture/input/UI/boot proof or user-device state change is added.
