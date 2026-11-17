@@ -10,7 +10,7 @@ The harness uses Robolectric4.18. Its AAR extraction is limited to pinned Androi
 
 ## Current coverage
 
-100 cases pass in two fresh local suites (76 selected service/activity +24 VPN service; CI pending). All five jobs passed in [ec8450a CI](https://github.com/MaisySen/Mnet/actions/runs/43999580991) before this VPN coverage follow-up.
+112 cases pass in two fresh local suites (76 selected service/activity +36 VPN service; CI pending). All five jobs passed in [3fdc248 CI](https://github.com/MaisySen/Mnet/actions/runs/44001182536) before this worker coverage follow-up.
 
 | Actual application source | Simulated API levels | Cases | Checks |
 | --- | --- | --- | --- |
@@ -19,9 +19,9 @@ The harness uses Robolectric4.18. Its AAR extraction is limited to pinned Androi
 
 | MainActivity |24,25,26,33|12 (three per API)|Managed up/joining/waiting disables disconnect and explains Settings, stale handler calls cannot send stop, mode refresh restores manual stop, down keeps Connect available|
 
-| MnetVpnService, VpnAlwaysOn, VpnPlatform |24,25,26,29,33,34|24 (four per API)|Manual notification action/stop, managed notification omission/stale stop refusal, no-node request and system revoke cleanup|
+| MnetVpnService, VpnAlwaysOn, VpnPlatform |24,25,26,29,33,34|36 (six per API)|Manual/managed disconnect and revoke, no-node request, preflight/preparation failure and retry, blocked worker stop/ownership/next-run recovery|
 
-The separate `vpn` mode replaces the fake VPN endpoint with actual application source, while system mode is shadowed and Go/resource values remain fake. It does not run the tunnel worker, VPN interface setup, actual Settings transitions or pixels. Removing both always-on service/notification conditions fails six cases; restored source passes24.
+The separate `vpn` mode replaces the fake VPN endpoint with actual application source, while system mode is shadowed and Go/resource values remain fake. It now starts the actual worker for preflight/preparation failure and controlled blocked-preparation cancellation. It does not establish a real VPN interface or execute Go JNI, real Settings transitions or pixels. Removing both always-on service/notification conditions fails six cases; restored source passes24.
 
 Service tests use reflection to set capture/running state rather than start a valid projection. The geometry-refusal latch resets in actual capture setup according to source checks; that restart path is not executed here. Pointer checks preserve omitted-zero coordinates and reject malformed/unsupported/out-of-frame values.
 
@@ -42,3 +42,6 @@ The manifest is disabled, so receiver registration execution is not proof of sig
 ## Build evidence is separate
 
 At `d0afcb6`, a fresh local current-Go Android AAR built with minimum API24 for armeabi-v7a, arm64-v8a, x86 and x86_64. Full Android34 resource generation/application Java and min-api24 dex compilation against that AAR passed. These build checks do not execute JNI or validate a signed APK, installation or device behavior. No new APK/AAB or release was published.
+
+
+Worker fixtures inject a factory-controlled Go fake. Missing saved config refuses before node creation; preparation errors close/reset ownership and allow another attempt. A latched prepare lets an active duplicate start, stop and refused replacement occur in deterministic order; cancellation prevents tunnel start, then worker exit releases ownership for the next attempt. Latches release in finally and worker completion is bounded while pumping the simulated main looper. A first harness run that blocked that looper timed out and was not counted; corrected fresh36-case run passed. These fixtures do not test cancellation at every native call or promise real-phone recovery.

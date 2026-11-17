@@ -17,11 +17,40 @@ public class VpnServiceTest {
  }
  private MnetVpnService service;
  @Before public void create(){Mode.managed=false;service=Robolectric.buildService(MnetVpnService.class).create().get();}
- @After public void destroy(){service.onDestroy();Mode.managed=false;}
+ @After public void destroy()throws Exception{service.onDestroy();awaitWorker();mobile.Mobile.factory=mobile.Node::new;Mode.managed=false;}
+ private Thread worker()throws Exception{java.lang.reflect.Field f=MnetVpnService.class.getDeclaredField("worker");f.setAccessible(true);return(Thread)f.get(service);}
+ private void awaitWorker()throws Exception{Thread w=worker();if(w!=null){long end=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);while(w.isAlive()&&System.nanoTime()<end){Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();w.join(5);}assertFalse("worker must exit",w.isAlive());}}
+ private void configure(){service.getSharedPreferences("mnet",0).edit().putString("server","https://test.invalid").putString("network","test").apply();}
+ private boolean running()throws Exception{java.lang.reflect.Field f=MnetVpnService.class.getDeclaredField("running");f.setAccessible(true);return f.getBoolean(service);}
+ private java.util.List<Intent> broadcasts(){return Shadows.shadowOf((Application)service.getApplicationContext()).getBroadcastIntents();}
+ private void errorContains(String text){assertTrue(broadcasts().stream().anyMatch(i->i.getStringExtra(MnetVpnService.EXTRA_STATUS)!=null&&i.getStringExtra(MnetVpnService.EXTRA_STATUS).contains(text)));}
  private void node(mobile.Node value)throws Exception{
   for(String name:new String[]{"node","sharedNode"}){java.lang.reflect.Field f=MnetVpnService.class.getDeclaredField(name);f.setAccessible(true);f.set(service,value);}
  }
  private Notification notification()throws Exception{java.lang.reflect.Method m=MnetVpnService.class.getDeclaredMethod("buildNotification",String.class);m.setAccessible(true);return(Notification)m.invoke(service,"test");}
+ @Test public void missingSavedConfigFailsBeforeNodeCreationAndCanRetry()throws Exception{
+  java.util.concurrent.atomic.AtomicInteger created=new java.util.concurrent.atomic.AtomicInteger();mobile.Mobile.factory=()->{created.incrementAndGet();return new mobile.Node();};
+  service.getSharedPreferences("mnet",0).edit().clear().apply();
+  assertEquals(Service.START_STICKY,service.onStartCommand(null,0,1));awaitWorker();assertEquals(0,created.get());assertFalse(running());assertNull(MnetVpnService.currentNode());errorContains("configure a control server");
+  configure();mobile.Node node=new mobile.Node(){@Override public String prepare(String a,String b,String c,String d){throw new IllegalStateException("retry preparation failure");}};
+  mobile.Mobile.factory=()->{created.incrementAndGet();return node;};service.onStartCommand(null,0,2);awaitWorker();assertEquals(1,created.get());assertTrue(node.closed);assertFalse(running());assertNull(MnetVpnService.currentNode());errorContains("retry preparation failure");
+ }
+ @Test public void canceledBlockedWorkerHoldsOwnershipUntilItExits()throws Exception{
+  configure();java.util.concurrent.CountDownLatch entered=new java.util.concurrent.CountDownLatch(1),release=new java.util.concurrent.CountDownLatch(1);
+  java.util.concurrent.atomic.AtomicInteger created=new java.util.concurrent.atomic.AtomicInteger();
+  mobile.Node node=new mobile.Node(){@Override public String prepare(String a,String b,String c,String d){entered.countDown();try{if(!release.await(5,java.util.concurrent.TimeUnit.SECONDS))throw new AssertionError("release timed out");}catch(InterruptedException e){throw new AssertionError(e);}return "100.64.0.2";}@Override public void start(long fd,String a,String b,String c,String d){throw new AssertionError("canceled worker must not start tunnel");}};
+  mobile.Mobile.factory=()->{created.incrementAndGet();return node;};
+  try{
+   service.onStartCommand(new Intent(),0,1);assertTrue(entered.await(5,java.util.concurrent.TimeUnit.SECONDS));
+   // Duplicate active start must not create a competing worker.
+   service.onStartCommand(new Intent(),0,2);assertEquals(1,created.get());
+   assertEquals(Service.START_NOT_STICKY,service.onStartCommand(new Intent().setAction("disconnect"),0,3));assertTrue(node.closed);assertNull(MnetVpnService.currentNode());
+   assertEquals(Service.START_NOT_STICKY,service.onStartCommand(new Intent(),0,4));assertEquals(1,created.get());errorContains("Previous VPN worker is still stopping");
+  }finally{release.countDown();awaitWorker();}
+  assertFalse(running());assertNull(MnetVpnService.currentNode());
+  mobile.Node next=new mobile.Node(){@Override public String prepare(String a,String b,String c,String d){throw new IllegalStateException("next worker accepted");}};
+  mobile.Mobile.factory=()->{created.incrementAndGet();return next;};assertEquals(Service.START_STICKY,service.onStartCommand(null,0,5));awaitWorker();assertEquals(2,created.get());assertTrue(next.closed);errorContains("next worker accepted");
+ }
  @Test public void manualNotificationHasDisconnectAndActionStops()throws Exception{
   Notification n=notification();assertNotNull(n.actions);assertEquals(1,n.actions.length);
   Intent action=Shadows.shadowOf(n.actions[0].actionIntent).getSavedIntent();assertEquals("disconnect",action.getAction());
