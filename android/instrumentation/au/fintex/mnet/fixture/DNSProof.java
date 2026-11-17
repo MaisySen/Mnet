@@ -9,8 +9,9 @@ import java.util.Arrays;
 // summaries contain no addresses, names, status JSON or enrollment material.
 final class DNSProof {
     static volatile String phase="none";
+    static volatile boolean sourceMesh,questionMismatch,badName,badBounds;
     static volatile boolean shortResponse,wrongID,notResponse,rcodeError,noAnswers,addressMismatch;
-    static String diagnostics(){return " dnsUDP="+"udp".equals(phase)+" dnsTCP="+"tcp".equals(phase)+" dnsOS="+"os".equals(phase)+" dnsShort="+shortResponse+" dnsWrongID="+wrongID+" dnsNotResponse="+notResponse+" dnsRcode="+rcodeError+" dnsNoAnswers="+noAnswers+" dnsAddressMismatch="+addressMismatch;}
+    static String diagnostics(){return " dnsUDP="+"udp".equals(phase)+" dnsTCP="+"tcp".equals(phase)+" dnsOS="+"os".equals(phase)+" dnsSourceMesh="+sourceMesh+" dnsQuestionMismatch="+questionMismatch+" dnsBadName="+badName+" dnsBadBounds="+badBounds+" dnsShort="+shortResponse+" dnsWrongID="+wrongID+" dnsNotResponse="+notResponse+" dnsRcode="+rcodeError+" dnsNoAnswers="+noAnswers+" dnsAddressMismatch="+addressMismatch;}
     static void verify(String expected) throws Exception {
         String name = "userspace-peer.android-emulator.mnet";
         phase="udp";
@@ -18,6 +19,7 @@ final class DNSProof {
         byte[] udp;
         try (DatagramSocket socket = new DatagramSocket()) {
             socket.connect(InetAddress.getByAddress(new byte[]{(byte)198,18,0,53}),53);
+            sourceMesh=socket.getLocalAddress().getHostAddress().startsWith("100.");
             socket.setSoTimeout(5000);
             socket.send(new DatagramPacket(query,query.length));
             byte[] data = new byte[4096]; DatagramPacket packet = new DatagramPacket(data,data.length);
@@ -47,21 +49,22 @@ final class DNSProof {
         out.writeByte(0);out.writeShort(1);out.writeShort(1);return bytes.toByteArray();
     }
     private static int word(byte[] data,int offset)throws IOException{
-        if(offset<0||offset+2>data.length)throw new IOException("DNS bounds");return ((data[offset]&255)<<8)|(data[offset+1]&255);
+        if(offset<0||offset+2>data.length){badBounds=true;throw new IOException("DNS bounds");}return ((data[offset]&255)<<8)|(data[offset+1]&255);
     }
     private static int skipName(byte[] data,int offset)throws IOException{
-        while(offset<data.length){int size=data[offset++]&255;if(size==0)return offset;if((size&0xc0)==0xc0){word(data,offset-1);return offset+1;}if(size>63||offset+size>data.length)throw new IOException("DNS label");offset+=size;}
-        throw new IOException("DNS name");
+        while(offset<data.length){int size=data[offset++]&255;if(size==0)return offset;if((size&0xc0)==0xc0){word(data,offset-1);return offset+1;}if(size>63||offset+size>data.length){badName=true;throw new IOException("DNS label");}offset+=size;}
+        badName=true;throw new IOException("DNS name");
     }
     private static void check(byte[] data,String expected)throws Exception{
         shortResponse=data.length<12;
         if(shortResponse)throw new IOException("DNS header");
         wrongID=word(data,0)!=0x4d4e;notResponse=(word(data,2)&0x8000)==0;rcodeError=(word(data,2)&15)!=0;noAnswers=word(data,6)==0;
-        if(wrongID||notResponse||rcodeError||word(data,4)!=1)throw new IOException("DNS header");
+        questionMismatch=word(data,4)!=1;
+        if(wrongID||notResponse||rcodeError||questionMismatch)throw new IOException("DNS header");
         int position=skipName(data,12)+4;int answers=word(data,6);boolean found=false;
         for(int i=0;i<answers;i++){
             position=skipName(data,position);int type=word(data,position),klass=word(data,position+2),length=word(data,position+8);position+=10;
-            if(position+length>data.length)throw new IOException("DNS answer bounds");
+            if(position+length>data.length){badBounds=true;throw new IOException("DNS answer bounds");}
             if(type==1&&klass==1&&length==4)found|=expected.equals(InetAddress.getByAddress(Arrays.copyOfRange(data,position,position+length)).getHostAddress());
             position+=length;
         }
