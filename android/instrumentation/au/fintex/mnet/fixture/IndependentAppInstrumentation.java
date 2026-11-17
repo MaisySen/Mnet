@@ -10,7 +10,7 @@ public class IndependentAppInstrumentation extends Instrumentation {
  private String peer;
  private String stage="created";
  public void onCreate(Bundle args){super.onCreate(args);peer=args.getString("peer");start();}
- public void onStart(){Bundle result=new Bundle();try{stage="os-udp-tcp-dns";DNSProof.verify(peer);hashRoundTrip();hashRoundTrip();result.putString("summary","PASS independent app unbound TCP bidirectional4MiB twice and OS/UDP/TCP DNS");finish(Activity.RESULT_OK,result);}catch(Throwable e){result.putString("summary","FAIL independent app stage="+stage+" type="+e.getClass().getSimpleName()+" dnsUDP="+"udp".equals(DNSProof.phase)+" dnsTCP="+"tcp".equals(DNSProof.phase)+" dnsOS="+"os".equals(DNSProof.phase));finish(Activity.RESULT_CANCELED,result);}}
+ public void onStart(){Bundle result=new Bundle();try{stage="os-udp-tcp-dns";DNSProof.verify(peer);hashRoundTrip();hashRoundTrip();result.putString("summary","PASS independent app unbound TCP bidirectional4MiB twice and OS/UDP/TCP DNS");finish(Activity.RESULT_OK,result);}catch(Throwable e){result.putString("summary","FAIL independent app stage="+stage+" type="+e.getClass().getSimpleName()+DNSProof.diagnostics());finish(Activity.RESULT_CANCELED,result);}}
     private void hashRoundTrip() throws Exception {
         stage = "mesh-hash-round-trip";
         // This address has no host TCP listener. Reaching it requires the real

@@ -9,6 +9,8 @@ import java.util.Arrays;
 // summaries contain no addresses, names, status JSON or enrollment material.
 final class DNSProof {
     static volatile String phase="none";
+    static volatile boolean shortResponse,wrongID,notResponse,rcodeError,noAnswers,addressMismatch;
+    static String diagnostics(){return " dnsUDP="+"udp".equals(phase)+" dnsTCP="+"tcp".equals(phase)+" dnsOS="+"os".equals(phase)+" dnsShort="+shortResponse+" dnsWrongID="+wrongID+" dnsNotResponse="+notResponse+" dnsRcode="+rcodeError+" dnsNoAnswers="+noAnswers+" dnsAddressMismatch="+addressMismatch;}
     static void verify(String expected) throws Exception {
         String name = "userspace-peer.android-emulator.mnet";
         phase="udp";
@@ -52,7 +54,10 @@ final class DNSProof {
         throw new IOException("DNS name");
     }
     private static void check(byte[] data,String expected)throws Exception{
-        if(data.length<12||word(data,0)!=0x4d4e||(word(data,2)&0x800f)!=0x8000||word(data,4)!=1)throw new IOException("DNS header");
+        shortResponse=data.length<12;
+        if(shortResponse)throw new IOException("DNS header");
+        wrongID=word(data,0)!=0x4d4e;notResponse=(word(data,2)&0x8000)==0;rcodeError=(word(data,2)&15)!=0;noAnswers=word(data,6)==0;
+        if(wrongID||notResponse||rcodeError||word(data,4)!=1)throw new IOException("DNS header");
         int position=skipName(data,12)+4;int answers=word(data,6);boolean found=false;
         for(int i=0;i<answers;i++){
             position=skipName(data,position);int type=word(data,position),klass=word(data,position+2),length=word(data,position+8);position+=10;
@@ -60,6 +65,7 @@ final class DNSProof {
             if(type==1&&klass==1&&length==4)found|=expected.equals(InetAddress.getByAddress(Arrays.copyOfRange(data,position,position+length)).getHostAddress());
             position+=length;
         }
+        addressMismatch=!found;
         if(!found)throw new IOException("DNS answer mismatch");
     }
 }
