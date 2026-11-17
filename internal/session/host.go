@@ -103,7 +103,7 @@ func (h *Host) SetFileDir(dir string) {
 }
 
 // ServeHost wires a mux (from Listen) to host duties and starts the
-// screen loop. fps <= 0 defaults to 5.
+// screen loop. fps <= 0 defaults to 5; values above 240 are capped.
 // HostOptions are installed before queued peer streams can be dispatched.
 // Use these for startup configuration instead of racing the Set methods.
 type HostOptions struct {
@@ -121,7 +121,11 @@ func ServeHostWithOptions(m *Mux, cap Capturer, inj Injector, fps int, opts Host
 	if fps <= 0 {
 		fps = 5
 	}
-	m.Keepalive(15*time.Second, 45*time.Second)
+	// A local configuration error must not panic a capture goroutine through
+	// time.NewTicker(0) or create an unbounded frame-production loop.
+	if fps > 240 {
+		fps = 240
+	}
 	h := &Host{
 		Mux:  m,
 		Cap:  cap,
@@ -140,11 +144,20 @@ func ServeHostWithOptions(m *Mux, cap Capturer, inj Injector, fps int, opts Host
 			f(name, size)
 		}
 	}}
+	if cap == nil {
+		m.Close()
+		return h
+	}
+	w, hh := cap.Geometry()
+	if !screenDimensionsAllowed(w, hh) {
+		m.Close()
+		return h
+	}
+	m.Keepalive(15*time.Second, 45*time.Second)
 	m.OnStream(h.handleStream)
 	// Open the screen stream host-to-viewer with explicit geometry,
 	// then mark it opened so screen frames don't trigger the
 	// mux's implicit OPEN.
-	w, hh := cap.Geometry()
 	open := ScreenOpen{Codec: "jpeg", Width: w, Height: hh, FPS: fps}
 	if err := m.sendJSON(StreamScreen, msgOpen, PriScreen, open); err == nil {
 		m.wmu.Lock()
