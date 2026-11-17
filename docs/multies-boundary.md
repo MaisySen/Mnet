@@ -20,3 +20,11 @@ The `Verifier` interface is deliberately the trust boundary. A transport impleme
 ## Required permission-gated integration change
 
 Keep the future Multies-side patch small: a scoped authenticated authorization/one-use exchange surface, explicit device capability policy, revocation contract and a Devices navigation entry using the shared navigation model. Its exact code/config proposal requires separate authority while Multies is read-only. Never work around that restriction with a public identity provider or broad user cookie forwarded to Mnet.
+
+## Inactive native handoff intent binding
+
+`Intents` is a local development primitive, not the future bridge. It stores an exact workspace/key/S256-PKCE/callback-platform intent, never a Multies user, cookie, credential, approval or authorization result. Random32-byte correlation tokens are indexed only by SHA-256, formatting is redacted, pending capacity is bounded and full capacity does not evict another unexpired attempt. Native proof consumes the matching intent atomically once; wrong binding/proof cannot consume the owner's attempt. Cancellation and a development2-minute lifetime clear pending state. The zero value denies.
+
+Callback values are a compiled-in platform enum, not URLs. Real callback app association, loopback port handling, browser state/CSRF, issuer authentication, one-use approved code exchange, fresh membership checks and device-credential issuance remain separate permission-gated design/implementation requirements. An intent token is only a correlation secret. It must never be treated as an enrollment key or browser approval, nor placed in logs, referrers or public query strings. The primitive has no routes, network client or production caller, and does not modify Multies. The final measured bridge contract may change these development ceilings and mechanics.
+
+Local tests cover binding mismatch, proof mismatch, arbitrary callback rejection, capacity/expiry/cancellation, single-winner concurrent redemption, token formatting redaction and inability to turn a redeemed intent into a zero-policy Grant.50race repetitions and988,853fuzz executions passed in the recorded run. These checks do not prove live sign-in or production replay/revocation behavior.
