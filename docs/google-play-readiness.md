@@ -33,6 +33,8 @@ This inventory guides review; it is not a completed Data safety form. Internal-o
 - Hosted sessions transmit screen frames and accept remote gestures after the applicable permissions/consent. Viewer endpoints can see shared content. Session chat/files and optional recording/storage differ by platform; verify enabled Android code paths before making any universal retention claim.
 - The AccessibilityService is not a disability-support tool. It ignores accessibility events/window contents and dispatches gestures. Screen frames come through separate MediaProjection consent, not accessibility text extraction. These distinctions must remain clear in listing, disclosure, video and declarations.
 
+The detailed [Android privacy evidence](android-privacy-evidence.md) separates current platform data paths, new backup exclusions, operator retention/deletion gaps and unverified features.
+
 ## Declaration preparation
 
 Before Create app, the console requires a Developer Program Policies confirmation and an export-law certification, including software with encryption functions. Do not treat draft creation as legally empty preparation. Record a supported factual basis first.

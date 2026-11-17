@@ -67,6 +67,8 @@ jobs:
         run: python3 scripts/test-android-native-pages.py
       - name: Android emulator fixture safety checks
         run: python3 scripts/test-android-emulator-fixture.py
+      - name: Android private-identity backup policy (source XML only)
+        run: python3 scripts/test-android-backup-policy.py
       - name: Android API compatibility matrix (JVM fakes and source only)
         run: python3 scripts/test-android-api-compat.py
       - name: Android projection stop policy (JVM fakes and source only)
