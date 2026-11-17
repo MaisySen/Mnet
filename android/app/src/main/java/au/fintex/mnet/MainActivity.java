@@ -29,12 +29,14 @@ public class MainActivity extends Activity {
     private Button toggle;
     private TextView status;
     private boolean connected;
+    private boolean alwaysOn;
 
     private final BroadcastReceiver statusReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context ctx, Intent intent) {
             String json = intent.getStringExtra(MnetVpnService.EXTRA_STATUS);
             if (json != null) {
+                alwaysOn = intent.getBooleanExtra(MnetVpnService.EXTRA_ALWAYS_ON, false);
                 render(json);
             }
         }
@@ -137,6 +139,7 @@ public class MainActivity extends Activity {
 
     private void onToggle() {
         if (connected) {
+            if (alwaysOn) return;
             startService(new Intent(this, MnetVpnService.class).setAction("disconnect"));
             connected = false;
             toggle.setText(R.string.connect);
@@ -174,6 +177,7 @@ public class MainActivity extends Activity {
             String state = st.optString("status");
             StringBuilder sb = new StringBuilder();
             sb.append("State: ").append(state).append('\n');
+            if (alwaysOn) sb.append("Always-on VPN: Android Settings controls disconnect.\n");
             if (!st.optString("ipv4").isEmpty()) {
                 sb.append("Mesh IP: ").append(st.optString("ipv4")).append('\n');
             }
@@ -199,6 +203,7 @@ public class MainActivity extends Activity {
             status.setText(sb.toString());
             connected = "up".equals(state) || "joining".equals(state) || "waiting-approval".equals(state);
             toggle.setText(connected ? R.string.disconnect : R.string.connect);
+            toggle.setEnabled(!connected || !alwaysOn);
         } catch (Exception e) {
             status.setText(json);
         }

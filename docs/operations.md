@@ -686,3 +686,8 @@ New source requires an unused recording path. Existing files and final symlinks 
 ### Recording output errors
 
 New source stops recording after an output error and keeps any partial file for inspection. The first error remains available from Close; the daemon logs recording incomplete when the hosted session ends, followed by its existing recorded-frame count. Hosting continues. This is not an immediate warning, automatic retry, file repair or durability guarantee. Do not infer a complete recording from the presence of a file or a nonzero frame count. Published downloads have not changed.
+
+
+### Always-on disconnect controls on API 29+
+
+New source reads Android's always-on mode on API 29+. The notification omits disconnect, the connected main-screen disconnect button is disabled, and the service ignores stale disconnect requests. Use Android Settings to change always-on/disconnect. The app does not change those system settings or lockdown mode. Status refresh carries mode changes to the UI; no immediate Settings-toggle timing guarantee is verified. API 24-28 keeps earlier behavior while legacy detection remains open. Source/JVM-fake/compile checks only; actual Settings/notification/main-screen pixels, VPN lifecycle and reboot are unverified, and published downloads are unchanged.

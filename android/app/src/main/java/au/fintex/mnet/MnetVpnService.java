@@ -20,6 +20,7 @@ public class MnetVpnService extends VpnService {
 
     public static final String ACTION_STATUS = "au.fintex.mnet.STATUS";
     public static final String EXTRA_STATUS = "status_json";
+    public static final String EXTRA_ALWAYS_ON = "always_on";
 
     private static final String TAG = "MnetVPN";
     private static final String CHANNEL = "mesh";
@@ -41,6 +42,11 @@ public class MnetVpnService extends VpnService {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && "disconnect".equals(intent.getAction())) {
+            if (VpnAlwaysOn.managed(this)) {
+                // The system/Settings owns always-on stop, including stale actions.
+                if (node != null) broadcast(node.status());
+                return START_STICKY;
+            }
             stopMesh();
             return START_NOT_STICKY;
         }
@@ -147,6 +153,7 @@ public class MnetVpnService extends VpnService {
         Intent i = new Intent(ACTION_STATUS);
         i.setPackage(getPackageName());
         i.putExtra(EXTRA_STATUS, json);
+        i.putExtra(EXTRA_ALWAYS_ON, VpnAlwaysOn.managed(this));
         sendBroadcast(i);
         try {
             JSONObject st = new JSONObject(json);
@@ -160,17 +167,20 @@ public class MnetVpnService extends VpnService {
     }
 
     private Notification buildNotification(String text) {
-        Intent stop = new Intent(this, MnetVpnService.class).setAction("disconnect");
-        return VpnPlatform.notification(this, CHANNEL, getString(R.string.notification_channel))
+        Notification.Builder builder = VpnPlatform.notification(this, CHANNEL,
+                getString(R.string.notification_channel))
                 .setContentTitle(getString(R.string.app_name))
                 .setContentText(text)
                 .setSmallIcon(R.drawable.ic_mnet)
-                .setOngoing(true)
-                .addAction(new Notification.Action.Builder(
-                        null, getString(R.string.disconnect),
-                        android.app.PendingIntent.getService(this, 0, stop,
-                                android.app.PendingIntent.FLAG_IMMUTABLE)).build())
-                .build();
+                .setOngoing(true);
+        if (!VpnAlwaysOn.managed(this)) {
+            Intent stop = new Intent(this, MnetVpnService.class).setAction("disconnect");
+            builder.addAction(new Notification.Action.Builder(
+                    null, getString(R.string.disconnect),
+                    android.app.PendingIntent.getService(this, 0, stop,
+                            android.app.PendingIntent.FLAG_IMMUTABLE)).build());
+        }
+        return builder.build();
     }
 
     private void stopMesh() {
