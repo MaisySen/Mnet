@@ -16,6 +16,18 @@ HostingActivity now shows a dedicated in-app disclosure before opening Accessibi
 
 Fresh tests execute actual HostingActivity button/dialog/navigation in simulation on APIs24/25/26/33: 12 cases. Together with the existing 76 normal and 48 VPN cases, 136 pass with no failures/errors/skips. Returning the button to direct Settings causes 12 failures. Compiled Android 34 resources/application Java/minimum API24 dex pass; compiled XML confirms gestures remain and window retrieval is false. These are not a physical install, real Settings enablement or Google review. A simulated dialog render was inspected, not phone pixels.
 
+## Play build readiness, not release approval
+
+Collaborator access to the existing developer account was verified on 2026-11-17. No Mnet Play app, upload, testing release, pricing change or policy/export certification has been created. Account access is not permission to publish.
+
+The private-beta candidate route is internal testing with an explicit tester audience, not public launch or production access. Internal testing can start before complete store setup and supports up to100 testers, but may not receive normal policy/security review. It is not a Play Protect clearance. The12-tester/14-day closed-test requirement concerns production access for qualifying personal accounts, not the first internal test.
+
+Source still targets API34. Current official new-app rules require API36 for phone/tablet submissions since2026-08-31; a personal-account internal test must not be confused with the permanently private organization-app exemption. Target migration needs edge-to-edge insets, Android15/16 behavior checks and actual runtime testing before raising the manifest and calling it ready.
+
+The older AAR has4KiB ELF LOAD alignment. Current-source rebuilds with explicit max/common-page-size16384 linker flags pass direct program-header checks on all4ABIs. Builders now reject an existing AAR whose native LOAD segments fail16KiB alignment, so a stale library cannot silently pass. Rebuild stale AARs rather than bypassing the gate. `scripts/test-android-native-pages.py` has seven synthetic checks; these checks are layout evidence, not a16KiB-device runtime result. A debug-signed AAB compiles with SDK/build-tools36 using the new AAR while retaining target34. Optional MNET_ANDROID_COMPILE_API and MNET_ANDROID_BUILD_TOOLS select compiler tools, not manifest target. No release binary was uploaded.
+
+Retained accessibility is for remote gestures, not a disability-support tool. Play requires the non-accessibility-tool declaration/disclosure path; VpnService also has its own declaration. Source disclosure changes are not platform approval. Export classification must consider the whole app/dependency sources: public source and standard WireGuard cryptography are relevant evidence, but no blanket compliance certification is made here. Current eCFR742.15(b)(2) limits notification to non-standard cryptography; BIS's broad explanatory page still describes notification without that qualification. Keep that discrepancy visible and verify the applicable current rule rather than sending an unnecessary filing or declaring exemption by assumption.
+
 ## Supported next steps
 
 1. Finish source/security/privacy review and keep permissions limited to intended functions. These fixes alone may not clear the block because accessibility remains declared.
@@ -31,3 +43,11 @@ Fresh tests execute actual HostingActivity button/dialog/navigation in simulatio
 - [Prominent disclosure guidance](https://support.google.com/googleplay/android-developer/answer/11150561): separate in-app just-in-time disclosure and decline behavior.
 - [Official internal testing](https://support.google.com/googleplay/android-developer/answer/9845334?hl=en): named testers and secure Play Store distribution; internal testing may not receive normal policy/security review.
 - [Play Protect appeal form](https://support.google.com/googleplay/android-developer/contact/protectappeals): current VirusTotal-uploaded APK hash field. No submission performed.
+
+- [Current target API rules](https://support.google.com/googleplay/android-developer/answer/11926878?hl=en): API36 new-app requirement; organization-private exception is distinct from internal testing.
+- [Personal account testing](https://support.google.com/googleplay/android-developer/answer/14151465?hl=en): production closed-test requirements.
+- [Android16 target behavior](https://developer.android.com/about/versions/16/behavior-changes-16): edge-to-edge and adaptive layouts.
+- [16KiB native support](https://developer.android.com/guide/practices/page-sizes): ELF/build requirements, separate from runtime testing.
+- [Export guidance](https://support.google.com/googleplay/android-developer/answer/113770?hl=en): encryption evaluation required even for open source.
+- [Current742.15](https://www.ecfr.gov/current/title-15/subtitle-B/chapter-VII/subchapter-C/part-742/section-742.15) and [734.3](https://www.ecfr.gov/current/title-15/subtitle-B/chapter-VII/subchapter-C/part-734/section-734.3): public-source/object-code provisions and qualifications.
+- [BIS explanatory page](https://media.bis.gov/learn-support/encryption-controls/encryption-items-not-subject-to-ear): broad notification wording differs from current regulation qualification.

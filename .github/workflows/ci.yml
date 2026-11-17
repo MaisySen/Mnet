@@ -63,6 +63,10 @@ jobs:
         run: sh scripts/test-android-framework.sh vpn
       - name: Android always-on mode policy (JVM fakes and source only)
         run: python3 scripts/test-android-always-on.py
+      - name: Android native page layout guard tests
+        run: python3 scripts/test-android-native-pages.py
+      - name: Android emulator fixture safety checks
+        run: python3 scripts/test-android-emulator-fixture.py
       - name: Android API compatibility matrix (JVM fakes and source only)
         run: python3 scripts/test-android-api-compat.py
       - name: Android projection stop policy (JVM fakes and source only)

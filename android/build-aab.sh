@@ -17,15 +17,17 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 APP=$ROOT/android/app
 OUT=$ROOT/android/out-aab
 SDK=${ANDROID_HOME:?"set ANDROID_HOME"}
-BT=$SDK/build-tools/34.0.0
-AJAR=$SDK/platforms/android-34/android.jar
+BT=$SDK/build-tools/${MNET_ANDROID_BUILD_TOOLS:-34.0.0}
+AJAR=$SDK/platforms/android-${MNET_ANDROID_COMPILE_API:-34}/android.jar
 BUNDLETOOL=${BUNDLETOOL_JAR:-$SDK/bundletool.jar}
 
 AAR=${1:-$ROOT/mobile/mnet.aar}
 if [ ! -f "$AAR" ]; then
     echo "building mnet.aar with gomobile"
-    (cd "$ROOT" && gomobile bind -target android -androidapi 24 -o mobile/mnet.aar fintex.au/mnet/mobile)
+    (cd "$ROOT" && CGO_LDFLAGS="${CGO_LDFLAGS:-} -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384" gomobile bind -target android -androidapi 24 -o mobile/mnet.aar fintex.au/mnet/mobile)
 fi
+
+python3 "$ROOT/scripts/check-android-native-pages.py" "$AAR"
 
 rm -rf "$OUT"
 mkdir -p "$OUT/aar" "$OUT/classes" "$OUT/dex"
@@ -48,7 +50,7 @@ javac -source 11 -target 11 \
     -d "$OUT/classes" \
     @"$OUT/sources.txt"
 
-"$BT/d8" --lib "$AJAR" --output "$OUT/dex" \
+"$BT/d8" --min-api 24 --lib "$AJAR" --output "$OUT/dex" \
     $(find "$OUT/classes" -name '*.class') \
     "$OUT/aar/classes.jar"
 
