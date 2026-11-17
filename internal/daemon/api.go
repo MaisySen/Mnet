@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"fintex.au/mnet/internal/localapi"
@@ -17,6 +18,7 @@ import (
 
 // Status is the CLI's view of the daemon.
 type Status struct {
+	DNSFailure  string       `json:"dns_failure,omitempty"` // fixed non-secret failure category
 	DNSError    string       `json:"dns_error,omitempty"`
 	DNSReady    bool         `json:"dns_ready"`           // both listeners active, not end-to-end traffic proof
 	Interface   string       `json:"interface,omitempty"` // actual managed kernel device, not requested alias
@@ -46,6 +48,7 @@ func (d *Daemon) Status() *Status {
 		ApprovalURL: d.approvalURL,
 		LastError:   d.lastErr,
 		DNSError:    d.dnsErr,
+		DNSFailure:  dnsFailureCategory(d.dnsErr),
 	}
 	if d.lastMap != nil {
 		st.IPv4 = d.lastMap.Self.IPv4
@@ -57,6 +60,22 @@ func (d *Daemon) Status() *Status {
 	d.applyMu.Unlock()
 	st.Peers = d.PeerStatuses()
 	return st
+}
+
+// Only fixed categories may cross public diagnostic boundaries.
+func dnsFailureCategory(detail string) string {
+	switch {
+	case detail == "":
+		return "none"
+	case strings.Contains(detail, "permission denied") || strings.Contains(detail, "operation not permitted"):
+		return "permission"
+	case strings.Contains(detail, "cannot assign requested address"):
+		return "address"
+	case strings.Contains(detail, "address already in use"):
+		return "occupied"
+	default:
+		return "other"
+	}
 }
 
 // SocketPath is where the local API listens.

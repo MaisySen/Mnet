@@ -28,6 +28,7 @@ public class MnetVpnService extends VpnService {
     private static final int NOTIF_ID = 1;
 
     private static volatile Node sharedNode;
+    private static volatile String dnsFailureCategory = "none";
 
     // currentNode exposes the live node to the session services.
     public static Node currentNode() {
@@ -63,6 +64,7 @@ public class MnetVpnService extends VpnService {
             broadcast("{\"status\":\"down\",\"last_error\":\"Previous VPN worker is still stopping. Retry after it exits.\"}");
             return START_NOT_STICKY;
         }
+        dnsFailureCategory = "none";
         ticket = acquired;
         running = true;
         try {
@@ -149,6 +151,8 @@ public class MnetVpnService extends VpnService {
     private static String checkedConnectionStatus(String json) throws Exception {
         JSONObject st = new JSONObject(json);
         if ("up".equals(st.optString("status")) && !st.optBoolean("dns_ready", false)) {
+            String category = st.optString("dns_failure", "other");
+            dnsFailureCategory = "permission".equals(category) || "address".equals(category) || "occupied".equals(category) ? category : "other";
             throw new IllegalStateException("Private DNS is unavailable. Mnet stopped the VPN instead of leaving a broken resolver. Retry setup; connection recovery is not yet verified on this device.");
         }
         return json;

@@ -392,6 +392,12 @@ public class MeshInstrumentation extends Instrumentation {
             }
             // Deliberately omit exception messages, app state and arguments.
             String diagnostics = "";
+            try {
+                java.lang.reflect.Field f = MnetVpnService.class.getDeclaredField("dnsFailureCategory");f.setAccessible(true);
+                String category=String.valueOf(f.get(null));
+                diagnostics += " dnsPermission=" + "permission".equals(category) + " dnsAddress=" + "address".equals(category) + " dnsOccupied=" + "occupied".equals(category) + " dnsOther=" + "other".equals(category);
+            } catch(Exception ignored) {diagnostics += " dnsDiagnosticsUnavailable=true";}
+
             if (stage.startsWith("vpn-")) {
                 try {
                     AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
