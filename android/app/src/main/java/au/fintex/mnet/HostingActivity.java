@@ -67,8 +67,7 @@ public class HostingActivity extends Activity {
 
         Button accessibility = new Button(this);
         accessibility.setText("Open accessibility settings");
-        accessibility.setOnClickListener(v ->
-                startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        accessibility.setOnClickListener(v -> showAccessibilityDisclosure());
         root.addView(accessibility);
 
         autoAccept = new Switch(this);
@@ -103,6 +102,27 @@ public class HostingActivity extends Activity {
         root.addView(log, lp);
 
         setContentView(root);
+    }
+
+    // Separate, just-in-time consent for gesture access. Declining leaves VPN,
+    // viewing and screen-sharing flows available; it never opens Settings.
+    void showAccessibilityDisclosure() {
+        new AlertDialog.Builder(this)
+                .setTitle("Remote-control accessibility access")
+                .setMessage("Mnet uses Android Accessibility to let a connected viewer you approve " +
+                        "tap and scroll on this phone while you are hosting a session. " +
+                        "The viewer's pointer commands are sent over the mesh to control the phone. " +
+                        "This accessibility service does not read text or window contents, collect " +
+                        "accessibility events, or type text. Screen sharing is a separate permission " +
+                        "and shows your screen to the viewer. Do not share sensitive screens. " +
+                        "You can stop hosting at any time and disable Mnet in Accessibility Settings. " +
+                        "If you decline, remote taps and scrolling will not work; VPN and viewing " +
+                        "remain available. Agree to open Android Settings? You must still choose " +
+                        "whether to enable Mnet there.")
+                .setPositiveButton("Agree", (d, w) ->
+                        startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)))
+                .setNegativeButton("Not now", (d, w) -> { })
+                .show();
     }
 
     @Override

@@ -3,9 +3,8 @@
      on behalf of a connected viewer, only while the user has enabled
      this service and is hosting a session. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeWindowContentChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:canPerformGestures="true"
-    android:canRetrieveWindowContent="true"
+    android:canRetrieveWindowContent="false"
     android:description="@string/accessibility_desc"
     android:notificationTimeout="100" />

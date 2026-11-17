@@ -25,6 +25,14 @@ for filename in ('MnetVpnService.java', 'HostSessionService.java'):
     assert 'VpnPlatform.notification(this,' in text, filename
     assert 'new Notification.Builder' not in text and 'new NotificationChannel' not in text, filename
 
+access = ET.parse(APP / 'res/xml/mnet_accessibility.xml').getroot()
+assert access.get(A + 'canPerformGestures') == 'true'
+assert access.get(A + 'canRetrieveWindowContent') == 'false', 'no window retrieval needed for gestures'
+assert access.get(A + 'accessibilityEventTypes') is None, 'no events consumed by gesture-only service'
+assert access.get(A + 'isAccessibilityTool') != 'true', 'not a disability-support tool'
+service = (JAVA / 'MnetAccessibilityService.java').read_text()
+assert 'getRootInActiveWindow' not in service and 'getWindows(' not in service
+
 files = {
 'android/os/Build.java': '''package android.os; public final class Build {
  public static final class VERSION { public static int SDK_INT; }

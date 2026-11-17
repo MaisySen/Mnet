@@ -10,12 +10,13 @@ The harness uses Robolectric4.18. Its AAR extraction is limited to pinned Androi
 
 ## Current coverage
 
-124 cases pass in two fresh local suites (76 selected service/activity +48 VPN service). The new cross-instance revoke/destruction coverage awaits CI. All five jobs passed in [b09858d CI](https://github.com/MaisySen/Mnet/actions/runs/44003438085) before this follow-up.
+136 cases pass in two fresh local suites (88 selected service/activity +48 VPN service). The new accessibility disclosure coverage awaits CI. All five jobs passed in [b09858d CI](https://github.com/MaisySen/Mnet/actions/runs/44003438085) before this follow-up.
 
 | Actual application source | Simulated API levels | Cases | Checks |
 | --- | --- | --- | --- |
 | HostSessionService, SessionConsent, ProjectionGuard, VpnPlatform, CaptureEncoder |24,25,26,33,34|60 (12 per API)|Notification/channel construction, receiver registration, nonsticky restart/stop, missing-consent cleanup, blocking consent cancellation/exact-answer isolation, instance-local auto-accept/reset, synthetic RGBA-to-JPEG row bounds, host input geometry refusal and pointer validation|
 | ViewerActivity, ViewerGate, ViewerTap |24,25,26,33|4 (one per API)|Actual asynchronous connection publication, simulated down/up/cancel/drag dispatch, synthetic JPEG callback, no input before a decoded frame, resize cancellation, disconnect clearing and destruction|
+| HostingActivity |24,25,26,33|12 (three per API)|Actual button opens a separate accessibility disclosure; Agree alone opens Settings, decline/cancel do not, hosting button remains enabled|
 | MainActivity |24,25,26,33|12 (three per API)|Managed up/joining/waiting disables disconnect and explains Settings, stale handler calls cannot send stop, mode refresh restores manual stop, down keeps Connect available|
 | MnetVpnService, VpnAlwaysOn, VpnPlatform |24,25,26,29,33,34|48 (eight per API)|Manual/managed disconnect and revoke, no-node request, preflight/preparation failure and retry, blocked worker stop/ownership/next-run recovery, system revoke/destruction during preparation and cross-instance gate isolation|
 
@@ -25,7 +26,7 @@ Service tests use reflection to set capture/running state rather than start a va
 
 ## Explicit replacements
 
-`mobile.Node`, `SessionViewer`, `MnetVpnService.currentNode()` and the accessibility endpoint are test fakes. No Go JNI, real VPN or injected accessibility gesture executes. Viewer frame bytes are synthetic JPEGs, not device screen content. Encoder inputs are synthetic RGBA buffers, not an actual ImageReader. MainActivity uses placeholder resource IDs mapped to Android strings, a fake HostingActivity, direct status-receiver invocation and a fake VPN endpoint. No app string/layout/pixel or system always-on query is validated by its tests. Both removal of disabled-state wiring and independent removal of stale-click rejection fail four cases, while restored code passes.
+`mobile.Node`, `SessionViewer`, `MnetVpnService.currentNode()` and the accessibility endpoint are test fakes. No Go JNI, real VPN or injected accessibility gesture executes. Viewer frame bytes are synthetic JPEGs, not device screen content. Encoder inputs are synthetic RGBA buffers, not an actual ImageReader. MainActivity and HostingActivity use placeholder resource IDs mapped to Android strings, a fake HostingActivity, direct status-receiver invocation and a fake VPN endpoint. No app string/layout/pixel or system always-on query is validated by its tests. Both removal of disabled-state wiring and independent removal of stale-click rejection fail four cases, while restored code passes.
 
 The manifest is disabled, so receiver registration execution is not proof of signature-permission enforcement.
 
@@ -46,3 +47,6 @@ Worker fixtures inject a factory-controlled Go fake. Missing saved config refuse
 
 
 New revoke/destruction fixtures hold the real worker in fake Go preparation, cancel through the actual lifecycle callback, and confirm the process-wide gate rejects a different service instance until the old worker exits. No canceled tunnel start occurs; afterward that other instance can start and recover. Six simulated API levels add12cases. Removing only onRevoke cleanup causes12failures; restored source passes48VPN +76existing cases with no failures/errors/skips. This still uses fake Go/system mode and does not execute real Android revocation, process death or native cancellation.
+
+
+HostingActivity now uses actual production source instead of a fake in this harness. Button-click tests verify separate disclosure wording and agree/decline/cancel navigation on four simulated API levels. Reverting the button to direct Settings produces12failures. The first affirmative-click harness omitted main-loop draining and failed4cases; corrected fresh88normal+48VPN pass. A local, uncommitted native-graphics preview rendered the actual dialog for visual inspection; this is simulated layout, not physical Android settings/permission or phone-pixel proof. This source fix does not claim to remove Play Protect's installation block.
