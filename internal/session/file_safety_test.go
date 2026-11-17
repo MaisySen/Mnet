@@ -364,3 +364,39 @@ func TestIdleFileReceiverCleansWithSaturatedOutboundQueue(t *testing.T) {
 	default:
 	}
 }
+
+func TestFileRefusalDoesNotDiscloseReceiverStoragePath(t *testing.T) {
+	client, host := pipe(t)
+	defer client.Close()
+	defer host.Close()
+	root := t.TempDir()
+	privatePath := filepath.Join(root, "private-account-directory")
+	if err := os.WriteFile(privatePath, []byte("not a directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	host.OnStream(func(s Stream) {
+		defer close(done)
+		FileReceiver{Mux: host, Dir: filepath.Join(privatePath, "private-subdirectory")}.Handle(s)
+	})
+	stream, err := client.Open(PriBulk, FileOffer{Name: "public-offer.bin", Size: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame, err := stream.Recv(time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var refusal FileAccept
+	if err = json.Unmarshal(frame.Payload, &refusal); err != nil {
+		t.Fatal(err)
+	}
+	if refusal.OK || refusal.Reason != "receiver storage unavailable" {
+		t.Fatalf("unsafe refusal: %+v", refusal)
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("receiver did not stop")
+	}
+}

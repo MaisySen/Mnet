@@ -65,7 +65,7 @@ func (r FileReceiver) Handle(s Stream) {
 		dir = "."
 	}
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		refuse(err.Error())
+		refuse("receiver storage unavailable")
 		return
 	}
 	path := filepath.Join(dir, name)
@@ -77,7 +77,7 @@ func (r FileReceiver) Handle(s Stream) {
 	// bytes, length and digest have been verified. CreateTemp uses mode 0600.
 	f, err := os.CreateTemp(dir, ".mnet-transfer-*")
 	if err != nil {
-		refuse(err.Error())
+		refuse("receiver storage unavailable")
 		return
 	}
 	tmp := f.Name()
