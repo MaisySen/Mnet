@@ -107,6 +107,16 @@ class Guards(unittest.TestCase):
         self.assertLess(test.index('fixture-record-stop'),test.index('activity.finish()'))
         self.assertLess(test.index('HostingActivity.class).addFlags'),test.index('fixture-record-start'))
         self.assertNotIn('os.WriteFile(filepath.Join(root, "frame', peer)
+    def test_actual_control_is_separately_declined_approved_and_revoked(self):
+        test=(ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
+        host=(ROOT / 'android/app/src/main/java/au/fintex/mnet/HostSessionService.java').read_text()
+        self.assertIn('clickText(root, "Allow viewing")',test)
+        self.assertIn('screen-control-decline',test)
+        self.assertIn('screen-control-approval',test)
+        self.assertIn('screen-control-revoke',test)
+        self.assertIn('!control.allowed()',host)
+        self.assertIn('control.end()',host)
+        self.assertIn('captureSettledDialog("Allow remote control?"',test)
     def test_sampled_walkthrough_stops_before_return_to_keys(self):
         source = (ROOT / 'scripts/android-emulator-validation.py').read_text()
         self.assertIn("['exec-out', 'screencap', '-p']", source)

@@ -28,7 +28,8 @@ import mobile.Node;
 // HostSessionService hosts one remote session on this phone: it
 // captures the screen with MediaProjection and feeds frames to the Go
 // engine, which serves them to a connected viewer. Consent for each
-// session comes from HostingActivity (auto-accept switch or a dialog).
+// session viewing comes from HostingActivity (view-only auto-accept or a dialog).
+// Remote input needs a separate session-scoped approval in HostingActivity.
 public class HostSessionService extends Service implements HostCallbacks {
 
     public static final String ACTION_LOG = "au.fintex.mnet.SESSION_LOG";
@@ -43,6 +44,22 @@ public class HostSessionService extends Service implements HostCallbacks {
     public static final String EXTRA_AUTO_ACCEPT = "auto_accept_for_this_host";
     private volatile boolean autoAccept;
     private static final SessionConsent CONSENT = new SessionConsent();
+    private static volatile HostSessionService currentHost;
+    private final SessionControl control=new SessionControl();
+
+    @Override public void onCreate(){super.onCreate();currentHost=this;}
+    public static String controlSession(){HostSessionService host=currentHost;return host==null?null:host.control.current();}
+    public static boolean controlAllowed(){HostSessionService host=currentHost;return host!=null&&host.control.allowed();}
+    public static boolean answerControl(String id,boolean allowed){
+        HostSessionService host=currentHost;
+        if(host==null)return false;
+        synchronized(host.hostLifecycle){
+            if(!host.running||!host.control.decide(id,allowed))return false;
+            MnetAccessibilityService.setHosting(allowed);
+            host.log(allowed?"remote control approved for this viewer":"remote control revoked; viewing continues");
+            return true;
+        }
+    }
 
     public static void answerSession(String requestId, boolean accept) {
         CONSENT.answer(requestId, accept);
@@ -105,7 +122,8 @@ public class HostSessionService extends Service implements HostCallbacks {
             synchronized (hostLifecycle) {
                 autoAccept = intent.getBooleanExtra(EXTRA_AUTO_ACCEPT, false);
                 running = true;
-                MnetAccessibilityService.setHosting(true);
+                control.end();
+                MnetAccessibilityService.setHosting(false);
             }
             new Thread(() -> {
                 try {
@@ -135,7 +153,7 @@ public class HostSessionService extends Service implements HostCallbacks {
     private void startFg() {
         Notification n = VpnPlatform.notification(this, CHANNEL, "Mnet sessions")
                 .setContentTitle("Mnet session hosting")
-                .setContentText("This phone can be viewed and controlled over the mesh")
+                .setContentText("Screen sharing active; remote control needs separate approval")
                 .setSmallIcon(android.R.drawable.presence_video_online)
                 .setOngoing(true)
                 .build();
@@ -249,23 +267,25 @@ public class HostSessionService extends Service implements HostCallbacks {
 
     @Override
     public void inject(String evJson) {
-        if (!running || inputGeometryInvalid || frameW <= 0 || frameH <= 0) return;
-        if (!supportedPointer(evJson)) return;
-        MnetAccessibilityService svc = MnetAccessibilityService.instance();
-        if (svc != null) {
-            WindowManager wm = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
-            DisplayMetrics dm = new DisplayMetrics();
-            wm.getDefaultDisplay().getRealMetrics(dm);
-            // Capture is not reconfigured on rotation/resize yet. Never map
-            // an old capture coordinate system into a different display.
-            if (dm.widthPixels != captureDisplayW || dm.heightPixels != captureDisplayH
-                    || wm.getDefaultDisplay().getRotation() != captureRotation) {
-                inputGeometryInvalid = true;
-                log("display changed; restart hosting to enable remote control");
-                return;
+        synchronized(hostLifecycle){
+            if (!running || !control.allowed() || inputGeometryInvalid || frameW <= 0 || frameH <= 0) return;
+            if (!supportedPointer(evJson)) return;
+            MnetAccessibilityService svc = MnetAccessibilityService.instance();
+            if (svc != null) {
+                WindowManager wm = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
+                DisplayMetrics dm = new DisplayMetrics();
+                wm.getDefaultDisplay().getRealMetrics(dm);
+                // Capture is not reconfigured on rotation/resize yet. Never map
+                // an old capture coordinate system into a different display.
+                if (dm.widthPixels != captureDisplayW || dm.heightPixels != captureDisplayH
+                        || wm.getDefaultDisplay().getRotation() != captureRotation) {
+                    inputGeometryInvalid = true;
+                    log("display changed; restart hosting to enable remote control");
+                    return;
+                }
+                float scale = (float) dm.widthPixels / frameW;
+                svc.inject(evJson, scale);
             }
-            float scale = (float) dm.widthPixels / frameW;
-            svc.inject(evJson, scale);
         }
     }
 
@@ -273,7 +293,8 @@ public class HostSessionService extends Service implements HostCallbacks {
     public boolean acceptSession(String peerNodeName) {
         if (!running) return false;
         if (autoAccept) {
-            log("accepted session from " + peerNodeName + " (auto-accept)");
+            synchronized(hostLifecycle){if(!running)return false;control.begin();MnetAccessibilityService.setHosting(false);}
+            log("accepted viewing from " + peerNodeName + " (view-only auto-accept)");
             return true;
         }
         SessionConsent.Request request;
@@ -287,7 +308,13 @@ public class HostSessionService extends Service implements HostCallbacks {
         ask.setPackage(getPackageName());
         sendBroadcast(ask);
         try {
-            return CONSENT.await(request, 60, TimeUnit.SECONDS) && running;
+            boolean accepted=CONSENT.await(request,60,TimeUnit.SECONDS);
+            synchronized(hostLifecycle){
+                if(!accepted||!running)return false;
+                control.begin();MnetAccessibilityService.setHosting(false);
+                log("viewing approved; remote control is off");
+                return true;
+            }
         } catch (InterruptedException ignored) {
             Thread.currentThread().interrupt();
         }
@@ -306,6 +333,7 @@ public class HostSessionService extends Service implements HostCallbacks {
 
     @Override
     public void onSessionEnd() {
+        synchronized(hostLifecycle){control.end();MnetAccessibilityService.setHosting(false);}
         log("session ended");
     }
 
@@ -318,6 +346,7 @@ public class HostSessionService extends Service implements HostCallbacks {
     @Override
     public void onDestroy() {
         stopHosting();
+        if(currentHost==this)currentHost=null;
         super.onDestroy();
     }
 
@@ -328,6 +357,7 @@ public class HostSessionService extends Service implements HostCallbacks {
         synchronized (hostLifecycle) {
             running = false;
             autoAccept = false;
+            control.end();
             MnetAccessibilityService.setHosting(false);
             latestJpeg = null;
             latestSeq = servedSeq = 0;

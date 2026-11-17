@@ -68,6 +68,8 @@ A screen-production failure now ends the host session transport instead of leavi
 
 ## Input v1
 
+New Android source makes session admission view-only, including its auto-accept option. The host can use **Remote control** to approve taps/scrolling separately for that viewer, or revoke input while viewing continues. Session end/hosting stop clears the approval and the next accepted viewer gets a new handle; stale dialogs cannot approve a later viewer. Android's actual input callback and accessibility-hosting gate enforce that decision. This is a local attended control boundary, not Multies authentication, a viewer-side request/status protocol or cross-platform separate consent. Native/visual checks of this source are pending. A gesture already dispatched to Android may finish when control is revoked.
+
 JSON events: {"kind":"pointer","x":..,"y":..,"button":..,"action":..}
 and {"kind":"key","text":..} in host coordinates. Host injection:
 Android accessibility gestures (not text typing); Linux XTEST.

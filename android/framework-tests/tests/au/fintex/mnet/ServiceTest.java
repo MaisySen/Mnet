@@ -21,6 +21,7 @@ public class ServiceTest{
    setField(service,"running",true);setField(service,"frameW",metrics.widthPixels);setField(service,"frameH",metrics.heightPixels);
    setField(service,"captureDisplayW",metrics.widthPixels);setField(service,"captureDisplayH",metrics.heightPixels);
    setField(service,"captureRotation",((android.view.WindowManager)service.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay().getRotation());
+   approveControl(service);
    service.inject("{\"kind\":\"pointer\",\"action\":\"click\"}");assertEquals(1,sink.injections);
    setField(service,"captureDisplayW",metrics.widthPixels+1);
    service.inject("{\"kind\":\"pointer\",\"action\":\"click\"}");assertEquals("old frame after display-width change",1,sink.injections);
@@ -40,6 +41,7 @@ public class ServiceTest{
    android.view.Display display=((android.view.WindowManager)service.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();display.getRealMetrics(metrics);
    setField(service,"running",true);setField(service,"frameW",metrics.widthPixels);setField(service,"frameH",metrics.heightPixels);
    setField(service,"captureDisplayW",metrics.widthPixels);setField(service,"captureDisplayH",metrics.heightPixels);setField(service,"captureRotation",display.getRotation());
+   approveControl(service);
    String valid="{\"kind\":\"pointer\",\"action\":\"click\"}";
    service.inject(valid);assertEquals("Go omits zero coordinates",1,sink.injections);
    for(String invalid:new String[]{null,"bad","{}",valid.replace("click","down"),valid.replace("click","up"),valid.replace("click","move"),valid.replace("pointer","key"),
@@ -79,6 +81,31 @@ public class ServiceTest{
    assertFalse(answer.get(1,java.util.concurrent.TimeUnit.SECONDS));
    assertFalse(MnetAccessibilityService.hosting);
   } finally {worker.shutdownNow();c.destroy();}
+ }
+ private static void approveControl(HostSessionService service)throws Exception{
+  setField(service,"autoAccept",true);assertTrue(service.acceptSession("fixture-peer"));
+  assertFalse(HostSessionService.controlAllowed());
+  assertTrue(HostSessionService.answerControl(HostSessionService.controlSession(),true));
+ }
+ @Test public void viewOnlyControlRevokeAndSessionEndEnforceInput()throws Exception{
+  ServiceController<HostSessionService> controller=Robolectric.buildService(HostSessionService.class).create();
+  MnetAccessibilityService sink=new MnetAccessibilityService();MnetAccessibilityService.current=sink;
+  try{
+   HostSessionService service=controller.get();android.util.DisplayMetrics metrics=new android.util.DisplayMetrics();
+   android.view.Display display=((android.view.WindowManager)service.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();display.getRealMetrics(metrics);
+   setField(service,"running",true);setField(service,"autoAccept",true);setField(service,"frameW",metrics.widthPixels);setField(service,"frameH",metrics.heightPixels);
+   setField(service,"captureDisplayW",metrics.widthPixels);setField(service,"captureDisplayH",metrics.heightPixels);setField(service,"captureRotation",display.getRotation());
+   assertTrue(service.acceptSession("viewer"));String first=HostSessionService.controlSession();assertNotNull(first);
+   String input="{\"kind\":\"pointer\",\"action\":\"click\"}";
+   service.inject(input);assertEquals(0,sink.injections);assertFalse(MnetAccessibilityService.hosting);
+   assertTrue(HostSessionService.answerControl(first,true));service.inject(input);assertEquals(1,sink.injections);
+   assertTrue(HostSessionService.answerControl(first,false));service.inject(input);assertEquals(1,sink.injections);
+   assertTrue(service.acceptSession("next"));assertNotEquals(first,HostSessionService.controlSession());
+   assertFalse(HostSessionService.answerControl(first,true));service.inject(input);assertEquals(1,sink.injections);
+   String next=HostSessionService.controlSession();assertTrue(HostSessionService.answerControl(next,true));
+   service.onSessionEnd();assertFalse(HostSessionService.answerControl(next,true));service.inject(input);assertEquals(1,sink.injections);
+   assertNull(HostSessionService.controlSession());assertFalse(MnetAccessibilityService.hosting);
+  }finally{controller.destroy();MnetAccessibilityService.current=null;}
  }
  private static void setField(HostSessionService service,String field,Object value) throws Exception {
   java.lang.reflect.Field f=HostSessionService.class.getDeclaredField(field);f.setAccessible(true);f.set(service,value);

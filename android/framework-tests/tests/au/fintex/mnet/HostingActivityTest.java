@@ -20,4 +20,23 @@ public class HostingActivityTest {
  @Test public void affirmativeConsentAloneOpensSettings(){AlertDialog dialog=disclosure();dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();Intent intent=Shadows.shadowOf(activity).getNextStartedActivity();assertNotNull(intent);assertEquals(Settings.ACTION_ACCESSIBILITY_SETTINGS,intent.getAction());assertNull(Shadows.shadowOf(activity).getNextStartedService());}
  @Test public void declineLeavesOtherFeaturesAndCanAskLater(){AlertDialog dialog=disclosure();dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();assertNull(Shadows.shadowOf(activity).getNextStartedActivity());assertTrue(activity.findViewById(R.id.start_hosting_button).isEnabled());assertNull(Shadows.shadowOf(activity).getNextStartedService());disclosure();}
  @Test public void cancelNeverOpensSettings(){disclosure().cancel();assertNull(Shadows.shadowOf(activity).getNextStartedActivity());assertNull(Shadows.shadowOf(activity).getNextStartedService());}
+ @Test public void controlWithoutViewerCannotGrantOrOpenSettings(){
+  activity.showControlConsent();AlertDialog dialog=ShadowAlertDialog.getLatestAlertDialog();
+  assertEquals("No approved viewer",Shadows.shadowOf(dialog).getTitle().toString());
+  assertFalse(HostSessionService.controlAllowed());assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
+ }
+ @Test public void separateControlDeclineApproveRevokeAndStaleDialog()throws Exception{
+  org.robolectric.android.controller.ServiceController<HostSessionService> service=Robolectric.buildService(HostSessionService.class).create();
+  try{
+   for(String name:new String[]{"running","autoAccept"}){java.lang.reflect.Field field=HostSessionService.class.getDeclaredField(name);field.setAccessible(true);field.set(service.get(),true);}
+   assertTrue(service.get().acceptSession("viewer"));
+   activity.showControlConsent();AlertDialog first=ShadowAlertDialog.getLatestAlertDialog();
+   assertTrue(Shadows.shadowOf(first).getMessage().toString().contains("Viewing continues"));
+   first.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();assertFalse(HostSessionService.controlAllowed());
+   activity.showControlConsent();AlertDialog approved=ShadowAlertDialog.getLatestAlertDialog();approved.getButton(AlertDialog.BUTTON_POSITIVE).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();assertTrue(HostSessionService.controlAllowed());
+   activity.showControlConsent();ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();assertFalse(HostSessionService.controlAllowed());
+   activity.showControlConsent();AlertDialog stale=ShadowAlertDialog.getLatestAlertDialog();
+   service.get().onSessionEnd();assertTrue(service.get().acceptSession("next"));stale.getButton(AlertDialog.BUTTON_POSITIVE).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();assertFalse(HostSessionService.controlAllowed());
+  }finally{service.destroy();}
+ }
 }

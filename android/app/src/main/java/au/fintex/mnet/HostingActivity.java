@@ -37,8 +37,8 @@ public class HostingActivity extends Activity {
                 if (!HostSessionService.consentPending(requestId)) return;
                 new AlertDialog.Builder(HostingActivity.this)
                         .setTitle("Session request")
-                        .setMessage(peer + " wants to view and control this phone. Allow?")
-                        .setPositiveButton("Allow", (d, w) -> HostSessionService.answerSession(requestId, true))
+                        .setMessage(peer + " wants to view this phone. Remote control stays off unless you approve it separately.")
+                        .setPositiveButton("Allow viewing", (d, w) -> HostSessionService.answerSession(requestId, true))
                         .setNegativeButton("Refuse", (d, w) -> HostSessionService.answerSession(requestId, false))
                         .setOnCancelListener(d -> HostSessionService.answerSession(requestId, false))
                         .show();
@@ -60,7 +60,7 @@ public class HostingActivity extends Activity {
         root.addView(title);
 
         TextView hint = new TextView(this);
-        hint.setText("Sharing your screen lets a connected viewer see and control this phone over the mesh. " +
+        hint.setText("Sharing your screen lets an approved viewer see this phone over the mesh. Remote control needs separate approval for each viewer. " +
                 "For control, also enable Mnet in Settings > Accessibility.");
         hint.setPadding(0, pad / 2, 0, pad / 2);
         root.addView(hint);
@@ -71,7 +71,7 @@ public class HostingActivity extends Activity {
         root.addView(accessibility);
 
         autoAccept = new Switch(this);
-        autoAccept.setText("Auto-accept viewers on next hosting start");
+        autoAccept.setText("Auto-accept viewing only on next hosting start");
         root.addView(autoAccept);
 
         Button start = new Button(this);
@@ -85,6 +85,11 @@ public class HostingActivity extends Activity {
             startActivityForResult(mpm.createScreenCaptureIntent(), 42);
         });
         root.addView(start);
+
+        Button control = new Button(this);
+        control.setText("Remote control");
+        control.setOnClickListener(v -> showControlConsent());
+        root.addView(control);
 
         Button stop = new Button(this);
         stop.setText("Stop hosting");
@@ -103,6 +108,18 @@ public class HostingActivity extends Activity {
 
         ContentInsets.install(root);
         setContentView(root);
+    }
+
+    void showControlConsent(){
+        String session=HostSessionService.controlSession();
+        if(session==null){new AlertDialog.Builder(this).setTitle("No approved viewer").setMessage("Approve a viewing request first. Remote control is off.").setPositiveButton("OK",null).show();return;}
+        boolean allowed=HostSessionService.controlAllowed();
+        new AlertDialog.Builder(this)
+            .setTitle(allowed?"Revoke remote control?":"Allow remote control?")
+            .setMessage(allowed?"Stop accepting remote taps and scrolling for this viewer. Screen viewing continues.":"Let this viewer tap and scroll on this phone for this session. Android Accessibility must also be enabled. Viewing continues if you decline. Approval ends when the session ends; you can revoke it here at any time.")
+            .setPositiveButton(allowed?"Revoke control":"Allow control",(d,w)->HostSessionService.answerControl(session,!allowed))
+            .setNegativeButton(allowed?"Keep control":"View only",(d,w)->{})
+            .show();
     }
 
     // Separate, just-in-time consent for gesture access. Declining leaves VPN,

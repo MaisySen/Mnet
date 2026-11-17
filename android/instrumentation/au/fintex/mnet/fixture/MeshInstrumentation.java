@@ -47,7 +47,7 @@ public class MeshInstrumentation extends Instrumentation {
     }
     private void click(int id) { runOnMainSync(() -> ((Button) activity.findViewById(id)).performClick()); }
     private void set(int id, String value) { runOnMainSync(() -> ((EditText) activity.findViewById(id)).setText(value)); }
-    // All callers run before enrollment values enter the UI. Require visible
+    // Callers use pre-enrollment or dedicated host screens with no credentials. Require visible
     // actions and consecutive equal compositor frames, not only a ready tree.
     private AccessibilityNodeInfo captureSettledDialog(String title, String filename, String... actions) throws Exception {
         await(() -> {
@@ -226,6 +226,7 @@ public class MeshInstrumentation extends Instrumentation {
         await(() -> new File(getTargetContext().getFilesDir(), "fixture-record-ready").exists(), "consent-record-ready");
         enableRemoteControl();
         java.util.concurrent.atomic.AtomicBoolean remoteTapped = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicBoolean pulseStopped = new java.util.concurrent.atomic.AtomicBoolean();
         final Button[] target = new Button[1];
         runOnMainSync(() -> {
             target[0] = new Button(activity);
@@ -256,7 +257,7 @@ public class MeshInstrumentation extends Instrumentation {
         pulseHandler.post(new Runnable() {
             int pulse;
             public void run() {
-                if (remoteTapped.get() || activity.isFinishing()) return;
+                if (pulseStopped.get() || remoteTapped.get() || activity.isFinishing()) return;
                 target[0].setText("Disposable remote tap target " + (++pulse));
                 pulseHandler.postDelayed(this, 500);
             }
@@ -278,11 +279,24 @@ public class MeshInstrumentation extends Instrumentation {
             AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
             if (root == null || !"au.fintex.mnet".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())) return false;
             SystemClock.sleep(1500);
-            return clickText(root, "Allow");
+            return clickText(root, "Allow viewing");
         }, "screen-viewer-consent");
         await(() -> new File(getTargetContext().getFilesDir(), "fixture-screen-received").exists(), "screen-decoded-by-peer");
+        pulseStopped.set(true);SystemClock.sleep(700);
+        if(au.fintex.mnet.HostSessionService.controlAllowed()||remoteTapped.get())throw new IllegalStateException("view consent granted input");
+        await(()->{AccessibilityNodeInfo root=getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();return root!=null&&clickText(root,"Remote control");},"screen-control-decline-open");
+        await(()->{AccessibilityNodeInfo root=getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();return root!=null&&clickText(root,"View only");},"screen-control-decline");
+        SystemClock.sleep(700);
+        if(au.fintex.mnet.HostSessionService.controlAllowed()||remoteTapped.get())throw new IllegalStateException("decline allowed input");
+        await(()->{AccessibilityNodeInfo root=getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();return root!=null&&clickText(root,"Remote control");},"screen-control-open");
+        stage="screen-control-approval";
+        AccessibilityNodeInfo controlDialog=captureSettledDialog("Allow remote control?","fixture-consent.png","Allow control","View only");
+        if(!clickText(controlDialog,"Allow control"))throw new IllegalStateException("control approval unavailable");
         await(remoteTapped::get, "remote-mesh-gesture-click");
-        SystemClock.sleep(2000);
+        await(()->{AccessibilityNodeInfo root=getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();return root!=null&&clickText(root,"Remote control");},"screen-control-revoke-open");
+        await(()->{AccessibilityNodeInfo root=getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();return root!=null&&clickText(root,"Revoke control");},"screen-control-revoke");
+        SystemClock.sleep(700);remoteTapped.set(false);SystemClock.sleep(1000);
+        if(au.fintex.mnet.HostSessionService.controlAllowed()||remoteTapped.get()||au.fintex.mnet.HostSessionService.controlSession()==null)throw new IllegalStateException("revoke failed or ended view");
         runOnMainSync(() -> getTargetContext().startService(new Intent(getTargetContext(), au.fintex.mnet.HostSessionService.class).setAction("stop")));
         await(() -> new File(getTargetContext().getFilesDir(), "fixture-screen-closed").exists(), "screen-stop-closed-peer");
         new File(getTargetContext().getFilesDir(), "fixture-record-stop").createNewFile();

@@ -15,7 +15,7 @@ if [ "${1:-}" = vpn ]; then
 else
     cp -R "$ROOT/android/framework-tests/tests/." "$OUT/src/test/java/"
 fi
-for source in ContentInsets MainActivity HostingActivity HostSessionService SessionConsent ProjectionGuard VpnPlatform CaptureEncoder ViewerActivity ViewerGate ViewerTap; do
+for source in ContentInsets MainActivity HostingActivity HostSessionService SessionControl SessionConsent ProjectionGuard VpnPlatform CaptureEncoder ViewerActivity ViewerGate ViewerTap; do
     cp "$ROOT/android/app/src/main/java/au/fintex/mnet/$source.java" "$OUT/src/main/java/au/fintex/mnet/"
 done
 if [ "${1:-}" = vpn ]; then
