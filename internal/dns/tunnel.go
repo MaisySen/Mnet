@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 
 	"golang.zx2c4.com/wireguard/tun"
 	"gvisor.dev/gvisor/pkg/buffer"
@@ -36,6 +37,7 @@ type Tunnel struct {
 	writeMu sync.Mutex
 	mu      sync.RWMutex
 	local   *localEndpoint
+	udpSeen atomic.Bool
 	pending [][]byte // bounded DNS packets received while the first map is loading
 	closed  bool
 	once    sync.Once
@@ -177,6 +179,9 @@ func (t *Tunnel) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
 			// peer, including before activation or for malformed/non-DNS data.
 			intercepted := localDNSDestination(packet)
 
+			if intercepted && len(packet) > 9 && packet[9] == 17 {
+				t.udpSeen.Store(true)
+			}
 			if intercepted && localDNSPacket(packet, [4]byte{198, 18, 0, 53}) {
 				if local != nil {
 					injectLocalDNS(local.ep, packet)
@@ -283,4 +288,25 @@ type limitedConn struct {
 func (c *limitedConn) Close() error { err := c.Conn.Close(); c.once.Do(c.release); return err }
 func localDNSDestination(p []byte) bool {
 	return len(p) >= 20 && p[0]>>4 == 4 && p[16] == 198 && p[17] == 18 && p[18] == 0 && p[19] == 53
+}
+
+// Diagnostics contains only packet-path booleans, never names or addresses.
+func (t *Tunnel) Diagnostics() map[string]bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	result := map[string]bool{"udp_seen": t.udpSeen.Load()}
+	if t.local == nil {
+		return result
+	}
+	stats := t.local.stack.Stats()
+	result["udp_received"] = stats.UDP.PacketsReceived.Value() > 0
+	result["udp_sent"] = stats.UDP.PacketsSent.Value() > 0
+	result["udp_checksum_error"] = stats.UDP.ChecksumErrors.Value() > 0
+	result["udp_malformed"] = stats.UDP.MalformedPacketsReceived.Value() > 0
+	result["udp_unknown_port"] = stats.UDP.UnknownPortErrors.Value() > 0
+	result["udp_buffer_error"] = stats.UDP.ReceiveBufferErrors.Value() > 0
+	result["udp_send_error"] = stats.UDP.PacketSendErrors.Value() > 0
+	result["ip_invalid_source"] = stats.IP.InvalidSourceAddressesReceived.Value() > 0
+	result["ip_malformed"] = stats.IP.MalformedPacketsReceived.Value() > 0
+	return result
 }

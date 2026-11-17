@@ -351,7 +351,7 @@ public class MeshInstrumentation extends Instrumentation {
             vpnConsent();
             await(this::up, "initial-vpn-up");
             osVpnReady();
-            stage = "os-udp-tcp-dns";
+            checkpoint("os-udp-tcp-dns");
             DNSProof.verify(options.getString("peer"));
             hashRoundTrip();
             click(R.id.connect_button);
@@ -363,7 +363,7 @@ public class MeshInstrumentation extends Instrumentation {
             vpnConsent();
             await(this::up, "reconnect-vpn-up");
             osVpnReady();
-            stage = "os-udp-tcp-dns";
+            checkpoint("os-udp-tcp-dns");
             DNSProof.verify(options.getString("peer"));
             hashRoundTrip();
             // Keep the VPN-owning instrumentation process alive while another
@@ -432,6 +432,8 @@ public class MeshInstrumentation extends Instrumentation {
             try {
                 if (MnetVpnService.currentNode() != null) {
                     JSONObject state = new JSONObject(MnetVpnService.currentNode().status());
+                    JSONObject dnsPackets=state.optJSONObject("dns_packets");
+                    if(dnsPackets!=null)for(String key:new String[]{"udp_seen","udp_received","udp_sent","udp_checksum_error","udp_malformed","udp_unknown_port","udp_buffer_error","udp_send_error","ip_invalid_source","ip_malformed"})diagnostics+=" dns_"+key+"="+dnsPackets.optBoolean(key);
                     org.json.JSONArray peers = state.optJSONArray("peers");
                     boolean handshake = false, received = false, transmitted = false, relay = false;
                     if (peers != null) for (int i = 0; i < peers.length(); i++) {

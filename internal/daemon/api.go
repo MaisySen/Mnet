@@ -18,20 +18,21 @@ import (
 
 // Status is the CLI's view of the daemon.
 type Status struct {
-	DNSFailure  string       `json:"dns_failure,omitempty"` // fixed non-secret failure category
-	DNSError    string       `json:"dns_error,omitempty"`
-	DNSReady    bool         `json:"dns_ready"`           // both listeners active, not end-to-end traffic proof
-	Interface   string       `json:"interface,omitempty"` // actual managed kernel device, not requested alias
-	Status      string       `json:"status"`              // down, preparing, joining, waiting-approval, up, key-expired
-	Version     string       `json:"version"`
-	Server      string       `json:"server,omitempty"`
-	Network     string       `json:"network,omitempty"`
-	NodeName    string       `json:"node_name,omitempty"`
-	IPv4        string       `json:"ipv4,omitempty"`
-	PublicKey   string       `json:"public_key,omitempty"`
-	ApprovalURL string       `json:"approval_url,omitempty"`
-	LastError   string       `json:"last_error,omitempty"`
-	Peers       []PeerStatus `json:"peers,omitempty"`
+	DNSPackets  map[string]bool `json:"dns_packets,omitempty"`
+	DNSFailure  string          `json:"dns_failure,omitempty"` // fixed non-secret failure category
+	DNSError    string          `json:"dns_error,omitempty"`
+	DNSReady    bool            `json:"dns_ready"`           // both listeners active, not end-to-end traffic proof
+	Interface   string          `json:"interface,omitempty"` // actual managed kernel device, not requested alias
+	Status      string          `json:"status"`              // down, preparing, joining, waiting-approval, up, key-expired
+	Version     string          `json:"version"`
+	Server      string          `json:"server,omitempty"`
+	Network     string          `json:"network,omitempty"`
+	NodeName    string          `json:"node_name,omitempty"`
+	IPv4        string          `json:"ipv4,omitempty"`
+	PublicKey   string          `json:"public_key,omitempty"`
+	ApprovalURL string          `json:"approval_url,omitempty"`
+	LastError   string          `json:"last_error,omitempty"`
+	Peers       []PeerStatus    `json:"peers,omitempty"`
 }
 
 // Status renders current state.
@@ -57,6 +58,9 @@ func (d *Daemon) Status() *Status {
 	d.mu.Unlock()
 	d.applyMu.Lock()
 	st.DNSReady = d.dns != nil && d.dns.Ready()
+	if d.localDNS != nil {
+		st.DNSPackets = d.localDNS.Diagnostics()
+	}
 	d.applyMu.Unlock()
 	st.Peers = d.PeerStatuses()
 	return st
