@@ -399,7 +399,14 @@ public class MeshInstrumentation extends Instrumentation {
                 } catch (Exception ignored) { }
             }
             // Deliberately omit exception messages, app state and arguments.
-            String diagnostics = "";
+            String diagnostics = " dnsUDP="+"udp".equals(DNSProof.phase)+" dnsTCP="+"tcp".equals(DNSProof.phase)+" dnsOS="+"os".equals(DNSProof.phase);
+            try{
+                android.net.ConnectivityManager cm=getTargetContext().getSystemService(android.net.ConnectivityManager.class);
+                android.net.LinkProperties lp=cm.getLinkProperties(cm.getActiveNetwork());
+                diagnostics+=" resolverConfigured="+(lp!=null&&!lp.getDnsServers().isEmpty());
+                if(android.os.Build.VERSION.SDK_INT>=28)diagnostics+=" privateDNSActive="+(lp!=null&&lp.isPrivateDnsActive())+" strictPrivateDNS="+(lp!=null&&lp.getPrivateDnsServerName()!=null);
+            }catch(Exception ignored){diagnostics+=" resolverDiagnosticsUnavailable=true";}
+
             try {
                 java.lang.reflect.Field f = MnetVpnService.class.getDeclaredField("dnsFailureCategory");f.setAccessible(true);
                 String category=String.valueOf(f.get(null));
@@ -435,10 +442,10 @@ public class MeshInstrumentation extends Instrumentation {
                         relay |= peer.optBoolean("relay");
                     }
                     JSONObject packets = new JSONObject(MnetVpnService.currentNode().packetDiagnostics());
-                    diagnostics = " tunSourceSelf=" + packets.optBoolean("read_source_self") + " tunDestinationPeer=" + packets.optBoolean("read_destination_peer") + " tunIPv4=" + packets.optBoolean("read_ipv4") + " tunTCP=" + packets.optBoolean("read_tcp") + " tunSYN=" + packets.optBoolean("read_syn") + " tunRead=" + packets.optBoolean("read_packet") + " tunWrite=" + packets.optBoolean("wrote_packet") + " tunReadError=" + packets.optBoolean("read_failed") + " tunWriteError=" + packets.optBoolean("write_failed") + " peersPresent=" + (peers != null && peers.length() > 0)
+                    diagnostics += " tunSourceSelf=" + packets.optBoolean("read_source_self") + " tunDestinationPeer=" + packets.optBoolean("read_destination_peer") + " tunIPv4=" + packets.optBoolean("read_ipv4") + " tunTCP=" + packets.optBoolean("read_tcp") + " tunSYN=" + packets.optBoolean("read_syn") + " tunRead=" + packets.optBoolean("read_packet") + " tunWrite=" + packets.optBoolean("wrote_packet") + " tunReadError=" + packets.optBoolean("read_failed") + " tunWriteError=" + packets.optBoolean("write_failed") + " peersPresent=" + (peers != null && peers.length() > 0)
                         + " handshake=" + handshake + " received=" + received + " transmitted=" + transmitted + " relay=" + relay;
                 }
-            } catch (Exception ignored) { diagnostics = " diagnosticsUnavailable=true"; }
+            } catch (Exception ignored) { diagnostics += " diagnosticsUnavailable=true"; }
             try {
                 Class<?> type = au.fintex.mnet.HostSessionService.class;
                 java.lang.reflect.Field current = type.getDeclaredField("diagnosticInstance"); current.setAccessible(true);

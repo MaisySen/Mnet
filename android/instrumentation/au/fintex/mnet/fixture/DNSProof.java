@@ -8,11 +8,10 @@ import java.util.Arrays;
 // cross the Android OS VPN and the production userspace DNS endpoint. Exported
 // summaries contain no addresses, names, status JSON or enrollment material.
 final class DNSProof {
+    static volatile String phase="none";
     static void verify(String expected) throws Exception {
         String name = "userspace-peer.android-emulator.mnet";
-        boolean resolved = false;
-        for (InetAddress address : InetAddress.getAllByName(name)) resolved |= expected.equals(address.getHostAddress());
-        if (!resolved) throw new IOException("OS DNS mismatch");
+        phase="udp";
         byte[] query = query(name);
         byte[] udp;
         try (DatagramSocket socket = new DatagramSocket()) {
@@ -23,6 +22,7 @@ final class DNSProof {
             socket.receive(packet);udp=Arrays.copyOf(data,packet.getLength());
         }
         check(udp,expected);
+        phase="tcp";
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress(InetAddress.getByAddress(new byte[]{(byte)198,18,0,53}),53),5000);
             socket.setSoTimeout(5000);
@@ -32,6 +32,11 @@ final class DNSProof {
             int length=input.readUnsignedShort();if(length<12||length>4096)throw new IOException("DNS length");
             byte[] data=new byte[length];input.readFully(data);check(data,expected);
         }
+        phase="os";
+        boolean resolved = false;
+        for (InetAddress address : InetAddress.getAllByName(name)) resolved |= expected.equals(address.getHostAddress());
+        if (!resolved) throw new IOException("OS DNS mismatch");
+        phase="complete";
     }
     private static byte[] query(String name) throws Exception {
         ByteArrayOutputStream bytes=new ByteArrayOutputStream();DataOutputStream out=new DataOutputStream(bytes);
