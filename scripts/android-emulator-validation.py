@@ -178,6 +178,12 @@ def main():
                     return json.loads((root / 'screen-proof.json').read_text()).get(name) is True
                 except (OSError, ValueError):
                     return False
+            wait(lambda: subprocess.run(list(map(str, adb + ['shell', 'run-as', 'au.fintex.mnet', 'test', '-f', 'files/fixture-record-start'])), capture_output=True, timeout=10).returncode == 0 or instrument.poll() is not None, 'consent-record-start', 90)
+            recording = None
+            if instrument.poll() is None:
+                recording = start(adb + ['shell', 'screenrecord', '--time-limit', '180', '/sdcard/mnet-consent.mp4'], 'consent-recorder')
+                time.sleep(1)
+                run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-record-ready'])
             def input_target():
                 value = subprocess.run(list(map(str, adb + ['exec-out', 'run-as', 'au.fintex.mnet', 'cat', 'files/fixture-input-target.json'])), capture_output=True, timeout=10)
                 if value.returncode: return False
@@ -192,6 +198,13 @@ def main():
                 run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-screen-received'])
                 wait(lambda: screen_flag('closed_after_stop'), 'screen-stop', 30)
                 run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-screen-closed'])
+                wait(lambda: subprocess.run(list(map(str, adb + ['shell', 'run-as', 'au.fintex.mnet', 'test', '-f', 'files/fixture-record-stop'])), capture_output=True, timeout=10).returncode == 0 or instrument.poll() is not None, 'consent-record-stop', 15)
+                if recording is not None:
+                    # Only the single recorder this disposable fixture started.
+                    run(adb + ['shell', 'sh', '-c', 'kill -INT $(pidof screenrecord)'])
+                    recording.wait(timeout=20)
+                    run(adb + ['pull', '/sdcard/mnet-consent.mp4', ARTIFACTS / 'consent.mp4'])
+                run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-record-stopped'])
         instrument.wait(timeout=90)
         output = (root / 'instrumentation.log').read_text()
         screenshot = subprocess.run(list(map(str, adb + ['exec-out', 'run-as', 'au.fintex.mnet', 'cat', 'files/fixture-launch.png'])), capture_output=True, timeout=15)

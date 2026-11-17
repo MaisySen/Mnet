@@ -147,6 +147,8 @@ public class MeshInstrumentation extends Instrumentation {
     }
     private void screenShareProof() throws Exception {
         activity = startActivitySync(new Intent(getTargetContext(), HostingActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        new File(getTargetContext().getFilesDir(), "fixture-record-start").createNewFile();
+        await(() -> new File(getTargetContext().getFilesDir(), "fixture-record-ready").exists(), "consent-record-ready");
         enableRemoteControl();
         java.util.concurrent.atomic.AtomicBoolean remoteTapped = new java.util.concurrent.atomic.AtomicBoolean();
         final Button[] target = new Button[1];
@@ -193,6 +195,8 @@ public class MeshInstrumentation extends Instrumentation {
         await(remoteTapped::get, "remote-mesh-gesture-click");
         runOnMainSync(() -> getTargetContext().startService(new Intent(getTargetContext(), au.fintex.mnet.HostSessionService.class).setAction("stop")));
         await(() -> new File(getTargetContext().getFilesDir(), "fixture-screen-closed").exists(), "screen-stop-closed-peer");
+        new File(getTargetContext().getFilesDir(), "fixture-record-stop").createNewFile();
+        await(() -> new File(getTargetContext().getFilesDir(), "fixture-record-stopped").exists(), "consent-record-stopped");
         runOnMainSync(() -> activity.finish());
     }
     @Override public void onStart() {

@@ -87,3 +87,4 @@ jobs:
             ${{ runner.temp }}/mnet-android-artifacts/instrumentation.txt
             ${{ runner.temp }}/mnet-android-artifacts/launch.png
             ${{ runner.temp }}/mnet-android-artifacts/consent.png
+            ${{ runner.temp }}/mnet-android-artifacts/consent.mp4

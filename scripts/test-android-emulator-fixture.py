@@ -23,7 +23,7 @@ class Guards(unittest.TestCase):
         workflow = (ROOT / '.github/workflows/android-emulator.yml').read_text()
         outputs = workflow.split('path: |')[1]
         self.assertNotIn('*', outputs)
-        self.assertEqual({'summary.json', 'instrumentation.txt', 'launch.png', 'consent.png'}, {x.strip().split('/')[-1] for x in outputs.splitlines() if x.strip()})
+        self.assertEqual({'summary.json', 'instrumentation.txt', 'launch.png', 'consent.png', 'consent.mp4'}, {x.strip().split('/')[-1] for x in outputs.splitlines() if x.strip()})
         self.assertIn('runs-on: ubuntu-latest', workflow)
     def test_real_consent_and_no_protection_disable(self):
         source = (ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
@@ -79,6 +79,8 @@ class Guards(unittest.TestCase):
         self.assertIn('viewer.SendInput', peer)
         self.assertIn('FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES', test)
         self.assertNotIn('enabled_accessibility_services', test)
+        self.assertLess(test.index('fixture-record-stop'),test.index('activity.finish()'))
+        self.assertLess(test.index('HostingActivity.class).addFlags'),test.index('fixture-record-start'))
         self.assertNotIn('os.WriteFile(filepath.Join(root, "frame', peer)
     def test_hash_before_and_after_real_reconnect(self):
         source = (ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
