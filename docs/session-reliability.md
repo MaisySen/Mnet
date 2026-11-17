@@ -10,6 +10,10 @@ A general-CI repetition failed while awaiting a file ACK. The test observed one 
 
 This is a fixture correction, not a new production-isolation guarantee. Real slow/blocking callbacks can still backpressure the shared reader; callback consumers must return promptly. A future scheduler/flow-control change needs separate design and regression coverage, not silent frame drops that break delta chains.
 
+## Parser fuzz coverage (2026-11-17)
+
+New test targets exercise untrusted session-frame and public STUN-reply bytes. Frame decoding must remain within the1MiB cap and successful decode/re-encode must preserve the exact consumed wire prefix. Accepted STUN replies must be complete and reject a different transaction ID. Local bounded10-second two-worker runs passed321,212session inputs and564,035STUN inputs without a failure; this is sampling, not a parser-security certification. Fresh uncached whole-repository race tests and the current vulnerability scan pass. Standard free publicCI now runs each fuzz target for10seconds with two workers; no private fixture state is uploaded. The preserved owner AAB and live deployment remain unchanged.
+
 ## Commands
 
 ```sh
