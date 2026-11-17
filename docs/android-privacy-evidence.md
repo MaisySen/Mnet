@@ -23,6 +23,8 @@ Evidence: three XML policy tests, a negative control that removes the cloud Shar
 
 Source: https://developer.android.com/identity/data/autobackup
 
+A [notice review draft](android-privacy-notice-draft.md) now assembles those facts without inventing a retention period or adopted policy. Its operator verification table remains a publication gate.
+
 ## Decisions and evidence still needed
 
 - Identify the actual beta control-service operator, storage and log retention, backup handling and supported deletion contact/workflow. Do not invent a fixed retention period.
