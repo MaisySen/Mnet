@@ -72,4 +72,9 @@ func TestPrepareThenUpWithOneTimeKey(t *testing.T) {
 	if st := d.Status(); st.Status != "up" || st.IPv4 != ip {
 		t.Fatalf("status %+v, want up on %s", st, ip)
 	}
+	// ChannelTUN does not assign a real host mesh address. Local tunnel Up
+	// must not be mistaken for working DNS; Android requires dns_ready.
+	if st := d.Status(); st.DNSReady || st.DNSError == "" {
+		t.Fatalf("fake TUN must expose DNS unavailable: %+v", st)
+	}
 }

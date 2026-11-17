@@ -4,10 +4,12 @@
 package dns
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/miekg/dns"
 
@@ -22,8 +24,14 @@ type Server struct {
 	records map[string]string // fqdn with trailing dot -> mesh IPv4
 	suffix  string            // ".mnet"
 
-	udp *dns.Server
-	tcp *dns.Server
+	udp      *dns.Server
+	tcp      *dns.Server
+	packet   net.PacketConn
+	listener net.Listener
+	serveErr error
+	ready    bool
+	closed   bool
+	done     chan struct{}
 }
 
 // New binds nothing yet; Serve starts listeners on addr:53.
@@ -70,32 +78,116 @@ func (s *Server) Update(m *netmap.Map) {
 	s.mu.Unlock()
 }
 
-// Serve runs UDP and TCP listeners until Close.
-func (s *Server) Serve() error {
+// Start returns only after both UDP and TCP listeners have activated. A partial
+// bind is cleaned up, and Close before Start permanently prevents revival.
+func (s *Server) Start() error { return s.startAt(net.JoinHostPort(s.addr, "53")) }
+
+func (s *Server) startAt(addr string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return fmt.Errorf("DNS server is closed")
+	}
+	if s.done != nil {
+		return fmt.Errorf("DNS server already started")
+	}
+	packet, err := net.ListenPacket("udp", addr)
+	if err != nil {
+		return fmt.Errorf("DNS UDP bind: %w", err)
+	}
+	// Port zero is used only by isolated tests; TCP must use the same chosen port.
+	listener, err := net.Listen("tcp", packet.LocalAddr().String())
+	if err != nil {
+		packet.Close()
+		return fmt.Errorf("DNS TCP bind: %w", err)
+	}
 	mux := dns.NewServeMux()
 	mux.HandleFunc(".", s.handle)
-	udp := &dns.Server{Addr: s.addr + ":53", Net: "udp", Handler: mux}
-	tcp := &dns.Server{Addr: s.addr + ":53", Net: "tcp", Handler: mux}
-	s.mu.Lock()
-	s.udp = udp
-	s.tcp = tcp
-	s.mu.Unlock()
-	errc := make(chan error, 2)
-	go func() { errc <- udp.ListenAndServe() }()
-	go func() { errc <- tcp.ListenAndServe() }()
-	return <-errc
+	ready := make(chan struct{}, 2)
+	errors := make(chan error, 2)
+	notify := func() { ready <- struct{}{} }
+	udp := &dns.Server{PacketConn: packet, Handler: mux, NotifyStartedFunc: notify}
+	tcp := &dns.Server{Listener: listener, Handler: mux, NotifyStartedFunc: notify}
+	s.packet, s.listener, s.udp, s.tcp = packet, listener, udp, tcp
+	s.done = make(chan struct{})
+	go func() { errors <- udp.ActivateAndServe() }()
+	go func() { errors <- tcp.ActivateAndServe() }()
+	for n := 0; n < 2; n++ {
+		select {
+		case <-ready:
+		case err := <-errors:
+			packet.Close()
+			listener.Close()
+			s.closed = true
+			go func() { shutdownDNS(udp, tcp); close(s.done) }()
+			return fmt.Errorf("DNS activation: %v", err)
+		}
+	}
+	s.ready = true
+	go func() {
+		err := <-errors
+		s.mu.Lock()
+		if !s.closed {
+			s.serveErr = err
+			if err == nil {
+				s.serveErr = fmt.Errorf("DNS listener stopped")
+			}
+		}
+		s.ready = false
+		s.mu.Unlock()
+		// A single transport failing makes the whole DNS service unavailable.
+		packet.Close()
+		listener.Close()
+		shutdownDNS(udp, tcp)
+		<-errors
+		close(s.done)
+	}()
+	return nil
 }
 
-// Close stops both listeners.
+func shutdownDNS(servers ...*dns.Server) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	for _, server := range servers {
+		if server != nil {
+			_ = server.ShutdownContext(ctx)
+		}
+	}
+}
+
+// Ready reports listener activation, not proof of end-to-end DNS/peer traffic.
+func (s *Server) Ready() bool { s.mu.RLock(); defer s.mu.RUnlock(); return s.ready && !s.closed }
+
+// Serve retains the blocking lifecycle API, with synchronous startup failure.
+func (s *Server) Serve() error {
+	if err := s.Start(); err != nil {
+		return err
+	}
+	s.mu.RLock()
+	done := s.done
+	s.mu.RUnlock()
+	<-done
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.serveErr
+}
+
+// Close stops both transports, including prebound sockets not yet serving.
 func (s *Server) Close() {
 	s.mu.Lock()
-	udp, tcp := s.udp, s.tcp
+	s.closed = true
+	s.ready = false
+	packet, listener, udp, tcp, done := s.packet, s.listener, s.udp, s.tcp, s.done
 	s.mu.Unlock()
-	if udp != nil {
-		udp.Shutdown()
+	if packet != nil {
+		packet.Close()
 	}
-	if tcp != nil {
-		tcp.Shutdown()
+	if listener != nil {
+		listener.Close()
+	}
+	shutdownDNS(udp, tcp)
+	if done != nil {
+		<-done
 	}
 }
 

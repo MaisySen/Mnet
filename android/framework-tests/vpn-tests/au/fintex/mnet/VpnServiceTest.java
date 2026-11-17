@@ -9,11 +9,24 @@ import org.robolectric.annotation.*;
 import org.robolectric.shadows.ShadowVpnService;
 import static org.junit.Assert.*;
 @RunWith(RobolectricTestRunner.class)
-@Config(manifest=Config.NONE,sdk={24,25,26,29,33,34},shadows=VpnServiceTest.Mode.class)
+@Config(manifest=Config.NONE,sdk={24,25,26,29,33,34},shadows={VpnServiceTest.Mode.class,VpnServiceTest.FakeBuilder.class,VpnServiceTest.FakeDescriptor.class})
 public class VpnServiceTest {
  @Implements(VpnService.class) public static class Mode extends ShadowVpnService {
   static boolean managed;
   @Implementation(minSdk=29) protected boolean isAlwaysOn(){return managed;}
+ }
+ @Implements(VpnService.Builder.class) public static class FakeBuilder {
+  @RealObject VpnService.Builder real;
+  @Implementation protected VpnService.Builder addAddress(String address,int prefix){return real;}
+  @Implementation protected VpnService.Builder addRoute(String address,int prefix){return real;}
+  @Implementation protected VpnService.Builder addDnsServer(String address){return real;}
+  @Implementation protected android.os.ParcelFileDescriptor establish()throws java.io.IOException{
+   return new android.os.ParcelFileDescriptor(new java.io.FileDescriptor());
+  }
+ }
+ @Implements(android.os.ParcelFileDescriptor.class) public static class FakeDescriptor {
+  @Implementation protected int detachFd(){return 4242;}
+  @Implementation protected void close(){}
  }
  private MnetVpnService service;
  @Before public void create(){Mode.managed=false;service=Robolectric.buildService(MnetVpnService.class).create().get();}
@@ -99,5 +112,31 @@ public class VpnServiceTest {
  }
  @Test public void managedSystemRevokeStillCleansUp()throws Exception{
   Mode.managed=true;mobile.Node node=new mobile.Node();node(node);service.onRevoke();assertTrue(node.closed);assertNull(MnetVpnService.currentNode());assertTrue(Shadows.shadowOf(service).isStoppedBySelf());
+ }
+ @Test public void upRequiresExplicitDNSListenerReadiness()throws Exception{
+  java.lang.reflect.Method m=MnetVpnService.class.getDeclaredMethod("checkedConnectionStatus",String.class);m.setAccessible(true);
+  for(String json:new String[]{"{\"status\":\"up\"}","{\"status\":\"up\",\"dns_ready\":false}"}){
+   try{m.invoke(null,json);fail("unavailable resolver must reject up");}catch(java.lang.reflect.InvocationTargetException e){assertTrue(e.getCause() instanceof IllegalStateException);assertTrue(e.getCause().getMessage().contains("Private DNS"));}
+  }
+  String ready="{\"status\":\"up\",\"dns_ready\":true}";assertEquals(ready,m.invoke(null,ready));
+  String joining="{\"status\":\"joining\",\"dns_ready\":false}";assertEquals(joining,m.invoke(null,joining));
+ }
+ @Test public void unavailableDNSStopsActualWorkerBeforeUpBroadcast()throws Exception{
+  configure();java.util.concurrent.atomic.AtomicInteger starts=new java.util.concurrent.atomic.AtomicInteger();
+  mobile.Node missingDNS=new mobile.Node(){
+   @Override public void start(long fd,String a,String b,String c,String d){assertEquals(4242,fd);starts.incrementAndGet();}
+   @Override public String status(){return "{\"status\":\"up\",\"dns_ready\":false}";}
+  };
+  mobile.Mobile.factory=()->missingDNS;
+  service.onStartCommand(null,0,1);awaitWorker();
+  assertEquals(broadcasts().stream().map(i->String.valueOf(i.getStringExtra(MnetVpnService.EXTRA_STATUS))).collect(java.util.stream.Collectors.joining(";")),1,starts.get());assertTrue(missingDNS.closed);assertFalse(running());assertNull(MnetVpnService.currentNode());assertTrue(Shadows.shadowOf(service).isStoppedBySelf());
+  errorContains("Private DNS is unavailable");
+  assertFalse(broadcasts().stream().anyMatch(i->{String j=i.getStringExtra(MnetVpnService.EXTRA_STATUS);return j!=null&&j.contains("\"status\":\"up\"");}));
+ }
+ @Test public void managedStaleActionCannotAdvertiseUnavailableDNS()throws Exception{
+  Mode.managed=true;mobile.Node failed=new mobile.Node(){@Override public String status(){return "{\"status\":\"up\",\"dns_ready\":false}";}};node(failed);
+  service.onStartCommand(new Intent().setAction("disconnect"),0,1);
+  assertTrue(failed.closed);assertNull(MnetVpnService.currentNode());
+  if(android.os.Build.VERSION.SDK_INT>=29)errorContains("Private DNS is unavailable");
  }
 }

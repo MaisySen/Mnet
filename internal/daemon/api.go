@@ -17,6 +17,8 @@ import (
 
 // Status is the CLI's view of the daemon.
 type Status struct {
+	DNSError    string       `json:"dns_error,omitempty"`
+	DNSReady    bool         `json:"dns_ready"`           // both listeners active, not end-to-end traffic proof
 	Interface   string       `json:"interface,omitempty"` // actual managed kernel device, not requested alias
 	Status      string       `json:"status"`              // down, preparing, joining, waiting-approval, up, key-expired
 	Version     string       `json:"version"`
@@ -43,12 +45,16 @@ func (d *Daemon) Status() *Status {
 		PublicKey:   d.state.PublicKey,
 		ApprovalURL: d.approvalURL,
 		LastError:   d.lastErr,
+		DNSError:    d.dnsErr,
 	}
 	if d.lastMap != nil {
 		st.IPv4 = d.lastMap.Self.IPv4
 		st.Network = d.lastMap.Network.Name
 	}
 	d.mu.Unlock()
+	d.applyMu.Lock()
+	st.DNSReady = d.dns != nil && d.dns.Ready()
+	d.applyMu.Unlock()
 	st.Peers = d.PeerStatuses()
 	return st
 }

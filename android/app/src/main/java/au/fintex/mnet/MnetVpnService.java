@@ -46,7 +46,10 @@ public class MnetVpnService extends VpnService {
             if (VpnAlwaysOn.managed(this)) {
                 // The system/Settings owns always-on stop, including stale actions.
                 Node current = node;
-                if (current != null) broadcast(current.status());
+                if (current != null) {
+                    try { broadcast(checkedConnectionStatus(current.status())); }
+                    catch (Exception failure) { stopMesh("Private DNS is unavailable. Mnet stopped the VPN; retry setup."); }
+                }
                 return START_STICKY;
             }
             stopMesh();
@@ -143,9 +146,17 @@ public class MnetVpnService extends VpnService {
     }
 
     // broadcastLoop pushes status JSON to the activity once a second.
-    private void broadcastLoop(VpnWorkerGate.Ticket run, Node localNode) {
+    private static String checkedConnectionStatus(String json) throws Exception {
+        JSONObject st = new JSONObject(json);
+        if ("up".equals(st.optString("status")) && !st.optBoolean("dns_ready", false)) {
+            throw new IllegalStateException("Private DNS is unavailable. Mnet stopped the VPN instead of leaving a broken resolver. Retry setup; connection recovery is not yet verified on this device.");
+        }
+        return json;
+    }
+
+    private void broadcastLoop(VpnWorkerGate.Ticket run, Node localNode) throws Exception {
         while (WORKERS.active(run)) {
-            broadcast(localNode.status());
+            broadcast(checkedConnectionStatus(localNode.status()));
             try {
                 Thread.sleep(1000);
             } catch (InterruptedException ignored) {

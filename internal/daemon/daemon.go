@@ -74,6 +74,7 @@ type Daemon struct {
 	mapChanged  chan struct{} // wake local authorization-expiry guard
 	lastMap     *netmap.Map
 	approvalURL string
+	dnsErr      string
 	lastErr     string
 
 	peersMu sync.Mutex
@@ -154,6 +155,7 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 		return fmt.Errorf("already %s", d.status)
 	}
 	d.status = "joining"
+	d.dnsErr = ""
 	d.lastErr = "" // start a new attempt; keep any errors raised during it
 	d.mu.Unlock()
 
@@ -296,13 +298,25 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 	}
 	d.applyMap(m)
 
-	// Magic DNS on our own mesh address.
-	if dnsSrv, err := dns.New(m.Self.IPv4); err == nil {
-		d.dns = dnsSrv
+	// DNS listener readiness is separate from a locally active tunnel. Mobile
+	// installs this address as its resolver and must stop if it is unavailable.
+	dnsSrv, dnsErr := dns.New(m.Self.IPv4)
+	if dnsErr == nil {
 		dnsSrv.Update(m)
-		go dnsSrv.Serve()
+		dnsErr = dnsSrv.Start()
+	}
+	if dnsErr == nil {
+		d.applyMu.Lock()
+		d.dns = dnsSrv
+		d.applyMu.Unlock()
 	} else {
-		log.Printf("mnetd: magic DNS off: %v", err)
+		if dnsSrv != nil {
+			dnsSrv.Close()
+		}
+		d.mu.Lock()
+		d.dnsErr = dnsErr.Error()
+		d.mu.Unlock()
+		log.Printf("mnetd: private DNS listener unavailable; details stay in local status")
 	}
 
 	d.mu.Lock()
