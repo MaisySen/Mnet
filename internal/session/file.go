@@ -23,7 +23,8 @@ const DefaultMaxFileBytes int64 = 1 << 30
 const DefaultFileIdleTimeout = 60 * time.Second
 
 // FileReceiver handles incoming file transfer streams. Files land in
-// Dir (default: current directory) under their offered base name.
+// Dir under their offered base name. An empty Dir disables reception; no
+// implicit process working-directory destination is allowed.
 type FileReceiver struct {
 	Mux         *Mux
 	Dir         string
@@ -62,8 +63,9 @@ func (r FileReceiver) Handle(s Stream) {
 		}
 	}
 	dir := r.Dir
-	if dir == "" {
-		dir = "."
+	if strings.TrimSpace(dir) == "" {
+		refuse("file reception is not configured")
+		return
 	}
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		refuse("receiver storage unavailable")

@@ -461,3 +461,38 @@ func FuzzPortableTransferName(f *testing.F) {
 		}
 	})
 }
+
+func TestUnconfiguredFileReceiverDoesNotUseWorkingDirectory(t *testing.T) {
+	for _, dir := range []string{"", " ", "\t"} {
+		t.Run(fmt.Sprintf("dir-%x", dir), func(t *testing.T) {
+			client, host := pipe(t)
+			defer client.Close()
+			defer host.Close()
+			done := make(chan struct{})
+			host.OnStream(func(s Stream) { defer close(done); FileReceiver{Mux: host, Dir: dir}.Handle(s) })
+			stream, err := client.Open(PriBulk, FileOffer{Name: "mnet-unconfigured-must-not-exist.bin", Size: 0})
+			if err != nil {
+				t.Fatal(err)
+			}
+			frame, err := stream.Recv(time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var refusal FileAccept
+			if err = json.Unmarshal(frame.Payload, &refusal); err != nil {
+				t.Fatal(err)
+			}
+			if refusal.OK || refusal.Reason != "file reception is not configured" {
+				t.Fatal("unconfigured reception accepted")
+			}
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+				t.Fatal("receiver did not stop")
+			}
+			if _, err = os.Stat("mnet-unconfigured-must-not-exist.bin"); !os.IsNotExist(err) {
+				t.Fatal("implicit destination touched")
+			}
+		})
+	}
+}
