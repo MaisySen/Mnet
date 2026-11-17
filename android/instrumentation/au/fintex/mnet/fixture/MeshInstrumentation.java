@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONObject;
 import au.fintex.mnet.MainActivity;
+import au.fintex.mnet.HostingActivity;
 import au.fintex.mnet.MnetVpnService;
 import au.fintex.mnet.R;
 
@@ -109,6 +110,31 @@ public class MeshInstrumentation extends Instrumentation {
             if (input.readByte() != 'O' || input.readByte() != 'K') throw new IOException("reverse acknowledgment mismatch");
         }
     }
+    private void screenShareProof() throws Exception {
+        activity = startActivitySync(new Intent(getTargetContext(), HostingActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        click(R.id.start_hosting_button);
+        await(() -> {
+            AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
+            if (root == null || !"com.android.systemui".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())) return false;
+            for (AccessibilityNodeInfo button : root.findAccessibilityNodeInfosByViewId("android:id/button1")) {
+                String text = String.valueOf(button.getText());
+                if (text.equalsIgnoreCase("Start now") || text.equalsIgnoreCase("Start")) return button.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            }
+            return false;
+        }, "screen-projection-consent");
+        await(() -> {
+            AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
+            if (root == null || !"au.fintex.mnet".contentEquals(root.getPackageName() == null ? "" : root.getPackageName())) return false;
+            for (AccessibilityNodeInfo button : root.findAccessibilityNodeInfosByText("Allow")) {
+                if ("Allow".equals(String.valueOf(button.getText()))) return button.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            }
+            return false;
+        }, "screen-viewer-consent");
+        await(() -> new File(getTargetContext().getFilesDir(), "fixture-screen-received").exists(), "screen-decoded-by-peer");
+        runOnMainSync(() -> getTargetContext().startService(new Intent(getTargetContext(), au.fintex.mnet.HostSessionService.class).setAction("stop")));
+        await(() -> new File(getTargetContext().getFilesDir(), "fixture-screen-closed").exists(), "screen-stop-closed-peer");
+        runOnMainSync(() -> activity.finish());
+    }
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
@@ -172,11 +198,15 @@ public class MeshInstrumentation extends Instrumentation {
                 if (SystemClock.elapsedRealtime() > deadline) throw new IllegalStateException("independent app timeout");
                 SystemClock.sleep(150);
             }
+            Activity mainActivity = activity;
+            screenShareProof();
+            activity = mainActivity;
+            waitForIdleSync();
             click(R.id.connect_button);
             await(() -> MnetVpnService.currentNode() == null, "final-stop");
             if (!consentClicked) throw new IllegalStateException("no actual initial VPN consent click observed");
             stage = "complete";
-            result.putString("summary", "PASS self-bound target36 runtimeAPI=" + android.os.Build.VERSION.SDK_INT + " actual APK/JNI/VPN consent, bidirectional 4MiB hash, manual stop/reconnect and repeat hash; emulator only, no physical reboot/capture/control proof");
+            result.putString("summary", "PASS self-bound target36 runtimeAPI=" + android.os.Build.VERSION.SDK_INT + " actual APK/JNI/VPN consent, projection/viewer consent and decoded frames/stop, bidirectional 4MiB hash, manual stop/reconnect and repeat hash; emulator only, no physical reboot/capture/control proof");
             finish(Activity.RESULT_OK, result);
         } catch (Throwable failure) {
             // Deliberately omit exception messages, app state and arguments.

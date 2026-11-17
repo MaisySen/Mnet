@@ -67,6 +67,15 @@ class Guards(unittest.TestCase):
         self.assertIn('fixture-peer-done', source)
         self.assertIn("stage = 'independent-app-unbound-tcp'", source)
         self.assertIn("'force-stop', 'au.fintex.mnet'", source)
+    def test_screen_proof_requires_real_consent_and_peer_decode(self):
+        test = (ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
+        peer = (ROOT / 'cmd/mnetd/native_peer_test.go').read_text()
+        self.assertIn('screen-projection-consent', test)
+        self.assertIn('screen-viewer-consent', test)
+        self.assertIn('screen-stop-closed-peer', test)
+        self.assertIn('jpeg.DecodeConfig', peer)
+        self.assertIn('frames.Load() >= 2', peer)
+        self.assertNotIn('os.WriteFile(filepath.Join(root, "frame', peer)
     def test_hash_before_and_after_real_reconnect(self):
         source = (ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
         self.assertEqual(2, source.count('            hashRoundTrip();'))

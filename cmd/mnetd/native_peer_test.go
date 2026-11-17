@@ -4,9 +4,12 @@ package main
 // It has no OS TCP listener: connections must cross WireGuard to proofnet.
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"fintex.au/mnet/internal/session"
 	"golang.zx2c4.com/wireguard/tun"
+	"image/jpeg"
 	"io"
 	"net"
 	"net/netip"
@@ -62,6 +65,7 @@ func TestNativeKernelPeerFixture(t *testing.T) {
 			go serveNativePeerHash(conn)
 		}
 	}()
+	go nativePeerScreenProof(peer, config.Root)
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
@@ -243,5 +247,68 @@ func TestNativePeerTCPFlags(t *testing.T) {
 	}
 	if len((&nativePeerTrace{}).snapshot()) != 4 {
 		t.Fatal("diagnostic disclosure changed")
+	}
+}
+
+// Opt-in marker exists only in the disposable Android fixture.
+func nativePeerScreenProof(peer *proofNodeT, root string) {
+	for i := 0; i < 600; i++ {
+		if _, err := os.Stat(filepath.Join(root, "screen-start")); err == nil {
+			break
+		}
+		time.Sleep(time.Second)
+		if i == 599 {
+			return
+		}
+	}
+	deadline := time.Now().Add(90 * time.Second)
+	for time.Now().Before(deadline) {
+		var target string
+		for _, p := range peer.d.Status().Peers {
+			if p.Name == "android-emulator" {
+				target = p.IPv4
+			}
+		}
+		if target == "" {
+			time.Sleep(time.Second)
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		conn, err := peer.net.DialContextTCPAddrPort(ctx, netip.AddrPortFrom(netip.MustParseAddr(target), 5909))
+		cancel()
+		if err != nil {
+			time.Sleep(time.Second)
+			continue
+		}
+		conn.SetDeadline(time.Now().Add(75 * time.Second))
+		mux, err := session.Dial(conn, "userspace-peer")
+		if err != nil {
+			conn.Close()
+			time.Sleep(time.Second)
+			continue
+		}
+		conn.SetDeadline(time.Time{})
+		var frames atomic.Int32
+		session.ConnectViewerWithOptions(mux, session.ViewerOptions{OnFrame: func(frame session.ScreenFrame) {
+			if cfg, e := jpeg.DecodeConfig(bytes.NewReader(frame.Image)); e == nil && cfg.Width > 0 && cfg.Height > 0 {
+				frames.Add(1)
+			}
+		}})
+		for time.Now().Before(deadline) {
+			flags := map[string]bool{"decoded_frames": frames.Load() >= 2, "closed_after_stop": false}
+			select {
+			case <-mux.Closed():
+				flags["closed_after_stop"] = true
+				data, _ := json.Marshal(flags)
+				os.WriteFile(filepath.Join(root, "screen-proof.json"), data, 0o600)
+				return
+			default:
+			}
+			data, _ := json.Marshal(flags)
+			os.WriteFile(filepath.Join(root, "screen-proof.json"), data, 0o600)
+			time.Sleep(200 * time.Millisecond)
+		}
+		mux.Close()
+		return
 	}
 }
