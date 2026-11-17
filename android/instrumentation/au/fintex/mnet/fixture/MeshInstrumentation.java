@@ -71,15 +71,20 @@ public class MeshInstrumentation extends Instrumentation {
         byte[] unit = "kernel-peer-proof".getBytes("UTF-8");
         for (int i = 0; i < sent.length; i++) sent[i] = unit[i % unit.length];
         try (Socket socket = new Socket()) {
+            stage = "mesh-tcp-connect";
             socket.connect(new InetSocketAddress(options.getString("peer"), 45993), 45000);
             socket.setSoTimeout(45000);
+            stage = "mesh-outbound-send";
             socket.getOutputStream().write(sent);
             DataInputStream input = new DataInputStream(socket.getInputStream());
+            stage = "mesh-outbound-hash-read";
             byte[] hash = new byte[32]; input.readFully(hash);
             if (!Arrays.equals(hash, MessageDigest.getInstance("SHA-256").digest(sent))) throw new IOException("outbound digest mismatch");
+            stage = "mesh-reverse-read";
             byte[] reverse = new byte[4 << 20]; input.readFully(reverse);
             byte[] expectedUnit = "reverse-native-peer-proof".getBytes("UTF-8");
             for (int i = 0; i < reverse.length; i++) if (reverse[i] != expectedUnit[i % expectedUnit.length]) throw new IOException("reverse bytes mismatch");
+            stage = "mesh-reverse-hash-send";
             socket.getOutputStream().write(MessageDigest.getInstance("SHA-256").digest(reverse));
             if (input.readByte() != 'O' || input.readByte() != 'K') throw new IOException("reverse acknowledgment mismatch");
         }
@@ -125,7 +130,24 @@ public class MeshInstrumentation extends Instrumentation {
             finish(Activity.RESULT_OK, result);
         } catch (Throwable failure) {
             // Deliberately omit exception messages, app state and arguments.
-            result.putString("summary", "FAIL stage=" + stage + " type=" + failure.getClass().getSimpleName());
+            String diagnostics = "";
+            try {
+                if (MnetVpnService.currentNode() != null) {
+                    JSONObject state = new JSONObject(MnetVpnService.currentNode().status());
+                    org.json.JSONArray peers = state.optJSONArray("peers");
+                    boolean handshake = false, received = false, transmitted = false, relay = false;
+                    if (peers != null) for (int i = 0; i < peers.length(); i++) {
+                        JSONObject peer = peers.getJSONObject(i);
+                        handshake |= peer.optBoolean("online");
+                        received |= peer.optLong("rx_bytes") > 0;
+                        transmitted |= peer.optLong("tx_bytes") > 0;
+                        relay |= peer.optBoolean("relay");
+                    }
+                    diagnostics = " peersPresent=" + (peers != null && peers.length() > 0)
+                        + " handshake=" + handshake + " received=" + received + " transmitted=" + transmitted + " relay=" + relay;
+                }
+            } catch (Exception ignored) { diagnostics = " diagnosticsUnavailable=true"; }
+            result.putString("summary", "FAIL stage=" + stage + " type=" + failure.getClass().getSimpleName() + diagnostics);
             finish(Activity.RESULT_CANCELED, result);
         }
     }
