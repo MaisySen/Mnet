@@ -177,6 +177,9 @@ def main():
         if instrument.poll() is None:
             stage = 'independent-app-unbound-tcp'
             independent = run(adb + ['shell', 'am', 'instrument', '-w', '-r', '-e', 'peer', peer['ipv4'], 'au.fintex.mnet.fixture/au.fintex.mnet.fixture.IndependentAppInstrumentation'], timeout=150)
+            # Keep this fixed summary even if a later recorder step fails.
+            independent_safe = [line for line in independent.splitlines() if line.startswith('INSTRUMENTATION_RESULT: summary=')]
+            (root / 'independent-summary.txt').write_text('\n'.join(independent_safe) + '\n')
             stage = 'actual-screen-projection'
             run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-peer-done'])
             def screen_flag(name):
@@ -237,14 +240,19 @@ def main():
                     recording.join(timeout=15)
                     if recording.is_alive() or not recorded_frames:
                         raise RuntimeError('controlled screenshot sampler unavailable')
+                    stage = 'consent-walkthrough-encode'
                     run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-framerate', '2', '-i', root / 'consent-%05d.png', '-vf', 'scale=540:-2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', ARTIFACTS / 'consent.mp4'])
+                stage = 'consent-recorder-acknowledge'
                 run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-record-stopped'])
+        stage = 'primary-instrumentation-exit'
         instrument.wait(timeout=90)
         output = (root / 'instrumentation.log').read_text()
+        stage = 'launch-image-collection'
         screenshot = subprocess.run(list(map(str, adb + ['exec-out', 'run-as', 'au.fintex.mnet', 'cat', 'files/fixture-launch.png'])), capture_output=True, timeout=15)
         if screenshot.returncode or not screenshot.stdout.startswith(b'\x89PNG\r\n\x1a\n'):
             raise RuntimeError('sanitized launch screenshot unavailable')
         (ARTIFACTS / 'launch.png').write_bytes(screenshot.stdout)
+        stage = 'disclosure-images-collection'
         privacy = subprocess.run(list(map(str, adb + ['exec-out', 'run-as', 'au.fintex.mnet', 'cat', 'files/fixture-privacy.png'])), capture_output=True, timeout=15)
         if privacy.returncode == 0 and privacy.stdout.startswith(b'\x89PNG\r\n\x1a\n'):
             (ARTIFACTS / 'privacy.png').write_bytes(privacy.stdout)
@@ -254,6 +262,7 @@ def main():
         vpn_disclosure = subprocess.run(list(map(str, adb + ['exec-out', 'run-as', 'au.fintex.mnet', 'cat', 'files/fixture-vpn-disclosure.png'])), capture_output=True, timeout=15)
         if vpn_disclosure.returncode == 0 and vpn_disclosure.stdout.startswith(b'\x89PNG'):
             (ARTIFACTS / 'vpn-disclosure.png').write_bytes(vpn_disclosure.stdout)
+        stage = 'primary-summary-validation'
         safe = [line for line in output.splitlines() if line.startswith('INSTRUMENTATION_RESULT: summary=')]
         if len(safe) != 1 or 'actual APK/JNI/VPN consent' not in safe[0] or 'summary=PASS self-bound target36 runtimeAPI=' not in safe[0] or 'INSTRUMENTATION_CODE: -1' not in output:
             # Only explicit whitelist summary is exported, never the whole am
@@ -268,8 +277,11 @@ def main():
                     safe[0] += ' peerDiagnosticsUnavailable=true'
                 (ARTIFACTS / 'instrumentation.txt').write_text('\n'.join(safe) + '\n')
             raise RuntimeError('actual Android integration not passed')
+        stage = 'independent-summary-validation'
         second = [line for line in independent.splitlines() if line.startswith('INSTRUMENTATION_RESULT: summary=')]
+        stage = 'fixture-app-stop'
         run(adb + ['shell', 'am', 'force-stop', 'au.fintex.mnet'])
+        stage = 'independent-summary-validation'
         if len(second) != 1 or 'summary=PASS independent app unbound TCP' not in second[0] or 'INSTRUMENTATION_CODE: -1' not in independent:
             (ARTIFACTS / 'instrumentation.txt').write_text('\n'.join(safe + second) + '\n')
             raise RuntimeError('independent app mesh TCP failed')
@@ -285,6 +297,10 @@ def main():
                 lines = [line for line in path.read_text(errors='replace').splitlines() if line.startswith('INSTRUMENTATION_RESULT: summary=')]
                 if lines:
                     (ARTIFACTS / 'instrumentation.txt').write_text('\n'.join(lines) + '\n')
+        independent_summary = root / 'independent-summary.txt'
+        if independent_summary.exists():
+            existing = ARTIFACTS / 'instrumentation.txt'
+            existing.write_text((existing.read_text() if existing.exists() else '') + independent_summary.read_text())
         diagnostic = {'result': 'fail', 'stage': stage, 'error_type': type(failure).__name__}
         try:
             flags = json.loads((root / 'screen-proof.json').read_text())
