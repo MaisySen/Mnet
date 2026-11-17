@@ -12,6 +12,11 @@ final class DNSProof {
     static volatile int step;
     static volatile boolean sourceMesh,questionMismatch,badName,badBounds,sourceResolver,sourceUnderlay,sourceAny;
     static volatile boolean shortResponse,wrongID,notResponse,rcodeError,noAnswers,addressMismatch;
+    static volatile boolean invalidArgument,networkUnreachable,permissionDenied,addressUnavailable,networkDown;
+    static String failureDiagnostics(Throwable error){
+        for(Throwable cause=error;cause!=null;cause=cause.getCause())if(cause instanceof android.system.ErrnoException){int number=((android.system.ErrnoException)cause).errno;invalidArgument|=number==android.system.OsConstants.EINVAL;networkUnreachable|=number==android.system.OsConstants.ENETUNREACH;permissionDenied|=number==android.system.OsConstants.EPERM||number==android.system.OsConstants.EACCES;addressUnavailable|=number==android.system.OsConstants.EADDRNOTAVAIL;networkDown|=number==android.system.OsConstants.ENETDOWN;}
+        return diagnostics()+" dnsEINVAL="+invalidArgument+" dnsUnreachable="+networkUnreachable+" dnsDenied="+permissionDenied+" dnsNoAddress="+addressUnavailable+" dnsNetworkDown="+networkDown;
+    }
     static String diagnostics(){return " dnsCreate="+(step==1)+" dnsConnect="+(step==2)+" dnsSend="+(step==3)+" dnsReceive="+(step==4)+" dnsParse="+(step==5)+" dnsUDP="+"udp".equals(phase)+" dnsTCP="+"tcp".equals(phase)+" dnsOS="+"os".equals(phase)+" dnsSourceMesh="+sourceMesh+" dnsSourceResolver="+sourceResolver+" dnsSourceUnderlay="+sourceUnderlay+" dnsSourceAny="+sourceAny+" dnsQuestionMismatch="+questionMismatch+" dnsBadName="+badName+" dnsBadBounds="+badBounds+" dnsShort="+shortResponse+" dnsWrongID="+wrongID+" dnsNotResponse="+notResponse+" dnsRcode="+rcodeError+" dnsNoAnswers="+noAnswers+" dnsAddressMismatch="+addressMismatch;}
     static void verify(String expected) throws Exception {
         String name = "userspace-peer.android-emulator.mnet";

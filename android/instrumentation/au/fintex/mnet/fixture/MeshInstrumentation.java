@@ -399,7 +399,7 @@ public class MeshInstrumentation extends Instrumentation {
                 } catch (Exception ignored) { }
             }
             // Deliberately omit exception messages, app state and arguments.
-            String diagnostics = DNSProof.diagnostics();
+            String diagnostics = DNSProof.failureDiagnostics(failure);
             try{
                 android.net.ConnectivityManager cm=getTargetContext().getSystemService(android.net.ConnectivityManager.class);
                 android.net.LinkProperties lp=cm.getLinkProperties(cm.getActiveNetwork());
