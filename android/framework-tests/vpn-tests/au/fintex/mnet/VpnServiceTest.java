@@ -48,7 +48,7 @@ public class VpnServiceTest {
  @Test public void localResolverHasExplicitRouteAndIsNotInterfaceAddress()throws Exception{
   configure();mobile.Mobile.factory=()->new mobile.Node(){@Override public void start(long fd,String a,String b,String c,String d){throw new IllegalStateException("fixture after builder");}};
   service.onStartCommand(new Intent(),0,1);awaitWorker();
-  assertTrue(FakeBuilder.routes.contains("100.64.0.0/10"));assertTrue(FakeBuilder.routes.contains("100.64.0.0/32"));
+  assertTrue(FakeBuilder.addresses.contains("100.64.0.2/10"));assertTrue(FakeBuilder.routes.contains("100.64.0.0/10"));assertTrue(FakeBuilder.routes.contains("100.64.0.0/32"));
   assertEquals(java.util.Collections.singletonList("100.64.0.0"),FakeBuilder.resolvers);
   assertFalse(FakeBuilder.addresses.contains("100.64.0.0/32"));
  }

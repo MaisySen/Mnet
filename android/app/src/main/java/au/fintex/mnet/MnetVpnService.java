@@ -113,7 +113,7 @@ public class MnetVpnService extends VpnService {
             Builder b = new Builder()
                     .setSession("Mnet")
                     .setMtu(1280)
-                    .addAddress(ipv4, 32)
+                    .addAddress(ipv4, 10)
                     .addRoute("100.64.0.0", 10)
                     .addRoute("100.64.0.0", 32)
                     .addDnsServer("100.64.0.0");
