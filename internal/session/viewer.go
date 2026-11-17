@@ -25,7 +25,10 @@ type Viewer struct {
 	base    *image.RGBA // last full frame, for delta compositing
 }
 
-// SetOnFrame sets the screen-frame handler.
+// SetOnFrame sets the screen-frame handler. Calls are serial per screen stream.
+// Slow handlers receive the latest completed frame, not every intermediate one.
+// Wire frames are always decoded in order before display updates are coalesced.
+// A handler must eventually return; closing the mux cannot interrupt user code.
 func (v *Viewer) SetOnFrame(f func(ScreenFrame)) {
 	v.vmu.Lock()
 	defer v.vmu.Unlock()
@@ -100,6 +103,26 @@ func (v *Viewer) SendChat(from, text string) error {
 }
 
 func (v *Viewer) screenLoop(s Stream) {
+	// Keep rendering callbacks off the wire decoder. Only completed full images
+	// may be coalesced: dropping an incoming delta would corrupt the next image.
+	// One running callback and one pending image bound retained display work.
+	pending := make(chan ScreenFrame, 1)
+	defer close(pending)
+	go func() {
+		for fr := range pending {
+			select {
+			case <-s.Mux.closed:
+				return
+			default:
+			}
+			v.vmu.RLock()
+			cb := v.onFrame
+			v.vmu.RUnlock()
+			if cb != nil {
+				cb(fr)
+			}
+		}
+	}()
 	defer func() {
 		v.frameMu.Lock()
 		v.base = nil
@@ -120,11 +143,16 @@ func (v *Viewer) screenLoop(s Stream) {
 		if !v.resolveFrame(&fr) {
 			continue // delta with no base yet: wait for a keyframe
 		}
-		v.vmu.RLock()
-		cb := v.onFrame
-		v.vmu.RUnlock()
-		if cb != nil {
-			cb(fr)
+		select {
+		case pending <- fr:
+		default:
+			// The single producer replaces an obsolete completed image. The
+			// consumer may already have taken it, so the receive is optional.
+			select {
+			case <-pending:
+			default:
+			}
+			pending <- fr
 		}
 	}
 }

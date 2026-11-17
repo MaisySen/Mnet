@@ -10,6 +10,14 @@ A general-CI repetition failed while awaiting a file ACK. The test observed one 
 
 This is a fixture correction, not a new production-isolation guarantee. Real slow/blocking callbacks can still backpressure the shared reader; callback consumers must return promptly. A future scheduler/flow-control change needs separate design and regression coverage, not silent frame drops that break delta chains.
 
+## Bounded screen callback isolation (2026-11-17)
+
+A separate production regression now reproduces the same class with an intentionally blocked render callback:64 incoming screen frames fill the bounded inbound screen queue, preventing a subsequent chat frame from reaching its handler. The new viewer path keeps wire decoding/compositing ordered, then coalesces only completed full display images through a single-slot queue to one serial callback worker. An in-progress callback plus the latest pending display image are retained; intermediate completed display updates can be skipped. This preserves the delta chain while preventing that callback from blocking screen decoding.
+
+The regression confirms chat delivery while the first callback is still blocked and checks the final image includes disjoint earlier/later delta updates. A second check blocks the callback through100 frames and stream completion, then requires only the initial and newest frame. Both pass20race repetitions. Restoring the old inline callback makes the chat regression fail again. Fresh uncached full-repository race tests pass. IndependentCI remains pending for this source change.
+
+This is limited to viewer screen callbacks. Expensive wire decoding, other blocked callbacks and general inbound stream flow control can still backpressure the shared mux. A permanently blocked user callback cannot be interrupted by closing the mux and retains its worker until it returns. Recording on the host is unchanged. This source change is not in the preserved published code15 bundle or the live service.
+
 ## Parser fuzz coverage (2026-11-17)
 
 New test targets exercise untrusted session-frame and public STUN-reply bytes. Frame decoding must remain within the1MiB cap and successful decode/re-encode must preserve the exact consumed wire prefix. Accepted STUN replies must be complete and reject a different transaction ID. Local bounded10-second two-worker runs passed321,212session inputs and564,035STUN inputs without a failure; this is sampling, not a parser-security certification. Fresh uncached whole-repository race tests and the current vulnerability scan pass. Standard free publicCI now runs each fuzz target for10seconds with two workers; no private fixture state is uploaded. The preserved owner AAB and live deployment remain unchanged.
