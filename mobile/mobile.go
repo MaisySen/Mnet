@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"sync"
 
 	"fintex.au/mnet/internal/daemon"
 )
@@ -20,6 +21,8 @@ import (
 // the UI thread; blocking work happens on daemon goroutines.
 type Node struct {
 	d             *daemon.Daemon
+	diagMu        sync.Mutex
+	packetDiag    interface{ packetDiagnostics() string }
 	sessionClosed bool                  // guarded by sessMu
 	viewers       map[net.Conn]struct{} // pending and active, guarded by sessMu
 }
@@ -82,4 +85,15 @@ func (n *Node) Close() {
 	n.stopViewers(true)
 	n.StopSessionHost()
 	n.d.Close()
+}
+
+// PacketDiagnostics returns only packet-seen/error booleans for a native fd tunnel.
+// It contains no addresses, identities, traffic contents or keys.
+func (n *Node) PacketDiagnostics() string {
+	n.diagMu.Lock()
+	defer n.diagMu.Unlock()
+	if n.packetDiag == nil {
+		return "{}"
+	}
+	return n.packetDiag.packetDiagnostics()
 }

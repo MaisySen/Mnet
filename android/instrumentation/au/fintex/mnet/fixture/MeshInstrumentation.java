@@ -143,7 +143,8 @@ public class MeshInstrumentation extends Instrumentation {
                         transmitted |= peer.optLong("tx_bytes") > 0;
                         relay |= peer.optBoolean("relay");
                     }
-                    diagnostics = " peersPresent=" + (peers != null && peers.length() > 0)
+                    JSONObject packets = new JSONObject(MnetVpnService.currentNode().packetDiagnostics());
+                    diagnostics = " tunRead=" + packets.optBoolean("read_packet") + " tunWrite=" + packets.optBoolean("wrote_packet") + " tunReadError=" + packets.optBoolean("read_failed") + " tunWriteError=" + packets.optBoolean("write_failed") + " peersPresent=" + (peers != null && peers.length() > 0)
                         + " handshake=" + handshake + " received=" + received + " transmitted=" + transmitted + " relay=" + relay;
                 }
             } catch (Exception ignored) { diagnostics = " diagnosticsUnavailable=true"; }

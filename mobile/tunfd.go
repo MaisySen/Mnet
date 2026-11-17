@@ -3,8 +3,10 @@
 package mobile
 
 import (
+	"encoding/json"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"golang.zx2c4.com/wireguard/tun"
 
@@ -16,10 +18,14 @@ import (
 // tun ioctls, so wireguard's CreateTUNFromFile fails with EPERM there;
 // a VpnService fd needs only plain packet reads and writes.
 type fdTun struct {
-	f      *os.File
-	mtu    int
-	events chan tun.Event
-	once   sync.Once
+	f           *os.File
+	mtu         int
+	events      chan tun.Event
+	once        sync.Once
+	reads       atomic.Uint64
+	writes      atomic.Uint64
+	readFailed  atomic.Bool
+	writeFailed atomic.Bool
 }
 
 func newFDTun(fd int, mtu int) *fdTun {
@@ -37,8 +43,10 @@ func (t *fdTun) File() *os.File { return t.f }
 func (t *fdTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
 	n, err := t.f.Read(bufs[0][offset:])
 	if err != nil {
+		t.readFailed.Store(true)
 		return 0, err
 	}
+	t.reads.Add(1)
 	sizes[0] = n
 	return 1, nil
 }
@@ -46,10 +54,17 @@ func (t *fdTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
 func (t *fdTun) Write(bufs [][]byte, offset int) (int, error) {
 	for i, b := range bufs {
 		if _, err := t.f.Write(b[offset:]); err != nil {
+			t.writeFailed.Store(true)
 			return i, err
 		}
+		t.writes.Add(1)
 	}
 	return len(bufs), nil
+}
+
+func (t *fdTun) packetDiagnostics() string {
+	b, _ := json.Marshal(map[string]bool{"read_packet": t.reads.Load() > 0, "wrote_packet": t.writes.Load() > 0, "read_failed": t.readFailed.Load(), "write_failed": t.writeFailed.Load()})
+	return string(b)
 }
 
 func (t *fdTun) MTU() (int, error) { return t.mtu, nil }
@@ -75,6 +90,9 @@ func (t *fdTun) BatchSize() int { return 1 }
 // it on Stop. server, network and authKey behave as in Prepare.
 func (n *Node) Start(tunFD int, server, network, name, authKey string) error {
 	t := newFDTun(tunFD, daemon.MTU)
+	n.diagMu.Lock()
+	n.packetDiag = t
+	n.diagMu.Unlock()
 	if err := n.d.SetTUN(t); err != nil {
 		t.Close()
 		return err
