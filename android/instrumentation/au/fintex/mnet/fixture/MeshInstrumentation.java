@@ -148,6 +148,30 @@ public class MeshInstrumentation extends Instrumentation {
     private void screenShareProof() throws Exception {
         activity = startActivitySync(new Intent(getTargetContext(), HostingActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         enableRemoteControl();
+        java.util.concurrent.atomic.AtomicBoolean remoteTapped = new java.util.concurrent.atomic.AtomicBoolean();
+        final Button[] target = new Button[1];
+        runOnMainSync(() -> {
+            target[0] = new Button(activity);
+            target[0].setText("Disposable remote tap target");
+            target[0].setOnClickListener(v -> remoteTapped.set(true));
+            android.view.ViewGroup content = activity.findViewById(android.R.id.content);
+            ((android.view.ViewGroup) content.getChildAt(0)).addView(target[0], 1);
+        });
+        waitForIdleSync();
+        JSONObject point = new JSONObject();
+        runOnMainSync(() -> {
+            try {
+                int[] location = new int[2]; target[0].getLocationOnScreen(location);
+                point.put("x", location[0]+target[0].getWidth()/2);
+                point.put("y", location[1]+target[0].getHeight()/2);
+                android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
+                activity.getWindowManager().getDefaultDisplay().getRealMetrics(metrics);
+                point.put("width", metrics.widthPixels); point.put("height", metrics.heightPixels);
+            } catch(Exception e) { throw new RuntimeException(e); }
+        });
+        try (FileOutputStream file = new FileOutputStream(new File(getTargetContext().getFilesDir(), "fixture-input-target.json"))) {
+            file.write(point.toString().getBytes("UTF-8"));
+        }
         click(R.id.start_hosting_button);
         await(() -> {
             AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
@@ -166,6 +190,7 @@ public class MeshInstrumentation extends Instrumentation {
             return clickText(root, "Allow");
         }, "screen-viewer-consent");
         await(() -> new File(getTargetContext().getFilesDir(), "fixture-screen-received").exists(), "screen-decoded-by-peer");
+        await(remoteTapped::get, "remote-mesh-gesture-click");
         runOnMainSync(() -> getTargetContext().startService(new Intent(getTargetContext(), au.fintex.mnet.HostSessionService.class).setAction("stop")));
         await(() -> new File(getTargetContext().getFilesDir(), "fixture-screen-closed").exists(), "screen-stop-closed-peer");
         runOnMainSync(() -> activity.finish());
@@ -241,7 +266,7 @@ public class MeshInstrumentation extends Instrumentation {
             await(() -> MnetVpnService.currentNode() == null, "final-stop");
             if (!consentClicked) throw new IllegalStateException("no actual initial VPN consent click observed");
             stage = "complete";
-            result.putString("summary", "PASS self-bound target36 runtimeAPI=" + android.os.Build.VERSION.SDK_INT + " actual APK/JNI/VPN consent, projection/viewer consent and decoded frames/stop, bidirectional 4MiB hash, manual stop/reconnect and repeat hash; emulator only, no physical reboot/control proof");
+            result.putString("summary", "PASS self-bound target36 runtimeAPI=" + android.os.Build.VERSION.SDK_INT + " actual APK/JNI/VPN consent, accessibility/projection/viewer consent, real mesh gesture click and decoded frames/stop, bidirectional 4MiB hash, manual stop/reconnect and repeat hash; emulator only, no physical reboot/OEM proof");
             finish(Activity.RESULT_OK, result);
         } catch (Throwable failure) {
             // Only these controlled hosting/OS consent screens contain no

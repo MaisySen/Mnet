@@ -178,6 +178,15 @@ def main():
                     return json.loads((root / 'screen-proof.json').read_text()).get(name) is True
                 except (OSError, ValueError):
                     return False
+            def input_target():
+                value = subprocess.run(list(map(str, adb + ['exec-out', 'run-as', 'au.fintex.mnet', 'cat', 'files/fixture-input-target.json'])), capture_output=True, timeout=10)
+                if value.returncode: return False
+                point = json.loads(value.stdout)
+                if set(point) != {'x', 'y', 'width', 'height'} or not all(isinstance(v, int) and v >= 0 for v in point.values()):
+                    raise RuntimeError('invalid fixture target')
+                (root / 'input-target.json').write_text(json.dumps(point))
+                return True
+            wait(lambda: input_target() or instrument.poll() is not None, 'input-target', 90)
             wait(lambda: screen_flag('decoded_frames') or instrument.poll() is not None, 'screen-frames', 100)
             if instrument.poll() is None:
                 run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-screen-received'])
@@ -212,7 +221,7 @@ def main():
             (ARTIFACTS / 'instrumentation.txt').write_text('\n'.join(safe + second) + '\n')
             raise RuntimeError('independent app mesh TCP failed')
         (ARTIFACTS / 'instrumentation.txt').write_text('\n'.join(safe + second) + '\n')
-        (ARTIFACTS / 'summary.json').write_text(json.dumps({'result': 'pass', 'scope': 'actual disposable emulator APK/JNI/VPN, 4MiB hash both directions twice, manual disconnect/reconnect', 'physical_device': False, 'remote_capture': True, 'remote_input': False, 'play_protect_install': False}, indent=2))
+        (ARTIFACTS / 'summary.json').write_text(json.dumps({'result': 'pass', 'scope': 'actual disposable emulator APK/JNI/VPN, 4MiB hash both directions twice, manual disconnect/reconnect', 'physical_device': False, 'remote_capture': True, 'remote_input': True, 'play_protect_install': False}, indent=2))
         print('PASS actual emulator VPN/JNI and real Go peer; physical/capture/input/Play Protect proof remains open')
     except Exception as failure:
         (ARTIFACTS / 'summary.json').write_text(json.dumps({'result': 'fail', 'stage': stage, 'error_type': type(failure).__name__}, indent=2))

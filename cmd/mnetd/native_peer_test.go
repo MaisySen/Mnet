@@ -289,13 +289,21 @@ func nativePeerScreenProof(peer *proofNodeT, root string) {
 		}
 		conn.SetDeadline(time.Time{})
 		var frames atomic.Int32
-		session.ConnectViewerWithOptions(mux, session.ViewerOptions{OnFrame: func(frame session.ScreenFrame) {
+		viewer := session.ConnectViewerWithOptions(mux, session.ViewerOptions{OnFrame: func(frame session.ScreenFrame) {
 			if image, e := jpeg.Decode(bytes.NewReader(frame.Image)); e == nil && image.Bounds().Dx() > 0 && image.Bounds().Dy() > 0 {
 				frames.Add(1)
 			}
 		}})
 		for time.Now().Before(deadline) {
 			flags := map[string]bool{"decoded_frames": frames.Load() >= 2, "closed_after_stop": false}
+			if frames.Load() >= 2 {
+				var point struct{ X, Y, Width, Height int }
+				if data, e := os.ReadFile(filepath.Join(root, "input-target.json")); e == nil && json.Unmarshal(data, &point) == nil && point.Width > 0 && point.Height > 0 {
+					if geometry := viewer.Geometry(); geometry != nil {
+						_ = viewer.SendInput(session.InputEvent{Kind: "pointer", Action: "click", Button: "left", X: point.X * geometry.Width / point.Width, Y: point.Y * geometry.Height / point.Height})
+					}
+				}
+			}
 			select {
 			case <-mux.Closed():
 				flags["closed_after_stop"] = true
