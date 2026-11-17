@@ -352,7 +352,7 @@ public class MeshInstrumentation extends Instrumentation {
             await(this::up, "initial-vpn-up");
             osVpnReady();
             checkpoint("os-udp-tcp-dns");
-            DNSProof.verify(options.getString("peer"));
+            DNSProof.verify(options.getString("peer"),getTargetContext().getSystemService(android.net.ConnectivityManager.class).getActiveNetwork());
             hashRoundTrip();
             click(R.id.connect_button);
             await(() -> MnetVpnService.currentNode() == null, "manual-stop");
@@ -364,7 +364,7 @@ public class MeshInstrumentation extends Instrumentation {
             await(this::up, "reconnect-vpn-up");
             osVpnReady();
             checkpoint("os-udp-tcp-dns");
-            DNSProof.verify(options.getString("peer"));
+            DNSProof.verify(options.getString("peer"),getTargetContext().getSystemService(android.net.ConnectivityManager.class).getActiveNetwork());
             hashRoundTrip();
             // Keep the VPN-owning instrumentation process alive while another
             // installed app UID performs ordinary unbound TCP transfers.
@@ -385,7 +385,7 @@ public class MeshInstrumentation extends Instrumentation {
             await(() -> MnetVpnService.currentNode() == null, "final-stop");
             if (!consentClicked) throw new IllegalStateException("no actual initial VPN consent click observed");
             checkpoint("complete");
-            result.putString("summary", "PASS self-bound target36 runtimeAPI=" + android.os.Build.VERSION.SDK_INT + " actual APK/JNI/VPN consent, accessibility/projection/viewer consent, real mesh gesture click and decoded frames/stop, OS/UDP/TCP DNS, bidirectional 4MiB hash, manual stop/reconnect and repeat hash; emulator only, no physical reboot/OEM proof");
+            result.putString("summary", "PASS self-bound target36 runtimeAPI=" + android.os.Build.VERSION.SDK_INT + " actual APK/JNI/VPN consent, accessibility/projection/viewer consent, real mesh gesture click and decoded frames/stop, explicit-VPN-network OS/UDP/TCP DNS, bidirectional 4MiB hash, manual stop/reconnect and repeat hash; emulator only, no physical reboot/OEM proof");
             finish(Activity.RESULT_OK, result);
         } catch (Throwable failure) {
             // Only these controlled hosting/OS consent screens contain no

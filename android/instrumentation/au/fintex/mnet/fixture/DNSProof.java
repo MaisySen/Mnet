@@ -18,13 +18,18 @@ final class DNSProof {
         return diagnostics()+" dnsEINVAL="+invalidArgument+" dnsUnreachable="+networkUnreachable+" dnsDenied="+permissionDenied+" dnsNoAddress="+addressUnavailable+" dnsNetworkDown="+networkDown;
     }
     static String diagnostics(){return " dnsCreate="+(step==1)+" dnsConnect="+(step==2)+" dnsSend="+(step==3)+" dnsReceive="+(step==4)+" dnsParse="+(step==5)+" dnsUDP="+"udp".equals(phase)+" dnsTCP="+"tcp".equals(phase)+" dnsOS="+"os".equals(phase)+" dnsSourceMesh="+sourceMesh+" dnsSourceResolver="+sourceResolver+" dnsSourceUnderlay="+sourceUnderlay+" dnsSourceAny="+sourceAny+" dnsQuestionMismatch="+questionMismatch+" dnsBadName="+badName+" dnsBadBounds="+badBounds+" dnsShort="+shortResponse+" dnsWrongID="+wrongID+" dnsNotResponse="+notResponse+" dnsRcode="+rcodeError+" dnsNoAnswers="+noAnswers+" dnsAddressMismatch="+addressMismatch;}
-    static void verify(String expected) throws Exception {
+    static void verify(String expected)throws Exception{verify(expected,null);}
+    // The VPN-owning process can retain underlay socket selection. Explicit
+    // network selection is only for its isolated transport check. The separate
+    // fixture UID keeps the unbound default-network path and OS resolver check.
+    static void verify(String expected,android.net.Network network) throws Exception {
         String name = "userspace-peer.android-emulator.mnet";
         phase="udp";
         byte[] query = query(name);
         byte[] udp;
         step=1;
         try (DatagramSocket socket = new DatagramSocket()) {
+            if(network!=null)network.bindSocket(socket);
             step=2;
             socket.connect(new InetSocketAddress(InetAddress.getByAddress(new byte[]{100,64,0,0}),53));
             String source=socket.getLocalAddress().getHostAddress();sourceMesh=source.startsWith("100.");sourceResolver="198.18.0.54".equals(source);sourceUnderlay=source.startsWith("10.");sourceAny=socket.getLocalAddress().isAnyLocalAddress();
@@ -39,6 +44,7 @@ final class DNSProof {
         check(udp,expected);
         phase="tcp";
         try (Socket socket = new Socket()) {
+            if(network!=null)network.bindSocket(socket);
             socket.connect(new InetSocketAddress(InetAddress.getByAddress(new byte[]{(byte)100,64,0,0}),53),5000);
             socket.setSoTimeout(5000);
             DataOutputStream output = new DataOutputStream(socket.getOutputStream());
@@ -49,7 +55,7 @@ final class DNSProof {
         }
         phase="os";
         boolean resolved = false;
-        for (InetAddress address : InetAddress.getAllByName(name)) resolved |= expected.equals(address.getHostAddress());
+        for (InetAddress address : network==null?InetAddress.getAllByName(name):network.getAllByName(name)) resolved |= expected.equals(address.getHostAddress());
         if (!resolved) throw new IOException("OS DNS mismatch");
         phase="complete";
     }
