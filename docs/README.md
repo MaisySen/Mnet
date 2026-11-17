@@ -16,6 +16,7 @@ These documents describe a development project, not a production-readiness guara
 | [Google Play readiness](google-play-readiness.md) | Internal-beta route, source-backed disclosure inventory, release gates and unresolved owner decisions. |
 | [Owner-internal test scope](owner-internal-test-scope.md) | Restricted development-test boundaries, narrower export route and verified hosting/privacy facts. |
 | [Android submission evidence](android-submission-evidence.md) | Actual runtime/signing evidence, declaration drafts, operator-policy gaps and export-route facts. |
+| [Privacy-request handling review draft](privacy-request-handling-draft.md) | Proposed identity checks, exact-record effects and operational gaps; no adopted SLA or live deletion. |
 | [Android privacy notice review draft](android-privacy-notice-draft.md) | Candidate wording with explicit operator/retention/deletion publication gates; not an adopted policy. |
 | [Android privacy evidence](android-privacy-evidence.md) | Android source data paths, backup controls, retention boundaries and unresolved operator-policy facts. |
 | [Android store draft](PLAY-LISTING.md) | Unapproved listing and data-disclosure work, not ready-to-publish claims. |
