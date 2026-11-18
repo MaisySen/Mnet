@@ -1,0 +1,15 @@
+# Packet-flow cancellation ownership
+
+The iOS packet-flow adapter originally blocked on a semaphore until NetworkExtension returned a packet callback. The Go TUN Close only closed bookkeeping channels, so it could not interrupt an already-blocked foreign ReadPacket. Its old test tolerated that blocked reader. The strengthened regression fails with the Close-to-Cancel call removed and passes with it present.
+
+PacketFlow now requires an idempotent Cancel method. TUN Close closes its state/events once, calls that platform cancellation, and a returned late packet is refused after close. Invalid buffer/offset arguments fail instead of indexing outside slices; writes check terminal state before each packet. The platform implementation must wake blocked reads promptly without another OS packet and ignore late callback data. This is a source API change: existing external PacketFlow implementations must implement Cancel and regenerate their bindings. Repository Android code does not implement PacketFlow.
+
+The Swift adapter uses a condition-backed packet buffer instead of an uncancellable semaphore. Cancel clears queued packets and wakes all waiters. An outstanding OS callback can still arrive, but cannot restore the closed buffer or deliver a late packet. The buffer preserves all packets from each OS batch rather than taking only the first packet. One platform read is outstanding at a time. Empty batches/packets terminate the buffer. Writes reject empty/non-IP packets and false OS delivery results instead of indexing an empty Data or reporting success. A platform write dispatched just before cancellation may finish; no rollback or hard OS latency is promised.
+
+## Evidence and remaining gates
+
+- The pre-fix overlay omitting foreign Cancel fails the strengthened blocked-read regression. Three Go tests, including concurrent Close, late read refusal and actual blocked fake flow cancellation, pass30fresh race repetitions. Fresh full-repository race tests and vet pass locally.
+- Swift host tests cover batch/order and100blocked-read cancellations with callbacks withheld, then delivered late. These must be collected from the macOS job, not inferred from the local Go results.
+- The macOS source step generates the current Objective-C bridge headers with gobind and typechecks the actual Flow.swift/PacketFlowBuffer.swift against the iOS Simulator SDK and those headers. This is API conformance checking without a linked Go framework, simulator launch, signing, preferences or account access. Compilation results are pending until the changed-revision CI result is read.
+
+This does not yet repair or accept the packet-tunnel provider's complete start/stop generation lifecycle, settings callbacks, failure disposal, saved credential model or physical VPN recovery. It does not establish signed extension delivery, entitlement acceptance, an actual NEPacketTunnelFlow cancellation on a device, runtime JNI/Objective-C linkage, Multies enrollment, production DNS reliability or a new native Android matrix. No UI layout changed.

@@ -1,41 +1,6 @@
 import NetworkExtension
 import Mnet // the gomobile-built framework: class MobileNode, protocol MobilePacketFlow
 
-// Flow adapts NEPacketTunnelFlow to the Go engine's PacketFlow protocol.
-// The engine reads and writes raw IP packets, one per call.
-final class Flow: NSObject, MobilePacketFlow {
-    private let flow: NEPacketTunnelFlow
-    private let queue = DispatchQueue(label: "au.fintex.mnet.flow")
-
-    init(_ flow: NEPacketTunnelFlow) {
-        self.flow = flow
-    }
-
-    // Blocks until the system delivers a packet or the tunnel is cancelled.
-    func readPacket() throws -> Data {
-        var result: (Data?, Error?) = (nil, nil)
-        let sem = DispatchSemaphore(value: 0)
-        flow.readPackets { packets, _ in
-            if let first = packets.first {
-                result = (first, nil)
-            }
-            sem.signal()
-        }
-        sem.wait()
-        if let data = result.0 {
-            return data
-        }
-        throw NSError(domain: "au.fintex.mnet", code: 1,
-                      userInfo: [NSLocalizedDescriptionKey: "tunnel flow ended"])
-    }
-
-    func writePacket(_ pkt: Data?) throws {
-        guard let pkt = pkt else { return }
-        let proto = (pkt[0] >> 4) == 6 ? AF_INET6 : AF_INET
-        flow.writePackets([pkt], withProtocols: [NSNumber(value: proto)])
-    }
-}
-
 // PacketTunnelProvider is the iOS NetworkExtension entry point.
 final class PacketTunnelProvider: NEPacketTunnelProvider {
     private var node: MobileNode?

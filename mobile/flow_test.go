@@ -3,28 +3,46 @@ package mobile
 import (
 	"bytes"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
 // fakeFlow is a scripted PacketFlow: inbound packets queued, writes recorded.
 type fakeFlow struct {
-	in     chan []byte
-	writes [][]byte
-	closed bool
+	in      chan []byte
+	writes  [][]byte
+	done    chan struct{}
+	once    sync.Once
+	cancels atomic.Int32
+	reading chan struct{}
 }
 
-func newFakeFlow() *fakeFlow { return &fakeFlow{in: make(chan []byte, 8)} }
+func newFakeFlow() *fakeFlow {
+	return &fakeFlow{in: make(chan []byte, 8), done: make(chan struct{}), reading: make(chan struct{}, 8)}
+}
 
 func (f *fakeFlow) ReadPacket() ([]byte, error) {
-	p, ok := <-f.in
-	if !ok {
-		return nil, errors.New("flow ended")
+	select {
+	case f.reading <- struct{}{}:
+	default:
 	}
-	return p, nil
+	select {
+	case <-f.done:
+		return nil, errors.New("flow ended")
+	case p := <-f.in:
+		return p, nil
+	}
 }
 
+func (f *fakeFlow) Cancel() { f.cancels.Add(1); f.once.Do(func() { close(f.done) }) }
 func (f *fakeFlow) WritePacket(pkt []byte) error {
+	select {
+	case <-f.done:
+		return errors.New("flow ended")
+	default:
+	}
 	cp := make([]byte, len(pkt))
 	copy(cp, pkt)
 	f.writes = append(f.writes, cp)
@@ -62,14 +80,88 @@ func TestFlowTUNRoundTrip(t *testing.T) {
 		_, err := ft.Read(bufs, sizes, 0)
 		done <- err
 	}()
-	time.Sleep(20 * time.Millisecond)
-	flow.closed = true
+	<-flow.reading // initial round-trip read
+	<-flow.reading // now blocked
+	ft.Close()
 	ft.Close()
 	select {
-	case <-done:
-		// A blocked ReadPacket in a real flow returns an error when the
-		// platform cancels the tunnel; the fake blocks forever, which is
-		// fine: the device stops calling Read after Close.
-	case <-time.After(100 * time.Millisecond):
+	case err := <-done:
+		if err == nil {
+			t.Fatal("blocked read succeeded after close")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Close left foreign read blocked")
+	}
+	if flow.cancels.Load() != 1 {
+		t.Fatal("flow cancellation not exactly once")
+	}
+	if n, err := ft.Write([][]byte{{1}}, 0); err == nil || n != 0 {
+		t.Fatal("post-close write accepted")
+	}
+	if n, err := ft.Read(bufs, sizes, 0); err == nil || n != 0 {
+		t.Fatal("post-close read accepted")
+	}
+
+}
+
+type latePacketFlow struct {
+	*fakeFlow
+	release chan struct{}
+}
+
+func (f *latePacketFlow) ReadPacket() ([]byte, error) {
+	f.reading <- struct{}{}
+	<-f.release
+	return []byte{1, 2, 3}, nil
+}
+func TestFlowTUNRefusesLateReadAndMalformedBuffers(t *testing.T) {
+	flow := &latePacketFlow{fakeFlow: newFakeFlow(), release: make(chan struct{})}
+	ft := newFlowTUN(flow)
+	done := make(chan error, 1)
+	go func() { _, err := ft.Read([][]byte{make([]byte, 10)}, make([]int, 1), 0); done <- err }()
+	<-flow.reading
+	ft.Close()
+	close(flow.release)
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("late read delivered after Close")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("late read stuck")
+	}
+	for _, offset := range []int{-1, 11} {
+		if _, err := ft.Read([][]byte{make([]byte, 10)}, make([]int, 1), offset); err == nil {
+			t.Fatal("invalid read offset accepted")
+		}
+	}
+	if _, err := ft.Read(nil, nil, 0); err == nil {
+		t.Fatal("missing read buffers accepted")
+	}
+	other := newFlowTUN(newFakeFlow())
+	defer other.Close()
+	if _, err := other.Write([][]byte{{1}}, -1); err == nil {
+		t.Fatal("negative write offset accepted")
+	}
+}
+func TestFlowTUNConcurrentCloseCallsCancelOnce(t *testing.T) {
+	flow := newFakeFlow()
+	ft := newFlowTUN(flow)
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); ft.Close() }()
+	}
+	wg.Wait()
+	if flow.cancels.Load() != 1 {
+		t.Fatal("duplicate foreign cancellation", flow.cancels.Load())
+	}
+	select {
+	case _, ok := <-ft.Events():
+		if ok {
+			t.Fatal("events not closed")
+		}
+	default:
+		t.Fatal("events still open")
 	}
 }

@@ -13,10 +13,13 @@ import (
 // PacketFlow is how platforms without a tunnel file descriptor move
 // packets: NEPacketTunnelFlow on iOS. ReadPacket blocks until a packet
 // is available or the flow is cancelled; WritePacket delivers one
-// outbound packet.
+// outbound packet. Cancel must be idempotent, return promptly and wake every
+// blocked ReadPacket with an error without waiting for another OS packet.
+// It must also reject late callback data and future reads/writes.
 type PacketFlow interface {
 	ReadPacket() ([]byte, error)
 	WritePacket(pkt []byte) error
+	Cancel()
 }
 
 // StartFlow brings the mesh up over a PacketFlow instead of a file
@@ -43,9 +46,8 @@ type flowTUN struct {
 	flow   PacketFlow
 	events chan tun.Event
 
-	closeMu sync.Mutex
-	closed  bool
-	closeCh chan struct{}
+	closeOnce sync.Once
+	closeCh   chan struct{}
 }
 
 func newFlowTUN(flow PacketFlow) *flowTUN {
@@ -61,6 +63,9 @@ func newFlowTUN(flow PacketFlow) *flowTUN {
 func (f *flowTUN) File() *os.File { return nil }
 
 func (f *flowTUN) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
+	if len(bufs) == 0 || len(sizes) == 0 || offset < 0 || offset > len(bufs[0]) {
+		return 0, errors.New("invalid packet read buffer")
+	}
 	select {
 	case <-f.closeCh:
 		return 0, errors.New("flow closed")
@@ -70,10 +75,12 @@ func (f *flowTUN) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if len(bufs) == 0 {
-		return 0, nil
+	select {
+	case <-f.closeCh:
+		return 0, errors.New("flow closed")
+	default:
 	}
-	if len(pkt)+offset > len(bufs[0]) {
+	if len(pkt) > len(bufs[0])-offset {
 		return 0, errors.New("packet larger than buffer")
 	}
 	sizes[0] = copy(bufs[0][offset:], pkt)
@@ -82,7 +89,12 @@ func (f *flowTUN) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
 
 func (f *flowTUN) Write(bufs [][]byte, offset int) (int, error) {
 	for i, buf := range bufs {
-		if len(buf) < offset {
+		select {
+		case <-f.closeCh:
+			return i, errors.New("flow closed")
+		default:
+		}
+		if offset < 0 || len(buf) < offset {
 			return i, errors.New("offset beyond packet")
 		}
 		if err := f.flow.WritePacket(buf[offset:]); err != nil {
@@ -99,13 +111,11 @@ func (f *flowTUN) Name() (string, error) { return "mnet-flow", nil }
 func (f *flowTUN) Events() <-chan tun.Event { return f.events }
 
 func (f *flowTUN) Close() error {
-	f.closeMu.Lock()
-	defer f.closeMu.Unlock()
-	if !f.closed {
-		f.closed = true
+	f.closeOnce.Do(func() {
 		close(f.closeCh)
 		close(f.events)
-	}
+		f.flow.Cancel()
+	})
 	return nil
 }
 

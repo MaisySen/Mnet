@@ -21,6 +21,8 @@ targets:
       - path: ios
         excludes:
           - "PacketTunnelProvider.swift"
+          - "PacketFlowBuffer.swift"
+          - "Flow.swift"
           - "*.md"
           - "build-go.sh"
           - "project.yml"
@@ -39,6 +41,8 @@ targets:
     platform: iOS
     sources:
       - path: ios/PacketTunnelProvider.swift
+      - path: ios/PacketFlowBuffer.swift
+      - path: ios/Flow.swift
     dependencies:
       - framework: ios/Mnet.xcframework
         embed: true
