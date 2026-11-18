@@ -7,7 +7,7 @@ on:
       - '.github/workflows/android-tracing-capability.yml'
   workflow_dispatch:
 
-# Capability-only. Boots empty disposable images, never installs Mnet or peers.
+# Capability-only. Correctly quoted shell transport; no Mnet or peer install.
 permissions:
   contents: read
 concurrency:

@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import shlex
 import time
 
 SDK=Path(os.environ['ANDROID_HOME'])
@@ -16,7 +17,7 @@ def command(args,timeout=20):
 def adb(*args,timeout=20):
     return command(ADB+list(args),timeout)
 def shell(*args,timeout=20):
-    return adb('shell',*args,timeout=timeout)
+    return adb('shell',shlex.join(str(x) for x in args),timeout=timeout)
 def text(result):
     return result.stdout.decode(errors='replace') if result.returncode==0 else ''
 def exists(path):
@@ -88,6 +89,9 @@ def main():
             declaration='r:kprobes/'+name+' '+function+' result=$retval'
             result=shell('sh','-c','printf "%s\\n" "$1" >> "$2"','probe',declaration,trace+'/kprobe_events')
             row['registered']=result.returncode==0
+            error=result.stderr.decode(errors='replace').lower()
+            row['permission_denied']='permission denied' in error or 'operation not permitted' in error
+            row['symbol_unavailable']='no such' in error or 'not found' in error
             if row['registered']:
                 hooks.append((name,trace))
                 enabled=shell('sh','-c','printf 1 > "$1"','probe',instance+'/events/kprobes/'+name+'/enable')
