@@ -3,7 +3,7 @@ import Mnet
 
 // The Go TUN owns this flow. Its Close calls Cancel, which wakes a blocked Go
 // reader even when NetworkExtension has not delivered the pending callback.
-final class Flow: NSObject, MobilePacketFlow {
+final class Flow: NSObject, MobilePacketFlowProtocol {
     private let flow: NEPacketTunnelFlow
     private let buffer = PacketFlowBuffer()
 
