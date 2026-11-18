@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import {chromeStartupDiagnostics} from '../scripts/chrome-startup-diagnostics.mjs';
 const here=dirname(fileURLToPath(import.meta.url));
 const files=new Map([['/','index.html'],['/index.html','index.html'],['/style.css','style.css'],['/app.mjs','app.mjs'],['/model.mjs','model.mjs']]);
 const server=createServer(async(req,res)=>{const file=files.get(req.url);if(!file){res.writeHead(404);res.end();return;}try{res.setHeader('content-type',file.endsWith('.mjs')?'text/javascript':file.endsWith('.css')?'text/css':'text/html');res.end(await readFile(join(here,file)));}catch{res.writeHead(500);res.end();}});
@@ -14,17 +15,18 @@ const port=server.address().port;
 const profile=await mkdtemp(join(tmpdir(),'mnet-prototype-'));
 const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>k!=='LD_PRELOAD'&&!k.startsWith('FAKETIME')));
 const chrome=spawn(process.env.CHROME_BIN||'google-chrome',['--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--disable-background-networking','--no-first-run','--remote-debugging-pipe',`--user-data-dir=${profile}`,'about:blank'],{stdio:['ignore','ignore','pipe','pipe','pipe'],env,detached:true});
-let next=0,buf='',session,errors=[],transportFailure;const pending=new Map();
+let next=0,buf='',session,errors=[],transportFailure,responseSeen=false;const pending=new Map();
+const startup=chromeStartupDiagnostics();
 // Drain Chrome diagnostics so a full stderr pipe cannot freeze the process.
 // Never dump environment/browser output into public logs on transport failure.
-chrome.stderr.resume();
+chrome.stderr.on('data',chunk=>startup.feed(chunk));
 function failTransport(error){transportFailure ||= error;for(const p of pending.values()){clearTimeout(p.timer);p.reject(transportFailure);}pending.clear();}
 chrome.on('error',()=>failTransport(Error('Chrome could not start')));
 chrome.on('exit',()=>failTransport(Error('Chrome exited during verification')));
 for(const pipe of [chrome.stdio[3],chrome.stdio[4]])pipe.on('error',()=>failTransport(Error('Chrome debugging transport failed')));
 const exited=new Promise(r=>chrome.once('close',r));
-chrome.stdio[4].setEncoding('utf8');chrome.stdio[4].on('data',s=>{buf+=s;let i;while((i=buf.indexOf('\0'))>=0){const m=JSON.parse(buf.slice(0,i));buf=buf.slice(i+1);if(m.id){const p=pending.get(m.id);if(p){pending.delete(m.id);clearTimeout(p.timer);m.error?p.reject(Error(JSON.stringify(m.error))):p.resolve(m.result);}}else if(m.method==='Runtime.exceptionThrown'){errors.push(m.params.exceptionDetails.text);}}});
-function send(method,params={},sid=session){const id=++next;return new Promise((resolve,reject)=>{if(transportFailure){reject(transportFailure);return;}const timer=setTimeout(()=>{pending.delete(id);reject(Error('CDP timeout: '+method));},15000);pending.set(id,{resolve,reject,timer});chrome.stdio[3].write(JSON.stringify({id,method,params,...(sid?{sessionId:sid}:{})})+'\0');});}
+chrome.stdio[4].setEncoding('utf8');chrome.stdio[4].on('data',s=>{responseSeen=true;buf+=s;let i;while((i=buf.indexOf('\0'))>=0){const m=JSON.parse(buf.slice(0,i));buf=buf.slice(i+1);if(m.id){const p=pending.get(m.id);if(p){pending.delete(m.id);clearTimeout(p.timer);m.error?p.reject(Error(JSON.stringify(m.error))):p.resolve(m.result);}}else if(m.method==='Runtime.exceptionThrown'){errors.push(m.params.exceptionDetails.text);}}});
+function send(method,params={},sid=session){const id=++next;return new Promise((resolve,reject)=>{if(transportFailure){reject(transportFailure);return;}const timer=setTimeout(()=>{pending.delete(id);reject(Error('CDP timeout: '+method+' responseSeen='+responseSeen+' childExited='+(chrome.exitCode!==null||chrome.signalCode!==null)+' '+startup.summary()));},15000);pending.set(id,{resolve,reject,timer});chrome.stdio[3].write(JSON.stringify({id,method,params,...(sid?{sessionId:sid}:{})})+'\0');});}
 const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(r.exceptionDetails.text);return r.result.value;};
 const click=async a=>assert.equal(await evaluate(`(()=>{const b=document.querySelector('[data-action="${a}"]');if(!b)return false;b.click();return true;})()`),true,'missing action '+a);
 const setup=['SIGN_IN','RETURN','CHOOSE','ADD','ALLOW','CHECK','VERIFY','DONE'];

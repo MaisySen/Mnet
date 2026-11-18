@@ -13,16 +13,23 @@ final class DNSProof {
     static volatile boolean sourceMesh,questionMismatch,badName,badBounds,sourceResolver,sourceUnderlay,sourceAny;
     static volatile boolean shortResponse,wrongID,notResponse,rcodeError,noAnswers,addressMismatch;
     static volatile boolean invalidArgument,networkUnreachable,permissionDenied,addressUnavailable,networkDown;
+    static void reset(){
+        phase="none";step=0;
+        sourceMesh=questionMismatch=badName=badBounds=sourceResolver=sourceUnderlay=sourceAny=false;
+        shortResponse=wrongID=notResponse=rcodeError=noAnswers=addressMismatch=false;
+        invalidArgument=networkUnreachable=permissionDenied=addressUnavailable=networkDown=false;
+    }
     static String failureDiagnostics(Throwable error){
         for(Throwable cause=error;cause!=null;cause=cause.getCause())if(cause instanceof android.system.ErrnoException){int number=((android.system.ErrnoException)cause).errno;invalidArgument|=number==android.system.OsConstants.EINVAL;networkUnreachable|=number==android.system.OsConstants.ENETUNREACH;permissionDenied|=number==android.system.OsConstants.EPERM||number==android.system.OsConstants.EACCES;addressUnavailable|=number==android.system.OsConstants.EADDRNOTAVAIL;networkDown|=number==android.system.OsConstants.ENETDOWN;}
         return diagnostics()+" dnsEINVAL="+invalidArgument+" dnsUnreachable="+networkUnreachable+" dnsDenied="+permissionDenied+" dnsNoAddress="+addressUnavailable+" dnsNetworkDown="+networkDown;
     }
-    static String diagnostics(){return " dnsCreate="+(step==1)+" dnsConnect="+(step==2)+" dnsSend="+(step==3)+" dnsReceive="+(step==4)+" dnsParse="+(step==5)+" dnsUDP="+"udp".equals(phase)+" dnsTCP="+"tcp".equals(phase)+" dnsOS="+"os".equals(phase)+" dnsSourceMesh="+sourceMesh+" dnsSourceResolver="+sourceResolver+" dnsSourceUnderlay="+sourceUnderlay+" dnsSourceAny="+sourceAny+" dnsQuestionMismatch="+questionMismatch+" dnsBadName="+badName+" dnsBadBounds="+badBounds+" dnsShort="+shortResponse+" dnsWrongID="+wrongID+" dnsNotResponse="+notResponse+" dnsRcode="+rcodeError+" dnsNoAnswers="+noAnswers+" dnsAddressMismatch="+addressMismatch;}
+    static String diagnostics(){return " dnsCreate="+(step==1)+" dnsNetworkBind="+(step==6)+" dnsSourceBind="+(step==7)+" dnsConnect="+(step==2)+" dnsSend="+(step==3)+" dnsReceive="+(step==4)+" dnsParse="+(step==5)+" dnsUDP="+"udp".equals(phase)+" dnsTCP="+"tcp".equals(phase)+" dnsOS="+"os".equals(phase)+" dnsSourceMesh="+sourceMesh+" dnsSourceResolver="+sourceResolver+" dnsSourceUnderlay="+sourceUnderlay+" dnsSourceAny="+sourceAny+" dnsQuestionMismatch="+questionMismatch+" dnsBadName="+badName+" dnsBadBounds="+badBounds+" dnsShort="+shortResponse+" dnsWrongID="+wrongID+" dnsNotResponse="+notResponse+" dnsRcode="+rcodeError+" dnsNoAnswers="+noAnswers+" dnsAddressMismatch="+addressMismatch;}
     static void verify(String expected)throws Exception{verify(expected,null,null);}
     // The VPN-owning process can retain underlay socket selection. Explicit
     // network and assigned-source selection is only for its isolated transport check. The separate
     // fixture UID keeps the unbound default-network path and OS resolver check.
     static void verify(String expected,android.net.Network network,String meshSource) throws Exception {
+        reset();
         InetAddress local=meshSource==null?null:InetAddress.getByName(meshSource);
         if(network!=null && (local==null || !(local instanceof Inet4Address) || local.isAnyLocalAddress())) throw new IOException("assigned mesh source required");
         String name = "userspace-peer.android-emulator.mnet";
@@ -31,8 +38,8 @@ final class DNSProof {
         byte[] udp;
         step=1;
         try (DatagramSocket socket = new DatagramSocket(null)) {
-            if(network!=null)network.bindSocket(socket);
-            if(local!=null)socket.bind(new InetSocketAddress(local,0));
+            if(network!=null){step=6;network.bindSocket(socket);}
+            if(local!=null){step=7;socket.bind(new InetSocketAddress(local,0));}
             step=2;
             socket.connect(new InetSocketAddress(InetAddress.getByAddress(new byte[]{(byte)198,18,0,53}),53));
             String source=socket.getLocalAddress().getHostAddress();sourceMesh=source.startsWith("100.");sourceResolver="198.18.0.54".equals(source);sourceUnderlay=source.startsWith("10.");sourceAny=socket.getLocalAddress().isAnyLocalAddress();
@@ -46,16 +53,22 @@ final class DNSProof {
         step=5;
         check(udp,expected);
         phase="tcp";
+        sourceMesh=sourceResolver=sourceUnderlay=sourceAny=false;
+        step=1;
         try (Socket socket = new Socket()) {
-            if(network!=null)network.bindSocket(socket);
-            if(local!=null)socket.bind(new InetSocketAddress(local,0));
+            if(network!=null){step=6;network.bindSocket(socket);}
+            if(local!=null){step=7;socket.bind(new InetSocketAddress(local,0));}
+            step=2;
             socket.connect(new InetSocketAddress(InetAddress.getByAddress(new byte[]{(byte)198,18,0,53}),53),5000);
+            String source=socket.getLocalAddress().getHostAddress();sourceMesh=source.startsWith("100.");sourceResolver="198.18.0.54".equals(source);sourceUnderlay=source.startsWith("10.");sourceAny=socket.getLocalAddress().isAnyLocalAddress();
             socket.setSoTimeout(5000);
             DataOutputStream output = new DataOutputStream(socket.getOutputStream());
+            step=3;
             output.writeShort(query.length);output.write(query);output.flush();
             DataInputStream input = new DataInputStream(socket.getInputStream());
+            step=4;
             int length=input.readUnsignedShort();if(length<12||length>4096)throw new IOException("DNS length");
-            byte[] data=new byte[length];input.readFully(data);check(data,expected);
+            byte[] data=new byte[length];input.readFully(data);step=5;check(data,expected);
         }
         phase="os";
         verifySystem(expected,network);

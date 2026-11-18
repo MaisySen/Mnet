@@ -95,6 +95,11 @@ def main():
         (test / 'AndroidManifest.xml').write_text('''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="au.fintex.mnet.fixture"><uses-sdk android:minSdkVersion="24" android:targetSdkVersion="36"/><uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/><application android:label="Mnet disposable fixture"/><instrumentation android:name="au.fintex.mnet.fixture.IndependentAppInstrumentation" android:targetPackage="au.fintex.mnet.fixture"/><instrumentation android:name="au.fintex.mnet.fixture.MeshInstrumentation" android:targetPackage="au.fintex.mnet"/></manifest>''')
         run([bt / 'aapt2', 'link', '-o', test / 'base.apk', '-I', android, '--manifest', test / 'AndroidManifest.xml'])
         run(['javac', '-source', '11', '-target', '11', '-cp', str(android) + ':' + str(appout / 'classes') + ':' + str(appout / 'aar/classes.jar'), '-d', test / 'classes', *sorted((staged / 'android/instrumentation').rglob('*.java'))])
+        # Run pure diagnostic-state regression on the host JVM, never package it.
+        state_classes = root / 'diagnostic-state-classes'
+        state_classes.mkdir()
+        run(['javac', '-cp', str(android) + ':' + str(test / 'classes'), '-d', state_classes, *sorted((staged / 'android/instrumentation-tests').rglob('*.java'))])
+        run(['java', '-cp', str(state_classes) + ':' + str(test / 'classes'), 'au.fintex.mnet.fixture.DNSProofStateTest'])
         run(['jar', 'cf', test / 'target.jar', '-C', appout / 'classes', '.'])
         run([bt / 'd8', '--min-api', '24', '--lib', android, '--classpath', test / 'target.jar', '--classpath', appout / 'aar/classes.jar', '--output', test / 'dex', *sorted((test / 'classes').rglob('*.class'))])
         shutil.copy(test / 'base.apk', test / 'unaligned.apk')
