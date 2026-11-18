@@ -73,6 +73,20 @@ class Guards(unittest.TestCase):
         self.assertIn('fixture-peer-done', source)
         self.assertIn("stage = 'independent-app-unbound-tcp'", source)
         self.assertIn("'force-stop', 'au.fintex.mnet'", source)
+    def test_own_process_dns_source_is_explicit_without_changing_independent_path(self):
+        helper=(ROOT / 'android/instrumentation/au/fintex/mnet/fixture/DNSProof.java').read_text()
+        primary=(ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
+        self.assertIn('verify(expected,null,null)',helper)
+        self.assertIn('new DatagramSocket(null)',helper)
+        self.assertIn('socket.bind(new InetSocketAddress(local,0))',helper)
+        self.assertIn('getActiveNetwork(),MnetVpnService.currentNode().meshIPv4()',primary)
+        self.assertIn('assigned mesh source required',helper)
+    def test_independent_dns_failure_still_tests_tcp_but_cannot_pass(self):
+        fixture=(ROOT / 'android/instrumentation/au/fintex/mnet/fixture/IndependentAppInstrumentation.java').read_text()
+        self.assertIn('if(dnsFailure!=null){stage="os-udp-tcp-dns";throw dnsFailure;}',fixture)
+        self.assertIn('independentTCPPassed=',fixture)
+        self.assertIn('independentDNSPassed=',fixture)
+        self.assertLess(fixture.index('hashRoundTrip();hashRoundTrip();'),fixture.index('if(dnsFailure!=null)'))
     def test_independent_network_snapshot_is_passive_and_redacted(self):
         source=(ROOT / 'android/instrumentation/au/fintex/mnet/fixture/NetworkSnapshot.java').read_text()
         fixture=(ROOT / 'android/instrumentation/au/fintex/mnet/fixture/IndependentAppInstrumentation.java').read_text()

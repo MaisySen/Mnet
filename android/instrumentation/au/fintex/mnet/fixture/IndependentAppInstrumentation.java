@@ -11,7 +11,19 @@ public class IndependentAppInstrumentation extends Instrumentation {
  private String stage="created";
  private String initialNetwork="";
  public void onCreate(Bundle args){super.onCreate(args);peer=args.getString("peer");start();}
- public void onStart(){Bundle result=new Bundle();try{initialNetwork=NetworkSnapshot.capture(getTargetContext());stage="os-udp-tcp-dns";DNSProof.verify(peer);hashRoundTrip();hashRoundTrip();result.putString("summary","PASS independent app unbound TCP bidirectional4MiB twice and OS/UDP/TCP DNS");finish(Activity.RESULT_OK,result);}catch(Throwable e){result.putString("summary","FAIL independent app stage="+stage+" type="+e.getClass().getSimpleName()+DNSProof.failureDiagnostics(e)+" before"+initialNetwork+" after"+NetworkSnapshot.capture(getTargetContext()));finish(Activity.RESULT_CANCELED,result);}}
+ public void onStart(){
+  Bundle result=new Bundle();boolean dnsPassed=false,tcpPassed=false;Throwable dnsFailure=null;
+  try{
+   initialNetwork=NetworkSnapshot.capture(getTargetContext());stage="os-udp-tcp-dns";
+   try{DNSProof.verify(peer);dnsPassed=true;}catch(Exception failure){dnsFailure=failure;}
+   // A DNS failure is still an overall failure. Independently test numeric-IP
+   // TCP so diagnostics distinguish resolver-only from all-traffic failures.
+   hashRoundTrip();hashRoundTrip();tcpPassed=true;
+   if(dnsFailure!=null){stage="os-udp-tcp-dns";throw dnsFailure;}
+   result.putString("summary","PASS independent app unbound TCP bidirectional4MiB twice and OS/UDP/TCP DNS");finish(Activity.RESULT_OK,result);
+  }catch(Throwable e){result.putString("summary","FAIL independent app stage="+stage+" type="+e.getClass().getSimpleName()+" independentDNSPassed="+dnsPassed+" independentTCPPassed="+tcpPassed+DNSProof.failureDiagnostics(dnsFailure!=null?dnsFailure:e)+" before"+initialNetwork+" after"+NetworkSnapshot.capture(getTargetContext()));finish(Activity.RESULT_CANCELED,result);}
+ }
+
     private void hashRoundTrip() throws Exception {
         stage = "mesh-hash-round-trip";
         // This address has no host TCP listener. Reaching it requires the real

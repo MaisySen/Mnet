@@ -384,7 +384,7 @@ public class MeshInstrumentation extends Instrumentation {
             await(this::up, "initial-vpn-up");
             osVpnReady();
             checkpoint("os-udp-tcp-dns");
-            DNSProof.verify(options.getString("peer"),getTargetContext().getSystemService(android.net.ConnectivityManager.class).getActiveNetwork());
+            DNSProof.verify(options.getString("peer"),getTargetContext().getSystemService(android.net.ConnectivityManager.class).getActiveNetwork(),MnetVpnService.currentNode().meshIPv4());
             hashRoundTrip();
             click(R.id.connect_button);
             await(() -> MnetVpnService.currentNode() == null, "manual-stop");
@@ -396,7 +396,7 @@ public class MeshInstrumentation extends Instrumentation {
             await(this::up, "reconnect-vpn-up");
             osVpnReady();
             checkpoint("os-udp-tcp-dns");
-            DNSProof.verify(options.getString("peer"),getTargetContext().getSystemService(android.net.ConnectivityManager.class).getActiveNetwork());
+            DNSProof.verify(options.getString("peer"),getTargetContext().getSystemService(android.net.ConnectivityManager.class).getActiveNetwork(),MnetVpnService.currentNode().meshIPv4());
             hashRoundTrip();
             // Keep the VPN-owning instrumentation process alive while another
             // installed app UID performs ordinary unbound TCP transfers.
