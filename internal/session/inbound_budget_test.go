@@ -2,6 +2,8 @@ package session
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"testing"
 	"time"
 )
@@ -79,8 +81,8 @@ func TestInboundBudgetReturnedOnConsumeAndRelease(t *testing.T) {
 			t.Fatal("released stream kept budget")
 		}
 		// A consumer racing local release must not decrement a second time.
-		if _, err := received.Recv(time.Second); err != nil {
-			t.Fatal(err)
+		if _, err := received.Recv(time.Second); !errors.Is(err, io.ErrClosedPipe) {
+			t.Fatal("released stream delivered queued work", err)
 		}
 		if host.inboundBytes.Load() != 0 {
 			t.Fatal("released frame double charged")

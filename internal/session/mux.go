@@ -274,35 +274,56 @@ func (m *Mux) SendBytes(streamID uint32, priority uint8, b []byte) error {
 }
 
 // Recv returns the next DATA frame on the stream. A timeout <= 0
-// blocks until a frame, FIN/RST, or mux close.
+// blocks until a frame, FIN/RST, local release or mux close. Known terminal
+// state wins over queued frames/FIN; already-returned work is not revoked.
 func (s Stream) Recv(timeout time.Duration) (Frame, error) {
-	if timeout <= 0 {
+	var released <-chan struct{}
+	if s.state != nil {
+		released = s.state.done
+	}
+	terminal := func() bool {
 		select {
-		case f, ok := <-s.in:
-			if !ok {
-				return Frame{}, io.EOF
-			}
-			s.Mux.releaseInbound(&f)
-			if f.Type == msgRst {
-				return Frame{}, ErrStreamReset
-			}
-			return f, nil
 		case <-s.Mux.closed:
-			return Frame{}, io.ErrClosedPipe
+			return true
+		case <-released:
+			return true
+		default:
+			return false
 		}
+	}
+	if terminal() {
+		return Frame{}, io.ErrClosedPipe
+	}
+	var deadline <-chan time.Time
+	if timeout > 0 {
+		timer := time.NewTimer(timeout)
+		defer timer.Stop()
+		deadline = timer.C
 	}
 	select {
 	case f, ok := <-s.in:
+		if ok {
+			s.Mux.releaseInbound(&f)
+		}
+		// A ready frame/FIN and terminal signal may be selected together.
+		// Return its budget, but never dispatch known retired-session work.
+		if terminal() {
+			return Frame{}, io.ErrClosedPipe
+		}
 		if !ok {
 			return Frame{}, io.EOF
 		}
-		s.Mux.releaseInbound(&f)
 		if f.Type == msgRst {
 			return Frame{}, ErrStreamReset
 		}
 		return f, nil
-	case <-time.After(timeout):
+	case <-deadline:
+		if terminal() {
+			return Frame{}, io.ErrClosedPipe
+		}
 		return Frame{}, fmt.Errorf("session: recv timeout")
+	case <-released:
+		return Frame{}, io.ErrClosedPipe
 	case <-s.Mux.closed:
 		return Frame{}, io.ErrClosedPipe
 	}
@@ -684,9 +705,6 @@ func (m *Mux) releaseStream(id uint32) {
 	m.streamMu.Lock()
 	if st, ok := m.streams[id]; ok {
 		m.releaseStreamBudget(st)
-		if st.done != nil {
-			close(st.done)
-		}
 	}
 	delete(m.streams, id)
 	m.streamMu.Unlock()
@@ -708,7 +726,12 @@ func (s Stream) release() {
 func (m *Mux) releaseStreamBudget(st *streamState) {
 	st.accountMu.Lock()
 	defer st.accountMu.Unlock()
-	st.released = true
+	if !st.released {
+		st.released = true
+		if st.done != nil {
+			close(st.done)
+		}
+	}
 	m.inboundBytes.Add(-st.queuedBytes)
 	st.queuedBytes = 0
 }
