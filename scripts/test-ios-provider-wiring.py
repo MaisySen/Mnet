@@ -25,8 +25,8 @@ class ProviderOwnership(unittest.TestCase):
 
     def test_target_contains_coordinator(self):
         project = (ROOT / 'ios/project.yml').read_text()
-        self.assertIn('- "TunnelLifecycle.swift"', project)
-        self.assertIn('- path: ios/TunnelLifecycle.swift', project)
+        self.assertIn('- path: ContentView.swift', project)
+        self.assertIn('- path: TunnelLifecycle.swift', project)
         checks = (ROOT / 'scripts/test-ios-source.sh').read_text()
         self.assertIn('TunnelLifecycleTest.swift', checks)
         self.assertIn('"$ROOT/ios/PacketTunnelProvider.swift"', checks)

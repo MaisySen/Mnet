@@ -171,6 +171,9 @@ jobs:
       - name: iOS app manager policy and SDK source typecheck (no signing or runtime)
         if: runner.os == 'macOS'
         run: sh scripts/test-ios-source.sh
+      - name: unsigned iOS simulator app and embedded tunnel Go linkage (no launch/signing)
+        if: runner.os == 'macOS'
+        run: sh scripts/test-ios-linked-build.sh
       - name: native macOS state ownership and actual-process duplicate/crash release
         if: runner.os == 'macOS'
         run: |

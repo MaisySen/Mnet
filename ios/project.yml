@@ -1,7 +1,7 @@
 # XcodeGen spec for Mnet iOS. Regenerate the project with:
 #   xcodegen --spec ios/project.yml --project ios
-# Bundle IDs are registered through the App Store Connect API; signing is
-# automatic (xcodebuild -allowProvisioningUpdates with the Admin API key).
+# Generation/build does not register bundle IDs or authorize signing.
+# CI uses unsigned simulator builds with provisioning disabled.
 name: Mnet
 options:
   bundleIdPrefix: au.fintex
@@ -18,38 +18,36 @@ targets:
     type: application
     platform: iOS
     sources:
-      - path: ios
-        excludes:
-          - "PacketTunnelProvider.swift"
-          - "PacketFlowBuffer.swift"
-          - "TunnelLifecycle.swift"
-          - "Flow.swift"
-          - "*.md"
-          - "build-go.sh"
-          - "project.yml"
-          - "MnetTunnel.entitlements"
-          - "MnetTunnel-Info.plist"
-          - "Mnet.xcframework/**"
+      - path: ContentView.swift
+      - path: MnetApp.swift
+      - path: TunnelManagerPolicy.swift
     dependencies:
-      - framework: ios/Mnet.xcframework
+      - target: MnetTunnel
         embed: true
+        codeSign: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: au.fintex.mnet
-        INFOPLIST_FILE: ios/Mnet-Info.plist
+        INFOPLIST_FILE: Mnet-Info.plist
   MnetTunnel:
     type: app-extension
     platform: iOS
     sources:
-      - path: ios/PacketTunnelProvider.swift
-      - path: ios/TunnelLifecycle.swift
-      - path: ios/PacketFlowBuffer.swift
-      - path: ios/Flow.swift
+      - path: PacketTunnelProvider.swift
+      - path: TunnelLifecycle.swift
+      - path: PacketFlowBuffer.swift
+      - path: Flow.swift
     dependencies:
-      - framework: ios/Mnet.xcframework
-        embed: true
+      - framework: Mnet.xcframework
+        embed: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: au.fintex.mnet.tunnel
-        INFOPLIST_FILE: ios/MnetTunnel-Info.plist
-        CODE_SIGN_ENTITLEMENTS: ios/MnetTunnel.entitlements
+        INFOPLIST_FILE: MnetTunnel-Info.plist
+        CODE_SIGN_ENTITLEMENTS: MnetTunnel.entitlements
+
+schemes:
+  Mnet:
+    build:
+      targets:
+        Mnet: all

@@ -35,7 +35,7 @@ gomobile init
 sh ios/build-go.sh
 ```
 
-The repository includes `ios/project.yml` for XcodeGen. Inspect and generate the project on macOS, then validate target paths, embedding and signing in Xcode. The intended targets are app `au.fintex.mnet` and packet-tunnel extension `au.fintex.mnet.tunnel`, embedding the generated framework. The extension needs the packet-tunnel NetworkExtension entitlement. State is kept in the extension container; shared app-group behavior is not established by this guide.
+The repository includes `ios/project.yml` for XcodeGen. Its source paths are relative to ios/; the app embeds the MnetTunnel target, which links the generated static Go framework. The [unsigned simulator linked-build check](../docs/ios-unsigned-linked-build.md) validates packaging without signing, provisioning, account access or launch. It does not authorize later signing; validate that separately for a selected delivery. The intended targets are app `au.fintex.mnet` and packet-tunnel extension `au.fintex.mnet.tunnel`, embedding the generated framework. The extension needs the packet-tunnel NetworkExtension entitlement. State is kept in the extension container; shared app-group behavior is not established by this guide.
 
 ## Remaining Apple steps
 

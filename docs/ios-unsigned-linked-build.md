@@ -1,0 +1,11 @@
+# Unsigned iOS app and tunnel linkage check
+
+The full Swift SDK typecheck establishes API conformance, not linkage to the current Go core or correct extension packaging. The next CI step builds a disposable arm64 iOS-simulator xcframework from the module-pinned gomobile/gobind tools, generates the actual Xcode app/extension project, and builds without launching anything.
+
+The project spec had root-relative paths despite living in ios/, no app dependency embedding MnetTunnel, and an APPL package type in the extension plist. Paths are now relative to the spec, app sources are explicit, the tunnel is an embedded target dependency and its package type is XPC!. Only the extension links the static Go xcframework; a static Go binary is not copied as a dynamic embedded framework.
+
+XcodeGen is pinned to2.46.0 and the downloaded archive is checked against SHA2564d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806. This hash was read from the release API and independently matched against the downloaded archive. Source: https://github.com/yonaskolb/XcodeGen/releases/tag/2.46.0 . Spec path/dependency semantics: https://yonaskolb.github.io/XcodeGen/Docs/ProjectSpec.html .
+
+The build forces simulator SDK/arm64, CODE_SIGNING_ALLOWED=NO, CODE_SIGNING_REQUIRED=NO, empty signing identity/team and linker no-ad-hoc-codesign. No provisioning flag, account, signing credential, physical device or simulator launch is used. A product checker requires the embedded .appex, exact bundle/package/principal-class identity, both actual arm64 Mach-O executables, absence of code signatures and Go bridge/runtime symbols in the tunnel executable. Outputs remain in the temporary directory and are deleted; there is no release, distribution artifact or upload.
+
+Local shell/Python/source checks are not a successful Apple build. Exact-revision CI must be inspected for the actual linker/package check before claiming linked acceptance. Any signing or account requirement is a stop boundary, not permission to register or provision. Even a pass would mean unsigned simulator compile/link/package only, not launch, entitlement enforcement, actual PacketTunnelFlow/OS VPN startup/recovery, signed extension delivery, Multies enrollment or production readiness. No UI layout is changed or accepted by this check.
