@@ -58,10 +58,14 @@ final class DNSProof {
             byte[] data=new byte[length];input.readFully(data);check(data,expected);
         }
         phase="os";
-        boolean resolved = false;
-        for (InetAddress address : network==null?InetAddress.getAllByName(name):network.getAllByName(name)) resolved |= expected.equals(address.getHostAddress());
-        if (!resolved) throw new IOException("OS DNS mismatch");
+        verifySystem(expected,network);
         phase="complete";
+    }
+    static void verifySystem(String expected,android.net.Network network)throws Exception{
+        String name="userspace-peer.android-emulator.mnet";
+        boolean resolved=false;
+        for(InetAddress address:network==null?InetAddress.getAllByName(name):network.getAllByName(name))resolved|=expected.equals(address.getHostAddress());
+        if(!resolved)throw new IOException("OS DNS mismatch");
     }
     private static byte[] query(String name) throws Exception {
         ByteArrayOutputStream bytes=new ByteArrayOutputStream();DataOutputStream out=new DataOutputStream(bytes);

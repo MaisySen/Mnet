@@ -1,6 +1,7 @@
 // Isolated real-Chrome operator dashboard regression. No user profiles or live
 // control service. Node 22+ and Chrome are required. Screenshots stay local.
 import {spawn, spawnSync} from 'node:child_process';
+import {stopChild} from './fixture-process.mjs';
 import {mkdtempSync, writeFileSync, rmSync, existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -128,4 +129,4 @@ try{
  const remaining=(await cdp('Network.getCookies',{urls:[base]})).cookies;if(remaining.some(c=>c.name==='mnet_admin'))throw new Error('logout cookie not cleared');
  await shot('dashboard-signed-out');
  console.log('PASS real Chrome dashboard: login visibility, same-origin sign-in, network/key render, actual scoped membership reads, reviewed manual grant/cancel/unchecked rejection, cancel/confirmed removal and refresh, lost-committed-response inspection, stale row/confirmation guard, HTML-as-text, empty grants, failed-read clear/retry, invalid-response handling, same-network out-of-order reads, network-switch/logout late-result suppression, expiry boundaries, sign-out, cleared populated private UI, delayed-refresh suppression and logged-out token replay');
-}finally{ws?.close();chrome?.kill();control?.kill();await delay(150);rmSync(dir,{recursive:true,force:true});}
+}finally{ws?.close();await Promise.all([stopChild(chrome),stopChild(control)]);rmSync(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});}

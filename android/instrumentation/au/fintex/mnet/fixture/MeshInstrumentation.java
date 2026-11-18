@@ -311,7 +311,10 @@ public class MeshInstrumentation extends Instrumentation {
         if(!clickText(controlDialog,"Allow control"))throw new IllegalStateException("control approval unavailable");
         await(remoteTapped::get, "remote-mesh-gesture-click");
         await(()->{AccessibilityNodeInfo root=getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();return root!=null&&clickText(root,"Remote control");},"screen-control-revoke-open");
-        await(()->{AccessibilityNodeInfo root=getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();return root!=null&&clickText(root,"Revoke control");},"screen-control-revoke");
+        AccessibilityNodeInfo revokeDialog=captureSettledDialog("Revoke remote control?","fixture-consent.png","Revoke control","Keep control");
+        if(au.fintex.mnet.HostSessionService.controlAllowed())throw new IllegalStateException("input remained active in host controls");
+        checkpoint("screen-control-revoke");
+        if(!clickText(revokeDialog,"Revoke control"))throw new IllegalStateException("revoke action unavailable");
         checkpoint("screen-control-revoke-state");
         SystemClock.sleep(700);remoteTapped.set(false);SystemClock.sleep(1000);
         if(au.fintex.mnet.HostSessionService.controlAllowed()||remoteTapped.get()||au.fintex.mnet.HostSessionService.controlSession()==null)throw new IllegalStateException("revoke failed or ended view");

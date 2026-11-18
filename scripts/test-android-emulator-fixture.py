@@ -86,6 +86,8 @@ class Guards(unittest.TestCase):
         self.assertIn('if(dnsFailure!=null){stage="os-udp-tcp-dns";throw dnsFailure;}',fixture)
         self.assertIn('independentTCPPassed=',fixture)
         self.assertIn('independentDNSPassed=',fixture)
+        self.assertIn('independentOSDNSPassed=',fixture)
+        self.assertIn('DNSProof.verifySystem(peer,null)',fixture)
         self.assertLess(fixture.index('hashRoundTrip();hashRoundTrip();'),fixture.index('if(dnsFailure!=null)'))
     def test_independent_network_snapshot_is_passive_and_redacted(self):
         source=(ROOT / 'android/instrumentation/au/fintex/mnet/fixture/NetworkSnapshot.java').read_text()
@@ -131,6 +133,8 @@ class Guards(unittest.TestCase):
         self.assertIn('!control.allowed()',host)
         self.assertIn('control.end()',host)
         self.assertIn('captureSettledDialog("Allow remote control?"',test)
+        self.assertIn('captureSettledDialog("Revoke remote control?"',test)
+        self.assertIn('input remained active in host controls',test)
     def test_sampled_walkthrough_stops_before_return_to_keys(self):
         source = (ROOT / 'scripts/android-emulator-validation.py').read_text()
         self.assertIn("['exec-out', 'screencap', '-p']", source)
