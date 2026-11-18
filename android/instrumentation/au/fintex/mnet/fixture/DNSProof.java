@@ -9,8 +9,8 @@ import java.util.Arrays;
 // summaries contain no addresses, names, status JSON or enrollment material.
 final class DNSProof {
     private static File traceFile;
-    private static final org.json.JSONArray sockets=new org.json.JSONArray();
-    static void configureTrace(File file){traceFile=file;}
+    private static org.json.JSONArray sockets;
+    static void configureTrace(File file){traceFile=file;if(sockets==null)sockets=new org.json.JSONArray();}
     private static void observeSocket(String point,DatagramSocket socket){
         if(traceFile==null)return;
         try{
