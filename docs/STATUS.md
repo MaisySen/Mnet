@@ -1,6 +1,27 @@
 # Mnet project status
 
-## Current source limits (2026-11-18)
+## Current evidence checkpoint (2026-11-19, Australia/Sydney)
+
+This section supersedes older uses of "latest", "current source" and "pending" below. The rest of this page is a dated history, not an up-to-date release verdict. Source improvements are not changes to the preserved Android binaries or hosted test deployment.
+
+The latest fully collected source checkpoint is `0a35762b803a79de37bcfb5fca82b3bce1c03a49`: [general CI](https://github.com/MaisySen/Mnet/actions/runs/44306472522) has all five jobs successful. The first macOS job never acquired a hosted runner and ran zero steps; its [capacity failure](https://github.com/MaisySen/Mnet/actions/runs/44306472522/job/134809225048) is retained. One same-configuration macOS-only retry [completed successfully](https://github.com/MaisySen/Mnet/actions/runs/44306472522/job/134826268185). The other four results were carried forward, not rerun. [Windows first-attempt evidence](https://github.com/MaisySen/Mnet/actions/runs/44306472522/job/134809224362) remains the Windows source checkpoint.
+
+### Newer implemented and verified source
+
+- [Unsigned iOS app and embedded tunnel linkage](ios-unsigned-linked-build.md): current Go core links into real arm64 simulator app/extension products with exact package identities and no code-signature load commands. This is compile/link/package evidence only, not launch, entitlement enforcement, signed delivery or physical VPN behavior.
+- iOS lifecycle source includes [exact existing-profile selection](ios-vpn-profile-ownership.md), [packet-flow cancellation](ios-packet-flow-cancellation.md), [one-run provider ownership](ios-tunnel-run-ownership.md), [ordinary enrollment-input cleanup](ios-enrollment-input-lifetime.md) and [generation-owned status refresh](ios-status-read-ownership.md). These have host/source/SDK checks, not actual Settings/VPN runtime acceptance.
+- [Headless process-owned session sockets](headless-session-process-ownership.md) and [CLI EOF cancellation](cli-session-cancellation.md) close owned pending/active connections. External capture callbacks and an OS stdin read already underway still have their own completion limits.
+- File source now has [original-size outgoing reads](file-send-snapshot-ownership.md) and [terminal receiver storage checks](file-receiver-session-ownership.md). Existing digest/no-overwrite rules remain. These are not atomic source snapshots, filesystem rollback, consumer approval or a new destination/retention policy.
+- Transport source now has [terminal receive precedence/local waiter wakeup](stream-receive-terminal-ownership.md), [outbound queue retirement](mux-outbound-close-ownership.md), [active inbound-table retirement](mux-inbound-close-ownership.md), [late host authorization refusal](host-terminal-authorization-dispatch.md) and [local OPEN metadata preflight](local-open-preflight.md). Desktop focused families run 30 race repetitions on actual Windows/macOS runners; sender-specific cases run three desktop repetitions and 30 local repetitions. Queued-table ownership is not secure erasure, all-consumer joining or recall of already-dispatched work.
+
+### Open product gates remain open
+
+- The product is still a test-only engineering companion, not a completed consumer or Multies-integrated product. [Product scope](product-scope.md) and [Multies boundary](multies-boundary.md) separate intended journeys from inactive policy foundations. Workspace-native enrollment, device eligibility, consent and revocation require the real integration.
+- Native Android reliability is not cleared by general CI. The last scoped [Android control-acceptance run at `4dd5ded`](https://github.com/MaisySen/Mnet/actions/runs/44263344878) remains failed overall. General lifecycle/source improvements do not convert that result into a pass. No new native-network experiment or release is implied here.
+- Signed iOS delivery, actual OS VPN startup/recovery, physical/OEM behavior, consumer file consent/destinations and cross-platform end-to-end recovery remain separate gates. No account/signing/device or production service change is made by this checkpoint.
+- The preserved owner-only Android candidate, older downloads and dated hosted-test records below retain their own exact identities and limits. A source CI pass is not a replacement binary or a live deployment check.
+
+## Historical source limits (2026-11-18)
 
 The newer source is not the preserved owner-only code15 AAB below. Native DNS reliability is still an open blocker. The latest `f849805` general run passed all five jobs: https://github.com/MaisySen/Mnet/actions/runs/44221621167 . Its native run failed on both APIs: https://github.com/MaisySen/Mnet/actions/runs/44221621247 . Both completed the independent hash and local view/control/revoke/stop checks; DNS failures remain failed even when later checks pass. No crash/panic/OOM flags were reported. This is not production or physical-device readiness.
 
@@ -52,7 +73,7 @@ Newer source removes unnecessary accessibility window-content retrieval and even
 
 The [disposable emulator integration rig](../android/instrumentation/README.md) now executes those actual APK/JNI/VPN and approved screen/gesture flows in standard free public CI. Its latest repeated evidence and remaining reliability limits are summarized above. Physical-device proof remains separate.
 
-## Source, downloads and deployment
+## Historical source, downloads and deployment snapshot
 
 | Layer | Recorded state | Evidence / limit |
 | --- | --- | --- |
