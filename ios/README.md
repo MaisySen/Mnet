@@ -21,6 +21,8 @@ Source integration only. No signed Mnet iOS release, TestFlight delivery or phys
 
 The app source now selects an exact Mnet tunnel provider, refuses duplicate matching profiles and keeps refresh/disconnect lookup read-only. Preference load/save errors no longer become an assumed missing configuration. Only explicit Connect may save/enable a profile. See [profile ownership](../docs/ios-vpn-profile-ownership.md) for source/Swift-check scope and limits. This is not physical-device profile or VPN acceptance.
 
+Packet-flow cancellation and full provider run ownership now have source/host-test/SDK checks, with exact results collected in CI. See [packet cancellation](../docs/ios-packet-flow-cancellation.md) and [provider ownership](../docs/ios-tunnel-run-ownership.md). These do not establish a linked, signed or physically accepted extension.
+
 ## Build
 
 On a Mac with Xcode installed:

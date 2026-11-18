@@ -1,9 +1,11 @@
 import NetworkExtension
-import Mnet // the gomobile-built framework: class MobileNode, protocol MobilePacketFlow
+import UIKit
+import Mnet
 
-// PacketTunnelProvider is the iOS NetworkExtension entry point.
+// Owns exactly one node from creation through prepare/settings/start or terminal
+// failure/stop. No callback closes or starts a node belonging to a later run.
 final class PacketTunnelProvider: NEPacketTunnelProvider {
-    private var node: MobileNode?
+    private let lifecycle = TunnelLifecycle<MobileNode, NEPacketTunnelNetworkSettings>(close: { $0.close() })
 
     override func startTunnel(options: [String: NSObject]?, completionHandler: @escaping (Error?) -> Void) {
         let server = options?["server"] as? String ?? ""
@@ -11,64 +13,42 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let authKey = options?["authKey"] as? String ?? ""
         let nodeName = options?["nodeName"] as? String ?? UIDevice.current.name
         let exitNode = options?["exitNode"] as? String ?? ""
-
-        // The extension's own container holds the node state. No app group:
-        // on an individual Apple account only the Account Holder can register
-        // groups, and the Fintex runbook says ship without one (apple.md).
         let dir = FileManager.default
             .urls(for: .libraryDirectory, in: .userDomainMask).first!
             .appendingPathComponent("state").path
-        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
 
-        var err: NSError?
-        guard let node = MobileNewNode(dir, &err) else {
-            completionHandler(err)
-            return
-        }
-        self.node = node
-        if !exitNode.isEmpty {
-            try? node.setUseExitNode(exitNode)
-        }
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            // Join first: the mesh assigns our address before we configure
-            // the interface, exactly like the Android flow.
-            let ipv4 = node.prepare(server, network: network, name: nodeName, authKey: authKey, error: &err)
-            if let err = err {
-                completionHandler(err)
-                return
+        lifecycle.start(make: {
+            try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+            var error: NSError?
+            guard let node = MobileNewNode(dir, &error) else {
+                throw error ?? NSError(domain: "au.fintex.mnet", code: 4,
+                                       userInfo: [NSLocalizedDescriptionKey: "node creation failed"])
             }
-
+            return node
+        }, prepare: { node in
+            // Always set, including empty, so an old saved exit selection does
+            // not silently outlive this request. Failure is terminal.
+            try node.setUseExitNode(exitNode)
+            let ipv4 = try node.prepare(server, network: network, name: nodeName, authKey: authKey)
             let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
             settings.mtu = 1280
             let v4 = NEIPv4Settings(addresses: [ipv4], subnetMasks: ["255.192.0.0"])
             v4.includedRoutes = [NEIPv4Route(destinationAddress: "100.64.0.0", subnetMask: "255.192.0.0"),
                                  NEIPv4Route(destinationAddress: "198.18.0.53", subnetMask: "255.255.255.255")]
-            if !exitNode.isEmpty {
-                // Whole internet into the tunnel; allowed IPs steer it to
-                // the exit node.
-                v4.includedRoutes?.append(NEIPv4Route.default())
-            }
+            if !exitNode.isEmpty { v4.includedRoutes?.append(NEIPv4Route.default()) }
             settings.ipv4Settings = v4
             settings.dnsSettings = NEDNSSettings(servers: ["198.18.0.53"])
             settings.dnsSettings?.matchDomains = ["mnet"]
-
-            self.setTunnelNetworkSettings(settings) { setErr in
-                if let setErr = setErr {
-                    completionHandler(setErr)
-                    return
-                }
-                var startErr: NSError?
-                node.startFlow(Flow(self.packetFlow), server: server, network: network,
-                               name: nodeName, authKey: authKey, error: &startErr)
-                completionHandler(startErr)
-            }
-        }
+            return settings
+        }, apply: { settings, done in
+            self.setTunnelNetworkSettings(settings, completionHandler: done)
+        }, activate: { node in
+            try node.startFlow(Flow(self.packetFlow), server: server, network: network,
+                               name: nodeName, authKey: authKey)
+        }, completion: completionHandler)
     }
 
     override func stopTunnel(with reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {
-        node?.stop()
-        node = nil
-        completionHandler()
+        lifecycle.stop(completion: completionHandler)
     }
 }

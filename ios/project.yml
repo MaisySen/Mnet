@@ -22,6 +22,7 @@ targets:
         excludes:
           - "PacketTunnelProvider.swift"
           - "PacketFlowBuffer.swift"
+          - "TunnelLifecycle.swift"
           - "Flow.swift"
           - "*.md"
           - "build-go.sh"
@@ -41,6 +42,7 @@ targets:
     platform: iOS
     sources:
       - path: ios/PacketTunnelProvider.swift
+      - path: ios/TunnelLifecycle.swift
       - path: ios/PacketFlowBuffer.swift
       - path: ios/Flow.swift
     dependencies:
