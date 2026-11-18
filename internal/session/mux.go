@@ -89,6 +89,13 @@ type Stream struct {
 // to the returned mux. The caller must set any handshake deadline beforehand.
 // accept is called on the host side (via Listen) to decide consent.
 func Dial(conn net.Conn, nodeName string) (*Mux, error) {
+	return DialWithPeerVerifier(conn, nodeName, nil)
+}
+
+// DialWithPeerVerifier checks the host reply before starting stream dispatch.
+// The callback must bind the reply to a trusted source, not trust its label.
+// A rejection closes the connection and publishes no active mux.
+func DialWithPeerVerifier(conn net.Conn, nodeName string, verify func(HelloReply, net.Addr) error) (*Mux, error) {
 	success := false
 	defer func() {
 		if !success {
@@ -116,6 +123,11 @@ func Dial(conn net.Conn, nodeName string) (*Mux, error) {
 	}
 	if !rep.Accepted {
 		return nil, fmt.Errorf("session: refused: %s", rep.Reason)
+	}
+	if verify != nil {
+		if err := verify(rep, conn.RemoteAddr()); err != nil {
+			return nil, err
+		}
 	}
 	m.start()
 	success = true

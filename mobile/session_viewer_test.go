@@ -120,3 +120,9 @@ type viewerOnce struct{ conn net.Conn }
 func (l *viewerOnce) Accept() (net.Conn, error) { return l.conn, nil }
 func (l *viewerOnce) Close() error              { return nil }
 func (l *viewerOnce) Addr() net.Addr            { return l.conn.LocalAddr() }
+
+// Lifecycle fixtures deliberately isolate transport ownership from production
+// peer-map authorization. There is no unverified mobile connector in production.
+func (n *Node) connectSession(conn net.Conn, name string, cb ViewerCallbacks, timeout time.Duration) (*SessionViewer, error) {
+	return n.connectSessionWithVerifier(conn, name, cb, timeout, func(session.HelloReply, net.Addr) error { return nil })
+}

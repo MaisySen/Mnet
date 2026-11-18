@@ -2,6 +2,7 @@ package session
 
 import (
 	"encoding/json"
+	"errors"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -79,6 +80,37 @@ func TestDialSuccessTransfersConnectionToMux(t *testing.T) {
 	mux.Close()
 	if conn.closes.Load() != 1 {
 		t.Fatal("mux did not close transport")
+	}
+	<-done
+}
+
+func TestDialPeerVerifierRejectsBeforePublishingMux(t *testing.T) {
+	a, b := net.Pipe()
+	defer b.Close()
+	conn := &countedSessionConn{Conn: a}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if _, err := readFrame(b); err != nil {
+			return
+		}
+		payload, _ := json.Marshal(HelloReply{Version: protoVersion, Accepted: true, NodeName: "claimed-host"})
+		_ = writeFrame(b, Frame{StreamID: StreamControl, Type: msgData, Payload: payload})
+	}()
+	calls := 0
+	denial := errors.New("unbound host")
+	mux, err := DialWithPeerVerifier(conn, "viewer", func(reply HelloReply, from net.Addr) error {
+		calls++
+		if reply.NodeName != "claimed-host" || from != conn.RemoteAddr() {
+			t.Error("verifier did not receive actual reply and source")
+		}
+		return denial
+	})
+	if mux != nil || !errors.Is(err, denial) {
+		t.Fatal("verifier denial did not prevent admission", err)
+	}
+	if calls != 1 || conn.closes.Load() != 1 {
+		t.Fatal("verifier/transport ownership", calls, conn.closes.Load())
 	}
 	<-done
 }

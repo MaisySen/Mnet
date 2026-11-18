@@ -75,6 +75,7 @@ type SessionViewer struct {
 	viewer *session.Viewer
 	mux    *session.Mux
 	node   *Node
+	access *activeSessionAccess
 }
 
 type sessionHostRun struct {
@@ -345,19 +346,97 @@ func (n *Node) ConnectSession(peerIP string, cb ViewerCallbacks) (*SessionViewer
 	if state.Status != "up" {
 		return nil, errors.New("mesh is not up")
 	}
+	requestedIP, err := netip.ParseAddr(peerIP)
+	if err != nil || !requestedIP.Is4() {
+		return nil, errors.New("session destination must be a mesh IPv4 address")
+	}
+	source := &net.TCPAddr{IP: net.IP(requestedIP.AsSlice()), Port: SessionPort}
+	expectedName, expectedKey, ok := verifiedSessionDestination(n.d.SessionPeers(), source)
+	if !ok {
+		return nil, errors.New("session destination is not an authorized peer")
+	}
+	lookup := func() []daemon.SessionPeer {
+		peers := n.d.SessionPeers()
+		name, key, current := verifiedSessionPeer(peers, expectedName, source)
+		if !current || name != expectedName || key != expectedKey {
+			return nil
+		}
+		return peers
+	}
 	conn, err := dialMeshTCP(state.IPv4, net.JoinHostPort(peerIP, fmt.Sprint(SessionPort)), 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
-	return n.connectSession(conn, n.d.Status().NodeName, cb, 70*time.Second)
+	return n.connectAuthorizedSession(conn, state.NodeName, cb, 70*time.Second, lookup)
 }
 
-func (n *Node) connectSession(conn net.Conn, name string, cb ViewerCallbacks, timeout time.Duration) (*SessionViewer, error) {
+// connectAuthorizedSession binds an outgoing viewer to the current mesh peer,
+// including an admission check after the host's potentially blocking consent.
+func (n *Node) connectAuthorizedSession(conn net.Conn, name string, cb ViewerCallbacks, timeout time.Duration, lookup func() []daemon.SessionPeer) (*SessionViewer, error) {
+	if lookup == nil || cb == nil {
+		conn.Close()
+		return nil, errors.New("viewer authorization unavailable")
+	}
+	source := conn.RemoteAddr()
+	peerName, peerKey, ok := verifiedSessionDestination(lookup(), source)
+	if !ok {
+		conn.Close()
+		return nil, errors.New("session destination is not an authorized peer")
+	}
+	access := &activeSessionAccess{current: func() bool {
+		currentName, currentKey, current := verifiedSessionPeer(lookup(), peerName, source)
+		return current && currentName == peerName && currentKey == peerKey
+	}}
+	guarded := &authorizedViewerCallbacks{ViewerCallbacks: cb, access: access}
+	v, err := n.connectSessionWithVerifier(conn, name, guarded, timeout, func(rep session.HelloReply, from net.Addr) error {
+		currentName, currentKey, current := verifiedSessionPeer(lookup(), rep.NodeName, from)
+		if !current || currentName != peerName || currentKey != peerKey || !access.allowed() {
+			return errors.New("session host identity changed or was denied")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Queued frame callbacks may already be running. Attach the mux under the
+	// guard's lock and close it if a callback observed denial before attachment.
+	access.setMux(v.mux)
+	v.access = access
+	if !access.allowed() {
+		v.Close()
+		return nil, errors.New("session host authorization ended")
+	}
+	go access.watch()
+	return v, nil
+}
+
+func verifiedSessionDestination(peers []daemon.SessionPeer, from net.Addr) (string, string, bool) {
+	tcp, ok := from.(*net.TCPAddr)
+	if !ok || tcp == nil {
+		return "", "", false
+	}
+	source, ok := netip.AddrFromSlice(tcp.IP)
+	if !ok {
+		return "", "", false
+	}
+	source = source.Unmap()
+	claim := ""
+	for _, p := range peers {
+		ip, err := netip.ParseAddr(p.IPv4)
+		if err == nil && ip.Unmap() == source {
+			claim = p.Name
+			break
+		}
+	}
+	return verifiedSessionPeer(peers, claim, from)
+}
+
+func (n *Node) connectSessionWithVerifier(conn net.Conn, name string, cb ViewerCallbacks, timeout time.Duration, verify func(session.HelloReply, net.Addr) error) (*SessionViewer, error) {
 	sessMu.Lock()
-	if n.sessionClosed || cb == nil {
+	if n.sessionClosed || cb == nil || verify == nil {
 		sessMu.Unlock()
 		conn.Close()
-		return nil, errors.New("node closed or viewer callbacks missing")
+		return nil, errors.New("node closed or viewer callbacks/authorization missing")
 	}
 	if n.viewers == nil {
 		n.viewers = make(map[net.Conn]struct{})
@@ -374,7 +453,7 @@ func (n *Node) connectSession(conn net.Conn, name string, cb ViewerCallbacks, ti
 	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
 		return nil, err
 	}
-	m, err := session.Dial(conn, name)
+	m, err := session.DialWithPeerVerifier(conn, name, verify)
 	if err != nil {
 		return nil, err
 	}
@@ -416,6 +495,9 @@ func (n *Node) stopViewers(permanent bool) {
 
 // SendInputJSON sends one input event, JSON-encoded session.InputEvent.
 func (v *SessionViewer) SendInputJSON(evJSON string) error {
+	if v.access != nil && !v.access.allowed() {
+		return errors.New("session authorization ended")
+	}
 	var ev session.InputEvent
 	if err := json.Unmarshal([]byte(evJSON), &ev); err != nil {
 		return err
@@ -425,12 +507,18 @@ func (v *SessionViewer) SendInputJSON(evJSON string) error {
 
 // SendChat sends a viewer-side chat line.
 func (v *SessionViewer) SendChat(text string) error {
+	if v.access != nil && !v.access.allowed() {
+		return errors.New("session authorization ended")
+	}
 	return v.viewer.SendChat(v.node.d.Status().NodeName, text)
 }
 
 // SendFile pushes one file to the host. Blocks until the ack; call
 // from a worker thread.
 func (v *SessionViewer) SendFile(path string) error {
+	if v.access != nil && !v.access.allowed() {
+		return errors.New("session authorization ended")
+	}
 	return session.SendFile(v.mux, path)
 }
 
@@ -444,6 +532,7 @@ type activeSessionAccess struct {
 	mux     *session.Mux
 	current func() bool
 	revoked atomic.Bool
+	muxMu   sync.Mutex
 }
 
 func (a *activeSessionAccess) allowed() bool {
@@ -454,10 +543,21 @@ func (a *activeSessionAccess) allowed() bool {
 		return true
 	}
 	a.revoked.Store(true)
-	if a.mux != nil {
-		a.mux.Close()
+	a.muxMu.Lock()
+	mux := a.mux
+	a.muxMu.Unlock()
+	if mux != nil {
+		mux.Close()
 	}
 	return false
+}
+func (a *activeSessionAccess) setMux(mux *session.Mux) {
+	a.muxMu.Lock()
+	a.mux = mux
+	a.muxMu.Unlock()
+	if a.revoked.Load() {
+		mux.Close()
+	}
 }
 
 // watch also checks while a platform capture is blocked or screen output is
@@ -475,6 +575,22 @@ func (a *activeSessionAccess) watch() {
 			return
 		case <-ticker.C:
 		}
+	}
+}
+
+type authorizedViewerCallbacks struct {
+	ViewerCallbacks
+	access *activeSessionAccess
+}
+
+func (c *authorizedViewerCallbacks) OnFrame(frame []byte) {
+	if c.access.allowed() {
+		c.ViewerCallbacks.OnFrame(frame)
+	}
+}
+func (c *authorizedViewerCallbacks) OnChat(message string) {
+	if c.access.allowed() {
+		c.ViewerCallbacks.OnChat(message)
 	}
 }
 
