@@ -70,10 +70,7 @@ var _ conn.Bind = (*Bind)(nil)
 
 // New makes a bind. Open it before handing it to the device.
 func New() *Bind {
-	return &Bind{
-		recv: make(chan relayPacket, 256),
-		done: make(chan struct{}),
-	}
+	return &Bind{closed: true}
 }
 
 // SetRelaySender installs the relay sender.
@@ -99,13 +96,15 @@ func (b *Bind) Inject(srcPubkey string, pkt []byte) {
 	cp := make([]byte, len(pkt))
 	copy(cp, pkt)
 	b.mu.Lock()
-	done := b.done
-	b.mu.Unlock()
+	defer b.mu.Unlock()
+	if b.closed || b.udp == nil {
+		return
+	}
 	select {
 	case b.recv <- relayPacket{data: cp, ep: &RelayEndpoint{Pubkey: srcPubkey, raw: raw}}:
-	case <-done:
 	default:
-		// Full queue: drop, like UDP under load.
+		// Full queue: drop, like UDP under load. Admission and queue selection
+		// share Close/Open's lock, so a packet cannot seed a later generation.
 	}
 }
 
@@ -121,19 +120,29 @@ func decodeKey(s string) ([]byte, error) {
 // wireguard-go closes and reopens the bind on Up and on listen port
 // changes, so Open must work again after Close: reset the lifecycle.
 func (b *Bind) Open(port uint16) ([]conn.ReceiveFunc, uint16, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.udp != nil {
+		return nil, 0, conn.ErrBindAlreadyOpen
+	}
 	u, err := net.ListenUDP("udp4", &net.UDPAddr{Port: int(port)})
 	if err != nil {
 		return nil, 0, err
 	}
-	b.mu.Lock()
-	if b.closed {
-		b.closed = false
-		b.done = make(chan struct{})
-	}
-	b.udp = u
+	// Every Open owns distinct sockets, cancellation and relay buffering.
+	// Returned callbacks capture that generation, never mutable b.udp/b.recv.
+	done := make(chan struct{})
+	recv := make(chan relayPacket, 256)
+	b.closed, b.done, b.recv, b.udp = false, done, recv, u
 	b.port = uint16(u.LocalAddr().(*net.UDPAddr).Port)
-	b.mu.Unlock()
-	return []conn.ReceiveFunc{b.receiveUDP, b.receiveRelay}, b.port, nil
+	return []conn.ReceiveFunc{
+		func(packets [][]byte, sizes []int, eps []conn.Endpoint) (int, error) {
+			return b.receiveUDP(u, done, packets, sizes, eps)
+		},
+		func(packets [][]byte, sizes []int, eps []conn.Endpoint) (int, error) {
+			return receiveRelay(recv, done, packets, sizes, eps)
+		},
+	}, b.port, nil
 }
 
 // Port is the bound UDP port, for endpoint reporting and STUN.
@@ -159,17 +168,15 @@ func (b *Bind) WriteStun(msg []byte, server string) error {
 	return err
 }
 
-func (b *Bind) receiveUDP(packets [][]byte, sizes []int, eps []conn.Endpoint) (int, error) {
+func (b *Bind) receiveUDP(u *net.UDPConn, done <-chan struct{}, packets [][]byte, sizes []int, eps []conn.Endpoint) (int, error) {
 	if len(packets) == 0 {
 		return 0, nil
 	}
 	for {
-		b.mu.Lock()
-		u := b.udp
-		closed := b.closed
-		b.mu.Unlock()
-		if u == nil || closed {
+		select {
+		case <-done:
 			return 0, net.ErrClosed
+		default:
 		}
 		_ = u.SetReadDeadline(time.Now().Add(time.Second))
 		n, src, err := u.ReadFromUDP(packets[0])
@@ -177,13 +184,17 @@ func (b *Bind) receiveUDP(packets [][]byte, sizes []int, eps []conn.Endpoint) (i
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				continue
 			}
-			b.mu.Lock()
-			closed = b.closed
-			b.mu.Unlock()
-			if closed {
+			select {
+			case <-done:
 				return 0, net.ErrClosed
+			default:
+				return 0, err
 			}
-			return 0, err
+		}
+		select {
+		case <-done:
+			return 0, net.ErrClosed
+		default:
 		}
 		msg := packets[0][:n]
 		if IsStunMessage(msg) {
@@ -203,12 +214,20 @@ func (b *Bind) receiveUDP(packets [][]byte, sizes []int, eps []conn.Endpoint) (i
 	}
 }
 
-func (b *Bind) receiveRelay(packets [][]byte, sizes []int, eps []conn.Endpoint) (int, error) {
-	b.mu.Lock()
-	done := b.done
-	b.mu.Unlock()
+func receiveRelay(recv <-chan relayPacket, done <-chan struct{}, packets [][]byte, sizes []int, eps []conn.Endpoint) (int, error) {
 	select {
-	case p := <-b.recv:
+	case <-done:
+		return 0, net.ErrClosed
+	default:
+	}
+	select {
+	case p := <-recv:
+		// Cancellation wins over a buffered old-generation packet.
+		select {
+		case <-done:
+			return 0, net.ErrClosed
+		default:
+		}
 		if len(packets) == 0 {
 			return 0, nil
 		}
@@ -231,6 +250,7 @@ func (b *Bind) Close() error {
 	}
 	u := b.udp
 	b.udp = nil
+	b.port = 0
 	b.mu.Unlock()
 	if already {
 		return nil
