@@ -469,7 +469,7 @@ public class MeshInstrumentation extends Instrumentation {
                 if (MnetVpnService.currentNode() != null) {
                     JSONObject state = new JSONObject(MnetVpnService.currentNode().status());
                     JSONObject dnsPackets=state.optJSONObject("dns_packets");
-                    if(dnsPackets!=null)for(String key:new String[]{"udp_seen","udp_received","udp_sent","udp_checksum_error","udp_malformed","udp_unknown_port","udp_buffer_error","udp_send_error","ip_invalid_source","ip_malformed"})diagnostics+=" dns_"+key+"="+dnsPackets.optBoolean(key);
+                    if(dnsPackets!=null)for(String key:new String[]{"reply_written","reply_write_failed","udp_seen","udp_received","udp_sent","udp_checksum_error","udp_malformed","udp_unknown_port","udp_buffer_error","udp_send_error","ip_invalid_source","ip_malformed"})diagnostics+=" dns_"+key+"="+dnsPackets.optBoolean(key);
                     org.json.JSONArray peers = state.optJSONArray("peers");
                     boolean handshake = false, received = false, transmitted = false, relay = false;
                     if (peers != null) for (int i = 0; i < peers.length(); i++) {

@@ -34,13 +34,15 @@ const LocalIPv4 = "198.18.0.53"
 // the original tunnel path. All writes are serialized with resolver replies.
 type Tunnel struct {
 	tun.Device
-	writeMu sync.Mutex
-	mu      sync.RWMutex
-	local   *localEndpoint
-	udpSeen atomic.Bool
-	pending [][]byte // bounded DNS packets received while the first map is loading
-	closed  bool
-	once    sync.Once
+	writeMu          sync.Mutex
+	mu               sync.RWMutex
+	local            *localEndpoint
+	udpSeen          atomic.Bool
+	replyWritten     atomic.Bool
+	replyWriteFailed atomic.Bool
+	pending          [][]byte // bounded DNS packets received while the first map is loading
+	closed           bool
+	once             sync.Once
 }
 type localEndpoint struct {
 	ip     [4]byte
@@ -122,10 +124,12 @@ func (t *Tunnel) StartDNS(s *Server, mtu int) error {
 			view.Release()
 			pkt.DecRef()
 			if n, err := t.Write([][]byte{data}, 0); err != nil || n != 1 {
+				t.replyWriteFailed.Store(true)
 				s.Close()
 				cancel()
 				return
 			}
+			t.replyWritten.Store(true)
 		}
 	}()
 	for _, data := range t.pending {
@@ -294,7 +298,7 @@ func localDNSDestination(p []byte) bool {
 func (t *Tunnel) Diagnostics() map[string]bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	result := map[string]bool{"udp_seen": t.udpSeen.Load()}
+	result := map[string]bool{"udp_seen": t.udpSeen.Load(), "reply_written": t.replyWritten.Load(), "reply_write_failed": t.replyWriteFailed.Load()}
 	if t.local == nil {
 		return result
 	}
