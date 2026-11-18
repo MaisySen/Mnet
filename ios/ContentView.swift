@@ -13,6 +13,8 @@ struct ContentView: View {
     @State private var statusText = "Disconnected"
     @State private var connected = false
     @State private var busy = false
+    @State private var statusReads = StatusReadGate()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -46,6 +48,10 @@ struct ContentView: View {
                 EnrollmentPreferences.removeLegacyKey(from: .standard)
                 refresh()
             }
+            .onReceive(NotificationCenter.default.publisher(for: .NEVPNStatusDidChange)) { _ in refresh() }
+            .onReceive(NotificationCenter.default.publisher(for: .NEVPNConfigurationChange)) { _ in refresh() }
+            .onChange(of: scenePhase) { phase in if phase == .active { refresh() } }
+            .onDisappear { statusReads.invalidate() }
         }
     }
 
@@ -85,7 +91,18 @@ struct ContentView: View {
     }
 
     private func connect() {
+        statusReads.invalidate()
         busy = true
+        // This explicit request owns an immutable snapshot, even if the form
+        // changes while preference save/reload callbacks are pending.
+        let opts: [String: NSObject] = [
+            "server": server as NSObject,
+            "network": network as NSObject,
+            "authKey": authKey as NSObject,
+            "nodeName": nodeName as NSObject,
+            "exitNode": exitNode as NSObject,
+        ]
+        let submittedKey = authKey
         manager(createIfMissing: true) { result in
             switch result {
             case .failure(let error):
@@ -93,13 +110,6 @@ struct ContentView: View {
                 statusText = "Connect unavailable: \(error.localizedDescription)"
             case .success(let manager):
                 guard let manager = manager else { busy = false; return }
-                let opts: [String: NSObject] = [
-                    "server": server as NSObject,
-                    "network": network as NSObject,
-                    "authKey": authKey as NSObject,
-                    "nodeName": nodeName as NSObject,
-                    "exitNode": exitNode as NSObject,
-                ]
                 // Saving/enabling is allowed only after the explicit Connect
                 // action. Reload before start instead of assuming save made it ready.
                 manager.isEnabled = true
@@ -120,7 +130,8 @@ struct ContentView: View {
                             }
                             do {
                                 try manager.connection.startVPNTunnel(options: opts)
-                                authKey = ""
+                                if authKey == submittedKey { authKey = "" }
+                                busy = false
                                 refresh()
                             } catch {
                                 statusText = "Start failed: \(error.localizedDescription)"
@@ -133,6 +144,7 @@ struct ContentView: View {
     }
 
     private func disconnect() {
+        statusReads.invalidate()
         busy = true
         manager(createIfMissing: false) { result in
             busy = false
@@ -147,7 +159,12 @@ struct ContentView: View {
     }
 
     private func refresh() {
+        // OS notifications during an explicit mutation are reconciled by the
+        // final refresh. They must not race its error or selected action.
+        guard !busy else { return }
+        let ticket = statusReads.begin()
         manager(createIfMissing: false) { result in
+            guard statusReads.isCurrent(ticket), !busy else { return }
             switch result {
             case .failure(let error):
                 statusText = "VPN configuration unavailable: \(error.localizedDescription)"
