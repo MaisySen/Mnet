@@ -28,7 +28,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         }, prepare: { node in
             // Always set, including empty, so an old saved exit selection does
             // not silently outlive this request. Failure is terminal.
-            try node.setUseExitNode(exitNode)
+            try node.setUseExit(exitNode)
             var prepareError: NSError?
             let ipv4 = node.prepare(server, network: network, name: nodeName, authKey: authKey, error: &prepareError)
             if let error = prepareError { throw error }
@@ -45,7 +45,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         }, apply: { settings, done in
             self.setTunnelNetworkSettings(settings, completionHandler: done)
         }, activate: { node in
-            try node.startFlow(Flow(self.packetFlow), server: server, network: network,
+            try node.start(Flow(self.packetFlow), server: server, network: network,
                                name: nodeName, authKey: authKey)
         }, completion: completionHandler)
     }

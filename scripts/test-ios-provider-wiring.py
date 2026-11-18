@@ -17,10 +17,10 @@ class ProviderOwnership(unittest.TestCase):
 
     def test_no_swallowed_setup_errors(self):
         self.assertNotIn('try?', self.source)
-        self.assertIn('try node.setUseExitNode(exitNode)', self.source)
+        self.assertIn('try node.setUseExit(exitNode)', self.source)
         self.assertIn('error: &prepareError)', self.source)
         self.assertIn('if let error = prepareError { throw error }', self.source)
-        self.assertIn('try node.startFlow(', self.source)
+        self.assertIn('try node.start(Flow(', self.source)
         self.assertNotIn('if !exitNode.isEmpty {\n            try', self.source)
 
     def test_target_contains_coordinator(self):

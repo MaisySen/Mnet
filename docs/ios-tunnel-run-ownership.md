@@ -16,3 +16,5 @@ There is no UI layout change. Existing manual enrollment, credential storage, de
 
 
 First CI execution passed the host ownership scenarios and four other general jobs, then the new full-provider SDK check found that Prepare's generated nonnull String result retains an explicit NSErrorPointer in Swift instead of importing as throws. The provider now checks that error explicitly before settings creation. This compile-surface correction does not waive the error or change lifecycle policy. The changed-revision full-provider compiler result must be collected again.
+
+The next full-provider compiler pass exposed two further Swift importer renames on the older uncompiled call sites: setUseExitNode imports as setUseExit, and the PacketFlow overload imports as start rather than startFlow. Calls now use the compiler-reported imported names. Ownership host scenarios still passed; this correction again awaits the exact changed-revision full SDK check. The unrelated prototype first-CDP timeout was not rerun or repaired.
