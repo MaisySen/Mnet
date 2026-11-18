@@ -3,7 +3,6 @@ package mobile
 import (
 	"fintex.au/mnet/internal/daemon"
 	"fintex.au/mnet/internal/session"
-	"fmt"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -29,6 +28,11 @@ func TestVerifiedSessionPeerMatchesSourceAndUniqueCurrentName(t *testing.T) {
 		{"whitespace", " Viewer", []daemon.SessionPeer{peer}, source, false},
 		{"duplicate-name", "Viewer", []daemon.SessionPeer{peer, {Name: "viewer", IPv4: "100.64.0.3"}}, source, false},
 		{"duplicate-source", "Viewer", []daemon.SessionPeer{peer, {Name: "Other", IPv4: peer.IPv4}}, source, false},
+		{"nil-tcp-source", "Viewer", []daemon.SessionPeer{peer}, (*net.TCPAddr)(nil), false},
+		{"empty-key", "Viewer", []daemon.SessionPeer{{Name: peer.Name, IPv4: peer.IPv4}}, source, false},
+		{"malformed-key", "Viewer", []daemon.SessionPeer{{Name: peer.Name, IPv4: peer.IPv4, PublicKey: "not-base64"}}, source, false},
+		{"short-key", "Viewer", []daemon.SessionPeer{{Name: peer.Name, IPv4: peer.IPv4, PublicKey: "AA=="}}, source, false},
+		{"noncanonical-key", "Viewer", []daemon.SessionPeer{{Name: peer.Name, IPv4: peer.IPv4, PublicKey: fixturePeerKey + "\n"}}, source, false},
 		{"invalid-map-ip", "Viewer", []daemon.SessionPeer{{Name: peer.Name, IPv4: "broken"}}, source, false},
 	}
 	for _, tc := range cases {
@@ -90,11 +94,11 @@ func TestMobileSessionSpoofDoesNotReachConsentAndValidPeerStillWorks(t *testing.
 }
 
 func TestMobileSessionRevokedMapCannotUsePendingConsent(t *testing.T) {
-	for _, replaceKey := range []bool{false, true} {
-		t.Run(fmt.Sprint("key-replaced-", replaceKey), func(t *testing.T) { testPendingIdentityChange(t, replaceKey) })
+	for _, change := range []string{"removed", "key-replaced", "renamed", "duplicate-source", "duplicate-name"} {
+		t.Run(change, func(t *testing.T) { testPendingIdentityChange(t, change) })
 	}
 }
-func testPendingIdentityChange(t *testing.T, replaceKey bool) {
+func testPendingIdentityChange(t *testing.T, change string) {
 	owner := &Node{}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -128,10 +132,19 @@ func testPendingIdentityChange(t *testing.T, replaceKey bool) {
 	case <-time.After(time.Second):
 		t.Fatal("consent not requested")
 	}
-	if replaceKey {
+	switch change {
+	case "key-replaced":
 		peers.Store([]daemon.SessionPeer{{Name: "viewer", IPv4: "127.0.0.1", PublicKey: "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}})
-	} else {
+	case "renamed":
+		peers.Store([]daemon.SessionPeer{{Name: "new-viewer", IPv4: "127.0.0.1", PublicKey: fixturePeerKey}})
+	case "duplicate-source":
+		peers.Store([]daemon.SessionPeer{{Name: "viewer", IPv4: "127.0.0.1", PublicKey: fixturePeerKey}, {Name: "other", IPv4: "127.0.0.1", PublicKey: fixturePeerKey}})
+	case "duplicate-name":
+		peers.Store([]daemon.SessionPeer{{Name: "viewer", IPv4: "127.0.0.1", PublicKey: fixturePeerKey}, {Name: "VIEWER", IPv4: "127.0.0.2", PublicKey: fixturePeerKey}})
+	case "removed":
 		peers.Store([]daemon.SessionPeer{})
+	default:
+		t.Fatal("unknown fixture change")
 	}
 	once.Do(func() { close(cb.release) })
 	select {
