@@ -7,7 +7,7 @@ import NetworkExtension
 struct ContentView: View {
     @State private var server = UserDefaults.standard.string(forKey: "server") ?? ""
     @State private var network = UserDefaults.standard.string(forKey: "network") ?? ""
-    @State private var authKey = UserDefaults.standard.string(forKey: "authKey") ?? ""
+    @State private var authKey = ""
     @State private var nodeName = UIDevice.current.name
     @State private var exitNode = UserDefaults.standard.string(forKey: "exitNode") ?? ""
     @State private var statusText = "Disconnected"
@@ -42,17 +42,17 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("Mnet")
-            .onAppear(perform: refresh)
+            .onAppear {
+                EnrollmentPreferences.removeLegacyKey(from: .standard)
+                refresh()
+            }
         }
     }
 
     private func save() {
-        let d = UserDefaults.standard
-        d.set(server, forKey: "server")
-        d.set(network, forKey: "network")
-        d.set(authKey, forKey: "authKey")
-        d.set(nodeName, forKey: "nodeName")
-        d.set(exitNode, forKey: "exitNode")
+        EnrollmentPreferences.saveNonSecretSettings(to: .standard, server: server,
+                                                     network: network, nodeName: nodeName,
+                                                     exitNode: exitNode)
     }
 
     // Loading is read-only. A new unsaved Mnet manager is constructed only for
@@ -120,6 +120,7 @@ struct ContentView: View {
                             }
                             do {
                                 try manager.connection.startVPNTunnel(options: opts)
+                                authKey = ""
                                 refresh()
                             } catch {
                                 statusText = "Start failed: \(error.localizedDescription)"

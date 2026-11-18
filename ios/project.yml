@@ -21,6 +21,7 @@ targets:
       - path: ContentView.swift
       - path: MnetApp.swift
       - path: TunnelManagerPolicy.swift
+      - path: EnrollmentPreferences.swift
     dependencies:
       - target: MnetTunnel
         embed: true

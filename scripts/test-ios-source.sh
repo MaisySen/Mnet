@@ -7,11 +7,12 @@ OUT=$(mktemp -d "${TMPDIR:-/tmp}/mnet-ios-source.XXXXXX")
 trap 'rm -rf "$OUT"' EXIT HUP INT TERM
 python3 "$ROOT/scripts/test-ios-manager-wiring.py"
 python3 "$ROOT/scripts/test-ios-provider-wiring.py"
+python3 "$ROOT/scripts/test-ios-enrollment-input.py"
 xcrun swiftc -swift-version 5 "$ROOT/ios/TunnelManagerPolicy.swift" "$ROOT/ios-tests/TunnelManagerPolicyTest.swift" -o "$OUT/policy-test"
 "$OUT/policy-test"
 SDK=$(xcrun --sdk iphonesimulator --show-sdk-path)
 xcrun swiftc -swift-version 5 -typecheck -target arm64-apple-ios16.0-simulator -sdk "$SDK" \
-    "$ROOT/ios/TunnelManagerPolicy.swift" "$ROOT/ios/ContentView.swift" "$ROOT/ios/MnetApp.swift"
+    "$ROOT/ios/TunnelManagerPolicy.swift" "$ROOT/ios/EnrollmentPreferences.swift" "$ROOT/ios/ContentView.swift" "$ROOT/ios/MnetApp.swift"
 printf '%s\n' 'PASS actual iOS app SwiftUI/NetworkExtension source typecheck; no extension/Go framework/signature/runtime acceptance'
 
 xcrun swiftc -swift-version 5 "$ROOT/ios/PacketFlowBuffer.swift" "$ROOT/ios-tests/PacketFlowBufferTest.swift" -o "$OUT/flow-test"
@@ -30,3 +31,6 @@ xcrun swiftc -swift-version 5 -typecheck -target arm64-apple-ios16.0-simulator -
     -I "$OUT/objc/src/gobind" "$ROOT/ios/TunnelLifecycle.swift" "$ROOT/ios/PacketFlowBuffer.swift" \
     "$ROOT/ios/Flow.swift" "$ROOT/ios/PacketTunnelProvider.swift"
 printf '%s\n' 'PASS actual packet-tunnel provider generated-bridge/iOS SDK source typecheck; no linked extension or device acceptance'
+
+xcrun swiftc -swift-version 5 "$ROOT/ios/EnrollmentPreferences.swift" "$ROOT/ios-tests/EnrollmentPreferencesTest.swift" -o "$OUT/enrollment-preferences-test"
+"$OUT/enrollment-preferences-test"
