@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"fintex.au/mnet/internal/daemon"
+	"fintex.au/mnet/internal/proofnet"
 	"fintex.au/mnet/internal/session"
 )
 
@@ -44,6 +45,7 @@ func (s *acceptanceScreen) Capture() ([]byte, bool, error) {
 func (s *acceptanceScreen) Inject(e session.InputEvent) error { s.inputs.Add(1); return nil }
 
 type acceptancePeer struct {
+	listener     net.Listener
 	mu           sync.Mutex
 	peer         *proofNodeT
 	mux          *session.Mux
@@ -127,7 +129,11 @@ func (p *acceptancePeer) command(cmd string) error {
 		p.close()
 		p.screen = &acceptanceScreen{}
 		p.staleRefused = false
-		go p.acceptHost(cmd == "host")
+		ln, err := p.hostListener()
+		if err != nil {
+			return err
+		}
+		go p.acceptHost(ln, cmd == "host")
 	case "allow", "decline", "keep", "pause", "revoke", "stale":
 		if p.hc == nil {
 			return net.ErrClosed
@@ -188,12 +194,20 @@ func (p *acceptancePeer) connectViewer() {
 		}
 	}})
 }
-func (p *acceptancePeer) acceptHost(capable bool) {
+
+// Called under the command mutex. Listen succeeds before readiness is reported.
+func (p *acceptancePeer) hostListener() (net.Listener, error) {
+	if p.listener != nil {
+		return p.listener, nil
+	}
 	ln, err := p.peer.net.ListenTCPAddrPort(netip.AddrPortFrom(p.peer.ip, 5909))
 	if err != nil {
-		return
+		return nil, err
 	}
-	defer ln.Close()
+	p.listener = ln
+	return ln, nil
+}
+func (p *acceptancePeer) acceptHost(ln net.Listener, capable bool) {
 	// The listener deadline is owned by the outer bounded test process.
 	m, err := session.Listen(ln, "control-peer", func(h session.Hello, from net.Addr) (bool, string) {
 		target, ok := p.currentAndroid()
@@ -234,7 +248,7 @@ func (p *acceptancePeer) status() map[string]any {
 	if p.screen != nil {
 		inputs = p.screen.inputs.Load()
 	}
-	return map[string]any{"control": state, "frames": p.frames.Load(), "inputs": inputs, "closed": closed, "stale_refused": p.staleRefused}
+	return map[string]any{"control": state, "frames": p.frames.Load(), "inputs": inputs, "closed": closed, "stale_refused": p.staleRefused, "listener_ready": p.listener != nil}
 }
 func TestControlAcceptancePeer(t *testing.T) {
 	path := os.Getenv("MNET_CONTROL_CONFIG")
@@ -256,7 +270,12 @@ func TestControlAcceptancePeer(t *testing.T) {
 	defer peer.d.Down()
 	os.Setenv("MNET_CONTROL_ROOT", cfg.Root)
 	p := &acceptancePeer{peer: peer}
-	defer p.close()
+	defer func() {
+		p.close()
+		if p.listener != nil {
+			p.listener.Close()
+		}
+	}()
 	http.HandleFunc("/command", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Error(w, "method", 405)
@@ -277,6 +296,83 @@ func TestControlAcceptancePeer(t *testing.T) {
 	server := &http.Server{Addr: "127.0.0.1:8081", ReadHeaderTimeout: 3 * time.Second}
 	if err := server.ListenAndServe(); err != nil {
 		t.Fatal("fixture loopback server stopped")
+	}
+}
+
+// The fixture must admit later connections on one listener instead of rebinding
+// a port still occupied by the just-ended accepted TCP connection.
+func TestControlAcceptancePersistentListenerReconnect(t *testing.T) {
+	dev, n, err := proofnet.CreateNetTUN([]netip.Addr{netip.MustParseAddr("100.64.0.1")}, nil, 1280)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dev.Close()
+	p := &acceptancePeer{peer: &proofNodeT{net: n, ip: netip.MustParseAddr("100.64.0.1")}}
+	defer func() {
+		if p.listener != nil {
+			p.listener.Close()
+		}
+	}()
+	var previous session.ControlStatus
+	for i := 0; i < 3; i++ {
+		ln, err := p.hostListener()
+		if err != nil {
+			t.Fatal(err)
+		}
+		ready := make(chan *session.HostControl, 1)
+		end := make(chan struct{})
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			m, e := session.Listen(ln, "fixture", func(session.Hello, net.Addr) (bool, string) { return true, "" })
+			if e != nil {
+				return
+			}
+			c := session.NewHostControl(nil)
+			screen := &acceptanceScreen{}
+			h := session.ServeHostWithOptions(m, screen, screen, 8, session.HostOptions{Control: c, NegotiateControl: true})
+			ready <- c
+			<-end
+			h.Stop()
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		conn, e := n.DialContextTCPAddrPort(ctx, netip.AddrPortFrom(p.peer.ip, 5909))
+		cancel()
+		if e != nil {
+			t.Fatal(e)
+		}
+		m, e := session.DialWithControl(conn, "android", nil, true)
+		if e != nil {
+			t.Fatal(e)
+		}
+		vc := session.NewViewerControl(nil)
+		session.ConnectViewerWithOptions(m, session.ViewerOptions{Control: vc})
+		hc := <-ready
+		until := time.Now().Add(time.Second)
+		for vc.Snapshot().State != "available" && time.Now().Before(until) {
+			time.Sleep(time.Millisecond)
+		}
+		now := vc.Snapshot()
+		if now.State != "available" || now.Session == previous.Session || vc.BindInput(&session.InputEvent{}) == nil {
+			t.Fatal("reconnect inherited grant or lacked fresh available")
+		}
+		if i > 0 && hc.Decide(previous.Session, previous.Request, true) == nil {
+			t.Fatal("prior-session answer accepted")
+		}
+		if err := vc.Request(); err != nil {
+			t.Fatal(err)
+		}
+		until = time.Now().Add(time.Second)
+		for hc.Snapshot().State != "pending" && time.Now().Before(until) {
+			time.Sleep(time.Millisecond)
+		}
+		previous = hc.Snapshot()
+		if err := hc.Decide(previous.Session, previous.Request, true); err != nil {
+			t.Fatal(err)
+		}
+		close(end)
+		<-done
+		m.Close()
 	}
 }
 
@@ -302,5 +398,26 @@ func TestControlAcceptanceSyntheticCaptureAndRefusedUnreadyCommands(t *testing.T
 	status := p.status()
 	if status["closed"] != true || status["inputs"] != uint32(0) {
 		t.Fatal("unready status")
+	}
+}
+
+func TestControlAcceptanceListenerFailureDoesNotClaimReady(t *testing.T) {
+	dev, n, err := proofnet.CreateNetTUN([]netip.Addr{netip.MustParseAddr("100.64.0.1")}, nil, 1280)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dev.Close()
+	addr := netip.MustParseAddrPort("100.64.0.1:5909")
+	occupied, err := n.ListenTCPAddrPort(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer occupied.Close()
+	p := &acceptancePeer{peer: &proofNodeT{net: n, ip: addr.Addr()}}
+	if p.command("host") == nil {
+		t.Fatal("listener collision silently reported ready")
+	}
+	if p.status()["listener_ready"] != false {
+		t.Fatal("failed listener published")
 	}
 }
