@@ -20,10 +20,12 @@ class Guards(unittest.TestCase):
         source=(ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
         self.assertLess(source.index('dnsFailures++;'),source.index('DNSProof.verifyUnconnected('))
         self.assertLess(source.index('DNSProof.failureDiagnostics(failure)'),source.index('DNSProof.verifyUnconnected('))
-        diagnostic=(ROOT / 'android/instrumentation/au/fintex/mnet/fixture/DNSProof.java').read_text().split('static void verifyUnconnected(')[1].split('static void verifySystem(')[0]
+        diagnostic=(ROOT / 'android/instrumentation/au/fintex/mnet/fixture/DNSProof.java').read_text().split('private static void verifyDatagramContrast(')[1].split('static void verifySystem(')[0]
         self.assertIn('network.bindSocket(socket)',diagnostic)
         self.assertIn('socket.bind(new InetSocketAddress(InetAddress.getByName(meshSource),0))',diagnostic)
-        self.assertNotIn('socket.connect(',diagnostic)
+        self.assertIn('if(connected)socket.connect(',diagnostic)
+        self.assertIn('verifyDatagramContrast(expected,network,meshSource,false);',(ROOT / 'android/instrumentation/au/fintex/mnet/fixture/DNSProof.java').read_text())
+        self.assertLess(source.index('DNSProof.verifyConnectedContrast('),source.index('DNSProof.verifyUnconnected('))
         self.assertIn('response.getPort()!=53',diagnostic)
     def test_child_failure_does_not_echo_captured_data(self):
         with self.assertRaisesRegex(RuntimeError, '^fixture child command failed$'):

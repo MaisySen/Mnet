@@ -47,6 +47,12 @@ public class MeshInstrumentation extends Instrumentation {
                 JSONObject packets=state.optJSONObject("dns_packets");
                 if(packets!=null)for(String key:new String[]{"reply_written","reply_write_failed","udp_seen","udp_received","udp_sent"})deferredDNS+=" attempt_"+key+"="+packets.optBoolean(key);
             }catch(Exception ignored){deferredDNS+=" attemptSnapshotUnavailable=true";}
+            boolean freshConnectedPassed=false;
+            try{
+                DNSProof.verifyConnectedContrast(options.getString("peer"),getTargetContext().getSystemService(android.net.ConnectivityManager.class).getActiveNetwork(),MnetVpnService.currentNode().meshIPv4());
+                freshConnectedPassed=true;
+            }catch(Exception ignored){}
+            deferredDNS+=" freshConnectedPassed="+freshConnectedPassed;
             boolean alternatePassed=false;
             try{
                 DNSProof.verifyUnconnected(options.getString("peer"),getTargetContext().getSystemService(android.net.ConnectivityManager.class).getActiveNetwork(),MnetVpnService.currentNode().meshIPv4());
