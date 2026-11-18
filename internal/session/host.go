@@ -385,21 +385,32 @@ func (h *Host) Stop() {
 // allowed is terminal after any known denial. It closes only the transport:
 // worker-owned authorization checks must not wait for themselves via Stop.
 func (h *Host) allowed() bool {
-	if h.revoked.Load() {
+	terminal := func() bool {
+		if h.revoked.Load() {
+			return true
+		}
+		select {
+		case <-h.stop:
+			return true
+		case <-h.Mux.Closed():
+			return true
+		default:
+			return false
+		}
+	}
+	if terminal() {
 		return false
 	}
-	select {
-	case <-h.Mux.Closed():
+	if h.authorize != nil && !h.authorize() {
+		h.revoked.Store(true)
+		h.Mux.Close()
 		return false
-	default:
 	}
-	if h.authorize == nil || h.authorize() {
-		return !h.revoked.Load()
-	}
-	h.revoked.Store(true)
-	h.Mux.Close()
-	return false
+	// Authorization may finish after End/Stop or another known denial.
+	// Its late true result cannot revive dispatch on the retired host.
+	return !terminal()
 }
+
 func (h *Host) watchAuthorization() {
 	defer h.wg.Done()
 	ticker := time.NewTicker(time.Second / 8)
