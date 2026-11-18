@@ -3,6 +3,7 @@
 import pathlib
 import plistlib
 import subprocess
+import struct
 import sys
 
 app = pathlib.Path(sys.argv[1])
@@ -21,8 +22,19 @@ for bundle, identifier, kind, executable in [
     file_result = subprocess.check_output(['file', str(binary)], text=True)
     assert 'Mach-O' in file_result and 'arm64' in file_result, file_result
     assert not (bundle / '_CodeSignature').exists(), 'unexpected signature directory'
-    signed = subprocess.run(['codesign', '--verify', str(bundle)], capture_output=True, text=True)
-    assert signed.returncode != 0 and 'not signed' in signed.stderr, 'unsigned-only boundary not established'
+    # Inspect the actual executable load commands. codesign's failure text is
+    # not a stable unsigned predicate (bundle validation may fail for other reasons).
+    data = binary.read_bytes()
+    assert data[:4] == b'\xcf\xfa\xed\xfe', 'expected thin little-endian Mach-O64'
+    ncmds, sizeofcmds = struct.unpack_from('<II', data, 16)
+    offset = 32
+    assert offset + sizeofcmds <= len(data), 'invalid Mach-O command region'
+    for _ in range(ncmds):
+        cmd, size = struct.unpack_from('<II', data, offset)
+        assert size >= 8 and offset + size <= 32 + sizeofcmds, 'invalid load command'
+        assert cmd != 0x1d, 'unexpected LC_CODE_SIGNATURE, including ad-hoc signature'
+        offset += size
+    assert offset == 32 + sizeofcmds, 'load-command length mismatch'
     subprocess.run(['otool', '-L', str(binary)], check=True)
 with (extension / 'Info.plist').open('rb') as stream:
     ext_info = plistlib.load(stream)['NSExtension']

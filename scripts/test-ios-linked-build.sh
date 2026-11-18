@@ -25,6 +25,6 @@ export PATH="$OUT:$PATH"
 xcodebuild -project "$OUT/ios/Mnet.xcodeproj" -scheme Mnet -configuration Debug \
     -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
     -derivedDataPath "$OUT/derived" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
-    MNET_BUILD_NUMBER=1 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+    MNET_BUILD_NUMBER=1 ENABLE_DEBUG_DYLIB=NO CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
     CODE_SIGN_IDENTITY= DEVELOPMENT_TEAM= 'OTHER_LDFLAGS=$(inherited) -Wl,-no_adhoc_codesign' build
 python3 "$ROOT/scripts/check-ios-linked-product.py" "$OUT/derived/Build/Products/Debug-iphonesimulator/Mnet.app"

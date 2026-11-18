@@ -30,7 +30,7 @@ class UnsignedBuildContract(unittest.TestCase):
         self.assertEqual('XPC!', info['CFBundlePackageType'])
         self.assertEqual('com.apple.networkextension.packet-tunnel', info['NSExtension']['NSExtensionPointIdentifier'])
         script = (ROOT / 'scripts/check-ios-linked-product.py').read_text()
-        for required in ['MobileNewNode', 'crosscall2', 'PlugIns/MnetTunnel.appex', 'not signed']:
+        for required in ['MobileNewNode', 'crosscall2', 'PlugIns/MnetTunnel.appex', 'LC_CODE_SIGNATURE']:
             self.assertIn(required, script)
 
 if __name__ == '__main__':
