@@ -29,7 +29,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             // Always set, including empty, so an old saved exit selection does
             // not silently outlive this request. Failure is terminal.
             try node.setUseExitNode(exitNode)
-            let ipv4 = try node.prepare(server, network: network, name: nodeName, authKey: authKey)
+            var prepareError: NSError?
+            let ipv4 = node.prepare(server, network: network, name: nodeName, authKey: authKey, error: &prepareError)
+            if let error = prepareError { throw error }
             let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
             settings.mtu = 1280
             let v4 = NEIPv4Settings(addresses: [ipv4], subnetMasks: ["255.192.0.0"])
