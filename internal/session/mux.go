@@ -237,11 +237,6 @@ func (m *Mux) Open(priority uint8, openPayload any) (Stream, error) {
 	return m.open(priority, openPayload, true)
 }
 func (m *Mux) open(priority uint8, openPayload any, wait bool) (Stream, error) {
-	m.idMu.Lock()
-	id := m.nextID
-	m.nextID += 2
-	m.idMu.Unlock()
-	s := Stream{Mux: m, ID: id, in: make(chan Frame, 16)}
 	var raw json.RawMessage
 	if openPayload != nil {
 		b, err := json.Marshal(openPayload)
@@ -250,6 +245,14 @@ func (m *Mux) open(priority uint8, openPayload any, wait bool) (Stream, error) {
 		}
 		raw = b
 	}
+	if len(raw) > maxOpenPayload {
+		return Stream{}, fmt.Errorf("session: OPEN metadata exceeds policy")
+	}
+	m.idMu.Lock()
+	id := m.nextID
+	m.nextID += 2
+	m.idMu.Unlock()
+	s := Stream{Mux: m, ID: id, in: make(chan Frame, 16)}
 	s.OpenJSON = raw
 	m.streamMu.Lock()
 	select {
