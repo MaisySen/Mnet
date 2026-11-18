@@ -73,6 +73,7 @@ public class ViewerActivityTest {
    ViewerActivity activity=controller.get();assertTrue(entered.await(2,java.util.concurrent.TimeUnit.SECONDS));
    android.widget.Button end=(android.widget.Button)field(activity,"endViewing");assertEquals(View.VISIBLE,end.getVisibility());end.performClick();
    assertTrue(activity.isFinishing());assertEquals(0,activityFrameWidth(activity));assertFalse(end.isEnabled());
+   assertTrue("End cancels its pending native attempt immediately",MnetVpnService.node.lastConnect.canceled);
    release.countDown();long until=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(2);
    while(!late.closed&&System.nanoTime()<until){Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();Thread.sleep(1);}
    assertTrue("late publication still executes owned cleanup",late.closed);

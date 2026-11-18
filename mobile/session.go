@@ -1,6 +1,7 @@
 package mobile
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -424,6 +425,13 @@ func (n *Node) ConnectSession(peerIP string, cb ViewerCallbacks) (*SessionViewer
 
 // ConnectSessionWithControl enables input only after the host's typed grant.
 func (n *Node) ConnectSessionWithControl(peerIP string, cb ViewerCallbacks, controlCB ControlCallbacks) (*SessionViewer, error) {
+	attempt, err := n.NewSessionConnect()
+	if err != nil {
+		return nil, err
+	}
+	return attempt.ConnectWithControl(peerIP, cb, controlCB)
+}
+func (n *Node) connectSessionControlAttempt(peerIP string, cb ViewerCallbacks, controlCB ControlCallbacks, attempt *SessionConnect) (*SessionViewer, error) {
 	sessMu.Lock()
 	closed := n.sessionClosed
 	sessMu.Unlock()
@@ -454,8 +462,11 @@ func (n *Node) ConnectSessionWithControl(peerIP string, cb ViewerCallbacks, cont
 		}
 		return peers
 	}
-	conn, err := dialMeshTCP(state.IPv4, net.JoinHostPort(peerIP, fmt.Sprint(SessionPort)), 10*time.Second)
+	conn, err := dialMeshTCPContext(attempt.ctx, state.IPv4, net.JoinHostPort(peerIP, fmt.Sprint(SessionPort)), 10*time.Second)
 	if err != nil {
+		return nil, err
+	}
+	if err := attempt.attach(conn); err != nil {
 		return nil, err
 	}
 	return n.connectAuthorizedSessionControl(conn, state.NodeName, cb, 70*time.Second, lookup, controlCB)
@@ -600,8 +611,13 @@ func (n *Node) stopViewers(permanent bool) {
 		n.sessionClosed = true
 	}
 	connections := n.viewers
+	attempts := n.sessionConnects
+	n.sessionConnects = nil
 	n.viewers = nil
 	sessMu.Unlock()
+	for attempt := range attempts {
+		attempt.Cancel()
+	}
 	for conn := range connections {
 		conn.Close()
 	}
@@ -788,12 +804,15 @@ func (a *appInjector) Inject(ev session.InputEvent) error {
 // Select this node's assigned source explicitly. Android can otherwise choose
 // an underlay source for sockets opened by the VPN app itself.
 func dialMeshTCP(self, target string, timeout time.Duration) (net.Conn, error) {
+	return dialMeshTCPContext(context.Background(), self, target, timeout)
+}
+func dialMeshTCPContext(ctx context.Context, self, target string, timeout time.Duration) (net.Conn, error) {
 	ip := net.ParseIP(self)
 	if ip == nil || ip.To4() == nil || ip.IsUnspecified() {
 		return nil, errors.New("assigned mesh IPv4 required")
 	}
 	dialer := net.Dialer{Timeout: timeout, LocalAddr: &net.TCPAddr{IP: ip}}
-	return dialer.Dial("tcp4", target)
+	return dialer.DialContext(ctx, "tcp4", target)
 }
 
 // verifiedSessionPeer authenticates only a current mesh-map label, not a Multies

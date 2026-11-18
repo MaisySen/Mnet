@@ -62,3 +62,9 @@ accessibility = (Path(__file__).resolve().parents[1] / 'android/app/src/main/jav
 assert 'case "down":' not in accessibility and 'case "up":' not in accessibility
 assert 'Float.isNaN(x)' in accessibility and 'Float.isInfinite(scale)' in accessibility
 print('PASS host pointer boundary/endpoint source checks; real accessibility dispatch not executed')
+
+assert 'node.newSessionConnect()' in text
+assert 'connecting.connectWithControl(peerIp, callbacks(attempt)' in text
+assert text.count('pendingConnect.cancel()') == 2, 'failure and terminal teardown cancel their own pending attempt'
+assert 'if(pendingConnect==connecting)pendingConnect=null;' in text
+print('PASS per-attempt pending connect cancellation wiring; Go ownership tests and framework fakes are separate evidence')

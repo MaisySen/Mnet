@@ -21,11 +21,12 @@ import (
 // Node is one Mnet node on a phone. All methods are safe to call from
 // the UI thread; blocking work happens on daemon goroutines.
 type Node struct {
-	d             *daemon.Daemon
-	diagMu        sync.Mutex
-	packetDiag    interface{ packetDiagnostics() string }
-	sessionClosed bool                  // guarded by sessMu
-	viewers       map[net.Conn]struct{} // pending and active, guarded by sessMu
+	d               *daemon.Daemon
+	diagMu          sync.Mutex
+	packetDiag      interface{ packetDiagnostics() string }
+	sessionClosed   bool                         // guarded by sessMu
+	sessionConnects map[*SessionConnect]struct{} // pending dial/hello handles, guarded by sessMu
+	viewers         map[net.Conn]struct{}        // pending and active, guarded by sessMu
 }
 
 // NewNode makes a node that stores keys and join state in stateDir.

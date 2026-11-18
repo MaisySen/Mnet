@@ -1,5 +1,7 @@
 package mobile;
 public class Node {
+ public SessionConnect lastConnect;
+ public SessionConnect newSessionConnect(){lastConnect=new SessionConnect(this);return lastConnect;}
  public boolean closed; public int statusReads;
  public String prepare(String server,String network,String name,String key){return "100.64.0.2";}
  public void start(long fd,String server,String network,String name,String key){}

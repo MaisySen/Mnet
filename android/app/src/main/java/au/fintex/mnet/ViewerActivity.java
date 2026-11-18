@@ -27,6 +27,7 @@ public class ViewerActivity extends Activity {
     private TextView controlStatus;
     private Button controlRequest;
     private Button endViewing;
+    private mobile.SessionConnect pendingConnect;
     private boolean controlAllowed;
     private boolean controlPending;
     private final ViewerGate<SessionViewer> viewers = new ViewerGate<>();
@@ -178,14 +179,14 @@ public class ViewerActivity extends Activity {
         if (userClosed || isFinishing()) return;
         ViewerGate.Ticket attempt = viewers.begin();
         if (attempt == null) return;
+        Node node=MnetVpnService.currentNode();
+        if(node==null){failed(attempt,"connect the mesh first");return;}
+        final mobile.SessionConnect connecting;
+        try{connecting=node.newSessionConnect();pendingConnect=connecting;}
+        catch(Exception unavailable){failed(attempt,"connection unavailable");return;}
         new Thread(() -> {
-            Node node = MnetVpnService.currentNode();
-            if (node == null) {
-                reconnects.post(() -> failed(attempt, "connect the mesh first"));
-                return;
-            }
             try {
-                SessionViewer connected = node.connectSessionWithControl(peerIp, callbacks(attempt),stateJson->{
+                SessionViewer connected = connecting.connectWithControl(peerIp, callbacks(attempt),stateJson->{
                     reconnects.post(()->{
                         if(!viewers.active(attempt))return;
                         try{applyControl(new JSONObject(stateJson).optString("state"));}
@@ -193,6 +194,7 @@ public class ViewerActivity extends Activity {
                     });
                 });
                 reconnects.post(() -> {
+                    if(pendingConnect==connecting)pendingConnect=null;
                     if (!viewers.publish(attempt, connected)) {
                         closeViewer(connected);
                         return;
@@ -210,6 +212,7 @@ public class ViewerActivity extends Activity {
 
     private void failed(ViewerGate.Ticket attempt, String message) {
         if (!viewers.active(attempt)) return;
+        if(pendingConnect!=null){pendingConnect.cancel();pendingConnect=null;}
         taps.cancel();
         applyControl("unavailable");
         frameW = frameH = 0;
@@ -295,6 +298,7 @@ public class ViewerActivity extends Activity {
         taps.cancel();
         reconnects.removeCallbacks(retryTask);
         retryPending=false;
+        if(pendingConnect!=null){pendingConnect.cancel();pendingConnect=null;}
         closeViewer(viewers.close());
         frameW = frameH = 0;
         if(screen!=null)screen.setImageDrawable(null);
