@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -175,6 +176,11 @@ func (r FileReceiver) Handle(s Stream) {
 // SendFile offers and sends a file over a new dynamic stream and
 // waits for the final ack.
 func SendFile(m *Mux, path string) error {
+	select {
+	case <-m.Closed():
+		return net.ErrClosed
+	default:
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -188,8 +194,15 @@ func SendFile(m *Mux, path string) error {
 		return fmt.Errorf("session: only regular files can be sent")
 	}
 	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
+	if err := copyOwnedFileBytes(m.Closed(), h, f, st.Size()); err != nil {
 		return err
+	}
+	current, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if current.Size() != st.Size() {
+		return fmt.Errorf("session: source size changed during hashing")
 	}
 	if _, err := f.Seek(0, 0); err != nil {
 		return err
@@ -203,7 +216,13 @@ func SendFile(m *Mux, path string) error {
 	if err != nil {
 		return err
 	}
-	defer s.release()
+	complete := false
+	defer func() {
+		if !complete {
+			m.tryReset(s.ID)
+		}
+		s.release()
+	}()
 	// Wait for the accept.
 	acc, err := s.Recv(30 * time.Second)
 	if err != nil {
@@ -224,21 +243,17 @@ func SendFile(m *Mux, path string) error {
 			return err
 		}
 	}
-	buf := make([]byte, fileChunk)
-	for {
-		n, err := f.Read(buf)
-		if n > 0 {
-			if werr := m.SendBytes(s.ID, PriBulk, buf[:n]); werr != nil {
-				return werr
-			}
-		}
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
+	if err := copyOwnedFileBytes(m.Closed(), fileStreamWriter{m, s.ID}, f, st.Size()-accept.Offset); err != nil {
+		return err
 	}
+	current, err = f.Stat()
+	if err != nil {
+		return err
+	}
+	if current.Size() != st.Size() {
+		return fmt.Errorf("session: source size changed during transfer")
+	}
+
 	if err := m.send(s.ID, msgFin, PriBulk, nil); err != nil {
 		return err
 	}
@@ -255,6 +270,7 @@ func SendFile(m *Mux, path string) error {
 	if !fa.OK || !strings.EqualFold(fa.SHA256, offer.SHA256) {
 		return fmt.Errorf("session: receiver digest mismatch")
 	}
+	complete = true
 	return nil
 }
 
@@ -282,4 +298,71 @@ func safeTransferName(name string) bool {
 		return false
 	}
 	return true
+}
+
+// copyOwnedFileBytes is bounded to the offered file snapshot. Never read/hash
+// appended bytes or continue into another read/write after known session End.
+// A filesystem Read/Write already dispatched must still return on its own.
+func copyOwnedFileBytes(closed <-chan struct{}, dst io.Writer, src io.Reader, size int64) error {
+	if size < 0 {
+		return fmt.Errorf("session: invalid source size")
+	}
+	buf := make([]byte, fileChunk)
+	for size > 0 {
+		select {
+		case <-closed:
+			return net.ErrClosed
+		default:
+		}
+		chunk := int64(len(buf))
+		if size < chunk {
+			chunk = size
+		}
+		n, err := src.Read(buf[:chunk])
+		select {
+		case <-closed:
+			return net.ErrClosed
+		default:
+		}
+		if n > 0 {
+			written, werr := dst.Write(buf[:n])
+			if werr != nil {
+				return werr
+			}
+			if written != n {
+				return io.ErrShortWrite
+			}
+			size -= int64(n)
+		}
+		if err != nil {
+			if err == io.EOF && size == 0 {
+				return nil
+			}
+			if err == io.EOF {
+				return io.ErrUnexpectedEOF
+			}
+			return err
+		}
+		if n == 0 {
+			return io.ErrNoProgress
+		}
+	}
+	select {
+	case <-closed:
+		return net.ErrClosed
+	default:
+		return nil
+	}
+}
+
+type fileStreamWriter struct {
+	mux *Mux
+	id  uint32
+}
+
+func (w fileStreamWriter) Write(p []byte) (int, error) {
+	if err := w.mux.SendBytes(w.id, PriBulk, p); err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }
