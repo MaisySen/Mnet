@@ -206,3 +206,28 @@ Source rejects a nil source, empty/negative tile dimensions and rectangles outsi
 ## Composite base row layout
 
 Source copies valid RGBA bases row by row using their actual stride. A subimage can retain a larger parent row stride; a flat Pix copy would shift padding/neighbor pixels into later rows. Composite output remains independent of the base. This handles valid image layout, not malformed Pix/Stride buffers or a new desktop capture mode.
+
+## Revocation integration boundary (18 November 2026)
+
+Current mobile admission binds the TCP source, unique current peer name and full key,
+then repeats that lookup after host consent. Local tests cover map removal, key
+replacement, rename and duplicate identity during pending consent. Daemon admission
+snapshots require up state, approved/unexpired self and approved/unexpired peers.
+These checks protect admission, not a new Multies grant lifecycle.
+
+After admission, the mobile host waits for mux closure. It does not subscribe to
+peer-map changes as an explicit capture/input teardown event. Daemon expiry/map
+updates remove WireGuard peers, but transport removal is not by itself a measured
+session/capture stop contract. Node Stop/Close explicitly closes viewers and host
+before daemon shutdown. Do not equate these different paths.
+
+Before workspace-native enabling, the proposed integration must test:
+- durable revoke reaching both direct and relay sessions, including a lost event;
+- admission, control upgrade and continued-use checks against the exact grant;
+- removal during blocked capture/consent/input, with no late callback revival;
+- local capture/input teardown independent of TCP keepalive timeout;
+- disconnected grant expiry, sleep/resume/restart and stale-map recovery;
+- view/control expiry independence and no claim to recall an OS-dispatched gesture.
+
+No revocation time guarantee or final capability policy is set by this checklist.
+Multies changes and deployment remain separate approval gates.
