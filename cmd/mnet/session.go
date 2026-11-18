@@ -189,14 +189,21 @@ func prepareCLISession(peer string) (*cliSessionAuthorization, string, error) {
 	return &cliSessionAuthorization{peer: pinned, lookup: lookup}, st.NodeName, nil
 }
 func dialSessionTryAuthorized(a *cliSessionAuthorization, name string) (*session.Mux, error) {
+	return dialSessionTryAuthorizedContext(context.Background(), a, name)
+}
+func dialSessionTryAuthorizedContext(ctx context.Context, a *cliSessionAuthorization, name string) (*session.Mux, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if !a.check() {
 		return nil, fmt.Errorf("session authorization ended; select the peer again after reviewing current identity")
 	}
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(a.peer.IPv4, "5909"), 10*time.Second)
+	dialer := net.Dialer{Timeout: 10 * time.Second}
+	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(a.peer.IPv4, "5909"))
 	if err != nil {
 		return nil, err
 	}
-	m, err := dialAuthorizedCLI(conn, name, 70*time.Second, a.peer, a.lookup)
+	m, err := dialAuthorizedCLIContext(ctx, conn, name, 70*time.Second, a.peer, a.lookup)
 	if err != nil {
 		if errors.Is(err, errCLISessionIdentity) {
 			a.denied.Store(true)
@@ -211,26 +218,56 @@ func dialSessionTryAuthorized(a *cliSessionAuthorization, name string) (*session
 	return m, nil
 }
 
+// The run owns its socket through pending hello and active mux lifetime.
+func dialAuthorizedCLIContext(ctx context.Context, conn net.Conn, name string, budget time.Duration, peer daemon.SessionPeer, lookup func() ([]daemon.SessionPeer, error)) (*session.Mux, error) {
+	if err := ctx.Err(); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	stop := context.AfterFunc(ctx, func() { conn.Close() })
+	mux, err := dialAuthorizedCLI(conn, name, budget, peer, lookup)
+	if err != nil {
+		stop()
+		conn.Close()
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		stop()
+		mux.Close()
+		return nil, err
+	}
+	go func() { <-mux.Closed(); stop() }()
+	return mux, nil
+}
+
+// Cannot interrupt an arbitrary Reader inside Read. Queue sends do observe
+// cancellation without closing the user's shared stdin descriptor.
+func scanSessionLines(ctx context.Context, input io.Reader, output io.Writer, lines chan<- string) {
+	sc := bufio.NewScanner(input)
+	fmt.Fprint(output, "> ")
+	for sc.Scan() {
+		if line := sc.Text(); line != "" {
+			select {
+			case lines <- line:
+			case <-ctx.Done():
+				return
+			}
+		}
+		fmt.Fprint(output, "> ")
+	}
+}
+
 func sessionConnect(peer, saveDir, sendPath string) {
 	access, name, err := prepareCLISession(peer)
 	if err != nil {
 		fatal(err.Error())
 		return
 	}
-	// Chat lines from stdin flow to whatever connection is current.
+	// EOF cancels pending dial/hello as well as an established connection.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	lines := make(chan string, 16)
-	stdinDone := make(chan struct{})
-	go func() {
-		sc := bufio.NewScanner(os.Stdin)
-		fmt.Print("> ")
-		for sc.Scan() {
-			if line := sc.Text(); line != "" {
-				lines <- line
-			}
-			fmt.Print("> ")
-		}
-		close(stdinDone)
-	}()
+	go func() { defer cancel(); scanSessionLines(ctx, os.Stdin, os.Stdout, lines) }()
 
 	backoff := 500 * time.Millisecond
 	first := true
@@ -239,7 +276,7 @@ func sessionConnect(peer, saveDir, sendPath string) {
 		if !first {
 			fmt.Printf("\nreconnecting in %s...\n", backoff)
 			select {
-			case <-stdinDone:
+			case <-ctx.Done():
 				return
 			case <-time.After(backoff):
 			}
@@ -248,8 +285,11 @@ func sessionConnect(peer, saveDir, sendPath string) {
 				backoff = 15 * time.Second
 			}
 		}
-		m, err := dialSessionTryAuthorized(access, name)
+		m, err := dialSessionTryAuthorizedContext(ctx, access, name)
 		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
 			if access.denied.Load() {
 				fmt.Println("session ended: current peer authorization unavailable or changed")
 				return
@@ -283,11 +323,15 @@ func sessionConnect(peer, saveDir, sendPath string) {
 		dead := false
 		for !dead {
 			select {
-			case <-stdinDone:
+			case <-ctx.Done():
 				m.Close()
 				fmt.Println("\nsession ended")
 				return
 			case line := <-lines:
+				if ctx.Err() != nil {
+					m.Close()
+					return
+				}
 				if !access.check() {
 					m.Close()
 					return
