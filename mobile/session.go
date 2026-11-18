@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"fintex.au/mnet/internal/daemon"
@@ -66,6 +67,7 @@ type SessionHost struct {
 	host     *session.Host
 	mux      *session.Mux
 	nodeName string
+	access   *activeSessionAccess
 }
 
 // SessionViewer is the viewing side of an outgoing session.
@@ -169,6 +171,8 @@ func (r *sessionHostRun) serve(name string, cb HostCallbacks) {
 	defer close(r.done)
 	defer r.owner.stopSessionRun(r)
 	for {
+		var admittedName, admittedKey string
+		var admittedSource net.Addr
 		m, err := session.Listen(r, name, func(h session.Hello, from net.Addr) (bool, string) {
 			sessMu.Lock()
 			valid := !r.stopped && hosting == r
@@ -206,6 +210,7 @@ func (r *sessionHostRun) serve(name string, cb HostCallbacks) {
 			if !current || currentName != verifiedName || currentKey != verifiedKey {
 				return false, "identity check failed"
 			}
+			admittedName, admittedKey, admittedSource = currentName, currentKey, from
 			return true, ""
 		})
 		sessMu.Lock()
@@ -234,11 +239,39 @@ func (r *sessionHostRun) serve(name string, cb HostCallbacks) {
 			m.Close()
 			continue
 		}
-		h := session.ServeHostWithOptions(m, &appCapturer{cb: cb}, &appInjector{cb: cb}, 8, session.HostOptions{
-			OnChat: func(cm session.ChatMessage) { b, _ := json.Marshal(cm); cb.OnChat(string(b)) },
-			OnFile: cb.OnFile,
+		access := &activeSessionAccess{mux: m, current: func() bool {
+			sessMu.Lock()
+			valid := !r.stopped && hosting == r
+			sessMu.Unlock()
+			if !valid || r.peerLookup == nil {
+				return false
+			}
+			currentName, currentKey, ok := verifiedSessionPeer(r.peerLookup(), admittedName, admittedSource)
+			return ok && currentName == admittedName && currentKey == admittedKey
+		}}
+		guarded := &authorizedHostCallbacks{HostCallbacks: cb, access: access}
+		// Keep the connection reachable by Stop while application geometry
+		// initializes, before the active Host exists.
+		r.pending = pending
+		go access.watch()
+		// Geometry is application code. Do not hold the host lifecycle lock
+		// while it or any other callback may consult the current authorization.
+		sessMu.Unlock()
+		h := session.ServeHostWithOptions(m, &appCapturer{cb: guarded}, &appInjector{cb: guarded}, 8, session.HostOptions{
+			OnChat: func(cm session.ChatMessage) { b, _ := json.Marshal(cm); guarded.OnChat(string(b)) },
+			OnFile: guarded.OnFile,
 		})
-		sh := &SessionHost{host: h, mux: m, nodeName: name}
+		sh := &SessionHost{host: h, mux: m, nodeName: name, access: access}
+		sessMu.Lock()
+		if r.pending == pending {
+			r.pending = nil
+		}
+		if r.stopped || hosting != r {
+			sessMu.Unlock()
+			h.Stop()
+			cb.OnSessionEnd()
+			return
+		}
 		r.active = sh
 		sessMu.Unlock()
 		<-m.Closed()
@@ -291,6 +324,9 @@ func (n *Node) stopSessionRun(r *sessionHostRun) {
 
 // SendChat sends a host-side chat line.
 func (h *SessionHost) SendChat(text string) error {
+	if h.access != nil && !h.access.allowed() {
+		return errors.New("session authorization ended")
+	}
 	return h.host.SendChat(h.nodeName, text)
 }
 
@@ -400,6 +436,79 @@ func (v *SessionViewer) SendFile(path string) error {
 
 // Close ends the session.
 func (v *SessionViewer) Close() { v.mux.Close() }
+
+// activeSessionAccess rechecks only the current standalone mesh authorization.
+// Once observed invalid it cannot revive, even if a later map restores the key.
+// It closes the mux, never Host.Stop, because capture/input may own host workers.
+type activeSessionAccess struct {
+	mux     *session.Mux
+	current func() bool
+	revoked atomic.Bool
+}
+
+func (a *activeSessionAccess) allowed() bool {
+	if a.revoked.Load() {
+		return false
+	}
+	if a.current != nil && a.current() && !a.revoked.Load() {
+		return true
+	}
+	a.revoked.Store(true)
+	if a.mux != nil {
+		a.mux.Close()
+	}
+	return false
+}
+
+// watch also checks while a platform capture is blocked or screen output is
+// backpressured. This is a local-map check, not a control-plane lease or a
+// guarantee of observing an offline administrative change.
+func (a *activeSessionAccess) watch() {
+	ticker := time.NewTicker(time.Second / 8)
+	defer ticker.Stop()
+	for {
+		if !a.allowed() {
+			return
+		}
+		select {
+		case <-a.mux.Closed():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+type authorizedHostCallbacks struct {
+	HostCallbacks
+	access *activeSessionAccess
+}
+
+func (c *authorizedHostCallbacks) Capture() ([]byte, error) {
+	if !c.access.allowed() {
+		return nil, errors.New("session authorization ended")
+	}
+	frame, err := c.HostCallbacks.Capture()
+	// Do not publish a frame whose platform capture outlived authorization.
+	if !c.access.allowed() {
+		return nil, errors.New("session authorization ended")
+	}
+	return frame, err
+}
+func (c *authorizedHostCallbacks) Inject(event string) {
+	if c.access.allowed() {
+		c.HostCallbacks.Inject(event)
+	}
+}
+func (c *authorizedHostCallbacks) OnChat(message string) {
+	if c.access.allowed() {
+		c.HostCallbacks.OnChat(message)
+	}
+}
+func (c *authorizedHostCallbacks) OnFile(name string, size int64) {
+	if c.access.allowed() {
+		c.HostCallbacks.OnFile(name, size)
+	}
+}
 
 // appCapturer adapts HostCallbacks to session.Capturer.
 type appCapturer struct {
