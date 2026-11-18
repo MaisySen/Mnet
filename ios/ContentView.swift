@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import NetworkExtension
 
 // Join form plus live mesh status. The tunnel itself runs in the
@@ -54,58 +55,110 @@ struct ContentView: View {
         d.set(exitNode, forKey: "exitNode")
     }
 
-    private func manager(_ cb: @escaping (NETunnelProviderManager?) -> Void) {
-        NETunnelProviderManager.loadAllFromPreferences { managers, _ in
-            if let m = managers?.first {
-                cb(m)
-                return
+    // Loading is read-only. A new unsaved Mnet manager is constructed only for
+    // explicit Connect. Never select the first arbitrary VPN configuration.
+    private func manager(createIfMissing: Bool,
+                         _ cb: @escaping (Result<NETunnelProviderManager?, Error>) -> Void) {
+        NETunnelProviderManager.loadAllFromPreferences { managers, error in
+            DispatchQueue.main.async {
+                if let error = error { cb(.failure(error)); return }
+                let managers = managers ?? []
+                do {
+                    let ids = managers.map {
+                        ($0.protocolConfiguration as? NETunnelProviderProtocol)?.providerBundleIdentifier
+                    }
+                    if let index = try TunnelManagerPolicy.selectedIndex(in: ids) {
+                        cb(.success(managers[index]))
+                        return
+                    }
+                    guard createIfMissing else { cb(.success(nil)); return }
+                    let manager = NETunnelProviderManager()
+                    let proto = NETunnelProviderProtocol()
+                    proto.providerBundleIdentifier = TunnelManagerPolicy.providerBundleIdentifier
+                    proto.serverAddress = "mnet"
+                    manager.protocolConfiguration = proto
+                    manager.localizedDescription = "Mnet"
+                    cb(.success(manager))
+                } catch { cb(.failure(error)) }
             }
-            let m = NETunnelProviderManager()
-            let proto = NETunnelProviderProtocol()
-            proto.providerBundleIdentifier = "au.fintex.mnet.tunnel"
-            proto.serverAddress = "mnet"
-            m.protocolConfiguration = proto
-            m.localizedDescription = "Mnet"
-            m.isEnabled = true
-            m.saveToPreferences { _ in cb(m) }
         }
     }
 
     private func connect() {
         busy = true
-        manager { m in
-            guard let m = m else { busy = false; return }
-            let opts: [String: NSObject] = [
-                "server": server as NSObject,
-                "network": network as NSObject,
-                "authKey": authKey as NSObject,
-                "nodeName": nodeName as NSObject,
-                "exitNode": exitNode as NSObject,
-            ]
-            do {
-                try m.connection.startVPNTunnel(options: opts)
-                connected = true
-            } catch {
-                statusText = "Start failed: \(error.localizedDescription)"
+        manager(createIfMissing: true) { result in
+            switch result {
+            case .failure(let error):
+                busy = false
+                statusText = "Connect unavailable: \(error.localizedDescription)"
+            case .success(let manager):
+                guard let manager = manager else { busy = false; return }
+                let opts: [String: NSObject] = [
+                    "server": server as NSObject,
+                    "network": network as NSObject,
+                    "authKey": authKey as NSObject,
+                    "nodeName": nodeName as NSObject,
+                    "exitNode": exitNode as NSObject,
+                ]
+                // Saving/enabling is allowed only after the explicit Connect
+                // action. Reload before start instead of assuming save made it ready.
+                manager.isEnabled = true
+                manager.saveToPreferences { saveError in
+                    if let error = saveError {
+                        DispatchQueue.main.async {
+                            busy = false
+                            statusText = "VPN configuration not saved: \(error.localizedDescription)"
+                        }
+                        return
+                    }
+                    manager.loadFromPreferences { loadError in
+                        DispatchQueue.main.async {
+                            defer { busy = false }
+                            if let error = loadError {
+                                statusText = "VPN configuration not loaded: \(error.localizedDescription)"
+                                return
+                            }
+                            do {
+                                try manager.connection.startVPNTunnel(options: opts)
+                                refresh()
+                            } catch {
+                                statusText = "Start failed: \(error.localizedDescription)"
+                            }
+                        }
+                    }
+                }
             }
-            busy = false
-            refresh()
         }
     }
 
     private func disconnect() {
-        manager { m in
-            m?.connection.stopVPNTunnel()
-            connected = false
-            refresh()
+        busy = true
+        manager(createIfMissing: false) { result in
+            busy = false
+            switch result {
+            case .failure(let error):
+                statusText = "Disconnect unavailable: \(error.localizedDescription)"
+            case .success(let manager):
+                manager?.connection.stopVPNTunnel()
+                refresh()
+            }
         }
     }
 
     private func refresh() {
-        manager { m in
-            guard let m = m else { return }
-            connected = m.connection.status == .connected || m.connection.status == .connecting
-            statusText = "VPN status: \(m.connection.status.rawValue)"
+        manager(createIfMissing: false) { result in
+            switch result {
+            case .failure(let error):
+                statusText = "VPN configuration unavailable: \(error.localizedDescription)"
+            case .success(let manager):
+                guard let manager = manager else {
+                    connected = false
+                    statusText = "Disconnected"
+                    return
+                }
+                connected = manager.connection.status == .connected || manager.connection.status == .connecting
+                statusText = "VPN status: \(manager.connection.status.rawValue)"
+            }
         }
     }
 }

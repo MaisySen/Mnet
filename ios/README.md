@@ -19,6 +19,8 @@ other platform, wrapped in a NetworkExtension packet tunnel.
 
 Source integration only. No signed Mnet iOS release, TestFlight delivery or physical-device VPN/session test is established. The shared Go tests do not replace NetworkExtension entitlement, signing, consent and on-device validation. The XcodeGen spec still has an older marketing version; align it with a selected release before distribution. See [project status](../docs/STATUS.md).
 
+The app source now selects an exact Mnet tunnel provider, refuses duplicate matching profiles and keeps refresh/disconnect lookup read-only. Preference load/save errors no longer become an assumed missing configuration. Only explicit Connect may save/enable a profile. See [profile ownership](../docs/ios-vpn-profile-ownership.md) for source/Swift-check scope and limits. This is not physical-device profile or VPN acceptance.
+
 ## Build
 
 On a Mac with Xcode installed:

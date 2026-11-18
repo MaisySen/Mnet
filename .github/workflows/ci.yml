@@ -168,6 +168,9 @@ jobs:
           go test -race -count=10 -timeout=3m ./cmd/mnetd -run '^TestDarwinServicePlist'
           go build -o "$RUNNER_TEMP/mnetd-plist" ./cmd/mnetd
           python3 scripts/check-darwin-plist.py "$RUNNER_TEMP/mnetd-plist"
+      - name: iOS app manager policy and SDK source typecheck (no signing or runtime)
+        if: runner.os == 'macOS'
+        run: sh scripts/test-ios-source.sh
       - name: native macOS state ownership and actual-process duplicate/crash release
         if: runner.os == 'macOS'
         run: |
