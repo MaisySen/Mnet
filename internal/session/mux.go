@@ -205,6 +205,12 @@ func (m *Mux) OnStream(h func(Stream)) {
 	m.onStream = h
 	m.onStreamMu.Unlock()
 	m.streamMu.Lock()
+	select {
+	case <-m.closed:
+		m.streamMu.Unlock()
+		return
+	default:
+	}
 	var pending []Stream
 	for id, st := range m.streams {
 		if !st.handled {
@@ -246,6 +252,12 @@ func (m *Mux) open(priority uint8, openPayload any, wait bool) (Stream, error) {
 	}
 	s.OpenJSON = raw
 	m.streamMu.Lock()
+	select {
+	case <-m.closed:
+		m.streamMu.Unlock()
+		return Stream{}, io.ErrClosedPipe
+	default:
+	}
 	if len(m.streams) >= maxActiveStreams {
 		m.streamMu.Unlock()
 		return Stream{}, fmt.Errorf("session: active stream limit reached")
@@ -392,6 +404,14 @@ func (m *Mux) Close() error {
 		clear(m.opened)
 		m.cond.Broadcast()
 		m.wmu.Unlock()
+		// Retire active inbound ownership too. Existing Stream handles may
+		// retain their channels, but can no longer dispatch from this mux.
+		m.streamMu.Lock()
+		for id, st := range m.streams {
+			m.releaseStreamBudget(st)
+			delete(m.streams, id)
+		}
+		m.streamMu.Unlock()
 	})
 	return nil
 }
@@ -622,6 +642,12 @@ func (m *Mux) readLoop() {
 			continue
 		}
 		m.streamMu.Lock()
+		select {
+		case <-m.closed:
+			m.streamMu.Unlock()
+			return
+		default:
+		}
 		st, ok := m.streams[f.StreamID]
 		if f.Type == msgOpen {
 			if !ok {

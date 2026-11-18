@@ -103,8 +103,11 @@ func TestRecvCloseAfterSelectionRefusesLateFrame(t *testing.T) {
 		go func() { _, err := s.Recv(timeout); done <- err }()
 		// Unbuffered handoff proves Recv selected DATA, then blocks returning budget.
 		s.in <- Frame{Type: msgData, Payload: []byte{1}, queueOwner: s.state, queueCost: 1}
-		m.Close()
+		closed := make(chan struct{})
+		go func() { m.Close(); close(closed) }()
+		<-m.Closed()
 		s.state.accountMu.Unlock()
+		<-closed
 		select {
 		case err := <-done:
 			if !errors.Is(err, io.ErrClosedPipe) {
