@@ -313,7 +313,7 @@ def main():
         except (OSError, ValueError):
             pass
         # Stage is written from fixture-controlled literal await labels only.
-        allowed = {'hosting-activity-finish', 'main-activity-idle-after-hosting', 'final-stop-click', 'final-stop', 'complete', 'consent-record-ready', 'accessibility-disclosure', 'accessibility-system-enable', 'accessibility-return-host', 'screen-projection-consent', 'screen-viewer-consent', 'screen-decoded-by-peer', 'remote-mesh-gesture-click', 'screen-stop-closed-peer', 'consent-record-stopped'}
+        allowed = {'dns-validation-failed', 'hosting-activity-finish', 'main-activity-idle-after-hosting', 'final-stop-click', 'final-stop', 'complete', 'consent-record-ready', 'accessibility-disclosure', 'accessibility-system-enable', 'accessibility-return-host', 'screen-projection-consent', 'screen-viewer-consent', 'screen-decoded-by-peer', 'remote-mesh-gesture-click', 'screen-stop-closed-peer', 'consent-record-stopped'}
         if 'adb' in locals():
             try:
                 probe = subprocess.run(list(map(str, adb + ['exec-out', 'run-as', 'au.fintex.mnet', 'cat', 'files/fixture-stage'])), capture_output=True, timeout=10)

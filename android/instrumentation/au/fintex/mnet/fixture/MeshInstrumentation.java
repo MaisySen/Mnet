@@ -30,6 +30,25 @@ public class MeshInstrumentation extends Instrumentation {
     private String stage = "created";
     private boolean consentClicked;
     private boolean entireScreenSelected;
+    private int dnsAttempts,dnsFailures;
+    private String deferredDNS="";
+    private boolean nonDNSChecksCompleted;
+    private void verifyDNSPreservingFailure() throws Exception {
+        dnsAttempts++;
+        checkpoint("os-udp-tcp-dns");
+        try {
+            DNSProof.verify(options.getString("peer"),getTargetContext().getSystemService(android.net.ConnectivityManager.class).getActiveNetwork(),MnetVpnService.currentNode().meshIPv4());
+        } catch(Exception failure) {
+            dnsFailures++;
+            // Snapshot now, before reconnect/new probes destroy or overwrite state.
+            deferredDNS+=" dnsAttempt="+dnsAttempts+DNSProof.failureDiagnostics(failure);
+            try {
+                JSONObject state=new JSONObject(MnetVpnService.currentNode().status());
+                JSONObject packets=state.optJSONObject("dns_packets");
+                if(packets!=null)for(String key:new String[]{"reply_written","reply_write_failed","udp_seen","udp_received","udp_sent"})deferredDNS+=" attempt_"+key+"="+packets.optBoolean(key);
+            }catch(Exception ignored){deferredDNS+=" attemptSnapshotUnavailable=true";}
+        }
+    }
     @Override public void onCreate(Bundle args) { super.onCreate(args); options = args; start(); }
     private interface Probe { boolean ready() throws Exception; }
     private void checkpoint(String label) throws Exception {
@@ -386,8 +405,7 @@ public class MeshInstrumentation extends Instrumentation {
             vpnConsent();
             await(this::up, "initial-vpn-up");
             osVpnReady();
-            checkpoint("os-udp-tcp-dns");
-            DNSProof.verify(options.getString("peer"),getTargetContext().getSystemService(android.net.ConnectivityManager.class).getActiveNetwork(),MnetVpnService.currentNode().meshIPv4());
+            verifyDNSPreservingFailure();
             hashRoundTrip();
             click(R.id.connect_button);
             await(() -> MnetVpnService.currentNode() == null, "manual-stop");
@@ -398,8 +416,7 @@ public class MeshInstrumentation extends Instrumentation {
             vpnConsent();
             await(this::up, "reconnect-vpn-up");
             osVpnReady();
-            checkpoint("os-udp-tcp-dns");
-            DNSProof.verify(options.getString("peer"),getTargetContext().getSystemService(android.net.ConnectivityManager.class).getActiveNetwork(),MnetVpnService.currentNode().meshIPv4());
+            verifyDNSPreservingFailure();
             hashRoundTrip();
             // Keep the VPN-owning instrumentation process alive while another
             // installed app UID performs ordinary unbound TCP transfers.
@@ -419,6 +436,8 @@ public class MeshInstrumentation extends Instrumentation {
             click(R.id.connect_button);
             await(() -> MnetVpnService.currentNode() == null, "final-stop");
             if (!consentClicked) throw new IllegalStateException("no actual initial VPN consent click observed");
+            nonDNSChecksCompleted=true;
+            if(dnsFailures>0){checkpoint("dns-validation-failed");throw new IOException("DNS proof failed");}
             checkpoint("complete");
             result.putString("summary", "PASS self-bound target36 runtimeAPI=" + android.os.Build.VERSION.SDK_INT + " actual APK/JNI/VPN consent, accessibility/projection/viewer consent, real mesh gesture click and decoded frames/stop, explicit-VPN-network OS/UDP/TCP DNS, bidirectional 4MiB hash, manual stop/reconnect and repeat hash; emulator only, no physical reboot/OEM proof");
             finish(Activity.RESULT_OK, result);
@@ -434,7 +453,7 @@ public class MeshInstrumentation extends Instrumentation {
                 } catch (Exception ignored) { }
             }
             // Deliberately omit exception messages, app state and arguments.
-            String diagnostics = DNSProof.failureDiagnostics(failure);
+            String diagnostics = DNSProof.failureDiagnostics(failure)+" dnsAttempts="+dnsAttempts+" dnsFailures="+dnsFailures+" nonDNSChecksCompleted="+nonDNSChecksCompleted+deferredDNS;
             diagnostics+=" controlAllowed="+au.fintex.mnet.HostSessionService.controlAllowed()+" controlSession="+(au.fintex.mnet.HostSessionService.controlSession()!=null);
             try{
                 android.net.ConnectivityManager cm=getTargetContext().getSystemService(android.net.ConnectivityManager.class);

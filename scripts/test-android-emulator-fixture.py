@@ -9,6 +9,13 @@ spec = importlib.util.spec_from_file_location('android_fixture', ROOT / 'scripts
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 class Guards(unittest.TestCase):
+    def test_primary_dns_failure_cannot_pass_but_does_not_hide_other_checks(self):
+        source=(ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
+        self.assertEqual(source.count('            verifyDNSPreservingFailure();'),2)
+        self.assertIn('deferredDNS+=',source)
+        self.assertLess(source.index('nonDNSChecksCompleted=true;'),source.index('if(dnsFailures>0)'))
+        self.assertLess(source.index('if(dnsFailures>0)'),source.index('result.putString("summary", "PASS'))
+        self.assertIn('checkpoint("dns-validation-failed");throw new IOException',source)
     def test_child_failure_does_not_echo_captured_data(self):
         with self.assertRaisesRegex(RuntimeError, '^fixture child command failed$'):
             module.run([sys.executable, '-c', "raise SystemExit('synthetic-private-marker')"])

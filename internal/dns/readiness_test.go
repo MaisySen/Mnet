@@ -15,9 +15,7 @@ func TestStartWaitsForBothDNSListeners(t *testing.T) {
 	if s.Ready() {
 		t.Fatal("ready before start")
 	}
-	if err := s.startAt("127.0.0.1:0"); err != nil {
-		t.Fatal(err)
-	}
+	startTestDNS(t, s)
 	defer s.Close()
 	if !s.Ready() {
 		t.Fatal("Start returned before ready")
@@ -81,9 +79,7 @@ func TestClosePreventsStartAndReleasesBothSockets(t *testing.T) {
 		t.Fatal("closed server revived")
 	}
 	s, _ = New("127.0.0.1")
-	if err := s.startAt("127.0.0.1:0"); err != nil {
-		t.Fatal(err)
-	}
+	startTestDNS(t, s)
 	addr := s.listener.Addr().String()
 	s.Close()
 	s.Close()
@@ -103,9 +99,7 @@ func TestClosePreventsStartAndReleasesBothSockets(t *testing.T) {
 }
 func TestTransportFailureClearsReadyAndStopsOtherTransport(t *testing.T) {
 	s, _ := New("127.0.0.1")
-	if err := s.startAt("127.0.0.1:0"); err != nil {
-		t.Fatal(err)
-	}
+	startTestDNS(t, s)
 	defer s.Close()
 	addr := s.listener.Addr().String()
 	s.listener.Close()
@@ -141,9 +135,7 @@ func TestConcurrentDNSStartAndCloseCannotLeakOrRevive(t *testing.T) {
 func TestKnownIPv4NameHasNoAAAAInsteadOfNXDOMAIN(t *testing.T) {
 	s, _ := New("127.0.0.1")
 	s.Update(testMap())
-	if err := s.startAt("127.0.0.1:0"); err != nil {
-		t.Fatal(err)
-	}
+	startTestDNS(t, s)
 	defer s.Close()
 	for _, transport := range []string{"udp", "tcp"} {
 		for _, kind := range []uint16{dns.TypeAAAA, dns.TypeTXT, dns.TypeA} {
