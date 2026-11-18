@@ -12,6 +12,7 @@ on:
       - 'internal/daemon/**'
       - 'cmd/mnetd/native_peer_test.go'
       - 'scripts/android-emulator-validation.py'
+      - 'scripts/android-kernel-observer*'
   workflow_dispatch:
 
 # This is engineering instrumentation, not a release or Play Protect verdict.
@@ -63,6 +64,8 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: build current shared engine and isolated real peer
         run: |
+          cc -fsanitize=address,undefined -g -o "$RUNNER_TEMP/mnet-kernel-observer-test" scripts/android-kernel-observer-test.c
+          "$RUNNER_TEMP/mnet-kernel-observer-test"
           mobile_version=$(go list -m -f '{{.Version}}' golang.org/x/mobile)
           go install "golang.org/x/mobile/cmd/gomobile@$mobile_version"
           go install "golang.org/x/mobile/cmd/gobind@$mobile_version"
@@ -90,6 +93,7 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
           path: |
+            ${{ runner.temp }}/mnet-android-artifacts/kernel-observation.json
             ${{ runner.temp }}/mnet-android-artifacts/summary.json
             ${{ runner.temp }}/mnet-android-artifacts/instrumentation.txt
             ${{ runner.temp }}/mnet-android-artifacts/launch.png

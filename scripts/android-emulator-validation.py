@@ -5,6 +5,7 @@ No production credentials or services. No APK/state/logcat artifact exports.
 import http.cookiejar
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import socket
@@ -160,6 +161,23 @@ def main():
             }
             (ARTIFACTS / 'instrumentation.txt').write_text(json.dumps({'boot_diagnostics': categories, 'emulator_exit_code': emulator.poll(), 'pre_boot_free_mib': free_mib}) + '\n')
             raise
+        # One passive kernel-boundary experiment. adb root affects only this
+        # empty disposable engineering emulator, never app permissions/SELinux.
+        observer_state = {'available': False, 'reason': 'unavailable'}
+        observer_stop = threading.Event()
+        observer_samples = []
+        try:
+            run(adb + ['root'], timeout=20)
+            wait(lambda: run(adb + ['shell', 'id', '-u'], timeout=5).strip() == '0', 'observer-root', 15)
+            compiler = Path(os.environ['ANDROID_NDK_HOME']) / 'toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android24-clang'
+            run([compiler, '-Wall', '-Wextra', '-Werror', '-O2', staged / 'scripts/android-kernel-observer.c', '-o', root / 'kernel-observer'])
+            run(adb + ['push', root / 'kernel-observer', '/data/local/tmp/mnet-kernel-observer'])
+            run(adb + ['shell', 'chmod', '700', '/data/local/tmp/mnet-kernel-observer'])
+            observer = start(adb + ['exec-out', '/data/local/tmp/mnet-kernel-observer'], 'kernel-observer')
+            wait(lambda: '"event":"capture_capability"' in (root / 'kernel-observer.log').read_text(), 'observer-capability', 5)
+            observer_state = {'available': '"available":true' in (root / 'kernel-observer.log').read_text(), 'reason': 'reported'}
+        except (OSError, RuntimeError, subprocess.TimeoutExpired):
+            observer_state['reason'] = 'root-build-or-capture-unavailable'
         # Disposable emulator only: remove transition animation from evidence
         # capture, not from the shipping app or any personal device.
         for setting in ('window_animation_scale', 'transition_animation_scale', 'animator_duration_scale'):
@@ -170,6 +188,37 @@ def main():
         run(adb + ['reverse', 'tcp:8080', 'tcp:8080'])
         run(adb + ['install', '-r', appout / 'mnet.apk'])
         run(adb + ['install', '-r', test / 'fixture.apk'])
+        def uid_for(package):
+            output = run(adb + ['shell', 'cmd', 'package', 'list', 'packages', '-U', package])
+            matches = re.findall(r'^package:' + re.escape(package) + r' uid:(\d+)$', output, re.M)
+            return int(matches[0]) if len(matches) == 1 else None
+        try:
+            observed_uids = [uid_for('au.fintex.mnet'), uid_for('au.fintex.mnet.fixture')]
+        except (OSError, RuntimeError, subprocess.TimeoutExpired):
+            observed_uids = [None, None]
+        def sample_rules():
+            while not observer_stop.is_set():
+                try:
+                    output = run(adb + ['shell', 'cat /proc/uptime; ip -4 rule show'], timeout=5)
+                    uptime, _, output = output.partition('\n')
+                    row = {'host_monotonic_ms': int(time.monotonic() * 1000), 'rule_count': len(output.splitlines()), 'rules_readable': bool(output.strip()), 'device_elapsed_ms': int(float(uptime.split()[0]) * 1000)}
+                    for label, uid in zip(('owner', 'independent'), observed_uids):
+                        matched = []
+                        for line in output.splitlines():
+                            bounds = re.search(r'uidrange (\d+)-(\d+)', line)
+                            if uid is not None and bounds and int(bounds[1]) <= uid <= int(bounds[2]):
+                                table = re.search(r'(?:lookup|table) (\d+)(?: |$)', line)
+                                matched.append(int(table[1]) if table else -1)
+                        row[label + '_uid_known'] = uid is not None
+                        row[label + '_uid_rules'] = len(matched)
+                        row[label + '_tables'] = matched
+                    if not observer_samples or {k:v for k,v in row.items() if k!='host_monotonic_ms'} != {k:v for k,v in observer_samples[-1].items() if k!='host_monotonic_ms'}:
+                        if len(observer_samples) < 256: observer_samples.append(row)
+                except (OSError, RuntimeError, ValueError, IndexError, subprocess.TimeoutExpired):
+                    pass
+                observer_stop.wait(1)
+        observer_rules_thread = threading.Thread(target=sample_rules, daemon=True)
+        observer_rules_thread.start()
         stage = 'actual-instrumentation'
         instrument = start(adb + ['shell', 'am', 'instrument', '-w', '-r', '-e', 'server', base, '-e', 'key', key, '-e', 'peer', peer['ipv4'], 'au.fintex.mnet.fixture/au.fintex.mnet.fixture.MeshInstrumentation'], 'instrumentation')
         def peer_ready():
@@ -342,7 +391,53 @@ def main():
         (ARTIFACTS / 'summary.json').write_text(json.dumps(diagnostic, indent=2))
         raise RuntimeError('Android fixture failed at ' + stage) from None
     finally:
-        if 'recorder_stop' in locals():
+        if 'observer_stop' in locals():
+            observer_stop.set()
+        if 'observer_rules_thread' in locals():
+            observer_rules_thread.join(timeout=8)
+        if 'observer' in locals():
+            try:
+                run(adb + ['shell', 'killall', '-s', 'TERM', 'mnet-kernel-observer'], timeout=5)
+                observer.wait(timeout=5)
+            except (OSError, RuntimeError, subprocess.TimeoutExpired):
+                pass
+        if 'observer_state' in locals():
+            # Strictly reconstruct allowlisted primitives, never export raw OS
+            # rules, packet payloads, logs, package output or private files.
+            observed = {'capability': observer_state, 'uid_rule_changes': observer_samples, 'kernel': [], 'network': []}
+            schemas = {
+                'capture_capability': {'available': bool, 'denied': bool},
+                'kernel_udp': {'readable': bool, 'InDatagrams': int, 'NoPorts': int, 'InErrors': int, 'RcvbufErrors': int, 'InCsumErrors': int},
+                'dns_wire': {'ms': int, 'outgoing': bool, 'ifindex': int, 'reply': bool, 'port': int, 'ip_checksum_ok': bool, 'udp_checksum_ok': bool, 'udp_checksum_present': bool, 'bytes': int},
+                'tcp_flow': {name: int for name in ('port', 'packets', 'payload_bytes', 'same_last_sequence', 'syn', 'fin', 'rst', 'zero_window', 'last_seq', 'last_ack', 'ifindex', 'first_ms', 'last_ms')},
+                'capture_closed': {'complete': bool, 'stats_readable': bool, 'capture_packets': int, 'capture_drops': int},
+            }
+            schemas['tcp_flow']['from_peer'] = bool
+            try:
+                for line in (root / 'kernel-observer.log').read_text().splitlines()[:200]:
+                    row = json.loads(line)
+                    event = row.get('event')
+                    if event in schemas:
+                        safe_row = {'event': event}
+                        safe_row.update({k:row[k] for k,t in schemas[event].items() if type(row.get(k)) is t})
+                        if event == 'kernel_udp' and row.get('phase') in ('before', 'after'): safe_row['phase'] = row['phase']
+                        observed['kernel'].append(safe_row)
+            except (OSError, ValueError):
+                observed['parse_unavailable'] = True
+            try:
+                output = run(adb + ['exec-out', 'run-as', 'au.fintex.mnet', 'cat', 'files/fixture-network-observations.json'], timeout=8)
+                for row in json.loads(output)[:32]:
+                    if row.get('point') not in ('published', 'dns-start', 'dns-failed', 'bulk-start', 'bulk-reverse-received'): continue
+                    safe_row = {'point': row['point']}
+                    for k in ('elapsed_ms', 'attempt', 'network_handle'):
+                        if type(row.get(k)) is int: safe_row[k] = row[k]
+                    for k in ('active_present', 'same_as_previous_publication', 'vpn', 'link_present', 'mesh_address_present'):
+                        if type(row.get(k)) is bool: safe_row[k] = row[k]
+                    observed['network'].append(safe_row)
+            except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired):
+                observed['network_unavailable'] = True
+            (ARTIFACTS / 'kernel-observation.json').write_text(json.dumps(observed, indent=2))
+        if 'recorder_stop'  in locals():
             recorder_stop.set()
         if 'recording' in locals() and recording is not None:
             recording.join(timeout=15)

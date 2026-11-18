@@ -33,13 +33,39 @@ public class MeshInstrumentation extends Instrumentation {
     private int dnsAttempts,dnsFailures;
     private String deferredDNS="";
     private boolean nonDNSChecksCompleted;
+    private final org.json.JSONArray networkObservations=new org.json.JSONArray();
+    private long previousPublishedNetwork;
+    // Passive snapshot only. No readiness predicate, retry, binding or timing change.
+    private void observeNetwork(String point) {
+        try {
+            android.net.ConnectivityManager cm=getTargetContext().getSystemService(android.net.ConnectivityManager.class);
+            android.net.Network active=cm.getActiveNetwork();
+            android.net.NetworkCapabilities caps=cm.getNetworkCapabilities(active);
+            android.net.LinkProperties props=cm.getLinkProperties(active);
+            JSONObject row=new JSONObject();
+            row.put("point",point);row.put("elapsed_ms",SystemClock.elapsedRealtime());
+            row.put("attempt",dnsAttempts);row.put("active_present",active!=null);
+            long handle=active==null?0:active.getNetworkHandle();
+            row.put("network_handle",handle);row.put("same_as_previous_publication",previousPublishedNetwork!=0&&handle==previousPublishedNetwork);
+            row.put("vpn",caps!=null&&caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN));
+            row.put("link_present",props!=null);row.put("mesh_address_present",false);
+            if(props!=null&&MnetVpnService.currentNode()!=null)for(android.net.LinkAddress address:props.getLinkAddresses()){
+                if(MnetVpnService.currentNode().meshIPv4().equals(address.getAddress().getHostAddress()))row.put("mesh_address_present",true);
+            }
+            if("published".equals(point))previousPublishedNetwork=handle;
+            networkObservations.put(row);
+            try(FileOutputStream file=new FileOutputStream(new File(getTargetContext().getFilesDir(),"fixture-network-observations.json"))){file.write(networkObservations.toString().getBytes("UTF-8"));}
+        } catch(Exception ignored) {} // Observer must never change original verdict.
+    }
     private void verifyDNSPreservingFailure() throws Exception {
         dnsAttempts++;
         checkpoint("os-udp-tcp-dns");
+        observeNetwork("dns-start");
         try {
             DNSProof.verify(options.getString("peer"),getTargetContext().getSystemService(android.net.ConnectivityManager.class).getActiveNetwork(),MnetVpnService.currentNode().meshIPv4());
         } catch(Exception failure) {
             dnsFailures++;
+            observeNetwork("dns-failed");
             // Snapshot now, before reconnect/new probes destroy or overwrite state.
             deferredDNS+=" dnsAttempt="+dnsAttempts+DNSProof.failureDiagnostics(failure);
             try {
@@ -194,9 +220,11 @@ public class MeshInstrumentation extends Instrumentation {
             }
             return false;
         }, "os-vpn-published");
+        observeNetwork("published");
     }
     private void hashRoundTrip() throws Exception {
         stage = "mesh-hash-round-trip";
+        observeNetwork("bulk-start");
         // This address has no host TCP listener. Reaching it requires the real
         // Android VPN fd, WireGuard and the Go peer's userspace network stack.
         byte[] sent = new byte[4 << 20];
@@ -220,6 +248,7 @@ public class MeshInstrumentation extends Instrumentation {
             byte[] reverse = new byte[4 << 20]; input.readFully(reverse);
             byte[] expectedUnit = "reverse-native-peer-proof".getBytes("UTF-8");
             for (int i = 0; i < reverse.length; i++) if (reverse[i] != expectedUnit[i % expectedUnit.length]) throw new IOException("reverse bytes mismatch");
+            observeNetwork("bulk-reverse-received");
             stage = "mesh-reverse-hash-send";
             socket.getOutputStream().write(MessageDigest.getInstance("SHA-256").digest(reverse));
             if (input.readByte() != 'O' || input.readByte() != 'K') throw new IOException("reverse acknowledgment mismatch");
