@@ -258,7 +258,14 @@ func (m *Mux) open(priority uint8, openPayload any, wait bool) (Stream, error) {
 		return Stream{}, err
 	}
 	m.wmu.Lock()
-	m.opened[id] = true
+	select {
+	case <-m.closed:
+		m.wmu.Unlock()
+		m.releaseStream(id)
+		return Stream{}, io.ErrClosedPipe
+	default:
+		m.opened[id] = true
+	}
 	m.wmu.Unlock()
 	return s, nil
 }
@@ -376,6 +383,13 @@ func (m *Mux) Close() error {
 		m.conn.Close()
 		m.wmu.Lock()
 		close(m.closed)
+		// A retained closed mux must not retain queued file/screen contents.
+		// One frame already handed to the socket writer is outside this queue.
+		for i := range m.pending {
+			m.pending[i] = nil
+		}
+		m.queuedBytes = 0
+		clear(m.opened)
 		m.cond.Broadcast()
 		m.wmu.Unlock()
 	})
@@ -500,6 +514,12 @@ func (m *Mux) writeLoop() {
 	for {
 		m.wmu.Lock()
 		for {
+			select {
+			case <-m.closed:
+				m.wmu.Unlock()
+				return
+			default:
+			}
 			if f, ok := m.popLocked(); ok {
 				m.wmu.Unlock()
 				m.traceFrame("write-start", f)
@@ -510,12 +530,6 @@ func (m *Mux) writeLoop() {
 				m.traceFrame("write-done", f)
 				m.wmu.Lock()
 				continue
-			}
-			select {
-			case <-m.closed:
-				m.wmu.Unlock()
-				return
-			default:
 			}
 			m.cond.Wait()
 		}
