@@ -31,11 +31,18 @@ type FileReceiver struct {
 	MaxBytes    int64         // <=0 uses DefaultMaxFileBytes
 	IdleTimeout time.Duration // <=0 uses DefaultFileIdleTimeout
 	OnDone      func(name string, size int64)
+	// Authorized checks current session access at storage boundaries. Nil keeps
+	// the receiver's existing explicit destination policy without an extra gate.
+	Authorized func() bool
 }
 
 // Handle runs one incoming file stream to completion.
 func (r FileReceiver) Handle(s Stream) {
 	defer s.release()
+	allowed := func() bool { return r.Authorized == nil || r.Authorized() }
+	if !allowed() {
+		return
+	}
 	refuse := func(reason string) { _ = r.Mux.SendJSON(s.ID, PriBulk, FileAccept{OK: false, Reason: reason}) }
 	var offer FileOffer
 	if err := json.Unmarshal(s.OpenJSON, &offer); err != nil {
@@ -61,6 +68,9 @@ func (r FileReceiver) Handle(s Stream) {
 			refuse("invalid SHA256")
 			return
 		}
+	}
+	if !allowed() {
+		return
 	}
 	dir := r.Dir
 	if strings.TrimSpace(dir) == "" {
@@ -120,6 +130,9 @@ func (r FileReceiver) Handle(s Stream) {
 			ack(false, "")
 			return
 		}
+		if !allowed() {
+			return
+		}
 		written, err := f.Write(fr.Payload)
 		if err != nil || written != len(fr.Payload) {
 			ack(false, "")
@@ -146,12 +159,15 @@ func (r FileReceiver) Handle(s Stream) {
 	}
 	// Hard-link publication is atomic and fails if another transfer or a
 	// symlink already occupies the destination. No replace-on-rename race.
+	if !allowed() {
+		return
+	}
 	if err = os.Link(tmp, path); err != nil {
 		ack(false, digest)
 		return
 	}
 	ack(true, digest)
-	if r.OnDone != nil {
+	if r.OnDone != nil && allowed() {
 		r.OnDone(name, n)
 	}
 }

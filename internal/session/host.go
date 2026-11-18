@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -67,10 +68,12 @@ type Host struct {
 	onChat   func(ChatMessage)
 	onFile   func(name string, size int64)
 
-	rec      *Recorder // optional session recording tap
-	stop     chan struct{}
-	stopOnce sync.Once
-	wg       sync.WaitGroup
+	authorize func() bool
+	revoked   atomic.Bool
+	rec       *Recorder // optional session recording tap
+	stop      chan struct{}
+	stopOnce  sync.Once
+	wg        sync.WaitGroup
 }
 
 // SetOnChat sets the chat handler.
@@ -107,10 +110,12 @@ func (h *Host) SetFileDir(dir string) {
 // HostOptions are installed before queued peer streams can be dispatched.
 // Use these for startup configuration instead of racing the Set methods.
 type HostOptions struct {
-	FileDir  string
-	OnChat   func(ChatMessage)
-	OnFile   func(string, int64)
-	Recorder *Recorder
+	// Authorized optionally checks current known peer authorization.
+	Authorized func() bool
+	FileDir    string
+	OnChat     func(ChatMessage)
+	OnFile     func(string, int64)
+	Recorder   *Recorder
 }
 
 func ServeHost(m *Mux, cap Capturer, inj Injector, fps int) *Host {
@@ -133,10 +138,11 @@ func ServeHostWithOptions(m *Mux, cap Capturer, inj Injector, fps int, opts Host
 		FPS:  fps,
 		stop: make(chan struct{}),
 	}
+	h.authorize = opts.Authorized
 	h.onChat = opts.OnChat
 	h.onFile = opts.OnFile
 	h.rec = opts.Recorder
-	h.Incoming = FileReceiver{Mux: m, Dir: opts.FileDir, OnDone: func(name string, size int64) {
+	h.Incoming = FileReceiver{Mux: m, Dir: opts.FileDir, Authorized: h.allowed, OnDone: func(name string, size int64) {
 		h.hmu.RLock()
 		f := h.onFile
 		h.hmu.RUnlock()
@@ -144,12 +150,19 @@ func ServeHostWithOptions(m *Mux, cap Capturer, inj Injector, fps int, opts Host
 			f(name, size)
 		}
 	}}
+	if !h.allowed() {
+		return h
+	}
+	if h.authorize != nil {
+		h.wg.Add(1)
+		go h.watchAuthorization()
+	}
 	if cap == nil {
 		m.Close()
 		return h
 	}
 	w, hh := cap.Geometry()
-	if !screenDimensionsAllowed(w, hh) {
+	if !h.allowed() || !screenDimensionsAllowed(w, hh) {
 		m.Close()
 		return h
 	}
@@ -170,6 +183,10 @@ func ServeHostWithOptions(m *Mux, cap Capturer, inj Injector, fps int, opts Host
 }
 
 func (h *Host) handleStream(s Stream) {
+	if !h.allowed() {
+		s.release()
+		return
+	}
 	h.workerMu.Lock()
 	defer h.workerMu.Unlock()
 	select {
@@ -195,6 +212,9 @@ func (h *Host) handleStream(s Stream) {
 
 // SendChat sends a chat line from the host side.
 func (h *Host) SendChat(from, text string) error {
+	if !h.allowed() {
+		return io.ErrClosedPipe
+	}
 	return h.Mux.SendJSON(StreamChat, PriChat, ChatMessage{From: from, Text: text, At: time.Now().Unix()})
 }
 
@@ -218,16 +238,25 @@ func (h *Host) screenLoop() {
 		case <-h.Mux.closed:
 			return
 		case <-adapt.C:
+			if !h.allowed() {
+				return
+			}
 			if tune != nil {
 				tune.SetQuality(qualityForRTT(h.Mux.RTT()))
 			}
 			continue
 		case <-tick.C:
 		}
+		if !h.allowed() {
+			return
+		}
 		var fr ScreenFrame
 		if dc != nil {
 			full, tiles, err := dc.CaptureDelta()
 			if err != nil {
+				return
+			}
+			if !h.allowed() {
 				return
 			}
 			if full == nil && len(tiles) == 0 {
@@ -257,6 +286,9 @@ func (h *Host) screenLoop() {
 			seq++
 			fr = ScreenFrame{Seq: seq, Full: true, Image: img}
 		}
+		if !h.allowed() {
+			return
+		}
 		h.hmu.RLock()
 		rec := h.rec
 		h.hmu.RUnlock()
@@ -284,6 +316,9 @@ func (h *Host) inputLoop(s Stream) {
 		if err := json.Unmarshal(f.Payload, &ev); err != nil {
 			continue
 		}
+		if !h.allowed() {
+			return
+		}
 		if h.Inj != nil {
 			h.Inj.Inject(ev)
 		}
@@ -295,6 +330,9 @@ func (h *Host) chatLoop(s Stream) {
 	for {
 		f, err := s.Recv(0)
 		if err != nil {
+			return
+		}
+		if !h.allowed() {
 			return
 		}
 		var m ChatMessage
@@ -323,4 +361,40 @@ func (h *Host) Stop() {
 		}
 		h.wg.Wait()
 	})
+}
+
+// allowed is terminal after any known denial. It closes only the transport:
+// worker-owned authorization checks must not wait for themselves via Stop.
+func (h *Host) allowed() bool {
+	if h.revoked.Load() {
+		return false
+	}
+	select {
+	case <-h.Mux.Closed():
+		return false
+	default:
+	}
+	if h.authorize == nil || h.authorize() {
+		return !h.revoked.Load()
+	}
+	h.revoked.Store(true)
+	h.Mux.Close()
+	return false
+}
+func (h *Host) watchAuthorization() {
+	defer h.wg.Done()
+	ticker := time.NewTicker(time.Second / 8)
+	defer ticker.Stop()
+	for {
+		if !h.allowed() {
+			return
+		}
+		select {
+		case <-h.stop:
+			return
+		case <-h.Mux.Closed():
+			return
+		case <-ticker.C:
+		}
+	}
 }

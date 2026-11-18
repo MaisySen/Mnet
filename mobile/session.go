@@ -1,13 +1,11 @@
 package mobile
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"net/netip"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -666,37 +664,5 @@ func dialMeshTCP(self, target string, timeout time.Duration) (net.Conn, error) {
 // person. The TCP source belongs to the encrypted mesh; a claimed hello label
 // alone must never choose who the host sees in a consent prompt.
 func verifiedSessionPeer(peers []daemon.SessionPeer, claim string, from net.Addr) (string, string, bool) {
-	tcp, ok := from.(*net.TCPAddr)
-	if !ok || tcp == nil {
-		return "", "", false
-	}
-	source, ok := netip.AddrFromSlice(tcp.IP)
-	if !ok {
-		return "", "", false
-	}
-	source = source.Unmap()
-	if claim == "" || strings.TrimSpace(claim) != claim {
-		return "", "", false
-	}
-	result := ""
-	key := ""
-	sourceMatches, nameMatches := 0, 0
-	for _, peer := range peers {
-		ip, err := netip.ParseAddr(peer.IPv4)
-		sameSource := err == nil && ip.Unmap() == source
-		sameName := strings.EqualFold(peer.Name, claim)
-		if sameSource {
-			sourceMatches++
-		}
-		if sameName {
-			nameMatches++
-		}
-		if sameSource && sameName {
-			result = peer.Name
-			key = peer.PublicKey
-		}
-	}
-	raw, err := base64.StdEncoding.Strict().DecodeString(key)
-	validKey := err == nil && len(raw) == 32 && base64.StdEncoding.EncodeToString(raw) == key
-	return result, key, result != "" && sourceMatches == 1 && nameMatches == 1 && validKey
+	return daemon.MatchSessionPeer(peers, claim, from)
 }

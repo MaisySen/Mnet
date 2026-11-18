@@ -17,22 +17,6 @@ import (
 
 const sessionPort = 5909
 
-// bindViewer verifies the viewer's claimed node name against the
-// control-plane-issued netmap: the connection's source mesh IP must
-// be the address the control plane assigned to that name. Without
-// this, any mesh peer could claim any name in its Hello.
-func bindViewer(peers []daemon.PeerStatus, name, sourceIP string) error {
-	for _, p := range peers {
-		if strings.EqualFold(p.Name, name) {
-			if p.IPv4 != sourceIP {
-				return fmt.Errorf("name %q belongs to %s, not %s", name, p.IPv4, sourceIP)
-			}
-			return nil
-		}
-	}
-	return fmt.Errorf("no peer named %q in the network map", name)
-}
-
 // allowedViewer applies the -session-allow list. An empty list allows
 // every verified mesh peer.
 func allowedViewer(allow map[string]bool, name string) bool {
@@ -141,6 +125,8 @@ func runSessionHost(d *daemon.Daemon, stateDir string, autoAccept bool, allow ma
 	for {
 		start := time.Now()
 		var viewer, viewerIP, refuseWhy string
+		var admittedKey string
+		var admittedSource net.Addr
 		m, err := listenHeadlessSession(ln, nodeName, 15*time.Second, func(h session.Hello, from net.Addr) (bool, string) {
 			viewer = h.NodeName
 			refuseWhy = ""
@@ -151,10 +137,12 @@ func runSessionHost(d *daemon.Daemon, stateDir string, autoAccept bool, allow ma
 				refuseWhy = "host runs headless; restart mnetd with -session-auto-accept"
 				return false, refuseWhy
 			}
-			if err := bindViewer(d.Status().Peers, h.NodeName, viewerIP); err != nil {
-				refuseWhy = err.Error()
+			canonical, key, ok := daemon.MatchSessionPeer(d.SessionPeers(), h.NodeName, from)
+			if !ok {
+				refuseWhy = "current peer identity unavailable or ambiguous"
 				return false, "identity check failed"
 			}
+			viewer, admittedKey, admittedSource = canonical, key, from
 			if !allowedViewer(allow, h.NodeName) {
 				refuseWhy = "not on the allow list"
 				return false, "node is not on this host's allow list"
@@ -166,6 +154,14 @@ func runSessionHost(d *daemon.Daemon, stateDir string, autoAccept bool, allow ma
 			if viewer != "" && refuseWhy != "" {
 				audit.log(sessionAudit{Event: "refuse", Viewer: viewer, SourceIP: viewerIP, Reason: refuseWhy})
 			}
+			continue
+		}
+		authorized := func() bool {
+			currentName, currentKey, ok := daemon.MatchSessionPeer(d.SessionPeers(), viewer, admittedSource)
+			return ok && currentName == viewer && currentKey == admittedKey && allowedViewer(allow, viewer)
+		}
+		if !authorized() {
+			m.Close()
 			continue
 		}
 		cap, capErr := newCapturer(stateDir)
@@ -191,7 +187,7 @@ func runSessionHost(d *daemon.Daemon, stateDir string, autoAccept bool, allow ma
 			}
 		}
 		h := session.ServeHostWithOptions(m, cap, inj, 8, session.HostOptions{
-			FileDir: filepath.Join(stateDir, "received-files"), Recorder: rec,
+			FileDir: filepath.Join(stateDir, "received-files"), Recorder: rec, Authorized: authorized,
 		})
 		log.Printf("mnetd: session started for %s (%s)", viewer, viewerIP)
 		audit.log(sessionAudit{Event: "accept", Viewer: viewer, SourceIP: viewerIP, Reason: recPath})

@@ -1,6 +1,12 @@
 package daemon
 
-import "time"
+import (
+	"encoding/base64"
+	"net"
+	"net/netip"
+	"strings"
+	"time"
+)
 
 // SessionPeer is private in-process identity evidence for session admission.
 // It is not part of Status, peer-map HTTP responses or a display-name login.
@@ -24,4 +30,43 @@ func (d *Daemon) SessionPeers() []SessionPeer {
 		}
 	}
 	return peers
+}
+
+// MatchSessionPeer resolves one current approved peer by canonical full key,
+// unique case-insensitive name and unique TCP source address. The supplied
+// snapshot must come from SessionPeers, not display-only Status peers.
+func MatchSessionPeer(peers []SessionPeer, claim string, from net.Addr) (string, string, bool) {
+	tcp, ok := from.(*net.TCPAddr)
+	if !ok || tcp == nil {
+		return "", "", false
+	}
+	source, ok := netip.AddrFromSlice(tcp.IP)
+	if !ok {
+		return "", "", false
+	}
+	source = source.Unmap()
+	if claim == "" || strings.TrimSpace(claim) != claim {
+		return "", "", false
+	}
+	result := ""
+	key := ""
+	sourceMatches, nameMatches := 0, 0
+	for _, peer := range peers {
+		ip, err := netip.ParseAddr(peer.IPv4)
+		sameSource := err == nil && ip.Unmap() == source
+		sameName := strings.EqualFold(peer.Name, claim)
+		if sameSource {
+			sourceMatches++
+		}
+		if sameName {
+			nameMatches++
+		}
+		if sameSource && sameName {
+			result = peer.Name
+			key = peer.PublicKey
+		}
+	}
+	raw, err := base64.StdEncoding.Strict().DecodeString(key)
+	validKey := err == nil && len(raw) == 32 && base64.StdEncoding.EncodeToString(raw) == key
+	return result, key, result != "" && sourceMatches == 1 && nameMatches == 1 && validKey
 }
