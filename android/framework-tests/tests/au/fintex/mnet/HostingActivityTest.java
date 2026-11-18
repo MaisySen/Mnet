@@ -34,6 +34,11 @@ public class HostingActivityTest {
    assertTrue(Shadows.shadowOf(first).getMessage().toString().contains("Viewing continues"));
    first.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();assertFalse(HostSessionService.controlAllowed());
    activity.showControlConsent();AlertDialog approved=ShadowAlertDialog.getLatestAlertDialog();approved.getButton(AlertDialog.BUTTON_POSITIVE).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();assertTrue(HostSessionService.controlAllowed());
+   activity.showControlConsent();assertFalse(HostSessionService.controlAllowed());
+   ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();assertTrue(HostSessionService.controlAllowed());
+   activity.showControlConsent();assertFalse(HostSessionService.controlAllowed());
+   ShadowAlertDialog.getLatestAlertDialog().cancel();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();assertFalse(HostSessionService.controlAllowed());
+   activity.showControlConsent();ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();assertTrue(HostSessionService.controlAllowed());
    activity.showControlConsent();ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();assertFalse(HostSessionService.controlAllowed());
    activity.showControlConsent();AlertDialog stale=ShadowAlertDialog.getLatestAlertDialog();
    service.get().onSessionEnd();assertTrue(service.get().acceptSession("next"));stale.getButton(AlertDialog.BUTTON_POSITIVE).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();assertFalse(HostSessionService.controlAllowed());

@@ -114,12 +114,18 @@ public class HostingActivity extends Activity {
         String session=HostSessionService.controlSession();
         if(session==null){new AlertDialog.Builder(this).setTitle("No approved viewer").setMessage("Approve a viewing request first. Remote control is off.").setPositiveButton("OK",null).show();return;}
         boolean allowed=HostSessionService.controlAllowed();
-        new AlertDialog.Builder(this)
+        // Pause before showing host controls: remote gestures must not dismiss
+        // or operate the dialog that manages their own authority.
+        if(allowed) HostSessionService.answerControl(session,false);
+        AlertDialog dialog=new AlertDialog.Builder(this)
             .setTitle(allowed?"Revoke remote control?":"Allow remote control?")
-            .setMessage(allowed?"Stop accepting remote taps and scrolling for this viewer. Screen viewing continues.":"Let this viewer tap and scroll on this phone for this session. Android Accessibility must also be enabled. Viewing continues if you decline. Approval ends when the session ends; you can revoke it here at any time.")
+            .setMessage(allowed?"Remote control is paused while this dialog is open. Revoke it or choose Keep control to resume. Screen viewing continues.":"Let this viewer tap and scroll on this phone for this session. Android Accessibility must also be enabled. Viewing continues if you decline. Approval ends when the session ends; you can revoke it here at any time.")
             .setPositiveButton(allowed?"Revoke control":"Allow control",(d,w)->HostSessionService.answerControl(session,!allowed))
-            .setNegativeButton(allowed?"Keep control":"View only",(d,w)->{})
+            .setNegativeButton(allowed?"Keep control":"View only",(d,w)->{
+                if(allowed) HostSessionService.answerControl(session,true);
+            })
             .show();
+        dialog.setCanceledOnTouchOutside(false);
     }
 
     // Separate, just-in-time consent for gesture access. Declining leaves VPN,
