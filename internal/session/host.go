@@ -69,6 +69,7 @@ type Host struct {
 	onChat   func(ChatMessage)
 	onFile   func(name string, size int64)
 
+	control   *HostControl
 	authorize func() bool
 	revoked   atomic.Bool
 	rec       *Recorder // optional session recording tap
@@ -111,6 +112,10 @@ func (h *Host) SetFileDir(dir string) {
 // HostOptions are installed before queued peer streams can be dispatched.
 // Use these for startup configuration instead of racing the Set methods.
 type HostOptions struct {
+	// Control enables a separate input gate. NegotiateControl starts its wire
+	// channel only after an explicitly capable hello; otherwise input stays off.
+	Control          *HostControl
+	NegotiateControl bool
 	// Authorized optionally checks current known peer authorization.
 	Authorized func() bool
 	FileDir    string
@@ -139,6 +144,7 @@ func ServeHostWithOptions(m *Mux, cap Capturer, inj Injector, fps int, opts Host
 		FPS:  fps,
 		stop: make(chan struct{}),
 	}
+	h.control = opts.Control
 	h.authorize = opts.Authorized
 	h.onChat = opts.OnChat
 	h.onFile = opts.OnFile
@@ -169,6 +175,9 @@ func ServeHostWithOptions(m *Mux, cap Capturer, inj Injector, fps int, opts Host
 	}
 	m.Keepalive(15*time.Second, 45*time.Second)
 	m.OnStream(h.handleStream)
+	if h.control != nil && opts.NegotiateControl {
+		h.control.Start(m)
+	}
 	// Open the screen stream host-to-viewer with explicit geometry,
 	// then mark it opened so screen frames don't trigger the
 	// mux's implicit OPEN.
@@ -320,6 +329,9 @@ func (h *Host) inputLoop(s Stream) {
 		if !h.allowed() {
 			return
 		}
+		if h.control != nil && !h.control.InputAllowed(ev) {
+			continue
+		}
 		if h.Inj != nil {
 			h.Inj.Inject(ev)
 		}
@@ -357,6 +369,9 @@ func (h *Host) Stop() {
 		close(h.stop)
 		h.workerMu.Unlock()
 		h.Mux.Close()
+		if h.control != nil {
+			h.control.End()
+		}
 		if closer, ok := h.Cap.(io.Closer); ok {
 			_ = closer.Close()
 		}

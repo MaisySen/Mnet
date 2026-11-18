@@ -24,6 +24,10 @@ public class ViewerActivity extends Activity {
     private ImageView screen;
     private TextView chat;
     private EditText chatIn;
+    private TextView controlStatus;
+    private Button controlRequest;
+    private boolean controlAllowed;
+    private boolean controlPending;
     private final ViewerGate<SessionViewer> viewers = new ViewerGate<>();
     private final ViewerTap taps = new ViewerTap();
     private volatile int frameW, frameH;
@@ -45,6 +49,26 @@ public class ViewerActivity extends Activity {
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
         root.addView(screen, sp);
+
+        controlStatus=new TextView(this);
+        controlStatus.setTextSize(14);
+        controlStatus.setPadding(16,8,16,8);
+        controlStatus.setText("View only. Control is unavailable until a compatible host responds.");
+        root.addView(controlStatus);
+        controlRequest=new Button(this);
+        controlRequest.setText("Request control");
+        controlRequest.setEnabled(false);
+        controlRequest.setMinHeight((int)(48*getResources().getDisplayMetrics().density));
+        controlRequest.setOnClickListener(v->{
+            SessionViewer viewer=viewers.current();if(viewer==null)return;
+            boolean cancel=controlPending;
+            controlAllowed=false;taps.cancel();controlRequest.setEnabled(false);
+            new Thread(()->{
+                try{if(cancel)viewer.cancelControlRequest();else viewer.requestControl();}
+                catch(Exception unavailable){reconnects.post(()->{if(viewers.current()==viewer)applyControl("unavailable");});}
+            },"session-control").start();
+        });
+        root.addView(controlRequest);
 
         chat = new TextView(this);
         chat.setTypeface(android.graphics.Typeface.MONOSPACE);
@@ -80,7 +104,7 @@ public class ViewerActivity extends Activity {
 
         screen.setOnTouchListener((v, ev) -> {
             SessionViewer viewer = viewers.current();
-            if (viewer == null || frameW <= 0 || frameH <= 0) { taps.cancel(); return true; }
+            if (viewer == null || frameW <= 0 || frameH <= 0 || !controlAllowed) { taps.cancel(); return true; }
             float slop = android.view.ViewConfiguration.get(this).getScaledTouchSlop();
             if (ev.getPointerCount() != 1) { taps.cancel(); return true; }
             // Map view coordinates into frame coordinates. FIT_CENTER
@@ -154,13 +178,21 @@ public class ViewerActivity extends Activity {
                 return;
             }
             try {
-                SessionViewer connected = node.connectSession(peerIp, callbacks(attempt));
+                SessionViewer connected = node.connectSessionWithControl(peerIp, callbacks(attempt),stateJson->{
+                    reconnects.post(()->{
+                        if(!viewers.active(attempt))return;
+                        try{applyControl(new JSONObject(stateJson).optString("state"));}
+                        catch(Exception invalid){applyControl("unavailable");}
+                    });
+                });
                 reconnects.post(() -> {
                     if (!viewers.publish(attempt, connected)) {
                         closeViewer(connected);
                         return;
                     }
                     retryMs = 1000;
+                    try{applyControl(new JSONObject(connected.controlStatus()).optString("state"));}
+                    catch(Exception unavailable){applyControl("unavailable");}
                     appendChat("connected to " + peerIp);
                 });
             } catch (Exception e) {
@@ -172,6 +204,7 @@ public class ViewerActivity extends Activity {
     private void failed(ViewerGate.Ticket attempt, String message) {
         if (!viewers.active(attempt)) return;
         taps.cancel();
+        applyControl("unavailable");
         frameW = frameH = 0;
         screen.setImageDrawable(null);
         closeViewer(viewers.end(attempt));
@@ -217,6 +250,25 @@ public class ViewerActivity extends Activity {
                 reconnects.post(() -> failed(attempt, "connection lost"));
             }
         };
+    }
+
+    private void applyControl(String state){
+        controlAllowed="allowed".equals(state);
+        controlPending="pending".equals(state);
+        taps.cancel();
+        controlRequest.setText(controlPending?"Cancel request":controlAllowed?"Control allowed":"paused".equals(state)?"Control paused":"unavailable".equals(state)?"Control unavailable":"Request control");
+        controlRequest.setEnabled("available".equals(state)||controlPending||"declined".equals(state)||"revoked".equals(state));
+        String message;
+        switch(state){
+            case "available":message="View only. Ask the host before controlling this device.";break;
+            case "pending":message="Control requested. Waiting for the host's separate approval.";break;
+            case "allowed":message="Control allowed for this session. The host can revoke it at any time.";break;
+            case "paused":message="Control paused while the host reviews permission. Viewing continues.";break;
+            case "declined":message="Control declined or canceled. Viewing continues.";break;
+            case "revoked":message="Control revoked by the host. Viewing continues.";break;
+            default:message="View only. Control is unavailable with this connection.";
+        }
+        controlStatus.setText(message);
     }
 
     private static void closeViewer(SessionViewer viewer) {

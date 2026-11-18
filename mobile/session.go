@@ -60,8 +60,14 @@ type ViewerCallbacks interface {
 	OnClosed()
 }
 
+// ControlCallbacks receives typed control state as JSON, never chat.
+// On a host only peer requests/cancellation invoke it; local decisions use
+// bound Node methods and are never inferred from the callback text.
+type ControlCallbacks interface{ OnControl(stateJSON string) }
+
 // SessionHost is the hosting side of one incoming session.
 type SessionHost struct {
+	control  *session.HostControl
 	host     *session.Host
 	mux      *session.Mux
 	nodeName string
@@ -70,21 +76,25 @@ type SessionHost struct {
 
 // SessionViewer is the viewing side of an outgoing session.
 type SessionViewer struct {
-	viewer *session.Viewer
-	mux    *session.Mux
-	node   *Node
-	access *activeSessionAccess
+	control *session.ViewerControl
+	viewer  *session.Viewer
+	mux     *session.Mux
+	node    *Node
+	access  *activeSessionAccess
 }
 
 type sessionHostRun struct {
-	owner        *Node
-	listener     net.Listener
-	pending      net.Conn
-	active       *SessionHost
-	stopped      bool
-	done         chan struct{}
-	helloTimeout time.Duration
-	peerLookup   func() []daemon.SessionPeer
+	control       *session.HostControl
+	controlAccess *activeSessionAccess
+	controlCB     ControlCallbacks
+	owner         *Node
+	listener      net.Listener
+	pending       net.Conn
+	active        *SessionHost
+	stopped       bool
+	done          chan struct{}
+	helloTimeout  time.Duration
+	peerLookup    func() []daemon.SessionPeer
 }
 
 var (
@@ -118,6 +128,12 @@ func (r *sessionHostRun) Addr() net.Addr { return r.listener.Addr() }
 // StartSessionHost begins accepting on the node's mesh IP. Only this node
 // can stop its host; stale workers/consent cannot replace a newer host.
 func (n *Node) StartSessionHost(cb HostCallbacks) error {
+	return n.StartSessionHostWithControl(cb, nil)
+}
+
+// StartSessionHostWithControl enables view-only-by-default attended input.
+// Without a capable viewer no wire grant exists and input remains disabled.
+func (n *Node) StartSessionHostWithControl(cb HostCallbacks, controlCB ControlCallbacks) error {
 	ip := n.d.Status().IPv4
 	if ip == "" {
 		return errors.New("not up")
@@ -126,7 +142,7 @@ func (n *Node) StartSessionHost(cb HostCallbacks) error {
 	if err != nil {
 		return err
 	}
-	return n.startSessionHost(ln, n.d.Status().NodeName, cb)
+	return n.startSessionHostWithControlLookup(ln, n.d.Status().NodeName, cb, 15*time.Second, n.d.SessionPeers, controlCB)
 }
 
 func (n *Node) startSessionHost(ln net.Listener, name string, cb HostCallbacks) error {
@@ -144,6 +160,9 @@ func (n *Node) startSessionHostTimeout(ln net.Listener, name string, cb HostCall
 // The lookup is supplied by the owning daemon in production. Tests inject a
 // fixed peer map, never an accept-all fallback when daemon state is missing.
 func (n *Node) startSessionHostWithPeerLookup(ln net.Listener, name string, cb HostCallbacks, helloTimeout time.Duration, lookup func() []daemon.SessionPeer) error {
+	return n.startSessionHostWithControlLookup(ln, name, cb, helloTimeout, lookup, nil)
+}
+func (n *Node) startSessionHostWithControlLookup(ln net.Listener, name string, cb HostCallbacks, helloTimeout time.Duration, lookup func() []daemon.SessionPeer, controlCB ControlCallbacks) error {
 	if cb == nil {
 		ln.Close()
 		return errors.New("session callbacks required")
@@ -159,7 +178,7 @@ func (n *Node) startSessionHostWithPeerLookup(ln net.Listener, name string, cb H
 		ln.Close()
 		return errors.New("session host already running")
 	}
-	run := &sessionHostRun{owner: n, listener: ln, done: make(chan struct{}), helloTimeout: helloTimeout, peerLookup: lookup}
+	run := &sessionHostRun{controlCB: controlCB, owner: n, listener: ln, done: make(chan struct{}), helloTimeout: helloTimeout, peerLookup: lookup}
 	hosting = run
 	sessMu.Unlock()
 	go run.serve(name, cb)
@@ -170,6 +189,7 @@ func (r *sessionHostRun) serve(name string, cb HostCallbacks) {
 	defer close(r.done)
 	defer r.owner.stopSessionRun(r)
 	for {
+		var peerControl bool
 		var admittedName, admittedKey string
 		var admittedSource net.Addr
 		m, err := session.Listen(r, name, func(h session.Hello, from net.Addr) (bool, string) {
@@ -210,6 +230,7 @@ func (r *sessionHostRun) serve(name string, cb HostCallbacks) {
 				return false, "identity check failed"
 			}
 			admittedName, admittedKey, admittedSource = currentName, currentKey, from
+			peerControl = h.ControlV1
 			return true, ""
 		})
 		sessMu.Lock()
@@ -248,6 +269,16 @@ func (r *sessionHostRun) serve(name string, cb HostCallbacks) {
 			currentName, currentKey, ok := verifiedSessionPeer(r.peerLookup(), admittedName, admittedSource)
 			return ok && currentName == admittedName && currentKey == admittedKey
 		}}
+		var control *session.HostControl
+		if r.controlCB != nil {
+			control = session.NewHostControl(func(status session.ControlStatus) {
+				if access.allowed() {
+					b, _ := json.Marshal(status)
+					r.controlCB.OnControl(string(b))
+				}
+			})
+		}
+		r.control, r.controlAccess = control, access
 		guarded := &authorizedHostCallbacks{HostCallbacks: cb, access: access}
 		// Keep the connection reachable by Stop while application geometry
 		// initializes, before the active Host exists.
@@ -257,10 +288,11 @@ func (r *sessionHostRun) serve(name string, cb HostCallbacks) {
 		// while it or any other callback may consult the current authorization.
 		sessMu.Unlock()
 		h := session.ServeHostWithOptions(m, &appCapturer{cb: guarded}, &appInjector{cb: guarded}, 8, session.HostOptions{
+			Control: control, NegotiateControl: peerControl,
 			OnChat: func(cm session.ChatMessage) { b, _ := json.Marshal(cm); guarded.OnChat(string(b)) },
 			OnFile: guarded.OnFile,
 		})
-		sh := &SessionHost{host: h, mux: m, nodeName: name, access: access}
+		sh := &SessionHost{control: control, host: h, mux: m, nodeName: name, access: access}
 		sessMu.Lock()
 		if r.pending == pending {
 			r.pending = nil
@@ -279,6 +311,7 @@ func (r *sessionHostRun) serve(name string, cb HostCallbacks) {
 		sessMu.Lock()
 		if r.active == sh {
 			r.active = nil
+			r.control, r.controlAccess = nil, nil
 		}
 		stopped := r.stopped
 		sessMu.Unlock()
@@ -329,8 +362,68 @@ func (h *SessionHost) SendChat(text string) error {
 	return h.host.SendChat(h.nodeName, text)
 }
 
+// SessionControlStatus is private local state for the current hosted session.
+func (n *Node) SessionControlStatus() string {
+	sessMu.Lock()
+	r := hosting
+	var control *session.HostControl
+	if r != nil && r.owner == n && !r.stopped {
+		control = r.control
+	}
+	sessMu.Unlock()
+	if control == nil {
+		return `{"state":"unavailable"}`
+	}
+	b, _ := json.Marshal(control.Snapshot())
+	return string(b)
+}
+func (n *Node) hostControlFor(sessionID, request string) (*session.HostControl, error) {
+	sessMu.Lock()
+	r := hosting
+	var control *session.HostControl
+	var access *activeSessionAccess
+	if r != nil && r.owner == n && !r.stopped {
+		control, access = r.control, r.controlAccess
+	}
+	sessMu.Unlock()
+	if control == nil || access == nil || !access.allowed() {
+		return nil, errors.New("control unavailable")
+	}
+	st := control.Snapshot()
+	if st.Session != sessionID || st.Request != request {
+		return nil, errors.New("stale control decision")
+	}
+	return control, nil
+}
+func (n *Node) DecideSessionControl(sessionID, request string, allow bool) error {
+	c, err := n.hostControlFor(sessionID, request)
+	if err != nil {
+		return err
+	}
+	return c.Decide(sessionID, request, allow)
+}
+func (n *Node) PauseSessionControl(sessionID, request string) error {
+	c, err := n.hostControlFor(sessionID, request)
+	if err != nil {
+		return err
+	}
+	return c.Pause(sessionID, request)
+}
+func (n *Node) RevokeSessionControl(sessionID, request string) error {
+	c, err := n.hostControlFor(sessionID, request)
+	if err != nil {
+		return err
+	}
+	return c.Revoke(sessionID, request)
+}
+
 // ConnectSession dials a peer's session host by mesh IP.
 func (n *Node) ConnectSession(peerIP string, cb ViewerCallbacks) (*SessionViewer, error) {
+	return n.ConnectSessionWithControl(peerIP, cb, nil)
+}
+
+// ConnectSessionWithControl enables input only after the host's typed grant.
+func (n *Node) ConnectSessionWithControl(peerIP string, cb ViewerCallbacks, controlCB ControlCallbacks) (*SessionViewer, error) {
 	sessMu.Lock()
 	closed := n.sessionClosed
 	sessMu.Unlock()
@@ -365,12 +458,15 @@ func (n *Node) ConnectSession(peerIP string, cb ViewerCallbacks) (*SessionViewer
 	if err != nil {
 		return nil, err
 	}
-	return n.connectAuthorizedSession(conn, state.NodeName, cb, 70*time.Second, lookup)
+	return n.connectAuthorizedSessionControl(conn, state.NodeName, cb, 70*time.Second, lookup, controlCB)
 }
 
 // connectAuthorizedSession binds an outgoing viewer to the current mesh peer,
 // including an admission check after the host's potentially blocking consent.
 func (n *Node) connectAuthorizedSession(conn net.Conn, name string, cb ViewerCallbacks, timeout time.Duration, lookup func() []daemon.SessionPeer) (*SessionViewer, error) {
+	return n.connectAuthorizedSessionControl(conn, name, cb, timeout, lookup, nil)
+}
+func (n *Node) connectAuthorizedSessionControl(conn net.Conn, name string, cb ViewerCallbacks, timeout time.Duration, lookup func() []daemon.SessionPeer, controlCB ControlCallbacks) (*SessionViewer, error) {
 	if lookup == nil || cb == nil {
 		conn.Close()
 		return nil, errors.New("viewer authorization unavailable")
@@ -386,13 +482,22 @@ func (n *Node) connectAuthorizedSession(conn net.Conn, name string, cb ViewerCal
 		return current && currentName == peerName && currentKey == peerKey
 	}}
 	guarded := &authorizedViewerCallbacks{ViewerCallbacks: cb, access: access}
-	v, err := n.connectSessionWithVerifier(conn, name, guarded, timeout, func(rep session.HelloReply, from net.Addr) error {
+	var control *session.ViewerControl
+	if controlCB != nil {
+		control = session.NewViewerControl(func(st session.ControlStatus) {
+			if access.allowed() {
+				b, _ := json.Marshal(st)
+				controlCB.OnControl(string(b))
+			}
+		})
+	}
+	v, err := n.connectSessionWithControlVerifier(conn, name, guarded, timeout, func(rep session.HelloReply, from net.Addr) error {
 		currentName, currentKey, current := verifiedSessionPeer(lookup(), rep.NodeName, from)
 		if !current || currentName != peerName || currentKey != peerKey || !access.allowed() {
 			return errors.New("session host identity changed or was denied")
 		}
 		return nil
-	})
+	}, control)
 	if err != nil {
 		return nil, err
 	}
@@ -430,6 +535,9 @@ func verifiedSessionDestination(peers []daemon.SessionPeer, from net.Addr) (stri
 }
 
 func (n *Node) connectSessionWithVerifier(conn net.Conn, name string, cb ViewerCallbacks, timeout time.Duration, verify func(session.HelloReply, net.Addr) error) (*SessionViewer, error) {
+	return n.connectSessionWithControlVerifier(conn, name, cb, timeout, verify, nil)
+}
+func (n *Node) connectSessionWithControlVerifier(conn net.Conn, name string, cb ViewerCallbacks, timeout time.Duration, verify func(session.HelloReply, net.Addr) error, control *session.ViewerControl) (*SessionViewer, error) {
 	sessMu.Lock()
 	if n.sessionClosed || cb == nil || verify == nil {
 		sessMu.Unlock()
@@ -451,7 +559,7 @@ func (n *Node) connectSessionWithVerifier(conn net.Conn, name string, cb ViewerC
 	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
 		return nil, err
 	}
-	m, err := session.DialWithPeerVerifier(conn, name, verify)
+	m, err := session.DialWithControl(conn, name, verify, control != nil)
 	if err != nil {
 		return nil, err
 	}
@@ -469,12 +577,20 @@ func (n *Node) connectSessionWithVerifier(conn net.Conn, name string, cb ViewerC
 		return nil, err
 	}
 	v := session.ConnectViewerWithOptions(m, session.ViewerOptions{
+		Control: control,
 		OnFrame: func(fr session.ScreenFrame) { cb.OnFrame(fr.Image) },
 		OnChat:  func(cm session.ChatMessage) { b, _ := json.Marshal(cm); cb.OnChat(string(b)) },
 	})
 	failed = false
-	go func() { <-m.Closed(); n.releaseViewer(conn); cb.OnClosed() }()
-	return &SessionViewer{viewer: v, mux: m, node: n}, nil
+	go func() {
+		<-m.Closed()
+		if control != nil {
+			control.End()
+		}
+		n.releaseViewer(conn)
+		cb.OnClosed()
+	}()
+	return &SessionViewer{control: control, viewer: v, mux: m, node: n}, nil
 }
 
 func (n *Node) releaseViewer(conn net.Conn) { sessMu.Lock(); delete(n.viewers, conn); sessMu.Unlock() }
@@ -489,6 +605,26 @@ func (n *Node) stopViewers(permanent bool) {
 	for conn := range connections {
 		conn.Close()
 	}
+}
+
+func (v *SessionViewer) RequestControl() error {
+	if v.control == nil || v.access == nil || !v.access.allowed() {
+		return errors.New("control unavailable")
+	}
+	return v.control.Request()
+}
+func (v *SessionViewer) CancelControlRequest() error {
+	if v.control == nil {
+		return errors.New("control unavailable")
+	}
+	return v.control.Cancel()
+}
+func (v *SessionViewer) ControlStatus() string {
+	if v.control == nil {
+		return `{"state":"unavailable"}`
+	}
+	b, _ := json.Marshal(v.control.Snapshot())
+	return string(b)
 }
 
 // SendInputJSON sends one input event, JSON-encoded session.InputEvent.

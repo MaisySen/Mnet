@@ -30,7 +30,7 @@ import mobile.Node;
 // engine, which serves them to a connected viewer. Consent for each
 // session viewing comes from HostingActivity (view-only auto-accept or a dialog).
 // Remote input needs a separate session-scoped approval in HostingActivity.
-public class HostSessionService extends Service implements HostCallbacks {
+public class HostSessionService extends Service implements HostCallbacks, mobile.ControlCallbacks {
 
     public static final String ACTION_LOG = "au.fintex.mnet.SESSION_LOG";
     public static final String EXTRA_LOG = "log";
@@ -46,6 +46,13 @@ public class HostSessionService extends Service implements HostCallbacks {
     private static final SessionConsent CONSENT = new SessionConsent();
     private static volatile HostSessionService currentHost;
     private final SessionControl control=new SessionControl();
+    private String wireSession, wireRequest;
+    private long wireRevision;
+    private void clearWireControl(){wireSession=null;wireRequest=null;wireRevision=0;}
+    private org.json.JSONObject currentWireControl(){
+        try{return node==null?new org.json.JSONObject():new org.json.JSONObject(node.sessionControlStatus());}
+        catch(Exception unavailable){return new org.json.JSONObject();}
+    }
 
     @Override public void onCreate(){super.onCreate();currentHost=this;}
     public static String controlSession(){HostSessionService host=currentHost;return host==null?null:host.control.current();}
@@ -53,7 +60,14 @@ public class HostSessionService extends Service implements HostCallbacks {
         HostSessionService host=currentHost;
         if(host==null)return null;
         synchronized(host.hostLifecycle){
-            if(!host.running)return null;
+            if(!host.running||host.inputGeometryInvalid)return null;
+            org.json.JSONObject state=host.currentWireControl();
+            String mode=state.optString("state");
+            if(host.wireSession==null||!host.wireSession.equals(state.optString("session"))||!host.wireRequest.equals(state.optString("request"))||!("pending".equals(mode)||"allowed".equals(mode)||"paused".equals(mode)))return null;
+            if("allowed".equals(mode)){
+                try{host.node.pauseSessionControl(host.wireSession,host.wireRequest);}
+                catch(Exception ended){host.control.end();MnetAccessibilityService.setHosting(false);return null;}
+            }
             SessionControl.Decision decision=host.control.openDecision();
             MnetAccessibilityService.setHosting(false);
             return decision;
@@ -64,10 +78,32 @@ public class HostSessionService extends Service implements HostCallbacks {
         HostSessionService host=currentHost;
         if(host==null)return false;
         synchronized(host.hostLifecycle){
-            if(!host.running||!host.control.decide(id,allowed))return false;
-            MnetAccessibilityService.setHosting(allowed);
-            host.log(allowed?"remote control approved for this viewer":"remote control revoked; viewing continues");
+            if(!host.running||!host.control.decide(id,false))return false;
+            MnetAccessibilityService.setHosting(false);
+            if(allowed&&(host.inputGeometryInvalid||MnetAccessibilityService.instance()==null)){
+                try{host.node.decideSessionControl(host.wireSession,host.wireRequest,false);}catch(Exception ignored){}
+                host.log("Control unavailable. Enable Accessibility, then ask the viewer to request again.");return false;
+            }
+            try{
+                if(!allowed&&"paused".equals(host.currentWireControl().optString("state")))host.node.revokeSessionControl(host.wireSession,host.wireRequest);
+                else host.node.decideSessionControl(host.wireSession,host.wireRequest,allowed);
+                // A fresh local handle, never the consumed dialog's ID.
+                if(allowed)host.control.decide(host.control.current(),true);
+                MnetAccessibilityService.setHosting(allowed);
+                host.log(allowed?"remote control approved for this viewer":"remote control declined or revoked; viewing continues");
+            }catch(Exception stale){host.log("control request ended; viewing continues");return false;}
             return true;
+        }
+    }
+
+    // OS permission/geometry loss never leaves a remote allowed status live.
+    static void controlUnavailable(){
+        HostSessionService host=currentHost;if(host==null)return;
+        synchronized(host.hostLifecycle){
+            host.control.begin();MnetAccessibilityService.setHosting(false);
+            if(host.node!=null&&host.wireSession!=null&&host.wireRequest!=null){
+                try{host.node.revokeSessionControl(host.wireSession,host.wireRequest);}catch(Exception ignored){}
+            }
         }
     }
 
@@ -139,7 +175,7 @@ public class HostSessionService extends Service implements HostCallbacks {
                 try {
                     synchronized (hostLifecycle) {
                         if (!running) return;
-                        node.startSessionHost(this);
+                        node.startSessionHostWithControl(this,this);
                         hostStarted = true;
                     }
                     log("hosting on the mesh; waiting for a viewer");
@@ -290,12 +326,13 @@ public class HostSessionService extends Service implements HostCallbacks {
                 if (dm.widthPixels != captureDisplayW || dm.heightPixels != captureDisplayH
                         || wm.getDefaultDisplay().getRotation() != captureRotation) {
                     inputGeometryInvalid = true;
+                    controlUnavailable();
                     log("display changed; restart hosting to enable remote control");
                     return;
                 }
                 float scale = (float) dm.widthPixels / frameW;
                 svc.inject(evJson, scale);
-            }
+            }else{controlUnavailable();}
         }
     }
 
@@ -303,7 +340,7 @@ public class HostSessionService extends Service implements HostCallbacks {
     public boolean acceptSession(String peerNodeName) {
         if (!running) return false;
         if (autoAccept) {
-            synchronized(hostLifecycle){if(!running)return false;control.begin();MnetAccessibilityService.setHosting(false);}
+            synchronized(hostLifecycle){if(!running)return false;control.begin();clearWireControl();MnetAccessibilityService.setHosting(false);}
             log("accepted viewing from " + peerNodeName + " (view-only auto-accept)");
             return true;
         }
@@ -321,7 +358,7 @@ public class HostSessionService extends Service implements HostCallbacks {
             boolean accepted=CONSENT.await(request, 60, TimeUnit.SECONDS);
             synchronized(hostLifecycle){
                 if(!accepted||!running)return false;
-                control.begin();MnetAccessibilityService.setHosting(false);
+                control.begin();clearWireControl();MnetAccessibilityService.setHosting(false);
                 log("viewing approved; remote control is off");
                 return true;
             }
@@ -329,6 +366,26 @@ public class HostSessionService extends Service implements HostCallbacks {
             Thread.currentThread().interrupt();
         }
         return false;
+    }
+
+    @Override
+    public void onControl(String stateJson){
+        synchronized(hostLifecycle){
+            if(!running||control.current()==null)return;
+            try{
+                org.json.JSONObject state=new org.json.JSONObject(stateJson);
+                String session=state.optString("session"),request=state.optString("request"),mode=state.optString("state");
+                long revision=state.optLong("revision");
+                if(session.isEmpty()||request.isEmpty())return;
+                org.json.JSONObject current=currentWireControl();
+                if(!session.equals(current.optString("session"))||!request.equals(current.optString("request"))||revision!=current.optLong("revision"))return;
+                if(session.equals(wireSession)&&revision<=wireRevision)return;
+                if(!"pending".equals(mode)&&!(session.equals(wireSession)&&request.equals(wireRequest)))return;
+                control.begin();MnetAccessibilityService.setHosting(false);
+                wireSession=session;wireRequest=request;wireRevision=revision;
+                log("pending".equals(mode)?"Viewer requested control. Open Remote control to review; input remains off.":"Control request canceled; viewing continues.");
+            }catch(Exception invalid){control.end();MnetAccessibilityService.setHosting(false);}
+        }
     }
 
     @Override
@@ -343,7 +400,7 @@ public class HostSessionService extends Service implements HostCallbacks {
 
     @Override
     public void onSessionEnd() {
-        synchronized(hostLifecycle){control.end();MnetAccessibilityService.setHosting(false);}
+        synchronized(hostLifecycle){control.end();clearWireControl();MnetAccessibilityService.setHosting(false);}
         log("session ended");
     }
 
@@ -367,7 +424,7 @@ public class HostSessionService extends Service implements HostCallbacks {
         synchronized (hostLifecycle) {
             running = false;
             autoAccept = false;
-            control.end();
+            control.end();clearWireControl();
             MnetAccessibilityService.setHosting(false);
             latestJpeg = null;
             latestSeq = servedSeq = 0;

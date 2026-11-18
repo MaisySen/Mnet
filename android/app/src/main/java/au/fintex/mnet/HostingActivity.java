@@ -112,7 +112,7 @@ public class HostingActivity extends Activity {
 
     void showControlConsent(){
         SessionControl.Decision decision=HostSessionService.openControlDecision();
-        if(decision==null){new AlertDialog.Builder(this).setTitle("No approved viewer").setMessage("Approve a viewing request first. Remote control is off.").setPositiveButton("OK",null).show();return;}
+        if(decision==null){new AlertDialog.Builder(this).setTitle("No control request").setMessage("The viewer must request control first using a compatible app. Viewing alone never enables input.").setPositiveButton("OK",null).show();return;}
         String session=decision.id;
         boolean allowed=decision.wasAllowed;
         // Pause before showing host controls: remote gestures must not dismiss

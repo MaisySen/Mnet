@@ -16,9 +16,10 @@ import (
 
 // Hello opens the control stream. The client sends it first.
 type Hello struct {
-	Version  int    `json:"version"`
-	NodeName string `json:"nodeName"`
-	Want     string `json:"want"` // "screen", "shell", ... informational in v1
+	Version   int    `json:"version"`
+	NodeName  string `json:"nodeName"`
+	ControlV1 bool   `json:"control_v1,omitempty"`
+	Want      string `json:"want"` // "screen", "shell", ... informational in v1
 }
 
 // HelloReply is the host's answer.
@@ -96,6 +97,12 @@ func Dial(conn net.Conn, nodeName string) (*Mux, error) {
 // The callback must bind the reply to a trusted source, not trust its label.
 // A rejection closes the connection and publishes no active mux.
 func DialWithPeerVerifier(conn net.Conn, nodeName string, verify func(HelloReply, net.Addr) error) (*Mux, error) {
+	return DialWithControl(conn, nodeName, verify, false)
+}
+
+// DialWithControl explicitly opts into attended control negotiation. Legacy
+// callers do not advertise a capability they cannot enforce.
+func DialWithControl(conn net.Conn, nodeName string, verify func(HelloReply, net.Addr) error, control bool) (*Mux, error) {
 	success := false
 	defer func() {
 		if !success {
@@ -103,7 +110,7 @@ func DialWithPeerVerifier(conn net.Conn, nodeName string, verify func(HelloReply
 		}
 	}()
 	m := newMux(conn, StreamFile) // client dynamic ids: 4, 6, 8, ...
-	h := Hello{Version: protoVersion, NodeName: nodeName, Want: "screen"}
+	h := Hello{Version: protoVersion, NodeName: nodeName, Want: "screen", ControlV1: control}
 	if err := m.sendJSON(StreamControl, msgOpen, PriInteractive, h); err != nil {
 		return nil, err
 	}
@@ -221,6 +228,9 @@ func (m *Mux) streamHandler() func(Stream) {
 // Client and host allocate from disjoint id ranges so either side can
 // open without coordination.
 func (m *Mux) Open(priority uint8, openPayload any) (Stream, error) {
+	return m.open(priority, openPayload, true)
+}
+func (m *Mux) open(priority uint8, openPayload any, wait bool) (Stream, error) {
 	m.idMu.Lock()
 	id := m.nextID
 	m.nextID += 2
@@ -243,7 +253,7 @@ func (m *Mux) Open(priority uint8, openPayload any) (Stream, error) {
 	s.state = &streamState{ch: s.in, done: make(chan struct{}), open: raw, handled: true}
 	m.streams[id] = s.state
 	m.streamMu.Unlock()
-	if err := m.send(id, msgOpen, priority, raw); err != nil {
+	if err := m.sendWithWait(id, msgOpen, priority, raw, wait); err != nil {
 		m.releaseStream(id)
 		return Stream{}, err
 	}
@@ -363,6 +373,18 @@ func (m *Mux) sendJSON(id uint32, typ byte, pri uint8, v any) error {
 // running; during the handshake (before start) frames go straight to
 // the wire under wmu.
 func (m *Mux) send(id uint32, typ byte, pri uint8, payload []byte) error {
+	return m.sendWithWait(id, typ, pri, payload, true)
+}
+
+// controlJSON never waits on a slow peer. Callers must fail closed on error.
+func (m *Mux) controlJSON(id uint32, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	return m.sendWithWait(id, msgData, PriInteractive, b, false)
+}
+func (m *Mux) sendWithWait(id uint32, typ byte, pri uint8, payload []byte, wait bool) error {
 	if len(payload) > maxPayload {
 		return fmt.Errorf("session: payload %d exceeds %d", len(payload), maxPayload)
 	}
@@ -382,6 +404,9 @@ func (m *Mux) send(id uint32, typ byte, pri uint8, payload []byte) error {
 	default:
 	}
 	if !m.started {
+		if !wait {
+			return errors.New("session: control requires running mux")
+		}
 		f.Payload = payload
 		return writeFrame(m.conn, f)
 	}
@@ -402,6 +427,9 @@ func (m *Mux) send(id uint32, typ byte, pri uint8, payload []byte) error {
 		case <-m.closed:
 			return io.ErrClosedPipe
 		default:
+		}
+		if !wait {
+			return errors.New("session: outbound control capacity exhausted")
 		}
 		m.cond.Wait()
 	}

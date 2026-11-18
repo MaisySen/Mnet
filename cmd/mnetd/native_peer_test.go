@@ -281,7 +281,7 @@ func nativePeerScreenProof(peer *proofNodeT, root string) {
 			continue
 		}
 		conn.SetDeadline(time.Now().Add(75 * time.Second))
-		mux, err := session.Dial(conn, "userspace-peer")
+		mux, err := session.DialWithControl(conn, "userspace-peer", nil, true)
 		if err != nil {
 			conn.Close()
 			time.Sleep(time.Second)
@@ -289,12 +289,22 @@ func nativePeerScreenProof(peer *proofNodeT, root string) {
 		}
 		conn.SetDeadline(time.Time{})
 		var frames atomic.Int32
-		viewer := session.ConnectViewerWithOptions(mux, session.ViewerOptions{OnFrame: func(frame session.ScreenFrame) {
+		control := session.NewViewerControl(nil)
+		controlRequests := 0
+		viewer := session.ConnectViewerWithOptions(mux, session.ViewerOptions{Control: control, OnFrame: func(frame session.ScreenFrame) {
 			if image, e := jpeg.Decode(bytes.NewReader(frame.Image)); e == nil && image.Bounds().Dx() > 0 && image.Bounds().Dy() > 0 {
 				frames.Add(1)
 			}
 		}})
 		for time.Now().Before(deadline) {
+			// Compatibility only: explicit request, one retry after the fixture's
+			// first decline. Revocation never auto-requests or restores a grant.
+			state := control.Snapshot().State
+			if (state == "available" && controlRequests == 0) || (state == "declined" && controlRequests == 1) {
+				if control.Request() == nil {
+					controlRequests++
+				}
+			}
 			flags := map[string]bool{"decoded_frames": frames.Load() >= 2, "one_decoded_frame": frames.Load() >= 1, "viewer_connected": true, "geometry_received": viewer.Geometry() != nil, "closed_after_stop": false}
 			if frames.Load() >= 2 {
 				var point struct{ X, Y, Width, Height int }

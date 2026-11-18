@@ -362,10 +362,12 @@ public class MeshInstrumentation extends Instrumentation {
         await(() -> new File(getTargetContext().getFilesDir(), "fixture-screen-received").exists(), "screen-decoded-by-peer");
         pulseStopped.set(true);SystemClock.sleep(700);
         if(au.fintex.mnet.HostSessionService.controlAllowed()||remoteTapped.get())throw new IllegalStateException("view consent granted input");
+        await(()->"pending".equals(new org.json.JSONObject(au.fintex.mnet.MnetVpnService.currentNode().sessionControlStatus()).optString("state")),"screen-control-request");
         await(()->{AccessibilityNodeInfo root=getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();return root!=null&&clickText(root,"Remote control");},"screen-control-decline-open");
         await(()->{AccessibilityNodeInfo root=getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();return root!=null&&clickText(root,"View only");},"screen-control-decline");
         SystemClock.sleep(700);
         if(au.fintex.mnet.HostSessionService.controlAllowed()||remoteTapped.get())throw new IllegalStateException("decline allowed input");
+        await(()->"pending".equals(new org.json.JSONObject(au.fintex.mnet.MnetVpnService.currentNode().sessionControlStatus()).optString("state")),"screen-control-new-request");
         await(()->{AccessibilityNodeInfo root=getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();return root!=null&&clickText(root,"Remote control");},"screen-control-open");
         stage="screen-control-approval";
         AccessibilityNodeInfo controlDialog=captureSettledDialog("Allow remote control?","fixture-consent.png","Allow control","View only");

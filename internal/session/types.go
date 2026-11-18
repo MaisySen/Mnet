@@ -30,14 +30,16 @@ type Rect struct {
 
 // InputEvent is one viewer-to-host input message.
 type InputEvent struct {
-	Kind   string `json:"kind"` // "pointer" or "key"
-	X      int    `json:"x,omitempty"`
-	Y      int    `json:"y,omitempty"`
-	Button string `json:"button,omitempty"` // "left", "right", "middle"
-	Action string `json:"action,omitempty"` // "down", "up", "move", "click", "scroll"
-	DX     int    `json:"dx,omitempty"`     // scroll delta
-	DY     int    `json:"dy,omitempty"`
-	Text   string `json:"text,omitempty"` // for kind=key
+	ControlSession string `json:"control_session,omitempty"`
+	ControlRequest string `json:"control_request,omitempty"`
+	Kind           string `json:"kind"` // "pointer" or "key"
+	X              int    `json:"x,omitempty"`
+	Y              int    `json:"y,omitempty"`
+	Button         string `json:"button,omitempty"` // "left", "right", "middle"
+	Action         string `json:"action,omitempty"` // "down", "up", "move", "click", "scroll"
+	DX             int    `json:"dx,omitempty"`     // scroll delta
+	DY             int    `json:"dy,omitempty"`
+	Text           string `json:"text,omitempty"` // for kind=key
 }
 
 // ChatMessage is one chat line.

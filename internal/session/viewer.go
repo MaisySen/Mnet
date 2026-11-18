@@ -14,7 +14,8 @@ import (
 // replaced at any time via the Set methods, which suits UI code that
 // opens its screen after the session starts.
 type Viewer struct {
-	Mux *Mux
+	Mux     *Mux
+	control *ViewerControl
 
 	vmu     sync.RWMutex
 	onFrame func(ScreenFrame)
@@ -48,6 +49,7 @@ func (v *Viewer) SetOnChat(f func(ChatMessage)) {
 // returns immediately.
 // ViewerOptions installs callbacks before dispatching already queued streams.
 type ViewerOptions struct {
+	Control *ViewerControl
 	OnFrame func(ScreenFrame)
 	OnChat  func(ChatMessage)
 }
@@ -58,7 +60,7 @@ func ConnectViewer(m *Mux) *Viewer {
 
 func ConnectViewerWithOptions(m *Mux, opts ViewerOptions) *Viewer {
 	m.Keepalive(15*time.Second, 45*time.Second)
-	v := &Viewer{Mux: m, onFrame: opts.OnFrame, onChat: opts.OnChat}
+	v := &Viewer{Mux: m, onFrame: opts.OnFrame, onChat: opts.OnChat, control: opts.Control}
 	m.OnStream(v.handleStream)
 	return v
 }
@@ -76,6 +78,14 @@ func (v *Viewer) Geometry() *ScreenOpen {
 }
 
 func (v *Viewer) handleStream(s Stream) {
+	if isControlStream(s) {
+		if v.control != nil {
+			go v.control.Handle(s)
+		} else {
+			s.release()
+		}
+		return
+	}
 	switch {
 	case s.ID == StreamScreen:
 		v.vmu.Lock()
@@ -94,6 +104,11 @@ func (v *Viewer) handleStream(s Stream) {
 // SendInput sends one input event to the host; the stream is opened
 // implicitly on the first event.
 func (v *Viewer) SendInput(ev InputEvent) error {
+	if v.control != nil {
+		if err := v.control.BindInput(&ev); err != nil {
+			return err
+		}
+	}
 	return v.Mux.SendJSON(StreamInput, PriInteractive, ev)
 }
 

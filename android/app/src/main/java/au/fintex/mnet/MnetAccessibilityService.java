@@ -34,7 +34,8 @@ public class MnetAccessibilityService extends AccessibilityService {
 
     @Override
     public boolean onUnbind(android.content.Intent intent) {
-        instance = null;
+        instance = null;hosting=false;
+        HostSessionService.controlUnavailable();
         return super.onUnbind(intent);
     }
 
@@ -44,6 +45,7 @@ public class MnetAccessibilityService extends AccessibilityService {
 
     @Override
     public void onInterrupt() {
+        hosting=false;HostSessionService.controlUnavailable();
     }
 
     // inject applies one session.InputEvent JSON from the Go engine.
@@ -80,7 +82,7 @@ public class MnetAccessibilityService extends AccessibilityService {
                 default:
                     return; // move needs no gesture
             }
-            dispatchGesture(b.build(), null, null);
+            if(!dispatchGesture(b.build(), null, null)){hosting=false;HostSessionService.controlUnavailable();}
         } catch (Exception ignored) {
         }
     }

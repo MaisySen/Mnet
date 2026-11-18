@@ -27,7 +27,8 @@ public class ViewerActivityTest {
  @Test public void completedMotionEventInjectsOnceAndCancelDragDoNot() throws Exception {
   mobile.SessionViewer viewer=new mobile.SessionViewer();
   java.util.concurrent.atomic.AtomicReference<mobile.ViewerCallbacks> callbacks=new java.util.concurrent.atomic.AtomicReference<>();
-  MnetVpnService.node=new mobile.Node(){@Override public mobile.SessionViewer connectSession(String peer,mobile.ViewerCallbacks cb){callbacks.set(cb);return viewer;}};
+  java.util.concurrent.atomic.AtomicReference<mobile.ControlCallbacks> controls=new java.util.concurrent.atomic.AtomicReference<>();
+  MnetVpnService.node=new mobile.Node(){@Override public mobile.SessionViewer connectSessionWithControl(String peer,mobile.ViewerCallbacks cb,mobile.ControlCallbacks control){callbacks.set(cb);controls.set(control);return viewer;}};
   ActivityController<ViewerActivity> controller=Robolectric.buildActivity(ViewerActivity.class,new Intent().putExtra("peer_ip","100.64.0.2")).create();
   try {
   ViewerActivity activity=controller.get();
@@ -40,6 +41,8 @@ public class ViewerActivityTest {
    touch(screen,MotionEvent.ACTION_DOWN,200,200);touch(screen,MotionEvent.ACTION_UP,200,200);
    Thread.sleep(50);assertTrue("no input before any decoded frame",viewer.input.isEmpty());
    frame(callbacks.get(),400,400);
+   touch(screen,MotionEvent.ACTION_DOWN,200,200);touch(screen,MotionEvent.ACTION_UP,200,200);Thread.sleep(30);assertTrue("decoded viewing alone never grants input",viewer.input.isEmpty());
+   controls.get().onControl("{\"state\":\"allowed\"}");Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
    touch(screen,MotionEvent.ACTION_DOWN,200,200);assertTrue(viewer.input.isEmpty());
    touch(screen,MotionEvent.ACTION_UP,200,200);
    long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);

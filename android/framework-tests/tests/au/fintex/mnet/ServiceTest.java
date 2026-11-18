@@ -25,6 +25,9 @@ public class ServiceTest{
    service.inject("{\"kind\":\"pointer\",\"action\":\"click\"}");assertEquals(1,sink.injections);
    setField(service,"captureDisplayW",metrics.widthPixels+1);
    service.inject("{\"kind\":\"pointer\",\"action\":\"click\"}");assertEquals("old frame after display-width change",1,sink.injections);
+   assertFalse("geometry loss closes local gate",HostSessionService.controlAllowed());
+   mobile.Node wire=(mobile.Node)readField(service,"node");assertTrue(wire.sessionControlStatus().contains("revoked"));
+   assertNull("stale geometry cannot approve another dialog",HostSessionService.openControlDecision());
    setField(service,"captureDisplayW",metrics.widthPixels);
    service.inject("{\"kind\":\"pointer\",\"action\":\"click\"}");assertEquals("geometry refusal stays latched until restart",1,sink.injections);
    setField(service,"inputGeometryInvalid",false);setField(service,"captureDisplayH",metrics.heightPixels+1);
@@ -85,7 +88,12 @@ public class ServiceTest{
  private static void approveControl(HostSessionService service)throws Exception{
   setField(service,"autoAccept",true);assertTrue(service.acceptSession("fixture-peer"));
   assertFalse(HostSessionService.controlAllowed());
+  requestControl(service);
   assertTrue(HostSessionService.answerControl(HostSessionService.controlSession(),true));
+ }
+ static mobile.Node requestControl(HostSessionService service)throws Exception{
+  mobile.Node node=new mobile.Node();node.wireSession=java.util.UUID.randomUUID().toString();node.wireRequest=java.util.UUID.randomUUID().toString();node.wireState="pending";
+  setField(service,"node",node);service.onControl(node.sessionControlStatus());return node;
  }
  @Test public void viewOnlyControlRevokeAndSessionEndEnforceInput()throws Exception{
   ServiceController<HostSessionService> controller=Robolectric.buildService(HostSessionService.class).create();
@@ -95,15 +103,16 @@ public class ServiceTest{
    android.view.Display display=((android.view.WindowManager)service.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();display.getRealMetrics(metrics);
    setField(service,"running",true);setField(service,"autoAccept",true);setField(service,"frameW",metrics.widthPixels);setField(service,"frameH",metrics.heightPixels);
    setField(service,"captureDisplayW",metrics.widthPixels);setField(service,"captureDisplayH",metrics.heightPixels);setField(service,"captureRotation",display.getRotation());
-   assertTrue(service.acceptSession("viewer"));String first=HostSessionService.controlSession();assertNotNull(first);
+   assertTrue(service.acceptSession("viewer"));requestControl(service);String first=HostSessionService.controlSession();assertNotNull(first);
    String input="{\"kind\":\"pointer\",\"action\":\"click\"}";
    service.inject(input);assertEquals(0,sink.injections);assertFalse(MnetAccessibilityService.hosting);
    assertTrue(HostSessionService.answerControl(first,true));service.inject(input);assertEquals(1,sink.injections);
    assertFalse(HostSessionService.answerControl(first,false));
+   assertNotNull(HostSessionService.openControlDecision());
    assertTrue(HostSessionService.answerControl(HostSessionService.controlSession(),false));service.inject(input);assertEquals(1,sink.injections);
    assertTrue(service.acceptSession("next"));assertNotEquals(first,HostSessionService.controlSession());
    assertFalse(HostSessionService.answerControl(first,true));service.inject(input);assertEquals(1,sink.injections);
-   String next=HostSessionService.controlSession();assertTrue(HostSessionService.answerControl(next,true));
+   requestControl(service);String next=HostSessionService.controlSession();assertTrue(HostSessionService.answerControl(next,true));
    service.onSessionEnd();assertFalse(HostSessionService.answerControl(next,true));service.inject(input);assertEquals(1,sink.injections);
    assertNull(HostSessionService.controlSession());assertFalse(MnetAccessibilityService.hosting);
   }finally{controller.destroy();MnetAccessibilityService.current=null;}
@@ -182,4 +191,5 @@ public class ServiceTest{
   assertEquals(Service.START_NOT_STICKY,s.onStartCommand(new Intent().setAction("stop"),0,2));
   assertTrue(shadowOf(s).isStoppedBySelf());assertFalse(s.acceptSession("unapproved"));c.destroy();
  }
+ private static Object readField(Object o,String name)throws Exception{java.lang.reflect.Field f=o.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(o);}
 }
