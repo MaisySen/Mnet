@@ -40,7 +40,24 @@ type FileReceiver struct {
 // Handle runs one incoming file stream to completion.
 func (r FileReceiver) Handle(s Stream) {
 	defer s.release()
-	allowed := func() bool { return r.Authorized == nil || r.Authorized() }
+	// An authorization callback can block while this session ends. Check both
+	// sides of it so a late true result cannot grant work to a retired mux.
+	allowed := func() bool {
+		select {
+		case <-r.Mux.Closed():
+			return false
+		default:
+		}
+		if r.Authorized != nil && !r.Authorized() {
+			return false
+		}
+		select {
+		case <-r.Mux.Closed():
+			return false
+		default:
+			return true
+		}
+	}
 	if !allowed() {
 		return
 	}
@@ -148,6 +165,9 @@ func (r FileReceiver) Handle(s Stream) {
 	digest := hex.EncodeToString(h.Sum(nil))
 	if n != offer.Size || (offer.SHA256 != "" && !strings.EqualFold(digest, offer.SHA256)) {
 		ack(false, digest)
+		return
+	}
+	if !allowed() {
 		return
 	}
 	if err = f.Sync(); err != nil {
