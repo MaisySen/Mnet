@@ -41,8 +41,28 @@ class Guards(unittest.TestCase):
         workflow = (ROOT / '.github/workflows/android-emulator.yml').read_text()
         outputs = workflow.split('path: |')[1]
         self.assertNotIn('*', outputs)
-        self.assertEqual({'summary.json', 'instrumentation.txt', 'launch.png', 'privacy.png', 'vpn-disclosure.png', 'consent.png', 'consent.mp4'}, {x.strip().split('/')[-1] for x in outputs.splitlines() if x.strip()})
+        self.assertEqual({'kernel-observation.json', 'summary.json', 'instrumentation.txt', 'launch.png', 'privacy.png', 'vpn-disclosure.png', 'consent.png', 'consent.mp4'}, {x.strip().split('/')[-1] for x in outputs.splitlines() if x.strip()})
         self.assertIn('runs-on: ubuntu-latest', workflow)
+    def test_kernel_observer_exports_only_reconstructed_diagnostics(self):
+        source=(ROOT / 'scripts/android-emulator-validation.py').read_text()
+        observer=(ROOT / 'scripts/android-kernel-observer.c').read_text()
+        self.assertIn("type(row.get(k)) is t",source)
+        self.assertIn("observed['kernel'].append(safe_row)",source)
+        self.assertNotIn("observed['kernel'].append(row)",source)
+        self.assertIn('capture_drops',source)
+        self.assertIn('u16(q+8)==0x4d4e',observer)
+        self.assertIn('dns_events<128',observer)
+        self.assertIn('nflows<32',observer)
+        self.assertNotIn('fwrite(',observer)
+        self.assertNotIn('setenforce',source)
+        self.assertNotIn('tcpdump',source)
+    def test_network_observation_does_not_change_vpn_readiness(self):
+        source=(ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
+        observe=source.split('private void observeNetwork(String point)')[1].split('private void verifyDNSPreservingFailure')[0]
+        for forbidden in ('bindSocket(', 'requestNetwork(', 'Thread.sleep(', 'SystemClock.sleep(', 'await('):
+            self.assertNotIn(forbidden,observe)
+        self.assertIn('Observer must never change original verdict',observe)
+        self.assertIn('networkObservations.toString()',observe)
     def test_real_consent_and_no_protection_disable(self):
         source = (ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
         self.assertIn('com.android.vpndialogs', source)
