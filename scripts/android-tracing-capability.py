@@ -112,6 +112,12 @@ def main():
             row['zero_return_seen']=any('result=0x0' in x or 'result=0 ' in x or x.endswith('result=0') for x in lines)
         for name,row in report['events'].items():
             row['recorded']=name.split(':')[1]+':' in content
+        if os.environ.get('MNET_SYNTHETIC_CORRELATION')=='true':
+            import importlib.util
+            import sys
+            spec=importlib.util.spec_from_file_location('mnet_correlation','scripts/android-synthetic-correlation.py')
+            correlation=importlib.util.module_from_spec(spec);spec.loader.exec_module(correlation)
+            report['correlation']=correlation.run(sys.modules[__name__],trace,instance,hooks,compiler)
         report['selinux_enforcing_after']=text(shell('getenforce')).strip()=='Enforcing'
         report['security_policy_unchanged']=policy_before==text(shell('getenforce')).strip()
     except (OSError,RuntimeError,subprocess.TimeoutExpired) as error:

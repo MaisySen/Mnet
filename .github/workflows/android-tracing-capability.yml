@@ -7,7 +7,7 @@ on:
       - '.github/workflows/android-tracing-capability.yml'
   workflow_dispatch:
 
-# Capability-only. Correctly quoted shell transport; no Mnet or peer install.
+# Synthetic socket/TUN correlation only; no Mnet, peer or failed-proof rerun.
 permissions:
   contents: read
 concurrency:
@@ -43,6 +43,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: bounded empty-image trace feasibility
         env:
+          MNET_SYNTHETIC_CORRELATION: 'true'
           MNET_CAPABILITY_OUTPUT: ${{ runner.temp }}/mnet-capability/report.json
         run: python3 scripts/android-tracing-capability.py
       - name: retain derived capabilities only
