@@ -84,7 +84,7 @@ def main():
             (test / sub).mkdir(parents=True, exist_ok=True)
         (test / 'AndroidManifest.xml').write_text('''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="au.fintex.mnet.controlfixture"><uses-sdk android:minSdkVersion="24" android:targetSdkVersion="36"/><uses-permission android:name="android.permission.INTERNET"/><application android:label="Disposable control acceptance"/><instrumentation android:name="au.fintex.mnet.fixture.ControlAcceptance" android:targetPackage="au.fintex.mnet"/></manifest>''')
         run([bt / 'aapt2', 'link', '-o', test / 'base.apk', '-I', android, '--manifest', test / 'AndroidManifest.xml'])
-        run(['javac', '-source', '11', '-target', '11', '-cp', f'{android}:{out}/classes:{out}/aar/classes.jar', '-d', test / 'classes', staged / 'android/instrumentation/au/fintex/mnet/fixture/ControlAcceptance.java'])
+        run(['javac', '-source', '11', '-target', '11', '-cp', f'{android}:{out}/classes:{out}/aar/classes.jar', '-d', test / 'classes', staged / 'android/instrumentation/au/fintex/mnet/fixture/ControlAcceptance.java',staged / 'android/instrumentation/au/fintex/mnet/fixture/ControlAcceptanceState.java'])
         run(['jar', 'cf', test / 'target.jar', '-C', out / 'classes', '.'])
         run([bt / 'd8', '--min-api', '24', '--lib', android, '--classpath', test / 'target.jar', '--classpath', out / 'aar/classes.jar', '--output', test / 'dex', *sorted((test / 'classes').rglob('*.class'))])
         shutil.copy(test / 'base.apk', test / 'unaligned.apk')

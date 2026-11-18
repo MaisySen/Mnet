@@ -25,6 +25,7 @@ import au.fintex.mnet.R;
 // Manual-only control journey acceptance. No DNS, bulk or tracing calls.
 public class ControlAcceptance extends Instrumentation {
  private final org.json.JSONArray passedStages=new org.json.JSONArray();
+ private volatile Activity resumedActivity;
  private Bundle options;private Activity activity;private String stage="created";private boolean consentClicked,entireScreenSelected;
  private interface Probe{boolean ready()throws Exception;}
  @Override public void onCreate(Bundle args){super.onCreate(args);options=args;start();}
@@ -174,6 +175,37 @@ public class ControlAcceptance extends Instrumentation {
   long now=SystemClock.uptimeMillis();android.view.MotionEvent down=android.view.MotionEvent.obtain(now,now,0,point[0],point[1],0),up=android.view.MotionEvent.obtain(now,now+50,1,point[0],point[1],0);
   require(getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).injectInputEvent(down,true));require(getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).injectInputEvent(up,true));down.recycle();up.recycle();SystemClock.sleep(400);
  }
+ private boolean hostReady()throws Exception{
+  java.lang.reflect.Field f=au.fintex.mnet.HostSessionService.class.getDeclaredField("diagnosticInstance");f.setAccessible(true);
+  java.lang.ref.WeakReference<?> ref=(java.lang.ref.WeakReference<?>)f.get(null);Object host=ref==null?null:ref.get();if(host==null)return false;
+  synchronized(field(host,"hostLifecycle")){return (boolean)field(host,"running")&&(boolean)field(host,"hostStarted");}
+ }
+ private boolean consentPending()throws Exception{
+  java.lang.reflect.Field f=au.fintex.mnet.HostSessionService.class.getDeclaredField("CONSENT");f.setAccessible(true);Object consent=f.get(null);
+  synchronized(consent){Object request=field(consent,"current");return request!=null&&!(boolean)field(request,"resolved");}
+ }
+ private void admissionPending()throws Exception{
+  await(()->{String outcome=peer().optString("admission");
+   if(ControlAcceptanceState.admissionFailed(outcome)){stage="prerequisite-admission-"+outcome;throw new IllegalStateException("fixed admission outcome");}
+   return consentPending();},"prerequisite-admission-request-pending");
+ }
+ private boolean viewerBounds(Activity current)throws Exception{
+  android.view.View status=(android.view.View)field(current,"controlStatus"),button=(android.view.View)field(current,"controlRequest");
+  android.graphics.Rect a=new android.graphics.Rect(),b=new android.graphics.Rect();
+  return status.isShown()&&button.isShown()&&status.getGlobalVisibleRect(a)&&button.getGlobalVisibleRect(b)
+   &&a.height()==status.getHeight()&&a.width()==status.getWidth()&&b.height()==button.getHeight()&&b.width()==button.getWidth();
+ }
+ private boolean fontRecovered(Activity before)throws Exception{
+  Activity current=resumedActivity;if(!(current instanceof au.fintex.mnet.ViewerActivity)||current==before)return false;
+  java.util.concurrent.atomic.AtomicBoolean ready=new java.util.concurrent.atomic.AtomicBoolean();
+  int inputs=peer().getInt("inputs");
+  runOnMainSync(()->{try{
+   Object gate=field(current,"viewers");java.lang.reflect.Method m=gate.getClass().getDeclaredMethod("current");m.setAccessible(true);mobile.SessionViewer viewer=(mobile.SessionViewer)m.invoke(gate);
+   String state=viewer==null?"":new JSONObject(viewer.controlStatus()).optString("state");
+   ready.set(ControlAcceptanceState.fontViewingReady(before,current,current.getResources().getConfiguration().fontScale,(int)field(current,"frameW"),state,inputs,viewerBounds(current)));
+  }catch(Exception unavailable){}});
+  if(ready.get())activity=current;return ready.get();
+ }
  private void hostLeg()throws Exception{
   activity=startActivitySync(new Intent(getTargetContext(),HostingActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));enableRemoteControl();
   java.util.concurrent.atomic.AtomicInteger taps=new java.util.concurrent.atomic.AtomicInteger();final Button[] target=new Button[1];
@@ -186,7 +218,9 @@ public class ControlAcceptance extends Instrumentation {
   // Runner mirrors only the validated synthetic coordinate before this marker.
   new File(getTargetContext().getFilesDir(),"control-host-ready").createNewFile();
   await(()->new File(getTargetContext().getFilesDir(),"control-target-ready").exists(),"target-mirrored");
-  stage="prerequisite-host-session";require(command("viewer").getBoolean("ok"));button("Allow viewing");peerState("available");await(()->peer().getInt("frames")>=2,"host-decoded-frames");
+  stage="prerequisite-host-session";await(()->hostReady()&&resumedActivity==activity,"prerequisite-host-listener-resumed");
+  await(()->peer().getBoolean("authorized_peer"),"prerequisite-current-authorized-peer");
+  require(command("viewer").getBoolean("ok"));admissionPending();button("Allow viewing");peerState("available");await(()->peer().getInt("frames")>=2,"host-decoded-frames");
   require(!command("tap").getBoolean("ok"));require(taps.get()==0);shot("host-view-only");
   require(command("request").getBoolean("ok"));hostState("pending");JSONObject canceled=wire();require(command("cancel").getBoolean("ok"));hostState("declined");
   boolean refused=false;try{MnetVpnService.currentNode().decideSessionControl(canceled.getString("session"),canceled.getString("request"),true);}catch(Exception e){refused=true;}require(refused);
@@ -214,12 +248,24 @@ public class ControlAcceptance extends Instrumentation {
   JSONObject old=peer().getJSONObject("control");command("close");require(command("host").getBoolean("ok"));viewerState("Ask the host");require(command("stale").getBoolean("ok"));require(peer().getBoolean("stale_refused"));require(!old.getString("session").equals(peer().getJSONObject("control").getString("session")));screenTap();require(peer().getInt("inputs")==0);
   runOnMainSync(()->activity.finish());waitForIdleSync();command("close");require(command("unsupported").getBoolean("ok"));activity=startActivitySync(new Intent(getTargetContext(),au.fintex.mnet.ViewerActivity.class).putExtra("peer_ip",options.getString("peer")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
   await(()->(int)field(activity,"frameW")>0,"unsupported-viewing-frame");viewerState("unavailable");shot("viewer-unsupported");screenTap();require(peer().getInt("inputs")==0);
-  new File(getTargetContext().getFilesDir(),"control-font-ready").createNewFile();await(()->new File(getTargetContext().getFilesDir(),"control-font-applied").exists(),"font-scale-applied");SystemClock.sleep(1500);shot("viewer-large-font");
+  Activity beforeFont=activity;
+  // The font configuration recreates the viewer and closes its old connection.
+  // Arm exactly one fresh unsupported session on the retained listener first.
+  require(command("accept-next-unsupported").getBoolean("ok"));
+  new File(getTargetContext().getFilesDir(),"control-font-ready").createNewFile();await(()->new File(getTargetContext().getFilesDir(),"control-font-applied").exists(),"font-scale-applied");
+  await(()->fontRecovered(beforeFont),"large-font-recreated-viewing-ready");shot("viewer-large-font");screenTap();require(peer().getInt("inputs")==0);
   runOnMainSync(()->activity.finish());command("close");
  }
- @Override public void onStart(){Bundle result=new Bundle();try{
+ @Override public void onStart(){Bundle result=new Bundle();
+ android.app.Application application=(android.app.Application)getTargetContext().getApplicationContext();
+ android.app.Application.ActivityLifecycleCallbacks lifecycle=new android.app.Application.ActivityLifecycleCallbacks(){
+  public void onActivityResumed(Activity value){resumedActivity=value;}
+  public void onActivityPaused(Activity value){if(resumedActivity==value)resumedActivity=null;}
+  public void onActivityCreated(Activity a,Bundle b){}public void onActivityStarted(Activity a){}public void onActivityStopped(Activity a){}public void onActivitySaveInstanceState(Activity a,Bundle b){}public void onActivityDestroyed(Activity a){}
+ };application.registerActivityLifecycleCallbacks(lifecycle);
+ try{
   android.accessibilityservice.AccessibilityServiceInfo info=getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getServiceInfo();info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).setServiceInfo(info);
   activity=startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));set(R.id.server_url,options.getString("server"));set(R.id.network_name,"control-acceptance");set(R.id.auth_key,options.getString("key"));set(R.id.device_name,"android-emulator");set(R.id.exit_node,"");click(R.id.connect_button);vpnDisclosure(true,false);vpnConsent();await(this::up,"prerequisite-vpn-up");osVpnReady();
   hostLeg();viewerLeg();stage="complete";result.putString("checks",passedStages.toString());result.putString("acceptance","passed");finish(Activity.RESULT_OK,result);
- }catch(Throwable e){result.putString("checks",passedStages.toString());result.putString("acceptance","failed");result.putString("stage",stage);finish(Activity.RESULT_CANCELED,result);}}
+ }catch(Throwable e){result.putString("checks",passedStages.toString());result.putString("acceptance","failed");result.putString("stage",stage);finish(Activity.RESULT_CANCELED,result);}finally{application.unregisterActivityLifecycleCallbacks(lifecycle);}}
 }

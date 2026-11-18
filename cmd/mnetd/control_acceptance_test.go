@@ -45,21 +45,30 @@ func (s *acceptanceScreen) Capture() ([]byte, bool, error) {
 func (s *acceptanceScreen) Inject(e session.InputEvent) error { s.inputs.Add(1); return nil }
 
 type acceptancePeer struct {
-	listener     net.Listener
-	mu           sync.Mutex
-	peer         *proofNodeT
-	mux          *session.Mux
-	viewer       *session.Viewer
-	vc           *session.ViewerControl
-	hc           *session.HostControl
-	host         *session.Host
-	screen       *acceptanceScreen
-	frames       atomic.Uint32
-	old          session.ControlStatus
-	staleRefused bool
+	listener      net.Listener
+	mu            sync.Mutex
+	peer          *proofNodeT
+	mux           *session.Mux
+	viewer        *session.Viewer
+	vc            *session.ViewerControl
+	hc            *session.HostControl
+	host          *session.Host
+	screen        *acceptanceScreen
+	frames        atomic.Uint32
+	old           session.ControlStatus
+	staleRefused  bool
+	admission     string
+	lookupAndroid func() (daemon.SessionPeer, bool)
+	dialAndroid   func(context.Context, netip.AddrPort) (net.Conn, error)
 }
 
 func (p *acceptancePeer) currentAndroid() (daemon.SessionPeer, bool) {
+	if p.lookupAndroid != nil {
+		return p.lookupAndroid()
+	}
+	if p.peer == nil || p.peer.d == nil {
+		return daemon.SessionPeer{}, false
+	}
 	for _, v := range p.peer.d.SessionPeers() {
 		if v.Name == "android-emulator" {
 			return v, true
@@ -89,6 +98,7 @@ func (p *acceptancePeer) command(cmd string) error {
 	case "viewer":
 		p.close()
 		p.frames.Store(0)
+		p.admission = "queued"
 		go p.connectViewer()
 
 	case "request":
@@ -125,10 +135,11 @@ func (p *acceptancePeer) command(cmd string) error {
 			return p.mux.SendJSON(session.StreamInput, session.PriInteractive, event)
 		}
 		return p.viewer.SendInput(event)
-	case "host", "unsupported":
-		p.close()
-		p.screen = &acceptanceScreen{}
-		p.staleRefused = false
+	case "host", "unsupported", "accept-next-unsupported":
+		if cmd != "accept-next-unsupported" {
+			p.close()
+			p.staleRefused = false
+		}
 		ln, err := p.hostListener()
 		if err != nil {
 			return err
@@ -161,17 +172,32 @@ func (p *acceptancePeer) command(cmd string) error {
 	}
 	return nil
 }
+func (p *acceptancePeer) setAdmission(outcome string) {
+	p.mu.Lock()
+	p.admission = outcome
+	p.mu.Unlock()
+}
 func (p *acceptancePeer) connectViewer() {
 	target, ok := p.currentAndroid()
 	if !ok {
+		p.setAdmission("no-authorized-peer")
 		return
 	}
+	p.setAdmission("dialing")
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	conn, err := p.peer.net.DialContextTCPAddrPort(ctx, netip.AddrPortFrom(netip.MustParseAddr(target.IPv4), 5909))
+	dial := p.dialAndroid
+	if dial == nil {
+		dial = func(ctx context.Context, addr netip.AddrPort) (net.Conn, error) {
+			return p.peer.net.DialContextTCPAddrPort(ctx, addr)
+		}
+	}
+	conn, err := dial(ctx, netip.AddrPortFrom(netip.MustParseAddr(target.IPv4), 5909))
 	if err != nil {
+		p.setAdmission("tcp-dial-failed")
 		return
 	}
+	p.setAdmission("hello-pending")
 	conn.SetDeadline(time.Now().Add(20 * time.Second))
 	m, err := session.DialWithControl(conn, "control-peer", func(r session.HelloReply, from net.Addr) error {
 		now, ok := p.currentAndroid()
@@ -181,11 +207,13 @@ func (p *acceptancePeer) connectViewer() {
 		return nil
 	}, true)
 	if err != nil {
+		p.setAdmission("hello-failed")
 		return
 	}
 	conn.SetDeadline(time.Time{})
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.admission = "admitted"
 	p.mux = m
 	p.vc = session.NewViewerControl(nil)
 	p.viewer = session.ConnectViewerWithOptions(m, session.ViewerOptions{Control: p.vc, OnFrame: func(f session.ScreenFrame) {
@@ -222,6 +250,10 @@ func (p *acceptancePeer) acceptHost(ln net.Listener, capable bool) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.host != nil {
+		p.host.Stop()
+	}
+	p.screen = &acceptanceScreen{}
 	p.mux = m
 	p.hc = session.NewHostControl(nil)
 	p.host = session.ServeHostWithOptions(m, p.screen, p.screen, 8, session.HostOptions{Control: p.hc, NegotiateControl: capable})
@@ -248,7 +280,7 @@ func (p *acceptancePeer) status() map[string]any {
 	if p.screen != nil {
 		inputs = p.screen.inputs.Load()
 	}
-	return map[string]any{"control": state, "frames": p.frames.Load(), "inputs": inputs, "closed": closed, "stale_refused": p.staleRefused, "listener_ready": p.listener != nil}
+	return map[string]any{"control": state, "frames": p.frames.Load(), "inputs": inputs, "closed": closed, "stale_refused": p.staleRefused, "listener_ready": p.listener != nil, "admission": p.admission, "authorized_peer": func() bool { _, ok := p.currentAndroid(); return ok }()}
 }
 func TestControlAcceptancePeer(t *testing.T) {
 	path := os.Getenv("MNET_CONTROL_CONFIG")
@@ -419,5 +451,73 @@ func TestControlAcceptanceListenerFailureDoesNotClaimReady(t *testing.T) {
 	}
 	if p.status()["listener_ready"] != false {
 		t.Fatal("failed listener published")
+	}
+}
+
+func TestControlAcceptanceAdmissionFixedOutcomes(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		lookup func() (daemon.SessionPeer, bool)
+		dial   func(context.Context, netip.AddrPort) (net.Conn, error)
+		want   string
+	}{
+		{name: "absent", lookup: func() (daemon.SessionPeer, bool) { return daemon.SessionPeer{}, false }, want: "no-authorized-peer"},
+		{name: "dial", lookup: func() (daemon.SessionPeer, bool) { return daemon.SessionPeer{IPv4: "100.64.0.2"}, true }, dial: func(context.Context, netip.AddrPort) (net.Conn, error) { return nil, net.ErrClosed }, want: "tcp-dial-failed"},
+		{name: "hello", lookup: func() (daemon.SessionPeer, bool) { return daemon.SessionPeer{IPv4: "100.64.0.2"}, true }, dial: func(context.Context, netip.AddrPort) (net.Conn, error) { a, b := net.Pipe(); b.Close(); return a, nil }, want: "hello-failed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &acceptancePeer{lookupAndroid: tc.lookup, dialAndroid: tc.dial}
+			p.connectViewer()
+			st := p.status()
+			if st["admission"] != tc.want || st["closed"] != true {
+				t.Fatal(st)
+			}
+			if st["admission"] == "admitted" {
+				t.Fatal("failed operation claimed admission")
+			}
+		})
+	}
+}
+
+func TestControlAcceptanceArmFontSessionDoesNotCloseCurrent(t *testing.T) {
+	dev, n, err := proofnet.CreateNetTUN([]netip.Addr{netip.MustParseAddr("100.64.0.1")}, nil, 1280)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dev.Close()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	ready := make(chan *session.Mux, 1)
+	go func() {
+		m, e := session.Listen(ln, "fixture", func(session.Hello, net.Addr) (bool, string) { return true, "" })
+		if e == nil {
+			ready <- m
+		}
+	}()
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := session.DialWithControl(conn, "android", nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	active := <-ready
+	defer active.Close()
+	p := &acceptancePeer{peer: &proofNodeT{net: n, ip: netip.MustParseAddr("100.64.0.1")}, mux: active, screen: &acceptanceScreen{}}
+	defer func() {
+		if p.listener != nil {
+			p.listener.Close()
+		}
+	}()
+	if err := p.command("accept-next-unsupported"); err != nil {
+		t.Fatal(err)
+	}
+	if p.mux != active || p.status()["closed"] != false || p.listener == nil {
+		t.Fatal("font preparation closed live session instead of only arming next accept")
 	}
 }
