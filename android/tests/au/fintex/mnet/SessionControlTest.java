@@ -4,7 +4,14 @@ public final class SessionControlTest{
   SessionControl state=new SessionControl();if(state.allowed()||state.decide("old",true))throw new AssertionError("zero granted");
   String first=state.begin();if(state.allowed())throw new AssertionError("view grants control");
   if(!state.decide(first,true)||!state.allowed())throw new AssertionError("explicit control lost");
-  if(!state.decide(first,false)||state.allowed())throw new AssertionError("revoke lost");
+  if(state.decide(first,false))throw new AssertionError("answer replay");
+  if(!state.decide(state.current(),false)||state.allowed())throw new AssertionError("revoke lost");
+  SessionControl.Decision older=state.openDecision();
+  SessionControl.Decision newer=state.openDecision();
+  if(state.decide(older.id,true)||!state.decide(newer.id,false)||state.decide(newer.id,true)||state.allowed())throw new AssertionError("decision replay");
+  if(!state.decide(state.current(),true))throw new AssertionError("approve");
+  SessionControl.Decision paused=state.openDecision();
+  if(!paused.wasAllowed||state.allowed()||!state.decide(paused.id,true)||!state.allowed())throw new AssertionError("pause/keep");
   String second=state.begin();if(first.equals(second)||state.decide(first,true)||state.allowed())throw new AssertionError("old dialog replay");
   state.end();if(state.decide(second,true)||state.allowed()||state.current()!=null)throw new AssertionError("end revived");
   for(int i=0;i<1000;i++){

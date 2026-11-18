@@ -99,7 +99,8 @@ public class ServiceTest{
    String input="{\"kind\":\"pointer\",\"action\":\"click\"}";
    service.inject(input);assertEquals(0,sink.injections);assertFalse(MnetAccessibilityService.hosting);
    assertTrue(HostSessionService.answerControl(first,true));service.inject(input);assertEquals(1,sink.injections);
-   assertTrue(HostSessionService.answerControl(first,false));service.inject(input);assertEquals(1,sink.injections);
+   assertFalse(HostSessionService.answerControl(first,false));
+   assertTrue(HostSessionService.answerControl(HostSessionService.controlSession(),false));service.inject(input);assertEquals(1,sink.injections);
    assertTrue(service.acceptSession("next"));assertNotEquals(first,HostSessionService.controlSession());
    assertFalse(HostSessionService.answerControl(first,true));service.inject(input);assertEquals(1,sink.injections);
    String next=HostSessionService.controlSession();assertTrue(HostSessionService.answerControl(next,true));

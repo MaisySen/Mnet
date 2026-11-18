@@ -25,6 +25,30 @@ public class HostingActivityTest {
   assertEquals("No approved viewer",Shadows.shadowOf(dialog).getTitle().toString());
   assertFalse(HostSessionService.controlAllowed());assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
  }
+ @Test public void olderSameViewerDialogCannotRestoreControlAfterNewerDecision()throws Exception{
+  org.robolectric.android.controller.ServiceController<HostSessionService> service=Robolectric.buildService(HostSessionService.class).create();
+  try{
+   for(String name:new String[]{"running","autoAccept"}){java.lang.reflect.Field field=HostSessionService.class.getDeclaredField(name);field.setAccessible(true);field.set(service.get(),true);}
+   assertTrue(service.get().acceptSession("viewer"));
+   activity.showControlConsent();AlertDialog stale=ShadowAlertDialog.getLatestAlertDialog();
+   activity.showControlConsent();AlertDialog current=ShadowAlertDialog.getLatestAlertDialog();
+   current.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+   stale.getButton(AlertDialog.BUTTON_POSITIVE).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+   assertFalse("old same-viewer approval restored control",HostSessionService.controlAllowed());
+   activity.showControlConsent();ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+   assertTrue(HostSessionService.controlAllowed());
+   activity.showControlConsent();AlertDialog oldKeep=ShadowAlertDialog.getLatestAlertDialog();
+   activity.showControlConsent();AlertDialog newer=ShadowAlertDialog.getLatestAlertDialog();
+   newer.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+   oldKeep.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+   assertFalse("old Keep control restored control",HostSessionService.controlAllowed());
+   // Dismissing an obsolete dialog must not revoke a newer explicit approval.
+   activity.showControlConsent();AlertDialog oldCancel=ShadowAlertDialog.getLatestAlertDialog();
+   activity.showControlConsent();ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+   assertTrue(HostSessionService.controlAllowed());oldCancel.cancel();assertTrue(HostSessionService.controlAllowed());
+
+  }finally{service.destroy();}
+ }
  @Test public void separateControlDeclineApproveRevokeAndStaleDialog()throws Exception{
   org.robolectric.android.controller.ServiceController<HostSessionService> service=Robolectric.buildService(HostSessionService.class).create();
   try{

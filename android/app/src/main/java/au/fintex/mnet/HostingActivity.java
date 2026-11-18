@@ -111,20 +111,21 @@ public class HostingActivity extends Activity {
     }
 
     void showControlConsent(){
-        String session=HostSessionService.controlSession();
-        if(session==null){new AlertDialog.Builder(this).setTitle("No approved viewer").setMessage("Approve a viewing request first. Remote control is off.").setPositiveButton("OK",null).show();return;}
-        boolean allowed=HostSessionService.controlAllowed();
+        SessionControl.Decision decision=HostSessionService.openControlDecision();
+        if(decision==null){new AlertDialog.Builder(this).setTitle("No approved viewer").setMessage("Approve a viewing request first. Remote control is off.").setPositiveButton("OK",null).show();return;}
+        String session=decision.id;
+        boolean allowed=decision.wasAllowed;
         // Pause before showing host controls: remote gestures must not dismiss
         // or operate the dialog that manages their own authority.
-        if(allowed) HostSessionService.answerControl(session,false);
         AlertDialog dialog=new AlertDialog.Builder(this)
             .setTitle(allowed?"Revoke remote control?":"Allow remote control?")
             .setMessage(allowed?"Remote control is paused while this dialog is open. Revoke it or choose Keep control to resume. Screen viewing continues.":"Let this viewer tap and scroll on this phone for this session. Android Accessibility must also be enabled. Viewing continues if you decline. Approval ends when the session ends; you can revoke it here at any time.")
             .setPositiveButton(allowed?"Revoke control":"Allow control",(d,w)->HostSessionService.answerControl(session,!allowed))
             .setNegativeButton(allowed?"Keep control":"View only",(d,w)->{
-                if(allowed) HostSessionService.answerControl(session,true);
+                HostSessionService.answerControl(session,allowed);
             })
             .show();
+        dialog.setOnCancelListener(d->HostSessionService.answerControl(session,false));
         dialog.setCanceledOnTouchOutside(false);
     }
 

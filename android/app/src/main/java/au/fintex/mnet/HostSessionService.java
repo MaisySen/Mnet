@@ -49,6 +49,16 @@ public class HostSessionService extends Service implements HostCallbacks {
 
     @Override public void onCreate(){super.onCreate();currentHost=this;}
     public static String controlSession(){HostSessionService host=currentHost;return host==null?null:host.control.current();}
+    static SessionControl.Decision openControlDecision(){
+        HostSessionService host=currentHost;
+        if(host==null)return null;
+        synchronized(host.hostLifecycle){
+            if(!host.running)return null;
+            SessionControl.Decision decision=host.control.openDecision();
+            MnetAccessibilityService.setHosting(false);
+            return decision;
+        }
+    }
     public static boolean controlAllowed(){HostSessionService host=currentHost;return host!=null&&host.control.allowed();}
     public static boolean answerControl(String id,boolean allowed){
         HostSessionService host=currentHost;
