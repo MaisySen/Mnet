@@ -2,15 +2,20 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
+	"fintex.au/mnet/internal/daemon"
 	"fintex.au/mnet/internal/session"
 )
 
@@ -48,25 +53,37 @@ func runSession(args []string) {
 	}
 }
 
-func peerIP(peer string) string {
-	st := status(client(stateDir))
-	for _, p := range st.Peers {
-		if p.Name == peer || p.IPv4 == peer || p.FQDN == peer {
-			return p.IPv4
-		}
-	}
-	fatal("no such peer: " + peer)
-	return ""
-}
+var errCLISessionIdentity = errors.New("session host identity unavailable or changed")
 
-// TCP connect timeout is separate from user consent on an established socket.
-// Clear the deadline on success so an active session is not cut off later.
-func dialSessionHandshake(conn net.Conn, name string, budget time.Duration) (*session.Mux, error) {
+func dialAuthorizedCLI(conn net.Conn, name string, budget time.Duration, peer daemon.SessionPeer, lookup func() ([]daemon.SessionPeer, error)) (*session.Mux, error) {
+	if lookup == nil {
+		conn.Close()
+		return nil, fmt.Errorf("session authorization unavailable")
+	}
+	check := func(claim string, source net.Addr) bool {
+		peers, err := lookup()
+		if err != nil {
+			return false
+		}
+		name, key, ok := daemon.MatchSessionPeer(peers, claim, source)
+		return ok && name == peer.Name && key == peer.PublicKey
+	}
+	source := conn.RemoteAddr()
+	remote, ok := source.(*net.TCPAddr)
+	if !ok || remote == nil || !remote.IP.Equal(net.ParseIP(peer.IPv4)) || !check(peer.Name, source) {
+		conn.Close()
+		return nil, errCLISessionIdentity
+	}
 	if err := conn.SetDeadline(time.Now().Add(budget)); err != nil {
 		conn.Close()
 		return nil, err
 	}
-	mux, err := session.Dial(conn, name)
+	mux, err := session.DialWithPeerVerifier(conn, name, func(reply session.HelloReply, from net.Addr) error {
+		if !check(reply.NodeName, from) {
+			return errCLISessionIdentity
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -77,20 +94,129 @@ func dialSessionHandshake(conn net.Conn, name string, budget time.Duration) (*se
 	return mux, nil
 }
 
-func dialSession(peer string) (*session.Mux, string) {
-	st := status(client(stateDir))
-	if st.Status != "up" {
-		fatal("not up")
+type cliSessionAuthorization struct {
+	peer   daemon.SessionPeer
+	lookup func() ([]daemon.SessionPeer, error)
+	denied atomic.Bool
+}
+
+func (a *cliSessionAuthorization) check() bool {
+	if a.denied.Load() {
+		return false
 	}
-	ip := peerIP(peer)
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip, "5909"), 10*time.Second)
-	must(err)
-	m, err := dialSessionHandshake(conn, st.NodeName, 70*time.Second)
-	must(err)
-	return m, st.NodeName
+	peers, err := a.lookup()
+	name, key, ok := daemon.MatchSessionPeer(peers, a.peer.Name, &net.TCPAddr{IP: net.ParseIP(a.peer.IPv4)})
+	if err != nil || !ok || name != a.peer.Name || key != a.peer.PublicKey {
+		a.denied.Store(true)
+		return false
+	}
+	return !a.denied.Load()
+}
+func (a *cliSessionAuthorization) watch(m *session.Mux) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-m.Closed():
+			return
+		case <-ticker.C:
+		}
+		if !a.check() {
+			m.Close()
+			return
+		}
+	}
+}
+func readCLISessionPeers(hc *http.Client) ([]daemon.SessionPeer, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiBase()+"/localapi/session-peers", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("local session authorization unavailable")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("local session authorization unavailable (HTTP %d)", resp.StatusCode)
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, (4<<20)+1))
+	if err != nil || len(b) > 4<<20 {
+		return nil, fmt.Errorf("invalid local session evidence")
+	}
+	var peers []daemon.SessionPeer
+	if json.Unmarshal(b, &peers) != nil {
+		return nil, fmt.Errorf("invalid local session evidence")
+	}
+	return peers, nil
+}
+func selectCLISessionPeer(selector string, st *daemon.Status, peers []daemon.SessionPeer) (daemon.SessionPeer, error) {
+	ip, claim := "", ""
+	matches := 0
+	for _, p := range st.Peers {
+		if p.Name == selector || p.IPv4 == selector || p.FQDN == selector {
+			ip, claim = p.IPv4, p.Name
+			matches++
+		}
+	}
+	if matches != 1 {
+		return daemon.SessionPeer{}, fmt.Errorf("session selector must match exactly one current peer")
+	}
+	source := &net.TCPAddr{IP: net.ParseIP(ip)}
+	name, key, ok := daemon.MatchSessionPeer(peers, claim, source)
+	if ok {
+		return daemon.SessionPeer{Name: name, IPv4: ip, PublicKey: key}, nil
+	}
+	return daemon.SessionPeer{}, fmt.Errorf("selected peer is not currently authorized")
+}
+func prepareCLISession(peer string) (*cliSessionAuthorization, string, error) {
+	hc := client(stateDir)
+	st := status(hc)
+	if st.Status != "up" {
+		return nil, "", fmt.Errorf("not up")
+	}
+	lookup := func() ([]daemon.SessionPeer, error) { return readCLISessionPeers(hc) }
+	peers, err := lookup()
+	if err != nil {
+		return nil, "", err
+	}
+	pinned, err := selectCLISessionPeer(peer, st, peers)
+	if err != nil {
+		return nil, "", err
+	}
+	return &cliSessionAuthorization{peer: pinned, lookup: lookup}, st.NodeName, nil
+}
+func dialSessionTryAuthorized(a *cliSessionAuthorization, name string) (*session.Mux, error) {
+	if !a.check() {
+		return nil, fmt.Errorf("session authorization ended; select the peer again after reviewing current identity")
+	}
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(a.peer.IPv4, "5909"), 10*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	m, err := dialAuthorizedCLI(conn, name, 70*time.Second, a.peer, a.lookup)
+	if err != nil {
+		if errors.Is(err, errCLISessionIdentity) {
+			a.denied.Store(true)
+		}
+		return nil, err
+	}
+	if !a.check() {
+		m.Close()
+		return nil, fmt.Errorf("session authorization ended")
+	}
+	go a.watch(m)
+	return m, nil
 }
 
 func sessionConnect(peer, saveDir, sendPath string) {
+	access, name, err := prepareCLISession(peer)
+	if err != nil {
+		fatal(err.Error())
+		return
+	}
 	// Chat lines from stdin flow to whatever connection is current.
 	lines := make(chan string, 16)
 	stdinDone := make(chan struct{})
@@ -122,8 +248,13 @@ func sessionConnect(peer, saveDir, sendPath string) {
 				backoff = 15 * time.Second
 			}
 		}
-		m, name := dialSessionTry(peer)
-		if m == nil {
+		m, err := dialSessionTryAuthorized(access, name)
+		if err != nil {
+			if access.denied.Load() {
+				fmt.Println("session ended: current peer authorization unavailable or changed")
+				return
+			}
+			fmt.Printf("session connect failed: %v\n", err)
 			first = false
 			continue
 		}
@@ -131,10 +262,14 @@ func sessionConnect(peer, saveDir, sendPath string) {
 		first = false
 		fmt.Printf("session to %s established (chat lines go to the host; ctrl-c ends)\n", peer)
 		v := session.ConnectViewer(m)
-		wireViewer(v, name, saveDir)
+		wireViewerAuthorized(v, name, saveDir, access)
 		if sendPath != "" && !sentFile {
 			sentFile = true
 			go func() {
+				if !access.check() {
+					m.Close()
+					return
+				}
 				if err := session.SendFile(m, sendPath); err != nil {
 					fmt.Printf("\nfile send failed: %v\n> ", err)
 				} else {
@@ -153,6 +288,10 @@ func sessionConnect(peer, saveDir, sendPath string) {
 				fmt.Println("\nsession ended")
 				return
 			case line := <-lines:
+				if !access.check() {
+					m.Close()
+					return
+				}
 				if err := v.SendChat(name, line); err != nil {
 					fmt.Printf("\nchat failed: %v\n", err)
 				}
@@ -195,34 +334,15 @@ func sessionLog() {
 	}
 }
 
-// dialSessionTry dials once, reporting and swallowing errors so the
-// reconnect loop can retry. Fatal config problems still exit.
-func dialSessionTry(peer string) (*session.Mux, string) {
-	st := status(client(stateDir))
-	if st.Status != "up" {
-		fatal("not up")
-	}
-	ip := peerIP(peer)
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip, "5909"), 10*time.Second)
-	if err != nil {
-		fmt.Printf("dial %s: %v\n", peer, err)
-		return nil, ""
-	}
-	m, err := dialSessionHandshake(conn, st.NodeName, 70*time.Second)
-	if err != nil {
-		conn.Close()
-		fmt.Printf("session handshake: %v\n", err)
-		return nil, ""
-	}
-	return m, st.NodeName
-}
-
 // wireViewer attaches the frame and chat handlers for one connection.
-func wireViewer(v *session.Viewer, name, saveDir string) {
+func wireViewerAuthorized(v *session.Viewer, name, saveDir string, access *cliSessionAuthorization) {
 	if saveDir != "" {
 		must(os.MkdirAll(saveDir, 0o700))
 		var n uint32
 		v.SetOnFrame(func(fr session.ScreenFrame) {
+			if access.denied.Load() {
+				return
+			}
 			if fr.Seq <= n {
 				return
 			}
@@ -234,13 +354,29 @@ func wireViewer(v *session.Viewer, name, saveDir string) {
 		})
 	}
 	v.SetOnChat(func(cm session.ChatMessage) {
+		if access.denied.Load() {
+			return
+		}
 		fmt.Printf("\n%s: %s\n> ", cm.From, cm.Text)
 	})
 }
 
 func sessionConnectSend(peer, path string) {
-	m, _ := dialSession(peer)
+	access, name, err := prepareCLISession(peer)
+	if err != nil {
+		fatal(err.Error())
+		return
+	}
+	m, err := dialSessionTryAuthorized(access, name)
+	if err != nil {
+		fatal(err.Error())
+		return
+	}
 	defer m.Close()
+	if !access.check() {
+		fatal("session authorization ended")
+		return
+	}
 	if err := session.SendFile(m, path); err != nil {
 		fatal("send: " + err.Error())
 	}

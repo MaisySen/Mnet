@@ -79,3 +79,21 @@ func TestSessionHandshakeClearsSuccessfulDeadline(t *testing.T) {
 		t.Fatalf("deadlines: %v", conn.deadlines)
 	}
 }
+
+// TCP connect timeout is separate from user consent on an established socket.
+// Clear the deadline on success so an active session is not cut off later.
+func dialSessionHandshake(conn net.Conn, name string, budget time.Duration) (*session.Mux, error) {
+	if err := conn.SetDeadline(time.Now().Add(budget)); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	mux, err := session.Dial(conn, name)
+	if err != nil {
+		return nil, err
+	}
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		mux.Close()
+		return nil, err
+	}
+	return mux, nil
+}

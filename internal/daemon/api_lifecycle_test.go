@@ -45,6 +45,22 @@ func TestLocalAPIBindReadinessAndClose(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatal(resp.StatusCode)
 	}
+	resp, err = client.Get("http://mnetd/localapi/session-peers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("Cache-Control") != "no-store" {
+		t.Fatal("session evidence route/auth cache policy", resp.StatusCode)
+	}
+	resp, err = client.Post("http://mnetd/localapi/session-peers", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatal("session evidence accepted mutation", resp.StatusCode)
+	}
 	cancel()
 	select {
 	case err := <-done:
@@ -80,7 +96,7 @@ func TestLocalAPIRejectsUnauthenticatedAndMalformedControl(t *testing.T) {
 	}}
 	defer base.CloseIdleConnections()
 	unauth := &http.Client{Transport: base, Timeout: 10 * time.Second}
-	for _, path := range []string{"/localapi/status", "/localapi/down"} {
+	for _, path := range []string{"/localapi/status", "/localapi/down", "/localapi/session-peers"} {
 		resp, err := unauth.Post("http://mnetd"+path, "application/json", nil)
 		if err != nil {
 			t.Fatal(err)

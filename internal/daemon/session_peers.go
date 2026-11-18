@@ -2,14 +2,17 @@ package daemon
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"net"
+	"net/http"
 	"net/netip"
 	"strings"
 	"time"
 )
 
-// SessionPeer is private in-process identity evidence for session admission.
-// It is not part of Status, peer-map HTTP responses or a display-name login.
+// SessionPeer is private identity evidence for session admission, available
+// in-process and through the capability-protected local daemon API only.
+// It is not part of Status, public peer-map responses or a display-name login.
 // Callers must bind the source address and recheck the full key after consent.
 type SessionPeer struct{ Name, IPv4, PublicKey string }
 
@@ -69,4 +72,16 @@ func MatchSessionPeer(peers []SessionPeer, claim string, from net.Addr) (string,
 	raw, err := base64.StdEncoding.Strict().DecodeString(key)
 	validKey := err == nil && len(raw) == 32 && base64.StdEncoding.EncodeToString(raw) == key
 	return result, key, result != "" && sourceMatches == 1 && nameMatches == 1 && validKey
+}
+
+// serveSessionPeers is registered only behind the local daemon capability.
+// Full peer keys remain outside ordinary display Status and public control APIs.
+func (d *Daemon) serveSessionPeers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(d.SessionPeers())
 }

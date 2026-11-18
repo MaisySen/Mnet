@@ -130,6 +130,7 @@ func (d *Daemon) ServeLocalAPIContext(ctx context.Context, ready chan<- error) e
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(d.Status())
 	})
+	mux.HandleFunc("/localapi/session-peers", d.serveSessionPeers)
 	mux.HandleFunc("/localapi/up", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "POST only", http.StatusMethodNotAllowed)

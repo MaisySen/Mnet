@@ -1,7 +1,11 @@
 package daemon
 
 import (
+	"encoding/json"
+	"fintex.au/mnet/internal/localapi"
 	"fintex.au/mnet/internal/netmap"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -67,5 +71,54 @@ func TestSessionPeersSnapshotDoesNotReauthorizeRemovedOrExpiredPeer(t *testing.T
 	old[0].Name = "old-copy"
 	if len(d.SessionPeers()) != 0 {
 		t.Fatal("old copy restored revoked authority")
+	}
+}
+
+func TestSessionEvidenceLocalCapabilityAndCurrentExpiry(t *testing.T) {
+	expired := time.Now().Add(-time.Minute)
+	d := &Daemon{status: "up", lastMap: &netmap.Map{Self: netmap.Node{Approved: true}, Peers: []netmap.Node{
+		{Name: "valid", IPv4: "100.64.0.2", Approved: true, PubKey: "full-key"},
+		{Name: "expired", Approved: true, KeyExpiry: &expired},
+		{Name: "pending", Approved: false},
+	}}}
+	handler := localapi.RequireToken("fixture-local-capability", http.HandlerFunc(d.serveSessionPeers))
+	for _, tc := range []struct {
+		name, token, origin, method string
+		code                        int
+	}{
+		{"missing", "", "", http.MethodGet, 401},
+		{"wrong", "wrong", "", http.MethodGet, 401},
+		{"browser", "fixture-local-capability", "https://outside.invalid", http.MethodGet, 403},
+		{"mutation", "fixture-local-capability", "", http.MethodPost, 405},
+		{"valid", "fixture-local-capability", "", http.MethodGet, 200},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, "http://mnetd/localapi/session-peers", nil)
+			req.Header.Set(localapi.TokenHeader, tc.token)
+			req.Header.Set("Origin", tc.origin)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != tc.code {
+				t.Fatal(rec.Code)
+			}
+			if rec.Header().Get("Cache-Control") != "no-store" {
+				t.Fatal("evidence cacheable")
+			}
+			if rec.Code == 200 {
+				var peers []SessionPeer
+				if json.Unmarshal(rec.Body.Bytes(), &peers) != nil || len(peers) != 1 || peers[0].PublicKey != "full-key" {
+					t.Fatal("did not return only approved current evidence")
+				}
+			}
+		})
+	}
+	d.lastMap.Self.Approved = false
+	req := httptest.NewRequest(http.MethodGet, "http://mnetd/localapi/session-peers", nil)
+	req.Header.Set(localapi.TokenHeader, "fixture-local-capability")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	var peers []SessionPeer
+	if json.Unmarshal(rec.Body.Bytes(), &peers) != nil || len(peers) != 0 {
+		t.Fatal("denied self exposed session authority")
 	}
 }
