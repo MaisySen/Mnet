@@ -1,0 +1,11 @@
+# Visible Android End viewing action
+
+The viewer now has a visible End viewing button instead of relying only on system Back. It uses the existing terminal owned-viewer teardown: stop reconnect, invalidate the current gate, close the published session, clear decoded frame and touch dimensions, disable input and finish the Activity. Activity destruction shares the same idempotent cleanup.
+
+The handler removes only the retry task, not every queued message. A pending connect result must still reach its rejected-publication callback so its returned handle can close. Late frame/control/closed callbacks cannot restore the ended gate or schedule reconnect. A gesture or write already dispatched may complete. A currently blocking connect has no separate per-attempt cancellation handle in this API; it cannot publish after End, and any eventual returned handle closes, but underlying dial/hello may remain until its existing bounded timeout or owner shutdown. This change does not promise instantaneous cancellation of pending network work.
+
+Fresh selected framework execution passes152checks, including End while connected and while a connect result is pending, frame/input clearing, late callback refusal, late owned-handle cleanup and no reconnect after simulated30seconds. The VPN framework suite passes78checks. These run real Java Activity/service paths with explicit Go/system/transport fakes, not native Android acceptance.
+
+Native-graphics framework renders of viewer states at320/390pixels were inspected. End viewing is readable at the top, retains a48pixel fixture touch target, and status/control/chat fit beneath the screen. The ended fixture image retains a synthetic background color, not a decoded frame; a separate test asserts that the actual ImageView drawable and dimensions clear. Whole-app resource/Java/minAPI24dex compilation passes against the current generated Go binding. No Go API/native binding was changed.
+
+This is source/framework/compile evidence. The earlier API36 control acceptance is at a previous revision and does not certify these new pixels or button interaction. API34 TCP admission remains prerequisite-blocked before hello; no causal networking repair was identified. No native matrix, phone, release, Multies or closed DNS/tracing action is included.

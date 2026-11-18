@@ -61,4 +61,37 @@ public class ViewerActivityTest {
   }finally{controller.destroy();MnetVpnService.node=null;}
   assertTrue(viewer.closed);
  }
+
+ private static Object field(Object object,String name)throws Exception{java.lang.reflect.Field f=object.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(object);}
+ @Test public void visibleStopClosesLateUnpublishedViewerWithoutReconnect()throws Exception{
+  java.util.concurrent.CountDownLatch entered=new java.util.concurrent.CountDownLatch(1),release=new java.util.concurrent.CountDownLatch(1);
+  java.util.concurrent.atomic.AtomicInteger connects=new java.util.concurrent.atomic.AtomicInteger();
+  mobile.SessionViewer late=new mobile.SessionViewer();
+  MnetVpnService.node=new mobile.Node(){@Override public mobile.SessionViewer connectSessionWithControl(String peer,mobile.ViewerCallbacks cb,mobile.ControlCallbacks control){connects.incrementAndGet();entered.countDown();try{release.await();}catch(InterruptedException e){Thread.currentThread().interrupt();}return late;}};
+  ActivityController<ViewerActivity> controller=Robolectric.buildActivity(ViewerActivity.class,new Intent().putExtra("peer_ip","100.64.0.2")).create().start().resume();
+  try{
+   ViewerActivity activity=controller.get();assertTrue(entered.await(2,java.util.concurrent.TimeUnit.SECONDS));
+   android.widget.Button end=(android.widget.Button)field(activity,"endViewing");assertEquals(View.VISIBLE,end.getVisibility());end.performClick();
+   assertTrue(activity.isFinishing());assertEquals(0,activityFrameWidth(activity));assertFalse(end.isEnabled());
+   release.countDown();long until=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(2);
+   while(!late.closed&&System.nanoTime()<until){Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();Thread.sleep(1);}
+   assertTrue("late publication still executes owned cleanup",late.closed);
+   Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(30));assertEquals(1,connects.get());
+  }finally{release.countDown();controller.pause().stop().destroy();MnetVpnService.node=null;}
+ }
+ @Test public void visibleStopClearsFrameAndLateCallbacksCannotRevive()throws Exception{
+  java.util.concurrent.atomic.AtomicReference<mobile.ViewerCallbacks> callbacks=new java.util.concurrent.atomic.AtomicReference<>();
+  java.util.concurrent.atomic.AtomicReference<mobile.ControlCallbacks> controls=new java.util.concurrent.atomic.AtomicReference<>();mobile.SessionViewer viewer=new mobile.SessionViewer();
+  MnetVpnService.node=new mobile.Node(){@Override public mobile.SessionViewer connectSessionWithControl(String peer,mobile.ViewerCallbacks cb,mobile.ControlCallbacks control){callbacks.set(cb);controls.set(control);return viewer;}};
+  ActivityController<ViewerActivity> controller=Robolectric.buildActivity(ViewerActivity.class,new Intent().putExtra("peer_ip","100.64.0.2")).create().start().resume();
+  try{
+   ViewerActivity activity=controller.get();@SuppressWarnings("unchecked") ViewerGate<mobile.SessionViewer> gate=(ViewerGate<mobile.SessionViewer>)field(activity,"viewers");
+   long until=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(2);while(gate.current()==null&&System.nanoTime()<until){Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();Thread.sleep(1);}assertSame(viewer,gate.current());
+   frame(callbacks.get(),320,480);controls.get().onControl("{\"state\":\"allowed\"}");Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+   ImageView screen=(ImageView)field(activity,"screen");assertNotNull(screen.getDrawable());android.widget.Button end=(android.widget.Button)field(activity,"endViewing");end.performClick();
+   assertEquals(0,activityFrameWidth(activity));assertNull(screen.getDrawable());assertTrue(viewer.closed);assertFalse((boolean)field(activity,"controlAllowed"));
+   frame(callbacks.get(),320,480);controls.get().onControl("{\"state\":\"allowed\"}");callbacks.get().onClosed();Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(30));
+   assertNull(gate.current());assertNull(screen.getDrawable());assertFalse((boolean)field(activity,"controlAllowed"));assertFalse((boolean)field(activity,"retryPending"));
+  }finally{controller.pause().stop().destroy();MnetVpnService.node=null;}
+ }
 }

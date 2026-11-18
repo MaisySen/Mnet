@@ -26,6 +26,7 @@ public class ViewerActivity extends Activity {
     private EditText chatIn;
     private TextView controlStatus;
     private Button controlRequest;
+    private Button endViewing;
     private boolean controlAllowed;
     private boolean controlPending;
     private final ViewerGate<SessionViewer> viewers = new ViewerGate<>();
@@ -43,6 +44,12 @@ public class ViewerActivity extends Activity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
+
+        endViewing=new Button(this);
+        endViewing.setText("End viewing");
+        endViewing.setMinHeight((int)(48*getResources().getDisplayMetrics().density));
+        endViewing.setOnClickListener(v->{stopViewing();finish();});
+        root.addView(endViewing);
 
         screen = new ImageView(this);
         screen.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -281,12 +288,23 @@ public class ViewerActivity extends Activity {
         runOnUiThread(() -> { if (!userClosed) chat.append(s + "\n"); });
     }
 
-    @Override
-    protected void onDestroy() {
-        userClosed = true;
+    // User stop and Activity destruction share the same terminal ownership path.
+    // A queued connect/control/frame callback cannot reopen a closed ViewerGate.
+    private void stopViewing(){
+        userClosed=true;
         taps.cancel();
         reconnects.removeCallbacks(retryTask);
+        retryPending=false;
         closeViewer(viewers.close());
+        frameW = frameH = 0;
+        if(screen!=null)screen.setImageDrawable(null);
+        if(controlRequest!=null)applyControl("unavailable");
+        if(endViewing!=null)endViewing.setEnabled(false);
+    }
+
+    @Override
+    protected void onDestroy() {
+        stopViewing();
         super.onDestroy();
     }
 }

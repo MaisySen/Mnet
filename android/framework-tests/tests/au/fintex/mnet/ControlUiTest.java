@@ -48,6 +48,7 @@ public class ControlUiTest {
    @SuppressWarnings("unchecked") ViewerGate<mobile.SessionViewer> gate=(ViewerGate<mobile.SessionViewer>)field(activity,"viewers");
    while(gate.current()==null&&System.nanoTime()<until){idle();Thread.sleep(1);}assertSame(viewer,gate.current());
    Button button=(Button)field(activity,"controlRequest");TextView status=(TextView)field(activity,"controlStatus");
+   Button end=(Button)field(activity,"endViewing");assertEquals("End viewing",end.getText().toString());assertTrue(end.isEnabled());
    assertFalse(button.isEnabled());assertFalse((boolean)field(activity,"controlAllowed"));
    View root=((ViewGroup)activity.findViewById(android.R.id.content)).getChildAt(0);
    // Placeholder comes only from this isolated fixture, not a real peer.
@@ -58,13 +59,16 @@ public class ControlUiTest {
     assertEquals(mode.equals("pending"),button.getText().toString().equals("Cancel request"));
     assertEquals(mode.equals("available")||mode.equals("pending")||mode.equals("declined")||mode.equals("revoked"),button.isEnabled());
     assertFalse(status.getText().toString().isEmpty());
-    for(int width:new int[]{320,390}){render(root,"viewer-"+mode,width);assertTrue(button.getHeight()>=48);assertTrue(status.getBottom()<=button.getTop());assertTrue(button.getRight()<=width);}
+    for(int width:new int[]{320,390}){render(root,"viewer-"+mode,width);assertTrue(button.getHeight()>=48);assertTrue(status.getBottom()<=button.getTop());assertTrue(button.getRight()<=width);assertTrue(end.getHeight()>=48);assertTrue(end.getTop()>=0);assertTrue(end.getBottom()<=((View)field(activity,"screen")).getTop());}
    }
    state(activity,"available");button.performClick();
    until=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(2);while(viewer.requests==0&&System.nanoTime()<until){idle();Thread.sleep(1);}assertEquals(1,viewer.requests);
    callbacks.get().onControl("{\"state\":\"pending\"}");idle();assertTrue(button.isEnabled());button.performClick();
    until=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(2);while(viewer.cancels==0&&System.nanoTime()<until){idle();Thread.sleep(1);}assertEquals(1,viewer.cancels);
    callbacks.get().onControl("{\"state\":\"revoked\"}");idle();assertFalse((boolean)field(activity,"controlAllowed"));
+   end.performClick();idle();assertTrue(activity.isFinishing());assertTrue(viewer.closed);assertNull(gate.current());assertFalse(end.isEnabled());
+   callbacks.get().onControl("{\"state\":\"allowed\"}");idle();assertFalse((boolean)field(activity,"controlAllowed"));
+   render(root,"viewer-ended",320);
   }finally{controller.pause().stop().destroy();MnetVpnService.node=null;}
  }
  @Test public void hostBoundDecisionDialogRenders()throws Exception{
