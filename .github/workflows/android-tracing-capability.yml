@@ -1,0 +1,55 @@
+name: android-tracing-capability
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/android-tracing-capability.yml'
+  workflow_dispatch:
+
+# Capability-only. Boots empty disposable images, never installs Mnet or peers.
+permissions:
+  contents: read
+concurrency:
+  group: android-tracing-capability
+  cancel-in-progress: false
+jobs:
+  empty-image-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [34, 36]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: install same disposable image family
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platform-tools' 'emulator' 'ndk;27.2.12479018' "system-images;android-${{ matrix.api }};google_apis;x86_64"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/mnet-capability-avd"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/mnet-capability-avd"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+          echo 'no' | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force --name mnet-capability --package "system-images;android-${{ matrix.api }};google_apis;x86_64" --device 'pixel_2' --path "$ANDROID_AVD_HOME/mnet-capability.avd"
+      - name: standard disposable KVM access
+        run: |
+          test -c /dev/kvm
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: bounded empty-image trace feasibility
+        env:
+          MNET_CAPABILITY_OUTPUT: ${{ runner.temp }}/mnet-capability/report.json
+        run: python3 scripts/android-tracing-capability.py
+      - name: retain derived capabilities only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-tracing-capability-api${{ matrix.api }}
+          retention-days: 7
+          if-no-files-found: error
+          path: ${{ runner.temp }}/mnet-capability/report.json
