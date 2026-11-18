@@ -16,6 +16,15 @@ class Guards(unittest.TestCase):
         self.assertLess(source.index('nonDNSChecksCompleted=true;'),source.index('if(dnsFailures>0)'))
         self.assertLess(source.index('if(dnsFailures>0)'),source.index('result.putString("summary", "PASS'))
         self.assertIn('checkpoint("dns-validation-failed");throw new IOException',source)
+    def test_unconnected_diagnostic_never_replaces_failed_proof(self):
+        source=(ROOT / 'android/instrumentation/au/fintex/mnet/fixture/MeshInstrumentation.java').read_text()
+        self.assertLess(source.index('dnsFailures++;'),source.index('DNSProof.verifyUnconnected('))
+        self.assertLess(source.index('DNSProof.failureDiagnostics(failure)'),source.index('DNSProof.verifyUnconnected('))
+        diagnostic=(ROOT / 'android/instrumentation/au/fintex/mnet/fixture/DNSProof.java').read_text().split('static void verifyUnconnected(')[1].split('static void verifySystem(')[0]
+        self.assertIn('network.bindSocket(socket)',diagnostic)
+        self.assertIn('socket.bind(new InetSocketAddress(InetAddress.getByName(meshSource),0))',diagnostic)
+        self.assertNotIn('socket.connect(',diagnostic)
+        self.assertIn('response.getPort()!=53',diagnostic)
     def test_child_failure_does_not_echo_captured_data(self):
         with self.assertRaisesRegex(RuntimeError, '^fixture child command failed$'):
             module.run([sys.executable, '-c', "raise SystemExit('synthetic-private-marker')"])

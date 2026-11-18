@@ -47,6 +47,12 @@ public class MeshInstrumentation extends Instrumentation {
                 JSONObject packets=state.optJSONObject("dns_packets");
                 if(packets!=null)for(String key:new String[]{"reply_written","reply_write_failed","udp_seen","udp_received","udp_sent"})deferredDNS+=" attempt_"+key+"="+packets.optBoolean(key);
             }catch(Exception ignored){deferredDNS+=" attemptSnapshotUnavailable=true";}
+            boolean alternatePassed=false;
+            try{
+                DNSProof.verifyUnconnected(options.getString("peer"),getTargetContext().getSystemService(android.net.ConnectivityManager.class).getActiveNetwork(),MnetVpnService.currentNode().meshIPv4());
+                alternatePassed=true;
+            }catch(Exception ignored){}
+            deferredDNS+=" alternateUnconnectedPassed="+alternatePassed;
         }
     }
     @Override public void onCreate(Bundle args) { super.onCreate(args); options = args; start(); }
@@ -453,7 +459,7 @@ public class MeshInstrumentation extends Instrumentation {
                 } catch (Exception ignored) { }
             }
             // Deliberately omit exception messages, app state and arguments.
-            String diagnostics = DNSProof.failureDiagnostics(failure)+" dnsAttempts="+dnsAttempts+" dnsFailures="+dnsFailures+" nonDNSChecksCompleted="+nonDNSChecksCompleted+deferredDNS;
+            String diagnostics = (dnsFailures>0?"":DNSProof.failureDiagnostics(failure))+" dnsAttempts="+dnsAttempts+" dnsFailures="+dnsFailures+" nonDNSChecksCompleted="+nonDNSChecksCompleted+deferredDNS;
             diagnostics+=" controlAllowed="+au.fintex.mnet.HostSessionService.controlAllowed()+" controlSession="+(au.fintex.mnet.HostSessionService.controlSession()!=null);
             try{
                 android.net.ConnectivityManager cm=getTargetContext().getSystemService(android.net.ConnectivityManager.class);

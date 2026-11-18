@@ -74,6 +74,23 @@ final class DNSProof {
         verifySystem(expected,network);
         phase="complete";
     }
+    // Diagnostic contrast only after the original failed proof. Same VPN/source,
+    // no connect(): separates kernel-connected UDP from destination-per-packet.
+    // Never counts as the original OS/UDP/TCP proof passing.
+    static void verifyUnconnected(String expected,android.net.Network network,String meshSource)throws Exception{
+        try(DatagramSocket socket=new DatagramSocket(null)){
+            if(network!=null)network.bindSocket(socket);
+            if(meshSource!=null)socket.bind(new InetSocketAddress(InetAddress.getByName(meshSource),0));
+            InetAddress resolver=InetAddress.getByAddress(new byte[]{(byte)198,18,0,53});
+            byte[] query=query("userspace-peer.android-emulator.mnet");
+            socket.setSoTimeout(5000);
+            socket.send(new DatagramPacket(query,query.length,resolver,53));
+            byte[] data=new byte[4096];DatagramPacket response=new DatagramPacket(data,data.length);
+            socket.receive(response);
+            if(!resolver.equals(response.getAddress())||response.getPort()!=53)throw new IOException("unexpected UDP reply source");
+            check(Arrays.copyOf(data,response.getLength()),expected);
+        }
+    }
     static void verifySystem(String expected,android.net.Network network)throws Exception{
         String name="userspace-peer.android-emulator.mnet";
         boolean resolved=false;
