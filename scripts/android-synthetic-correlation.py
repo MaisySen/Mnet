@@ -16,6 +16,10 @@ def run(api,trace,instance,hooks,compiler):
         offsets={name:btf.offset(typ,path) for name,typ,path in (
             ('sport','sock','__sk_common.skc_num'),('dport','sock','__sk_common.skc_dport'),
             ('mark','sock','sk_mark'),('data','sk_buff','data'))}
+        drop_params=btf.function_parameters('kfree_skb_reason')
+        drop_signature=[x[0] for x in drop_params][:2]==['skb','reason']
+        expected_csum=btf.enum_value('skb_drop_reason','SKB_DROP_REASON_UDP_CSUM')
+        report['btf_drop_signature_verified']=drop_signature
         report['btf_offsets_resolved']=True
     except (ValueError,KeyError,IndexError):report['btf_offsets_resolved']=False;return report
     built=api.command([compiler,'-Wall','-Wextra','-Werror','-O2','scripts/android-synthetic-correlation.c','-o','/tmp/mnet-correlation'])
@@ -29,6 +33,8 @@ def run(api,trace,instance,hooks,compiler):
         'tun_return':'r:kprobes/mnet_join_tun tun_get_user result=$retval:s64',
         'ip_entry':'p:kprobes/mnet_join_ip ip_rcv skb=%di sport=+20(+'+str(offsets['data'])+'(%di)):u16 dport=+22(+'+str(offsets['data'])+'(%di)):u16',
     }
+    if drop_signature:
+        specs['drop_entry']='p:kprobes/mnet_join_drop kfree_skb_reason skb=%di reason=%si:u32'
     report['probes']={}
     names={}
     for label,spec in specs.items():
@@ -54,7 +60,7 @@ def run(api,trace,instance,hooks,compiler):
         if not match:continue
         task,ts,event,body=match.groups()
         fields=dict(re.findall(r'(\w+)=(0x[0-9a-fA-F]+|-?\d+|[0-9a-fA-F]+)(?=\s|$)',body))
-        values={k:int(v,16 if v.startswith('0x') or k in ('skbaddr','skb','sk') else 10) for k,v in fields.items() if k not in ('reason',)}
+        values={k:int(v,16 if v.startswith('0x') or k in ('skbaddr','skb','sk') else 10) for k,v in fields.items() if k in ('sk','skb','skbaddr','sport','dport','mark','result','reason') and (v.startswith('0x') or k in ('sk','skb','skbaddr') or re.fullmatch(r'-?\d+',v))}
         events.append((int(task),float(ts),event,values,body))
     def port_net(n):return ((n&255)<<8)|((n>>8)&255)
     entries=[x for x in events if x[0]==pid and x[2]==names['udp_entry'] and x[3].get('sport')==row.get('udp_source')]
@@ -64,14 +70,15 @@ def run(api,trace,instance,hooks,compiler):
     report['socket_join']={'same_pid_and_source_port':len(entries)==1,'mark_matches_getsockopt':len(entries)==1 and entries[0][3].get('mark')==row.get('mark'),'source_mark_read':row.get('mark_read') is True,'send_return_matches':any(x[3].get('result')==row.get('udp_sent') for x in returns),'security_return_zero_same_pid':any(x[3].get('result')==0 for x in security),'entry_before_return':bool(entries and returns and entries[0][1]<=returns[-1][1])}
     tun_returns=[x for x in events if x[0]==pid and x[2]==names['tun_return']]
     packets=[x for x in events if x[2]==names['ip_entry'] and port_net(x[3].get('sport',0))==45997 and port_net(x[3].get('dport',0))==row.get('tun_dest')]
-    drop_events=[x for x in events if x[2]=='kfree_skb']
+    drop_events=[x for x in events if x[2]==names.get('drop_entry')]
     joined=[]
     for index,packet in enumerate(packets):
         end=packets[index+1][1] if index+1<len(packets) else float('inf')
         pointer=packet[3].get('skb')
-        drops=[x for x in drop_events if packet[1]<=x[1]<end and x[3].get('skbaddr')==pointer]
-        joined.append({'input_writer_pid_matches':packet[0]==pid,'matched_drop':bool(drops),'drop_reason_categories':[re.search(r'reason=([A-Z_]+)',x[4]).group(1) for x in drops if re.search(r'reason=([A-Z_]+)',x[4])]})
+        drops=[x for x in drop_events if packet[1]<=x[1]<end and x[3].get('skb')==pointer]
+        joined.append({'input_writer_pid_matches':packet[0]==pid,'matched_drop':bool(drops),'udp_checksum_drop':any(x[3].get('reason')==expected_csum for x in drops)})
     report['tun_join']={'same_pid_write_return_count':sum(x[3].get('result')==35 for x in tun_returns),'matched_ip_tuple_count':len(packets),'packet_drop_joins':joined,'valid_received_corrupt_not_received':row.get('tun_valid_received')==7 and row.get('tun_corrupt_received')==-1 and row.get('tun_corrupt_timeout') is True}
-    stats=api.text(api.shell('cat',instance+'/per_cpu/cpu0/stats'))
-    report['trace_overrun_cpu0_zero']=bool(re.search(r'^overrun:\s+0$',stats,re.M))
+    stats=api.text(api.shell('sh','-c','cat "$1"/per_cpu/cpu*/stats','probe',instance))
+    overruns=re.findall(r'^overrun:\s+(\d+)$',stats,re.M)
+    report['trace_all_cpu_overruns_zero']=bool(overruns) and all(int(x)==0 for x in overruns)
     return report

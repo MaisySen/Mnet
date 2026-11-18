@@ -17,6 +17,16 @@ class BTF:
                     bits=mo&0xffffff if kflag else mo
                     if bits%8:continue
                     t['members'].append((name(mn),mt,bits//8))
+            elif kind==13:
+                t['params']=[]
+                for _ in range(vlen):
+                    pn,pt=struct.unpack_from('<II',data,at);at+=8
+                    t['params'].append((name(pn),pt))
+            elif kind==6:
+                t['values']={}
+                for _ in range(vlen):
+                    en,ev=struct.unpack_from('<Ii',data,at);at+=8
+                    t['values'][name(en)]=ev
             else:
                 extra={1:4,2:0,3:12,6:vlen*8,7:0,8:0,9:0,10:0,11:0,12:0,13:vlen*8,14:4,15:vlen*12,16:0,17:4,18:0,19:vlen*12}.get(kind)
                 if extra is None:raise ValueError('BTF kind')
@@ -47,3 +57,13 @@ class BTF:
         for field in path.split('.'):
             i,off=self.member(i,field);total+=off
         return total
+
+    def function_parameters(self,name):
+        found=[t for t in self.types if t and t['kind']==12 and t['name']==name]
+        if len(found)!=1:raise ValueError('ambiguous BTF function')
+        proto=self.types[found[0]['size']]
+        return proto.get('params',[])
+    def enum_value(self,enum,name):
+        found=[t for t in self.types if t and t['kind']==6 and t['name']==enum and name in t.get('values',{})]
+        if len(found)!=1:raise ValueError('ambiguous BTF enum')
+        return found[0]['values'][name]

@@ -7,7 +7,7 @@ on:
       - '.github/workflows/android-tracing-capability.yml'
   workflow_dispatch:
 
-# Synthetic socket/TUN correlation only; no Mnet, peer or failed-proof rerun.
+# Synthetic tuple/drop-pointer attribution with BTF-verified drop signature only.
 permissions:
   contents: read
 concurrency:
