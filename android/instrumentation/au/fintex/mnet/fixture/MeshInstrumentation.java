@@ -58,6 +58,7 @@ public class MeshInstrumentation extends Instrumentation {
         } catch(Exception ignored) {} // Observer must never change original verdict.
     }
     private void verifyDNSPreservingFailure() throws Exception {
+        DNSProof.configureTrace(new File(getTargetContext().getFilesDir(),"fixture-dns-sockets.json"));
         dnsAttempts++;
         checkpoint("os-udp-tcp-dns");
         observeNetwork("dns-start");

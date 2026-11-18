@@ -41,7 +41,7 @@ class Guards(unittest.TestCase):
         workflow = (ROOT / '.github/workflows/android-emulator.yml').read_text()
         outputs = workflow.split('path: |')[1]
         self.assertNotIn('*', outputs)
-        self.assertEqual({'kernel-observation.json', 'summary.json', 'instrumentation.txt', 'launch.png', 'privacy.png', 'vpn-disclosure.png', 'consent.png', 'consent.mp4'}, {x.strip().split('/')[-1] for x in outputs.splitlines() if x.strip()})
+        self.assertEqual({'app-socket-correlation.json', 'kernel-observation.json', 'summary.json', 'instrumentation.txt', 'launch.png', 'privacy.png', 'vpn-disclosure.png', 'consent.png', 'consent.mp4'}, {x.strip().split('/')[-1] for x in outputs.splitlines() if x.strip()})
         self.assertIn('runs-on: ubuntu-latest', workflow)
     def test_kernel_observer_exports_only_reconstructed_diagnostics(self):
         source=(ROOT / 'scripts/android-emulator-validation.py').read_text()

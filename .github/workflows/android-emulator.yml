@@ -13,6 +13,7 @@ on:
       - 'cmd/mnetd/native_peer_test.go'
       - 'scripts/android-emulator-validation.py'
       - 'scripts/android-kernel-observer*'
+      - 'scripts/android-app-correlation.py'
   workflow_dispatch:
 
 # This is engineering instrumentation, not a release or Play Protect verdict.
@@ -93,6 +94,7 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
           path: |
+            ${{ runner.temp }}/mnet-android-artifacts/app-socket-correlation.json
             ${{ runner.temp }}/mnet-android-artifacts/kernel-observation.json
             ${{ runner.temp }}/mnet-android-artifacts/summary.json
             ${{ runner.temp }}/mnet-android-artifacts/instrumentation.txt

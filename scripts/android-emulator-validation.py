@@ -196,6 +196,18 @@ def main():
             observed_uids = [uid_for('au.fintex.mnet'), uid_for('au.fintex.mnet.fixture')]
         except (OSError, RuntimeError, subprocess.TimeoutExpired):
             observed_uids = [None, None]
+        # Apply the calibrated synthetic attribution once, without altering any
+        # original socket binding, retries, timeouts or pass/fail gates.
+        app_trace = None
+        app_trace_result = {'unavailable': True}
+        try:
+            import importlib.util
+            trace_spec=importlib.util.spec_from_file_location('app_correlation', ROOT / 'scripts/android-app-correlation.py')
+            trace_module=importlib.util.module_from_spec(trace_spec);trace_spec.loader.exec_module(trace_module)
+            app_trace=trace_module.Trace(adb,observed_uids)
+            app_trace.start()
+        except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
+            app_trace_result={'start_unavailable': True}
         def sample_rules():
             while not observer_stop.is_set():
                 try:
@@ -234,6 +246,9 @@ def main():
             # Keep this fixed summary even if a later recorder step fails.
             independent_summary_lines = [line for line in independent.splitlines() if line.startswith('INSTRUMENTATION_RESULT: summary=')]
             (root / 'independent-summary.txt').write_text('\n'.join(independent_summary_lines) + '\n')
+            if app_trace is not None:
+                app_trace_result=app_trace.finish()
+                app_trace=None
             stage = 'actual-screen-projection'
             run(adb + ['shell', 'run-as', 'au.fintex.mnet', 'touch', 'files/fixture-peer-done'])
             def screen_flag(name):
@@ -391,6 +406,10 @@ def main():
         (ARTIFACTS / 'summary.json').write_text(json.dumps(diagnostic, indent=2))
         raise RuntimeError('Android fixture failed at ' + stage) from None
     finally:
+        if 'app_trace' in locals() and app_trace is not None:
+            app_trace_result=app_trace.finish()
+        if 'app_trace_result' in locals():
+            (ARTIFACTS / 'app-socket-correlation.json').write_text(json.dumps(app_trace_result,indent=2))
         if 'observer_stop' in locals():
             observer_stop.set()
         if 'observer_rules_thread' in locals():

@@ -8,6 +8,18 @@ import java.util.Arrays;
 // cross the Android OS VPN and the production userspace DNS endpoint. Exported
 // summaries contain no addresses, names, status JSON or enrollment material.
 final class DNSProof {
+    private static File traceFile;
+    private static final org.json.JSONArray sockets=new org.json.JSONArray();
+    static void configureTrace(File file){traceFile=file;}
+    private static void observeSocket(String point,DatagramSocket socket){
+        if(traceFile==null)return;
+        try{
+            org.json.JSONObject row=new org.json.JSONObject();row.put("point",point);
+            row.put("tid",android.os.Process.myTid());row.put("port",socket.getLocalPort());
+            row.put("elapsed_ms",android.os.SystemClock.elapsedRealtime());sockets.put(row);
+            try(FileOutputStream out=new FileOutputStream(traceFile)){out.write(sockets.toString().getBytes("UTF-8"));}
+        }catch(Exception ignored){}
+    }
     static volatile String phase="none";
     static volatile int step;
     static volatile boolean sourceMesh,questionMismatch,badName,badBounds,sourceResolver,sourceUnderlay,sourceAny;
@@ -45,10 +57,11 @@ final class DNSProof {
             String source=socket.getLocalAddress().getHostAddress();sourceMesh=source.startsWith("100.");sourceResolver="198.18.0.54".equals(source);sourceUnderlay=source.startsWith("10.");sourceAny=socket.getLocalAddress().isAnyLocalAddress();
             socket.setSoTimeout(5000);
             step=3;
+            observeSocket("original-before-send",socket);
             socket.send(new DatagramPacket(query,query.length,InetAddress.getByAddress(new byte[]{(byte)198,18,0,53}),53));
             byte[] data = new byte[4096]; DatagramPacket packet = new DatagramPacket(data,data.length);
             step=4;
-            socket.receive(packet);udp=Arrays.copyOf(data,packet.getLength());
+            socket.receive(packet);observeSocket("original-received",socket);udp=Arrays.copyOf(data,packet.getLength());
         }
         step=5;
         check(udp,expected);
@@ -91,6 +104,7 @@ final class DNSProof {
             byte[] query=query("userspace-peer.android-emulator.mnet");
             if(connected)socket.connect(new InetSocketAddress(resolver,53));
             socket.setSoTimeout(5000);
+            observeSocket("contrast-before-send",socket);
             socket.send(new DatagramPacket(query,query.length,resolver,53));
             byte[] data=new byte[4096];DatagramPacket response=new DatagramPacket(data,data.length);
             socket.receive(response);

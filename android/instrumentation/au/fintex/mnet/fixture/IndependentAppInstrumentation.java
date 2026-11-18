@@ -14,6 +14,7 @@ public class IndependentAppInstrumentation extends Instrumentation {
  public void onStart(){
   Bundle result=new Bundle();boolean dnsPassed=false,tcpPassed=false,osDnsPassed=false;Throwable dnsFailure=null;
   try{
+   DNSProof.configureTrace(new File(getTargetContext().getFilesDir(),"fixture-dns-sockets.json"));
    initialNetwork=NetworkSnapshot.capture(getTargetContext());stage="os-udp-tcp-dns";
    try{DNSProof.verify(peer);dnsPassed=true;osDnsPassed=true;}catch(Exception failure){
     dnsFailure=failure;
