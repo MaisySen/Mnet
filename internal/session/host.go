@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/json"
 	"io"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -359,6 +360,9 @@ func (h *Host) Stop() {
 		if closer, ok := h.Cap.(io.Closer); ok {
 			_ = closer.Close()
 		}
+		if closer, ok := h.Inj.(io.Closer); ok && !sameHostResource(h.Cap, h.Inj) {
+			_ = closer.Close()
+		}
 		h.wg.Wait()
 	})
 }
@@ -397,4 +401,11 @@ func (h *Host) watchAuthorization() {
 		case <-ticker.C:
 		}
 	}
+}
+
+// A backend may supply one object for capture and injection. Close comparable
+// shared objects once, while leaving ordinary distinct owned closers separate.
+func sameHostResource(a, b any) bool {
+	t := reflect.TypeOf(a)
+	return t != nil && t == reflect.TypeOf(b) && t.Comparable() && a == b
 }

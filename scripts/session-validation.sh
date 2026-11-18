@@ -48,6 +48,9 @@ for attempt in $(seq 1 100); do
     sleep .1
 done
 export DISPLAY=:$(cat "$TMP/display-number")
+# Exercise actual session Stop/owned XTEST release only on this disposable
+# display. The ordinary test suite never selects a person's desktop.
+MNET_X11_CLEANUP_TEST=1 go test -race -count=1 -timeout=30s ./cmd/mnetd -run '^TestX11Cleanup'
 xsetroot -solid '#203864'
 # Change only after a decoded initial frame is saved, rather than racing
 # tunnel startup with a fixed sleep. xsetroot exits, no wallpaper process.

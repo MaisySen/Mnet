@@ -4,9 +4,11 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
+	"sync"
 	"sync/atomic"
 
 	"github.com/jezek/xgb"
@@ -20,15 +22,20 @@ import (
 // capture; they need a portal backend, which is later work.
 
 type x11Host struct {
-	conn     *xgb.Conn
-	root     xproto.Window
-	w, h     int
-	scale    int // downscale factor: frames are capped on the long edge
-	last     []byte
-	lastRGBA *image.RGBA
-	jpegQ    atomic.Int32
-	textMode string
-	remapKC  byte
+	inputMu   sync.Mutex
+	closed    atomic.Bool
+	closeOnce sync.Once
+	closeErr  error
+	pressed   [256]bool
+	conn      *xgb.Conn
+	root      xproto.Window
+	w, h      int
+	scale     int // downscale factor: frames are capped on the long edge
+	last      []byte
+	lastRGBA  *image.RGBA
+	jpegQ     atomic.Int32
+	textMode  string
+	remapKC   byte
 }
 
 func newX11Capturer() (session.Capturer, error) {
@@ -52,6 +59,7 @@ func newX11Injector() (session.Injector, error) {
 		return nil, fmt.Errorf("X11 connect (set DISPLAY): %w", err)
 	}
 	if err := xtest.Init(c); err != nil {
+		c.Close()
 		return nil, err
 	}
 	return &x11Host{conn: c}, nil
@@ -86,6 +94,9 @@ func (x *x11Host) SetQuality(q int) {
 
 // grab captures and downscales the screen to one RGBA image.
 func (x *x11Host) grab() (*image.RGBA, error) {
+	if x.closed.Load() {
+		return nil, fmt.Errorf("X11 capture closed")
+	}
 	reply, err := xproto.GetImage(x.conn, xproto.ImageFormatZPixmap, xproto.Drawable(x.root),
 		0, 0, uint16(x.w), uint16(x.h), 0xffffffff).Reply()
 	if err != nil {
@@ -192,7 +203,9 @@ func downscale(src *image.RGBA, factor int) *image.RGBA {
 // Inject applies one viewer input event via XTEST. Coordinates arrive
 // in scaled frame space; multiply back to screen space.
 func (x *x11Host) Inject(ev session.InputEvent) error {
-	if x.conn == nil {
+	x.inputMu.Lock()
+	defer x.inputMu.Unlock()
+	if x.conn == nil || x.closed.Load() {
 		return fmt.Errorf("injector not connected")
 	}
 	scale := 1
@@ -210,10 +223,16 @@ func (x *x11Host) Inject(ev session.InputEvent) error {
 			}
 			btn := buttonCode(ev.Button)
 			if ev.Action == "down" || ev.Action == "click" {
-				xtest.FakeInput(x.conn, xproto.ButtonPress, btn, 0, x.root, 0, 0, 0)
+				if err := xtest.FakeInputChecked(x.conn, xproto.ButtonPress, btn, 0, x.root, 0, 0, 0).Check(); err != nil {
+					return err
+				}
+				x.pressed[btn] = true
 			}
 			if ev.Action == "up" || ev.Action == "click" {
-				xtest.FakeInput(x.conn, xproto.ButtonRelease, btn, 0, x.root, 0, 0, 0)
+				if err := xtest.FakeInputChecked(x.conn, xproto.ButtonRelease, btn, 0, x.root, 0, 0, 0).Check(); err != nil {
+					return err
+				}
+				x.pressed[btn] = false
 			}
 		case "scroll":
 			// Buttons 4/5/6/7 are the X scroll wheel.
@@ -262,4 +281,30 @@ func keycodeFor(c *xgb.Conn, sym xproto.Keysym) byte {
 		}
 	}
 	return 0
+}
+
+// Close rejects further input, releases buttons this injector left down, then
+// closes its dedicated X connection. It is safe for repeated host Stop calls.
+// A running platform action is serialized, not forcibly interrupted.
+func (x *x11Host) Close() error {
+	x.closeOnce.Do(func() {
+		x.inputMu.Lock()
+		defer x.inputMu.Unlock()
+		x.closed.Store(true)
+		if x.conn == nil {
+			return
+		}
+		for btn, down := range x.pressed {
+			if !down {
+				continue
+			}
+			if err := xtest.FakeInputChecked(x.conn, xproto.ButtonRelease, byte(btn), 0, x.root, 0, 0, 0).Check(); err != nil {
+				x.closeErr = errors.Join(x.closeErr, err)
+			}
+			x.pressed[btn] = false
+		}
+		x.conn.Sync()
+		x.conn.Close()
+	})
+	return x.closeErr
 }
