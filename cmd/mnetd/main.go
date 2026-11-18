@@ -152,6 +152,7 @@ func runDaemon(o options, stop <-chan struct{}) error {
 		return err
 	}
 
+	defer d.Close() // process lifetime is terminal, unlike a reusable local Down
 	if o.selfTest != "" {
 		if err := runSelfTest(d, ct, got, o.server, o.network, o.name, o.authKey, o.selfTest); err != nil {
 			return err
@@ -182,7 +183,7 @@ func runDaemon(o options, stop <-chan struct{}) error {
 	apiDone := make(chan error, 1)
 	go func() { apiDone <- d.ServeLocalAPIContext(apiCtx, apiReady) }()
 	if err := <-apiReady; err != nil {
-		d.Down()
+		d.Close()
 		return err
 	}
 	if o.ready != nil {
@@ -196,7 +197,10 @@ func runDaemon(o options, stop <-chan struct{}) error {
 				allow[n] = true
 			}
 		}
-		go runSessionHost(d, o.stateDir, o.sessAuto, allow, o.sessRec)
+		owner := newSessionHostOwner()
+		hostDone := make(chan struct{})
+		go func() { defer close(hostDone); runSessionHost(owner, d, o.stateDir, o.sessAuto, allow, o.sessRec) }()
+		defer func() { owner.Close(); <-hostDone }()
 	}
 	log.Printf("mnetd %s ready (state: %s)", version.Version, o.stateDir)
 
@@ -208,20 +212,20 @@ func runDaemon(o options, stop <-chan struct{}) error {
 		case <-sig:
 		case <-stop:
 		case err := <-apiDone:
-			d.Down()
+			d.Close()
 			return err
 		}
 	} else {
 		select {
 		case <-sig:
 		case err := <-apiDone:
-			d.Down()
+			d.Close()
 			return err
 		}
 	}
 	log.Printf("mnetd: shutting down")
 	cancelAPI()
-	d.Down()
+	d.Close()
 	// Do not exit the process before the API goroutine has closed/unlinked
 	// its listener. A clean service stop must complete that teardown.
 	return <-apiDone

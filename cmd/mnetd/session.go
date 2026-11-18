@@ -103,7 +103,8 @@ func listenHeadlessSession(listener net.Listener, name string, budget time.Durat
 // with a reason the viewer can show. Every request is bound to its
 // source mesh IP, filtered by the allow list, and recorded in
 // <state>/sessions.jsonl.
-func runSessionHost(d *daemon.Daemon, stateDir string, autoAccept bool, allow map[string]bool, recordDir string) {
+func runSessionHost(owner *sessionHostOwner, d *daemon.Daemon, stateDir string, autoAccept bool, allow map[string]bool, recordDir string) {
+	defer owner.Close()
 	audit := &sessionLogger{path: filepath.Join(stateDir, "sessions.jsonl")}
 	var ip string
 	for {
@@ -112,7 +113,11 @@ func runSessionHost(d *daemon.Daemon, stateDir string, autoAccept bool, allow ma
 			ip = st.IPv4
 			break
 		}
-		time.Sleep(time.Second)
+		select {
+		case <-owner.ctx.Done():
+			return
+		case <-time.After(time.Second):
+		}
 	}
 	addr := net.JoinHostPort(ip, fmt.Sprint(sessionPort))
 	ln, err := net.Listen("tcp", addr)
@@ -120,6 +125,10 @@ func runSessionHost(d *daemon.Daemon, stateDir string, autoAccept bool, allow ma
 		log.Printf("mnetd: session host: listen %s: %v", addr, err)
 		return
 	}
+	if !owner.attachListener(ln) {
+		return
+	}
+	defer ln.Close()
 	log.Printf("mnetd: session host listening on %s", addr)
 	nodeName := d.Status().NodeName
 	for {
@@ -127,7 +136,7 @@ func runSessionHost(d *daemon.Daemon, stateDir string, autoAccept bool, allow ma
 		var viewer, viewerIP, refuseWhy string
 		var admittedKey string
 		var admittedSource net.Addr
-		m, err := listenHeadlessSession(ln, nodeName, 15*time.Second, func(h session.Hello, from net.Addr) (bool, string) {
+		m, err := listenHeadlessSession(ownedSessionListener{ln, owner}, nodeName, 15*time.Second, func(h session.Hello, from net.Addr) (bool, string) {
 			viewer = h.NodeName
 			refuseWhy = ""
 			if from != nil {
@@ -150,6 +159,11 @@ func runSessionHost(d *daemon.Daemon, stateDir string, autoAccept bool, allow ma
 			return true, ""
 		})
 		if err != nil {
+			select {
+			case <-owner.ctx.Done():
+				return
+			default:
+			}
 			log.Printf("mnetd: session host: %v", err)
 			if viewer != "" && refuseWhy != "" {
 				audit.log(sessionAudit{Event: "refuse", Viewer: viewer, SourceIP: viewerIP, Reason: refuseWhy})

@@ -22,7 +22,7 @@ func TestDaemonCleanStopWaitsForLocalAPITeardown(t *testing.T) {
 		done := make(chan error, 1)
 		stop := make(chan struct{})
 		go func() {
-			done <- runDaemon(options{stateDir: state, ifname: daemon.DefaultInterfaceName(), ready: ready}, stop)
+			done <- runDaemon(options{stateDir: state, ifname: daemon.DefaultInterfaceName(), ready: ready, sessHost: true}, stop)
 		}()
 		select {
 		case err := <-ready:
