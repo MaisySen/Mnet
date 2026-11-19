@@ -185,7 +185,21 @@ func (r FileReceiver) approvedDestination(s Stream, offer FileOffer, allowed fun
 	if !ok {
 		return fileReceiveDestination{}, false
 	}
-	defer r.Approval.retire(p)
+	var selected *fileExportSelection
+	transferred := false
+	defer func() {
+		// Synchronize with Decide before draining. A successful queued decision
+		// may lose a select race to End/reset/speculative data before consumption.
+		r.Approval.retire(p)
+		if !transferred {
+			selected.release()
+			select {
+			case abandoned := <-p.result:
+				abandoned.export.release()
+			default:
+			}
+		}
+	}()
 	timer := time.NewTimer(time.Until(p.deadline))
 	defer timer.Stop()
 	poll := time.NewTicker(100 * time.Millisecond)
@@ -196,6 +210,7 @@ func (r FileReceiver) approvedDestination(s Stream, offer FileOffer, allowed fun
 	}
 
 	finish := func(dir fileReceiveDestination) (fileReceiveDestination, bool) {
+		selected = dir.export
 		if dir.dir == "" || !allowed() || !time.Now().Before(p.deadline) {
 			return fileReceiveDestination{}, false
 		}
@@ -208,6 +223,7 @@ func (r FileReceiver) approvedDestination(s Stream, offer FileOffer, allowed fun
 			}
 			return fileReceiveDestination{}, false
 		default:
+			transferred = true
 			return dir, true
 		}
 	}

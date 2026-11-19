@@ -15,6 +15,9 @@ import (
 // provider work cannot be forcibly rolled back by the receiver.
 type fileExportCapability interface {
 	Open(context.Context, FileOffer) (fileExportOutput, error)
+	// Release retires selection-owned native resources even when Open never ran.
+	// It is separate from output Abort and must be harmless after local success.
+	Release()
 }
 type fileExportOutput interface {
 	Write(context.Context, []byte) (int, error)
@@ -68,10 +71,27 @@ type fileExportSelection struct {
 	budget     *fileExportBudget
 	claimed    bool
 	started    bool
+	released   bool
 }
 
 func newFileExportSelection(capability fileExportCapability) *fileExportSelection {
 	return &fileExportSelection{capability: capability}
+}
+func (s *fileExportSelection) release() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	if s.released {
+		s.mu.Unlock()
+		return
+	}
+	s.released = true
+	capability := s.capability
+	s.mu.Unlock()
+	if capability != nil {
+		capability.Release()
+	}
 }
 func (s *fileExportSelection) claim(request FileApprovalRequest, budget *fileExportBudget) bool {
 	if s == nil {
@@ -79,7 +99,7 @@ func (s *fileExportSelection) claim(request FileApprovalRequest, budget *fileExp
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.claimed || s.capability == nil {
+	if s.claimed || s.released || s.capability == nil {
 		return false
 	}
 	s.claimed = true
@@ -105,7 +125,7 @@ type stagedExportTransaction struct {
 func beginExportReceive(destination fileReceiveDestination, offer FileOffer, closed, reset <-chan struct{}, allowed func() bool) (receiveTransaction, error) {
 	selection := destination.export
 	selection.mu.Lock()
-	valid := selection.claimed && !selection.started && selection.request.Offer == offer
+	valid := selection.claimed && !selection.started && !selection.released && selection.request.Offer == offer
 	if valid {
 		selection.started = true
 	}

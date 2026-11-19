@@ -62,7 +62,8 @@ func (x *checkedFileExport) Finish(ctx context.Context) error {
 	}
 	return nil
 }
-func (x *checkedFileExport) Abort() { x.events = append(x.events, "abort") }
+func (x *checkedFileExport) Abort()   { x.events = append(x.events, "abort") }
+func (x *checkedFileExport) Release() {}
 
 func TestFileExportRealReceiverVerifiedBytesAndFailures(t *testing.T) {
 	for _, mode := range []string{"success", "open", "nil", "partial-open", "write", "short", "finish", "digest"} {
@@ -254,7 +255,8 @@ func (x *blockingFileExport) Finish(ctx context.Context) error {
 	}
 	return nil
 }
-func (x *blockingFileExport) Abort() { close(x.aborted) }
+func (x *blockingFileExport) Abort()   { close(x.aborted) }
+func (x *blockingFileExport) Release() {}
 
 func TestFileExportEndRejectsLateOpenWriteAndFinish(t *testing.T) {
 	for _, mode := range []string{"open", "write", "finish"} {

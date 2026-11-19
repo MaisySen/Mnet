@@ -115,6 +115,10 @@ func (r FileReceiver) Handle(s Stream) {
 			}
 			return
 		}
+		// A selected capability already owns local native lifetime before Open.
+		// Release it on every receiver exit, including authorization/setup/stage
+		// failure. The approval waiter owns cleanup until this successful handoff.
+		defer destination.export.release()
 		if !allowed() {
 			return
 		}

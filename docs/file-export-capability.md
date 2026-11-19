@@ -48,3 +48,8 @@ The final native implementation must pin its SDK/source, select and verify descr
 Picker lifetime versus the existing20second local approval/30second sender acceptance waits is not solved. The original baseline removed receive dispatch on FIN, dropping a later reset during export. A subsequent [half-close/reset ownership correction](stream-halfclose-reset-ownership.md) retains bounded owner state until release and carries reset to cooperative finalization without ending shared viewing. Its source checks are separate from baseline CI and still do not establish provider/native behavior. Cancellation cannot recall bytes already handed to a provider.
 
 Consumer/mobile reception, native chooser/provider/process acceptance, persisted/background grants, headless default migration, Multies authority, device routes, signing and release remain unchanged and open.
+
+
+## Selection lifetime correction
+
+A selected native capability can own resources before Open. The [release correction](file-export-selection-release.md) adds mandatory one-time capability release through queued-decision abandonment and every receiver exit, including authorization/staging/digest failure before Open. Output Abort remains separate. Prompt Done after a successful choice is not export cancellation. This does not enable a mobile/native caller.
