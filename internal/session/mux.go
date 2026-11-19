@@ -391,8 +391,15 @@ func (m *Mux) Keepalive(interval, timeout time.Duration) {
 				}
 				var ts [8]byte
 				binary.BigEndian.PutUint64(ts[:], uint64(now.UnixNano()))
-				if err := m.send(StreamControl, msgPing, PriInteractive, ts[:]); err != nil {
-					return
+				// A full application queue must not park the watchdog inside
+				// send: it still owes the next inbound-liveness deadline check.
+				// Skip only this probe when capacity is unavailable.
+				if err := m.sendWithWait(StreamControl, msgPing, PriInteractive, ts[:], false); err != nil {
+					select {
+					case <-m.closed:
+						return
+					default:
+					}
 				}
 			}
 		}
