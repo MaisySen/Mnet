@@ -1,6 +1,7 @@
 package control
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"fintex.au/mnet/internal/netmap"
@@ -24,11 +25,10 @@ func (s *Server) handleAdminACL(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, pol)
 	case http.MethodPut:
-		var body struct {
-			NetworkID string           `json:"network_id"`
-			Rules     []netmap.ACLRule `json:"rules"`
-		}
-		if !readJSON(w, r, &body) {
+		defer r.Body.Close()
+		body, err := decodeACLRequest(json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)))
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "Invalid policy request. Use src, dst and optional comment only in each rule.")
 			return
 		}
 		var pol *netmap.ACLPolicy
