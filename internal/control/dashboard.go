@@ -101,6 +101,7 @@ const dashboardHTML = `<!doctype html>
 <title>Mnet admin</title>
 <style>
 :root{color-scheme:light;font:100% -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Inter,system-ui,sans-serif;color:#1d1d1f;background:#f5f5f7}*{box-sizing:border-box}h1,h2,p,label{overflow-wrap:anywhere}input,select{min-width:0}body{margin:0}header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:24px max(24px,calc((100vw - 1160px)/2));border-bottom:1px solid rgb(0 0 0 / 0.09);background:white}h1{font-size:1.438rem;letter-spacing:-.03em;margin:0}main{padding:28px;max-width:1216px;margin:auto}section{margin-bottom:24px;background:white;border:1px solid rgb(0 0 0 / 0.09);border-radius:16px;padding:24px;min-width:0}h2{font-size:1.438rem;margin:0 0 16px;letter-spacing:-.025em}p{line-height:1.65}a{color:#0066cc;text-underline-offset:4px}table{scroll-padding-inline:8px;display:block;width:100%;max-width:100%;overflow-x:auto;border-collapse:collapse;font-size:0.875rem;margin:20px 0;scrollbar-color:#a1a1a6 #f5f5f7}th,td{text-align:left;padding:14px 12px;border-bottom:1px solid rgb(0 0 0 / 0.09);vertical-align:middle;min-width:90px;max-width:320px;overflow-wrap:anywhere}th{color:#5a5a5f;font-size:0.8125rem;font-weight:650;white-space:nowrap}code{background:#e8e8ed;padding:3px 6px;border-radius:6px;font-size:0.8125rem;overflow-wrap:anywhere}button{background:#0066cc;border:0;color:white;padding:12px 16px;border-radius:10px;cursor:pointer;font:600 .875rem system-ui;min-height:46px}button:hover{background:#0058b0}.row-actions{white-space:nowrap;min-width:180px}.row-actions button{white-space:nowrap;margin:4px 6px 4px 0}button.danger{background:#b00017}button.ghost{background:#e8e8ed;color:#1d1d1f}button:disabled{background:#e8e8ed;color:#5a5a5f;cursor:wait}input,select,textarea{background:white;border:1px solid rgb(0 0 0 / 0.16);color:#1d1d1f;padding:12px;border-radius:10px;font:inherit;min-height:46px;max-width:100%}input[type=checkbox]{min-height:0;accent-color:#0066cc;width:18px;height:18px}form.inline{display:flex;gap:12px;flex-wrap:wrap;align-items:center}form.inline>label{line-height:1.6;font-size:.875rem}form.inline>label>input:not([type=checkbox]),form.inline>label>select{display:block;width:100%;margin-top:6px}textarea{resize:vertical}.badge{display:inline-block;padding:4px 10px;border-radius:999px;font-size:0.75rem;white-space:nowrap}.badge.on{background:#e5f1e8;color:#17692c}.badge.off{background:#e8e8ed;color:#5a5a5f}.badge.wait{background:#fff0d8;color:#8a4b00}.hidden,#login.hidden{display:none!important}#login{max-width:440px;margin:60px auto;padding:28px;border:1px solid rgb(0 0 0 / 0.09);border-radius:16px;background:white;display:flex;flex-direction:column;gap:14px}#login label{font-size:0.875rem;font-weight:650}.key{font-family:ui-monospace,monospace;word-break:break-all}.muted{color:#5a5a5f;font-size:0.875rem;line-height:1.65}footer{padding:24px 28px;color:#5a5a5f;font-size:0.875rem;line-height:1.65;max-width:1216px;margin:auto}details{background:#f5f5f7;border-radius:10px;padding:16px}summary{cursor:pointer;font-weight:600;color:#0066cc;min-height:28px}.admin-nav{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:24px}.admin-nav a{background:#e8e8ed;padding:10px 14px;border-radius:10px;text-decoration:none}.overview{padding:4px 0 20px}.overview h2{font-size:1.875rem}.overview p{max-width:760px;margin:8px 0}.eyebrow{font-size:0.75rem;letter-spacing:.08em;text-transform:uppercase;color:#0066cc;font-weight:700}:focus-visible{outline:3px solid #0066cc;outline-offset:4px}@media(max-width:600px){header{padding:18px;align-items:flex-start;flex-wrap:wrap}main{padding:20px 14px}section{padding:20px 16px}h2{font-size:1.375rem}#login{margin:30px 18px}.overview h2{font-size:1.75rem}form.inline{align-items:stretch}.policy-actions>button{width:100%;min-width:0;overflow-wrap:anywhere}form.inline>input:not([type=checkbox]),form.inline>select,form.inline>button,form.inline>label{width:100%}th,td{padding:12px 10px}.admin-nav a{font-size:0.875rem}footer{padding:20px 18px}}
+#memberRead{scroll-margin-block:16px}
 .record-label{display:none}
 @media(max-width:600px){
   #pending,#nodes,#keys{overflow:visible}
@@ -163,7 +164,7 @@ const dashboardHTML = `<!doctype html>
 <section id="membershipSection">
 <h2>Account membership grants</h2>
 <p class="muted">Inspect explicit account access for one network. Private issuer/subject identifiers are not email addresses. This does not list device approval provenance. Removing membership closes account queries, not VPN device connections.</p>
-<p><label>Network <select id="memberNet"></select></label> <button id="memberRead" type="button">Inspect grants</button></p>
+<p><label>Network <select id="memberNet"></select></label></p>
 <details id="grantDetails"><summary>Add explicit account membership</summary>
 <p class="muted">Use the exact issuer and subject from your trusted identity-provider records. Do not guess from an email address, name or device approval. This grants read-only account access to that principal's approved devices in the selected network, not operator privileges or device enrollment.</p>
 <form id="memberGrant" class="inline">
@@ -172,7 +173,7 @@ const dashboardHTML = `<!doctype html>
 <label class="muted"><input id="grantVerified" type="checkbox" required> I checked this exact principal in trusted identity-provider records.</label>
 <button type="submit">Review membership grant</button>
 </form></details>
-<p id="memberMsg" class="muted" role="status"></p>
+<p id="memberMsg" class="muted" role="status" aria-live="polite" tabindex="-1"></p><button id="memberRead" class="ghost" type="button">Inspect grants</button>
 <table id="members" tabindex="0" aria-label="Account membership grants, scroll horizontally for all columns"><thead><tr><th>Verified issuer</th><th>Subject</th><th></th></tr></thead><tbody></tbody></table>
 </section>
 <section class="card" id="policySection">
@@ -195,8 +196,17 @@ const api = async (path, body) => {
 };
 let viewGeneration=0, stateRequest=0, signingOut=false, memberRequest=0;
 function clearGrant(){ $('#grantIssuer').value=''; $('#grantSubject').value=''; $('#grantVerified').checked=false; $('#grantDetails').open=false; }
+let memberOperation=null;
+function lockMembership(){
+  const locked=!!memberOperation;
+  $('#memberGrant').setAttribute('aria-busy',String(!!memberOperation?.busy));
+  $('#memberNet').disabled=locked;$('#memberRead').disabled=!!memberOperation?.busy;
+  for(const field of $('#memberGrant').elements)field.disabled=locked;
+  for(const button of document.querySelectorAll('#members button'))button.disabled=locked;
+}
+function resetMembership(){memberOperation=null;lockMembership();}
 function clearMembers(){ memberRequest++; $('#members tbody').replaceChildren(); $('#memberMsg').textContent=''; }
-function showLogin(){ viewGeneration++; clearRowAction(); clearCreateForms(); clearACL(); clearMembers(); clearGrant(); state=null;stateFresh=false;$('#dashboardControls').disabled=false;$('#stateReadFeedback').classList.add('hidden');$('#stateReadMsg').textContent=''; $('#pw').value=''; $('#login').classList.remove('hidden'); $('#app').classList.add('hidden'); $('#refresh').classList.add('hidden'); $('#logout').classList.add('hidden'); for(const selector of ['#nets tbody','#nodes tbody','#keys tbody','#pending tbody']) $(selector).innerHTML=''; $('#aclText').value=''; for(const selector of ['#keyNet','#aclNet','#memberNet']) $(selector).innerHTML=''; $('#pw').focus(); }
+function showLogin(){ viewGeneration++; clearRowAction(); clearCreateForms(); clearACL(); resetMembership(); clearMembers(); clearGrant(); state=null;stateFresh=false;$('#dashboardControls').disabled=false;$('#stateReadFeedback').classList.add('hidden');$('#stateReadMsg').textContent=''; $('#pw').value=''; $('#login').classList.remove('hidden'); $('#app').classList.add('hidden'); $('#refresh').classList.add('hidden'); $('#logout').classList.add('hidden'); for(const selector of ['#nets tbody','#nodes tbody','#keys tbody','#pending tbody']) $(selector).innerHTML=''; $('#aclText').value=''; for(const selector of ['#keyNet','#aclNet','#memberNet']) $(selector).innerHTML=''; $('#pw').focus(); }
 
 function showApp(){ const entering=$('#app').classList.contains('hidden'); $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); $('#refresh').classList.remove('hidden'); $('#logout').classList.remove('hidden'); if(entering) $('#overviewHeading').focus(); }
 function esc(s){ const d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML.replaceAll('"','&quot;').replaceAll("'",'&#39;'); }
@@ -285,7 +295,11 @@ function render(){
   const selectedMember=$('#memberNet').value;
   $('#memberNet').innerHTML = $('#keyNet').innerHTML;
   if(nets.some(n=>n.id===selectedMember)) $('#memberNet').value=selectedMember;
-  if($('#memberNet').value!==selectedMember){ clearMembers(); clearGrant(); }
+  if(memberOperation){
+    if(!nets.some(n=>n.id===memberOperation.network))$('#memberNet').add(new Option(memberOperation.network,memberOperation.network));
+    $('#memberNet').value=memberOperation.network;
+  }else if($('#memberNet').value!==selectedMember){ clearMembers(); clearGrant(); }
+  lockMembership();
   if($('#aclNet').value!==aclReadFor) loadACL();
   lockRowActions();
   if(focusedAction){
@@ -294,7 +308,8 @@ function render(){
   }
 }
 async function loadMembers(){
-  if(signingOut || !state) return;
+  if(signingOut || !state || memberOperation?.busy) return;
+  const inspecting=memberOperation;
   clearMembers();
   const request=memberRequest, generation=viewGeneration, id=$('#memberNet').value;
   if(!id){ $('#memberMsg').textContent='Choose a network first.'; return; }
@@ -320,49 +335,52 @@ async function loadMembers(){
       return row;
     });
     $('#members tbody').replaceChildren(...rows);
+    if(inspecting && memberOperation===inspecting){resetMembership();if(inspecting.allow)clearGrant();}
     $('#memberMsg').textContent=rows.length ? rows.length+' explicit grant(s).' : 'No explicit grants for this network.';
+    if(inspecting)$('#memberMsg').focus({preventScroll:true});
   } catch(e){
-    if(generation===viewGeneration && request===memberRequest && !signingOut) $('#memberMsg').textContent='Could not read grants. Try again.';
+    if(generation===viewGeneration && request===memberRequest && !signingOut) $('#memberMsg').textContent=inspecting?'Could not inspect grants. The change remains unconfirmed. Inspect grants again before retrying.':'Could not read grants. Try again.';
+  }
+}
+async function changeMembership(network,issuer,subject,allow,generation,request){
+  if(memberOperation)return;
+  if(allow)$('#grantDetails').open=true;
+  clearMembers();
+  const operation={network,issuer,subject,allow,busy:true};memberOperation=operation;lockMembership();
+  $('#memberMsg').textContent=allow?'Adding membership...':'Removing membership...';
+  try{
+    const response=await fetch('/admin/api/memberships',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({network_id:network,issuer,subject,allow})});
+    if(generation!==viewGeneration || memberOperation!==operation || signingOut)return;
+    if(response.status===401){showLogin();return;}
+    if(!response.ok){const error=new Error('membership failed');error.rejected=response.status>=400&&response.status<500;throw error;}
+    resetMembership();if(allow)clearGrant();await loadMembers();
+  }catch(error){
+    if(generation!==viewGeneration || memberOperation!==operation || signingOut)return;
+    operation.busy=false;
+    if(error.rejected){
+      resetMembership();$('#grantVerified').checked=false;
+      $('#memberMsg').textContent=allow?'The grant was not accepted. Your issuer and subject are kept. Check them and verify the exact principal again before retrying.':'The removal was not accepted. Inspect grants before reviewing another removal.';
+    }else{
+      lockMembership();$('#memberMsg').textContent=allow?'Could not confirm grant. Inspect grants again before retrying.':'Could not confirm removal. Inspect grants again before retrying. VPN device connections are separate.';
+    }
+    $('#memberMsg').focus({preventScroll:true});
   }
 }
 async function revokeMember(network,issuer,subject,generation,request){
-  const current=()=>generation===viewGeneration && request===memberRequest && !signingOut && state && stateFresh && $('#memberNet').value===network;
-  if(!current()) return;
-  if(!confirm('Remove account membership for network '+network+'?\nIssuer: '+issuer+'\nSubject: '+subject+'\nThis closes account queries. It does NOT disconnect VPN devices or revoke their credentials.')) return;
-  if(!current()) return;
-  clearMembers();
-  const operation=memberRequest;
-  $('#memberMsg').textContent='Removing membership...';
-  try {
-    const response=await fetch('/admin/api/memberships',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({network_id:network,issuer,subject,allow:false})});
-    if(generation!==viewGeneration || operation!==memberRequest || signingOut || $('#memberNet').value!==network) return;
-    if(response.status===401){ showLogin(); return; }
-    if(!response.ok) throw new Error('revoke failed');
-    await loadMembers();
-  } catch(e){
-    if(generation===viewGeneration && operation===memberRequest && !signingOut) $('#memberMsg').textContent='Could not confirm removal. Inspect grants again before retrying. VPN device connections are separate.';
-  }
+  const current=()=>!memberOperation && generation===viewGeneration && request===memberRequest && !signingOut && state && stateFresh && $('#memberNet').value===network;
+  if(!current())return;
+  if(!confirm('Remove account membership for network '+network+'?\nIssuer: '+issuer+'\nSubject: '+subject+'\nThis closes account queries. It does NOT disconnect VPN devices or revoke their credentials.'))return;
+  if(current())await changeMembership(network,issuer,subject,false,generation,request);
 }
-$('#memberNet').onchange=()=>{clearMembers();clearGrant();};
+$('#memberNet').onchange=()=>{if(memberOperation){$('#memberNet').value=memberOperation.network;return;}clearMembers();clearGrant();};
 $('#memberGrant').onsubmit=async event=>{
   event.preventDefault();
   const generation=viewGeneration, request=memberRequest, network=$('#memberNet').value;
   const issuer=$('#grantIssuer').value, subject=$('#grantSubject').value;
-  const current=()=>generation===viewGeneration && request===memberRequest && !signingOut && state && stateFresh && $('#memberNet').value===network;
-  if(!current() || !network || !issuer || !subject || !$('#grantVerified').checked) return;
-  if(!confirm('Grant account membership?\nNetwork: '+network+'\nIssuer: '+issuer+'\nSubject: '+subject+'\nOnly continue if this exact principal was verified in trusted identity-provider records. This is not enrollment, operator access or VPN connectivity.')) return;
-  if(!current()) return;
-  clearMembers(); clearGrant(); const operation=memberRequest;
-  $('#memberMsg').textContent='Adding membership...';
-  try{
-    const response=await fetch('/admin/api/memberships',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({network_id:network,issuer,subject,allow:true})});
-    if(generation!==viewGeneration || operation!==memberRequest || signingOut || $('#memberNet').value!==network) return;
-    if(response.status===401){showLogin();return;}
-    if(!response.ok) throw new Error('grant failed');
-    await loadMembers();
-  }catch{
-    if(generation===viewGeneration && operation===memberRequest && !signingOut) $('#memberMsg').textContent='Could not confirm grant. Inspect grants again before retrying.';
-  }
+  const current=()=>!memberOperation && generation===viewGeneration && request===memberRequest && !signingOut && state && stateFresh && $('#memberNet').value===network;
+  if(!current() || !network || !issuer || !subject || !$('#grantVerified').checked)return;
+  if(!confirm('Grant account membership?\nNetwork: '+network+'\nIssuer: '+issuer+'\nSubject: '+subject+'\nOnly continue if this exact principal was verified in trusted identity-provider records. This is not enrollment, operator access or VPN connectivity.'))return;
+  if(current())await changeMembership(network,issuer,subject,true,generation,request);
 };
 $('#memberRead').onclick=loadMembers;
 let aclRequest=0, aclTarget='', aclReadFor='', aclDirty=false, aclSaving=false;
@@ -474,11 +492,11 @@ $('#pw').addEventListener('input',()=>$('#pw').removeAttribute('aria-invalid'));
 $('#pw').addEventListener('keydown', e=>{ if(e.key==='Enter') $('#loginBtn').click(); });
 $('#refresh').onclick = load;
 $('#logout').onclick = async ()=>{
-  viewGeneration++; signingOut=true; clearMembers(); clearGrant();
+  viewGeneration++; signingOut=true; if(memberOperation)memberOperation={network:memberOperation.network,allow:memberOperation.allow,busy:false}; clearMembers(); clearGrant();lockMembership();
   $('#logout').disabled=true;
   try { await api('/admin/api/logout',{}); showLogin(); $('#loginMsg').textContent='Signed out.'; }
   catch(e){ if(e.message!=='auth') alert('Sign out failed: '+e.message); }
-  finally { signingOut=false; $('#logout').disabled=false; }
+  finally { signingOut=false; $('#logout').disabled=false;if(memberOperation){$('#memberMsg').textContent='Sign-out was not confirmed. The membership change is still unconfirmed. Inspect grants before making another change.';lockMembership();} }
 };
 const createStates={newNet:{busy:false,uncertain:false},newKey:{busy:false,uncertain:false}};
 function enableCreateForm(id,enabled){document.querySelectorAll('#'+id+' input,#'+id+' select,#'+id+' button').forEach(control=>control.disabled=!enabled);}
