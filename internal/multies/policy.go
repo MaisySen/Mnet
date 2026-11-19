@@ -19,6 +19,7 @@ type Capability string
 const (
 	Enroll   Capability = "enroll"
 	List     Capability = "list"
+	Remove   Capability = "remove"
 	View     Capability = "view"
 	Control  Capability = "control"
 	Transfer Capability = "transfer"
@@ -103,7 +104,7 @@ const MaxGrantLifetime = 60 * time.Second
 
 func validCapability(c Capability) bool {
 	switch c {
-	case Enroll, List, View, Control, Transfer, Record:
+	case Enroll, List, Remove, View, Control, Transfer, Record:
 		return true
 	}
 	return false

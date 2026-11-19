@@ -41,6 +41,7 @@ type ApprovalIdentity struct {
 }
 
 type storeData struct {
+	MultiesInventory   map[string]inventoryRecord  `json:"multies_inventory,omitempty"`
 	Memberships        map[string]NetworkMember    `json:"memberships,omitempty"`
 	ApprovalIdentities map[string]ApprovalIdentity `json:"approval_identities,omitempty"`
 	Networks           map[string]*netmap.Network  `json:"networks"`
@@ -52,12 +53,13 @@ type storeData struct {
 
 // Store is the whole control-plane state, persisted as one JSON file.
 type Store struct {
-	mu         sync.Mutex
-	path       string
-	data       storeData
-	version    int64
-	relayIndex map[string]string                 // network+public key -> node ID, invalidated on identity changes
-	watchers   map[string]map[chan struct{}]bool // network ID -> waiters
+	mu               sync.Mutex
+	path             string
+	data             storeData
+	inventoryPending map[string]EnrollmentConsent // protected by mu; never saved
+	version          int64
+	relayIndex       map[string]string                 // network+public key -> node ID, invalidated on identity changes
+	watchers         map[string]map[chan struct{}]bool // network ID -> waiters
 }
 
 // Open loads or creates the store at path.

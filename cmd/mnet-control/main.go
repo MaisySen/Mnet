@@ -40,6 +40,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("open store: %v", err)
 	}
+	deviceList, err := control.NewMultiesDeviceListServer(store, control.MultiesDeviceListConfig{
+		Enabled: os.Getenv("MNET_MULTIES_LIST_ENABLED"), Deployment: os.Getenv("MNET_DEPLOYMENT"),
+		WorkspaceID: os.Getenv("MNET_MULTIES_LIST_WORKSPACE"), Origin: os.Getenv("MNET_MULTIES_LIST_ORIGIN"),
+		Listen: os.Getenv("MNET_MULTIES_LIST_LISTEN"), CertFile: os.Getenv("MNET_MULTIES_LIST_CERT_FILE"),
+		KeyFile: os.Getenv("MNET_MULTIES_LIST_KEY_FILE"), ClientCAFile: os.Getenv("MNET_MULTIES_LIST_CLIENT_CA_FILE"),
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 	hub := relay.NewHub()
 	publicBase := *base
 	if publicBase == "" {
@@ -73,6 +82,9 @@ func main() {
 	}
 	if generated != "" {
 		log.Printf("admin password (set MNET_ADMIN_PASSWORD to choose your own): %s", generated)
+	}
+	if deviceList != nil {
+		go func() { log.Fatal(deviceList.ListenAndServeTLS("", "")) }()
 	}
 	log.Printf("mnet-control %s listening on %s", version.Version, *listen)
 	log.Printf("dashboard: %s/admin", publicBase)

@@ -25,5 +25,5 @@ func (s *Store) validateLoadedShape() error {
 			return fmt.Errorf("store: null enrollment key record; file was not changed")
 		}
 	}
-	return nil
+	return s.validateInventory()
 }

@@ -10,6 +10,16 @@ Current local ceilings are15seconds evidence age and60seconds remaining grant li
 
 The `Verifier` interface is deliberately the trust boundary. A transport implementation must authenticate Multies, verify cryptographic bindings and fetch current authority; merely decoding claims is not sufficient. No route should accept an `Evidence` supplied by a client. Do not add a fake verifier to a runnable production configuration to make setup appear finished.
 
+## Staging inventory store boundary
+
+`internal/control.MultiesInventory` uses the control store's atomic save/rollback, with separate workspace-bound inventory records. Its in-process constructor requires explicit staging opt-in, one exact workspace and a trusted verifier; the in-process consent and removal methods are not exposed by any command, HTTP route or native prompt. It lists active records, persists signed one-use enrollments, and records removal while discarding outstanding consent for that workspace/device key. Pending consent intentionally does not survive a restart. No mesh peer, relay access, session or device bearer credential is created, so inventory removal does not revoke an existing Mnet mesh node.
+
+### Separate read-only listener
+
+The list-only listener is absent by default. When the process is explicitly configured for staging, the separate listener binds only to a numeric loopback address and requires TLS 1.3 with a dedicated client CA. It accepts the exact configured HTTPS authority and workspace list path. The verified leaf must contain exactly one URI SAN, `urn:multies:staging:mnet-device-list:<workspace-id>`. Use a dedicated client identity authorized only for this list; the receiving listener never accepts a person's cookie, the public control password, or a Mnet network key as authority. Do not terminate TLS in front of this listener and substitute authentication headers.
+
+Multies performs the person authorization immediately before requesting the list. Mnet authenticates Multies on the request's TLS channel and reads the same store projection as the in-process inventory. The response has only device ID, label, and enrollment time. No user claims are forwarded and there is no mutation route, device credentials, or session control. This does not configure deployment connectivity or establish shared-staging readiness.
+
 ## Local evidence
 
 - Exact/absent/wrong workspace and device binding, malformed canonical thumbprint, missing/disabled account, suspended workspace, removed membership, demo/guest, SSO block, unverified email, scope escalation, future/stale/expired/overlong evidence and absent verifier are covered.
