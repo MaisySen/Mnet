@@ -128,10 +128,10 @@ jobs:
         with:
           go-version-file: go.mod
       - name: install isolated X11 proof dependencies
-        run: sudo apt-get update && sudo apt-get install -y xvfb x11-xserver-utils zenity xdotool imagemagick
+        run: sudo apt-get update && sudo apt-get install -y xvfb x11-xserver-utils x11-utils zenity xdotool imagemagick
       - name: live session proof against a local control plane
         run: sh scripts/session-validation.sh
-      - name: attended Linux local approval and focused reclaim (disposable X11)
+      - name: attended Linux local approval and reserved live-stop (disposable X11)
         run: python3 scripts/attended-x11-validation.py
       - name: retain failed proof diagnostics (no credentials or node state)
         if: failure()
@@ -145,6 +145,7 @@ jobs:
             /tmp/mnet-session.*/xvfb.log
             /tmp/mnet-session.*/swap.log
             /tmp/mnet-attended-x11.*/test.log
+            /tmp/mnet-attended-x11.*/safety.log
             /tmp/mnet-attended-x11.*/*.png
 
   native-platform:

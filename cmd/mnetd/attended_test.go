@@ -473,3 +473,40 @@ func TestAttendedAuthorizationWithdrawalEndsLocalOwner(t *testing.T) {
 		t.Fatal("withdrawn session retained UI/capture")
 	}
 }
+
+func TestAttendedInputOwnerCheckedAfterBackendCreation(t *testing.T) {
+	client, server := attendedPair(t, true)
+	vc := session.NewViewerControl(nil)
+	_ = session.ConnectViewerWithOptions(client, session.ViewerOptions{Control: vc})
+	gate := session.NewHostControl(nil)
+	gate.Start(server)
+	defer gate.End()
+	waitAttended(t, vc, "available")
+	if err := vc.Request(); err != nil {
+		t.Fatal(err)
+	}
+	waitAttended(t, vc, "pending")
+	until := time.Now().Add(time.Second)
+	for gate.Snapshot().State != "pending" {
+		if time.Now().After(until) {
+			t.Fatal("no host request")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	alive := true
+	backend := &attendedFixtureInput{}
+	input := &attendedInput{gate: gate, live: func() bool { return alive }, create: func() (session.Injector, error) { alive = false; return backend, nil }}
+	if err := input.decide(gate.Snapshot(), true); err == nil {
+		t.Fatal("owner lost during backend creation granted control")
+	}
+	if gate.Snapshot().State == "allowed" || backend.closes.Load() != 1 {
+		t.Fatal("retired owner kept backend or grant")
+	}
+	input.backend = backend
+	if err := input.Inject(session.InputEvent{Kind: "pointer", Action: "click"}); err != nil {
+		t.Fatal(err)
+	}
+	if backend.calls.Load() != 0 {
+		t.Fatal("retired input owner dispatched")
+	}
+}

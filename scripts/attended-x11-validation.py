@@ -13,7 +13,7 @@ for width,height,pause,revoke in [(564,225,(276,185,413,218),(419,185,557,218)),
 assert not (268<341-25<312), 'original hosted mismatch no longer represented'
 
 os.chdir(pathlib.Path(__file__).resolve().parent.parent)
-for command in ['go','Xvfb','xdotool','import']:
+for command in ['go','Xvfb','xdotool','import','xwininfo']:
  if shutil.which(command) is None:raise SystemExit('Missing local fixture dependency: '+command)
 
 out=pathlib.Path(tempfile.mkdtemp(prefix='mnet-attended-x11.'))
@@ -33,6 +33,10 @@ try:
  (out/'Xauthority').touch(mode=0o600)
  env=os.environ|{'DISPLAY':':'+number,'XAUTHORITY':str(out/'Xauthority'),'NO_AT_BRIDGE':'1','MNET_ATTENDED_X11_TEST':'1','MNET_ATTENDED_ARTIFACTS':str(out)}
  env.pop('WAYLAND_DISPLAY',None)
+ root_info=subprocess.check_output(['xwininfo','-root'],env=env,text=True)
+ root=root_info.split('Window id: ',1)[1].split()[0]
+ with open(out/'safety.log','w') as safety_log:
+  subprocess.run([str(out/'attended.test'),'-test.run','^TestAttendedX11Safety','-test.v','-test.timeout=15s'],env=env,stdout=safety_log,stderr=safety_log,check=True)
  with open(out/'test.log','w') as log:
   test=subprocess.Popen([str(out/'attended.test'),'-test.run','^TestAttendedX11RealLocalSurface$','-test.v','-test.timeout=30s'],env=env,stdout=log,stderr=log,start_new_session=True)
   seen=set();start=time.monotonic()
@@ -54,7 +58,7 @@ try:
    elif stage in ('control','resume','control-again'):
     wid=window('^Mnet: allow control');
     if wid:screenshot(wid,stage);allow(wid);seen.add(stage)
-   elif stage in ('pause','revoke','end-held'):
+   elif stage in ('pause','revoke','global-stop-held'):
     wid=window('^Mnet: desktop sharing');
     if wid:
      geo=subprocess.check_output(['xdotool','getwindowgeometry','--shell',wid],env=env,text=True)
@@ -63,18 +67,26 @@ try:
      # Inspect retained pixels too: current native info layout is End, Pause, Revoke.
      # The lower 86% row lies inside both inspected GTK3/GTK4 button bands;
      # h-25 missed the taller GTK4 buttons. State assertions remain authoritative.
-     if stage=='end-held':
-      subprocess.run(['xdotool','windowfocus',wid,'key','Escape'],env=env,check=True)
+     if stage=='global-stop-held':
+      # Focus another mapped window, not any Mnet dialog, before the shortcut.
+      foreign=(out/'reclaim-window').read_text().strip()
+      subprocess.run(['xdotool','windowfocus','--sync',foreign],env=env,check=True)
+      focus=subprocess.check_output(['xdotool','getwindowfocus'],env=env,text=True).strip()
+      assert int(focus,0)==int(foreign,0), 'stop fixture did not move focus away from Mnet'
+      screenshot(root,'foreign-focus-held')
+      # Extra lock state must not bypass the reserved chord.
+      subprocess.run(['xdotool','key','Caps_Lock'],env=env,check=True)
+      subprocess.run(['xdotool','key','ctrl+alt+shift+F12'],env=env,check=True)
      else:
       px,py=action_point(w,h,stage)
       subprocess.run(['xdotool','windowraise',wid,'mousemove','--sync','--window',wid,str(px),str(py),'click','1'],env=env,check=True)
      seen.add(stage)
    time.sleep(.02)
   result=test.wait(timeout=3)
-  expected={'view','active','control','pause','resume','revoke','control-again','end-held'}
+  expected={'view','active','control','pause','resume','revoke','control-again','global-stop-held'}
   print('Seen fixture stages: '+','.join(sorted(seen)),flush=True)
   if result!=0 or seen!=expected:raise AssertionError('Attended runtime proof failed; inspect retained test.log and pixels')
-  print('PASS: actual local view/control, pause/resume/revoke, focused Escape with held XTEST input, and joined teardown',flush=True)
+  print('PASS: actual local view/control, pause/resume/revoke, focus-independent live stop with held XTEST input, and joined teardown',flush=True)
 
 finally:
  if test:

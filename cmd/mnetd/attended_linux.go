@@ -35,7 +35,7 @@ func attendedDialogArgs(p attendedPrompt) ([]string, error) {
 		args = append(args, "--title=Mnet: allow control?", "--text="+p.Peer+" requests keyboard and pointer control.\n\nAllow only if you trust this peer.\nViewing alone does not grant control.\nUse the session window to pause, revoke or end.", "--ok-label=Allow control", "--cancel-label=View only")
 	case "active":
 		args = []string{"--info", "--no-markup", "--width=480"}
-		args = append(args, "--title=Mnet: desktop sharing", "--text="+p.Peer+" can view this desktop.\n\nControl needs a separate local approval.\nPause stops control before asking to resume.\nRevoke returns to view only.\nClosing this window ends sharing.\nEscape ends sharing when this window has focus.\n\nFiles and recording are unavailable.", "--ok-label=End session", "--extra-button=Pause control", "--extra-button=Revoke control")
+		args = append(args, "--title=Mnet: desktop sharing", "--text="+p.Peer+" can view this desktop.\n\nControl needs a separate local approval.\nPause stops control before asking to resume.\nRevoke returns to view only.\nClosing this window ends sharing.\nLocal stop shortcut: Ctrl+Alt+Shift+F12.\nRequires this app and the X server to be responsive.\n\nFiles and recording are unavailable.", "--ok-label=End session", "--extra-button=Pause control", "--extra-button=Revoke control")
 	default:
 		return nil, errors.New("unknown local prompt")
 	}

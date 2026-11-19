@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -148,11 +149,17 @@ func TestAttendedX11RealLocalSurface(t *testing.T) {
 		default:
 		}
 	}})
+	safety, err := newAttendedSafety()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = safety.Close() })
 	cap, err := newCapturer(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, done := serveAttendedSession(ctx, host, "Fixture mesh viewer", true, ui, cap, newAttendedInjector, func() bool { return true })
+	_, sessionDone := serveAttendedSession(ctx, host, "Fixture mesh viewer", true, ui, cap, newAttendedInjector, attendedSafetyAuthorized(safety, func() bool { return true }))
+	done := bindAttendedSafety(ctx, host, safety, sessionDone, func(err error) { t.Errorf("safety cleanup: %v", err) })
 	defer func() {
 		host.Close()
 		select {
@@ -243,7 +250,23 @@ func TestAttendedX11RealLocalSurface(t *testing.T) {
 	if !held {
 		t.Fatal("granted held XTEST pointer not observed")
 	}
-	stage("end-held")
+	// A different mapped application window, not the Mnet dialog or root,
+	// gets keyboard focus while the remote pointer remains held.
+	foreign, err := xproto.NewWindowId(observer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = xproto.CreateWindowChecked(observer, 0, foreign, root, 680, 400, 240, 120, 0, xproto.WindowClassInputOutput, 0, xproto.CwBackPixel, []uint32{0xffffff}).Check(); err != nil {
+		t.Fatal(err)
+	}
+	defer xproto.DestroyWindow(observer, foreign)
+	if err = xproto.MapWindowChecked(observer, foreign).Check(); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(dir, "reclaim-window"), []byte(fmt.Sprint(foreign)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	stage("global-stop-held")
 	select {
 	case <-done:
 	case <-ctx.Done():
@@ -253,5 +276,12 @@ func TestAttendedX11RealLocalSurface(t *testing.T) {
 	if err != nil || p.Mask&xproto.ButtonMask1 != 0 {
 		t.Fatal("end retained held pointer")
 	}
+	// End must have released both the selection and checked shortcut. A new
+	// cooperating host can acquire only after all old input/UI teardown joined.
+	next, err := newAttendedSafety()
+	if err != nil {
+		t.Fatal("input owner retained after joined End", err)
+	}
+	next.Close()
 	stage("complete")
 }

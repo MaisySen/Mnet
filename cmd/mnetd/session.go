@@ -219,8 +219,24 @@ func runSessionHostWithUI(owner *sessionHostOwner, d *daemon.Daemon, stateDir st
 			m.Close()
 			continue
 		}
+		var safety attendedSafety
+		if ui != nil {
+			safety, err = newAttendedSafety()
+			if err != nil {
+				log.Printf("mnetd: attended host: %v", err)
+				m.Close()
+				attendedBusy.Store(false)
+				continue
+			}
+		}
 		cap, capErr := newCapturer(stateDir)
 		if capErr != nil {
+			if safety != nil {
+				if err := safety.Close(); err != nil {
+					log.Printf("mnetd: attended safety cleanup failed: %v", err)
+					owner.Close()
+				}
+			}
 			log.Printf("mnetd: session host: capture unavailable: %v", capErr)
 			if admittedAttended {
 				attendedBusy.Store(false)
@@ -229,7 +245,9 @@ func runSessionHostWithUI(owner *sessionHostOwner, d *daemon.Daemon, stateDir st
 			continue
 		}
 		if ui != nil {
-			_, attendedDone = serveAttendedSession(owner.ctx, m, viewer, negotiateControl, ui, cap, newAttendedInjector, authorized)
+			authorized = attendedSafetyAuthorized(safety, authorized)
+			_, sessionDone := serveAttendedSession(owner.ctx, m, viewer, negotiateControl, ui, cap, newAttendedInjector, authorized)
+			attendedDone = bindAttendedSafety(owner.ctx, m, safety, sessionDone, func(err error) { log.Printf("mnetd: attended safety cleanup failed: %v", err); owner.Close() })
 			go func(done <-chan struct{}, viewer, source string, start time.Time) {
 				<-done
 				attendedBusy.Store(false)

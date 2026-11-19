@@ -55,12 +55,13 @@ type attendedInput struct {
 	create  func() (session.Injector, error)
 	fail    func()
 	failed  bool
+	live    func() bool
 }
 
 func (i *attendedInput) Inject(ev session.InputEvent) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	if i.backend == nil || !i.gate.InputAllowed(ev) {
+	if i.backend == nil || (i.live != nil && !i.live()) || !i.gate.InputAllowed(ev) {
 		return nil
 	}
 	err := i.backend.Inject(ev)
@@ -96,7 +97,7 @@ func (i *attendedInput) decide(s session.ControlStatus, allow bool) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	current := i.gate.Snapshot()
-	if i.failed || current != s || (s.State != "pending" && s.State != "paused") {
+	if i.failed || (i.live != nil && !i.live()) || current != s || (s.State != "pending" && s.State != "paused") {
 		return errors.New("retired local decision")
 	}
 	i.closeLocked()
@@ -113,6 +114,10 @@ func (i *attendedInput) decide(s session.ControlStatus, allow bool) error {
 			return errors.New("local input unavailable")
 		}
 		i.backend = backend
+	}
+	if i.live != nil && !i.live() {
+		i.closeLocked()
+		return errors.New("retired local owner")
 	}
 	if err := i.gate.Decide(s.Session, s.Request, allow); err != nil {
 		i.closeLocked()
@@ -168,7 +173,7 @@ func serveAttendedSession(parent context.Context, m *session.Mux, peer string, n
 			input.mu.Unlock()
 		}
 	})
-	input = &attendedInput{gate: gate, create: createInput, fail: func() { m.Close() }}
+	input = &attendedInput{gate: gate, create: createInput, live: authorized, fail: func() { m.Close() }}
 	h := session.ServeHostWithOptions(m, capture, input, 8, session.HostOptions{Control: gate, NegotiateControl: negotiate, Authorized: authorized})
 	peer = attendedPeerLabel(peer)
 	var wg sync.WaitGroup
