@@ -13,7 +13,7 @@ async function port(){const s=createServer();await new Promise(r=>s.listen(0,'12
 async function until(fn,description,budget=15000){const end=Date.now()+budget;let last;while(Date.now()<end){try{const value=await fn();if(value)return value;}catch(e){last=e;}await delay(50);}throw new Error('Timed out: '+description+(last?' '+last.message:''));}
 async function cdp(method,params={}){const id=++sequence;const p=new Promise((resolve,reject)=>pending.set(id,{resolve,reject}));ws.send(JSON.stringify({id,method,params}));return p;}
 async function js(expression){const r=await cdp('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;}
-async function shot(name){if(!process.env.MNET_DASHBOARD_SHOTS)return;const r=await cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});writeFileSync(join(process.env.MNET_DASHBOARD_SHOTS,name+'.png'),Buffer.from(r.data,'base64'));}
+async function shot(name,viewport=false){if(!process.env.MNET_DASHBOARD_SHOTS)return;const r=await cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:!viewport});writeFileSync(join(process.env.MNET_DASHBOARD_SHOTS,name+'.png'),Buffer.from(r.data,'base64'));}
 try{
  const binary=join(dir,'mnet-control');
  const build=spawnSync('go',['build','-o',binary,'./cmd/mnet-control'],{stdio:'inherit'});if(build.status!==0)throw new Error('control build failed');
@@ -33,6 +33,30 @@ try{
  await js(`document.querySelector('#pw').value='local-browser-fixture';document.querySelector('#loginBtn').click()`);
  await until(()=>js(`getComputedStyle(document.querySelector('#app')).display!=='none' && getComputedStyle(document.querySelector('#login')).display==='none'`),'signed-in app only');
  await until(()=>js(`document.querySelector('#nets tbody').textContent.includes('fixture')`),'real network rendered');if(!await js(`document.querySelector('#app').textContent.includes('Exit-node selection and internet routing are unsupported') && !document.querySelector('#app').textContent.includes('0.0.0.0/0 for exit-node internet access')`))throw new Error('ACL help implies unsupported exit routing');await shot('dashboard-signed-in');
+ await cdp('Emulation.setDeviceMetricsOverride',{width:320,height:720,deviceScaleFactor:1,mobile:true});
+ if(!await js(`document.documentElement.scrollWidth<=320`))throw new Error('operator page overflows compact viewport');
+ await shot('dashboard-320');
+ await js(`document.querySelector('#nodes').scrollIntoView();document.querySelector('#nodes').focus()`);
+ await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});
+ await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});
+ await until(()=>js(`document.querySelector('#nodes').scrollLeft>0`),'keyboard table scrolling');
+ await js(`(()=>{const t=document.querySelector('#nodes');t.scrollLeft=t.scrollWidth})()`);
+ if(!await js(`(()=>{const t=document.querySelector('#nodes');return t.scrollLeft+t.clientWidth>=t.scrollWidth-2})()`))throw new Error('device table end unreachable');
+ await shot('dashboard-320-table-end',true);
+
+ await js(`document.documentElement.style.fontSize='200%'`);
+ if(!await js(`document.documentElement.scrollWidth<=320`))throw new Error('operator page overflows enlarged text');
+ await js(`document.querySelector('#membershipSection').scrollIntoView()`);
+ await shot('dashboard-320-large',true);
+ await js(`document.querySelector('#policySection').scrollIntoView()`);
+ if(!await js(`document.querySelector('#aclSave').getBoundingClientRect().right<=innerWidth && document.querySelector('#aclSave').getBoundingClientRect().height>=44`))throw new Error('operator policy action clipped');
+ await shot('dashboard-320-large-policy',true);
+ await js(`document.querySelector('#aclSave').scrollIntoView({block:'center'})`);
+ if(!await js(`document.querySelector('#aclText').getBoundingClientRect().bottom<=document.querySelector('#aclSave').getBoundingClientRect().top`))throw new Error('policy save does not follow edited rules');
+ await shot('dashboard-320-large-policy-action',true);
+ await js(`document.documentElement.style.fontSize='';window.scrollTo(0,0)`);
+ await cdp('Emulation.clearDeviceMetricsOverride');
+
  // Explicit manual grant setup: no email/approval inference, review before write.
  await js(`window.grantNet=document.querySelector('#memberNet').value;document.querySelector('#grantDetails').open=true;document.querySelector('#grantIssuer').value='https://grant-ui.example';document.querySelector('#grantSubject').value='manual-subject';document.querySelector('#grantVerified').checked=true;window.grantConfirm=window.confirm;window.confirm=()=>false;document.querySelector('#memberGrant').requestSubmit()`);
  if(!await js(`(async()=>{const list=await api('/admin/api/memberships?network_id='+encodeURIComponent(grantNet));return list.memberships.length===0;})()`))throw new Error('cancelled grant mutated membership');

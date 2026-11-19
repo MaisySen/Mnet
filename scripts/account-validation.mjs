@@ -12,7 +12,7 @@ async function port(){const s=createServer();await new Promise(r=>s.listen(0,'12
 async function until(fn,description,budget=15000){const end=Date.now()+budget;let last;while(Date.now()<end){try{const value=await fn();if(value)return value;}catch(e){last=e;}await delay(50);}throw new Error('Timed out: '+description+(last?' '+last.message:''));}
 async function cdp(method,params={}){const id=++sequence;const p=new Promise((resolve,reject)=>pending.set(id,{resolve,reject}));ws.send(JSON.stringify({id,method,params}));return p;}
 async function js(expression){const r=await cdp('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;}
-async function shot(name){if(!process.env.MNET_ACCOUNT_SHOTS)return;const r=await cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});writeFileSync(join(process.env.MNET_ACCOUNT_SHOTS,name+'.png'),Buffer.from(r.data,'base64'));}
+async function shot(name,viewport=false){if(!process.env.MNET_ACCOUNT_SHOTS)return;const r=await cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:!viewport});writeFileSync(join(process.env.MNET_ACCOUNT_SHOTS,name+'.png'),Buffer.from(r.data,'base64'));}
 try{
  const base=process.env.MNET_ACCOUNT_BASE,network=process.env.MNET_ACCOUNT_NETWORK;
  if(!base||!network)throw new Error('isolated fixture missing');
@@ -41,6 +41,14 @@ try{
  await until(()=>js(`document.querySelector('a[href="/account/"]')`),'landing member entry visible');
  if(!await js(`document.querySelector('a[href="/admin"]') && document.body.textContent.includes('does not enroll a device or grant membership') && document.body.textContent.includes('not live connectivity')`))throw new Error('landing mixed member/operator scope');
  await shot('account-landing');
+ await cdp('Emulation.setDeviceMetricsOverride',{width:320,height:720,deviceScaleFactor:1,mobile:true});
+ if(!await js(`document.documentElement.scrollWidth<=320`))throw new Error('landing overflows compact viewport');
+ await shot('landing-320');
+ await js(`document.documentElement.style.fontSize='200%'`);
+ if(!await js(`document.documentElement.scrollWidth<=320`))throw new Error('landing overflows200percent text');
+ await shot('landing-320-large');
+ await cdp('Emulation.clearDeviceMetricsOverride');
+ await js(`document.documentElement.style.fontSize=''`);
  await js(`document.querySelector('a[href="/account/"]').click()`);
  await until(()=>js(`document.querySelector('#login') && !document.querySelector('#login').hidden`),'member sign-in visible');
  await shot('account-signed-out');
@@ -73,6 +81,14 @@ try{
  await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
  if(!await js(`document.documentElement.scrollWidth<=390`))throw new Error('member page overflows narrow viewport');
  await shot('account-mobile');
+ await cdp('Emulation.setDeviceMetricsOverride',{width:320,height:720,deviceScaleFactor:1,mobile:true});
+ await js(`document.documentElement.style.fontSize='200%'`);
+ if(!await js(`document.documentElement.scrollWidth<=320`))throw new Error('member page overflows compact enlarged text');
+ await shot('account-320-large');
+ await js(`document.querySelector('#logout').scrollIntoView({block:'center'})`);
+ if(!await js(`document.querySelector('#logout').getBoundingClientRect().right<=innerWidth && document.querySelector('#logout').getBoundingClientRect().height>=48`))throw new Error('member logout not usable at enlarged text');
+ await shot('account-320-large-bottom',true);
+ await js(`document.documentElement.style.fontSize='';window.scrollTo(0,0)`);
  await cdp('Emulation.clearDeviceMetricsOverride');
  // A failed logout must not say signed out or restore the previous rows.
  await js(`window.fetch=(input,options)=>input==='/account/api/logout'?Promise.resolve(new Response('{}',{status:503})):originalFetch(input,options);document.querySelector('#logout').click()`);
@@ -117,6 +133,11 @@ try{
  await until(()=>js(`document.body.textContent.includes('Sign-in was not completed')`),'safe sign-in recovery page');
  if(!await js(`!document.body.textContent.includes('private-fixture') && !document.body.textContent.includes('private-provider-error') && document.querySelector('a[href="/account/"]')`))throw new Error('callback recovery echoed private data or lost return path');
  await shot('account-login-failed');
+ await cdp('Emulation.setDeviceMetricsOverride',{width:320,height:720,deviceScaleFactor:1,mobile:true});
+ await js(`document.documentElement.style.fontSize='200%'`);
+ if(!await js(`document.documentElement.scrollWidth<=320`))throw new Error('recovery page overflows enlarged text');
+ await shot('account-recovery-320-large');
+ await cdp('Emulation.clearDeviceMetricsOverride');
  await js(`document.querySelector('a[href="/account/"]').click()`);
  await until(()=>js(`document.querySelector('#login') && !document.querySelector('#login').hidden`),'return from failed sign-in');
 

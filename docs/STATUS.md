@@ -4,9 +4,15 @@
 
 The owner deferred Multies changes and selected Mnet UI/UX/layout work. Multies remains untouched. The actual Android home/setup/sharing checkpoint `5637b9d4c8a65649b9f516d299d62d430255b1b5` has [all-five general CI success](https://github.com/MaisySen/Mnet/actions/runs/44426342827). Its automatically triggered combined native workflow was cancelled, not treated as new acceptance.
 
-The viewer follow-up adds explicit waiting/missing-network/interrupted states, the same native styling, expandable chat and fixed End viewing. Fresh local evidence:168 selected framework cases,78VPN framework cases, nine actual-resource native-raster layout fixtures and full production Java/resource/min-API24 dex compilation. [Inspected images, reproduction and limits](android-ui-layouts.md). Viewer follow-up general CI is collected separately; local checks do not imply it already passed.
+The viewer follow-up adds explicit waiting/missing-network/interrupted states, the same native styling, expandable chat and fixed End viewing. Fresh local evidence:168 selected framework cases,78VPN framework cases, nine actual-resource native-raster layout fixtures and full production Java/resource/min-API24 dex compilation. [Inspected images, reproduction and limits](android-ui-layouts.md). Viewer follow-up `db4f9211ade70b3da9bf1bd58096d7e21e21f471` has all-five general CI success, linked in the web follow-up below.
 
 These are implemented application screens with simulated Android layout pixels, not a new signed APK, phone screenshot, Play beta, live workspace integration or native-network/control acceptance. Single-line inputs scroll horizontally; lower controls and fixed stop/end actions are covered at320dp/160% text and landscape. iOS/desktop UI and the product gates below remain separate.
+
+## Web UI follow-up (2026-11-19 morning, Australia/Sydney)
+
+The actual control-service landing, member account/sign-in/recovery and operator dashboard now share the light/teal UI treatment. Persistent labels, responsive cards, focus outlines, keyboard-scrollable operator tables and320px/200% text checks are implemented. Policy editing now reads network, rules, then Save policy. Existing account/membership/approval meaning and legal/provider text are unchanged. [Actual local Chrome screenshots, reproduction and limits](web-ui-layouts.md).
+
+Fresh local checks passed: full `go test -race -count=1 ./...`, `go vet ./...`, both real Chrome account/operator regressions and the tracked-source gate. General CI for this follow-up is collected separately; local checks are not a live deployment or Multies sign-in. Android viewer checkpoint `db4f9211ade70b3da9bf1bd58096d7e21e21f471` has [all-five general CI success](https://github.com/MaisySen/Mnet/actions/runs/44427880365); its closed combined native workflow was cancelled. No new device, signing or release work was started.
 
 ## Source-safety evidence from overnight (2026-11-19, Australia/Sydney)
 

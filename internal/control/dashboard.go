@@ -43,25 +43,21 @@ const landingHTML = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mnet</title>
 <style>
-body{font-family:system-ui,-apple-system,sans-serif;margin:0;background:#0b0f14;color:#e6edf3;display:flex;min-height:100vh;align-items:center;justify-content:center}
-.card{max-width:560px;padding:2rem}
-h1{font-size:2rem;margin:0 0 .5rem}
-p{line-height:1.55;color:#9da7b1}
-a{color:#58a6ff}
-code{background:#161b22;padding:.15rem .4rem;border-radius:6px}
+:root{font:100% system-ui,-apple-system,sans-serif;color:#162b33;background:#f4f7f6;color-scheme:light}*{box-sizing:border-box}h1,h2,p,label{overflow-wrap:anywhere}input,select{min-width:0}body{margin:0;padding:32px 24px}.shell{max-width:1040px;margin:auto}header{display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;padding-bottom:28px;border-bottom:1px solid #d5e1dd}.brand{font-size:1.625rem;font-weight:700;letter-spacing:-.03em}header span{overflow-wrap:anywhere;color:#4d6269;font-size:0.875rem}.hero{padding:64px 0 36px;max-width:760px}.eyebrow{font-size:0.75rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#086963}h1{font-size:3.25rem;line-height:1.08;letter-spacing:-.045em;margin:16px 0 24px}h2{font-size:1.562rem;letter-spacing:-.025em;margin:8px 0 16px}p{line-height:1.65;color:#4d6269}a{color:#086963;text-underline-offset:4px}.intro{font-size:1.188rem;max-width:660px}.routes{display:grid;grid-template-columns:1fr 1fr;gap:20px}.card{padding:28px;background:white;border:1px solid #d5e1dd;border-radius:20px}.button{display:inline-block;padding:14px 20px;background:#086963;color:white;border-radius:12px;text-decoration:none;font-weight:600;margin:8px 0;min-height:50px}.button.secondary{background:#eaf3ef;color:#086963}.note{font-size:0.875rem}.technical{padding:24px 0}.technical code{background:#eaf3ef;padding:3px 8px;border-radius:6px;color:#162b33;overflow-wrap:anywhere}footer{border-top:1px solid #d5e1dd;margin-top:32px;padding-top:24px;color:#4d6269;font-size:0.875rem;line-height:1.65}:focus-visible{outline:3px solid #b66022;outline-offset:4px}@media(max-width:600px){body{padding:24px 18px}.hero{padding:40px 0 24px}h1{font-size:2rem}h2{font-size:1.375rem}.routes{grid-template-columns:1fr}.card{padding:24px}.button{display:block;text-align:center}header span{max-width:100%;text-align:left}}
 </style>
 </head>
-<body>
-<div class="card">
-<h1>Mnet</h1>
-<p>Your devices, one private mesh. WireGuard encrypted, peer to peer when possible, relayed when it has to be.</p>
-<p>Get the client, then run <code>mnet up</code> and point it at this server.</p>
-<p>Already a network member? <a href="/account/">View your approved devices</a>.</p>
-<p>Use the network ID from your operator. Signing in does not enroll a device or grant membership; device approval is not live connectivity.</p>
-<p>Operators: <a href="/admin">open the admin dashboard</a>.</p>
-<p style="margin-top:2rem;font-size:.85rem">Mnet is provided by <a href="https://fintex.au">Fintex Australia Pty Ltd</a> (ABN 60 688 406 108), New South Wales, Australia. Contact: contact@fintex.au.</p>
+<body><div class="shell">
+<header><div class="brand">Mnet</div><span>Private-network development build</span></header>
+<main>
+<section class="hero"><p class="eyebrow">Your network, clearly connected</p><h1>Your devices.<br>Within reach.</h1><p class="intro">WireGuard-encrypted connections, peer to peer when possible and relayed when needed.</p><p>This control service is for an existing Mnet network. Choose the access you already have.</p></section>
+<div class="routes">
+<section class="card"><p class="eyebrow">For network members</p><h2>Your approved devices</h2><p>Use the network ID from your operator. Signing in does not enroll a device or grant membership; device approval is not live connectivity.</p><a class="button" href="/account/">View your approved devices</a><p class="note">Read-only account view. This is not Multies sign-in.</p></section>
+<section class="card"><p class="eyebrow">For network operators</p><h2>Manage this network</h2><p>Review device approvals, network configuration and explicit account grants. Operator sign-in is separate from member access.</p><a class="button secondary" href="/admin">Open operator dashboard</a><p class="note">Only use operator access assigned to you.</p></section>
 </div>
-</body>
+<section class="technical"><h2>Connecting the Mnet app</h2><p>This development build still needs the control-server and network details from your operator. The command-line client uses <code>mnet up</code>. Signing into this website does not connect a VPN device.</p></section>
+</main>
+<footer>Mnet is provided by <a href="https://fintex.au">Fintex Australia Pty Ltd</a> (ABN 60 688 406 108), New South Wales, Australia. Contact: contact@fintex.au.</footer>
+</div></body>
 </html>`
 
 const approveHTML = `<!doctype html>
@@ -92,71 +88,48 @@ const dashboardHTML = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mnet admin</title>
 <style>
-:root{color-scheme:dark}
-body{font-family:system-ui,-apple-system,sans-serif;margin:0;background:#0b0f14;color:#e6edf3}
-header{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.5rem;border-bottom:1px solid #21262d}
-h1{font-size:1.1rem;margin:0}
-main{padding:1.5rem;max-width:1100px;margin:0 auto}
-section{margin-bottom:2rem}
-h2{font-size:1rem;margin:0 0 .75rem;color:#9da7b1;text-transform:uppercase;letter-spacing:.05em}
-table{width:100%;border-collapse:collapse;font-size:.9rem}
-th,td{text-align:left;padding:.5rem .6rem;border-bottom:1px solid #21262d;vertical-align:middle}
-th{color:#9da7b1;font-weight:600}
-code{background:#161b22;padding:.1rem .35rem;border-radius:6px;font-size:.82rem}
-button{background:#238636;border:0;color:#fff;padding:.4rem .8rem;border-radius:6px;cursor:pointer;font-size:.85rem}
-button.danger{background:#da3633}
-button.ghost{background:#21262d}
-input,select{background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:.45rem .6rem;border-radius:6px;font-size:.9rem}
-form.inline{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
-.badge{display:inline-block;padding:.12rem .5rem;border-radius:999px;font-size:.75rem}
-.badge.on{background:#1a7f37}
-.badge.off{background:#30363d;color:#9da7b1}
-.badge.wait{background:#9e6a03}
-.hidden{display:none}
-#login.hidden{display:none}
-#login{max-width:340px;margin:15vh auto;display:flex;flex-direction:column;gap:.7rem}
-.key{font-family:ui-monospace,monospace;word-break:break-all}
-.muted{color:#9da7b1;font-size:.85rem}
-footer{padding:1.5rem;color:#9da7b1;font-size:.8rem}
+:root{color-scheme:light;font:100% system-ui,-apple-system,sans-serif;color:#162b33;background:#f4f7f6}*{box-sizing:border-box}h1,h2,p,label{overflow-wrap:anywhere}input,select{min-width:0}body{margin:0}header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:24px max(24px,calc((100vw - 1160px)/2));border-bottom:1px solid #d5e1dd;background:white}h1{font-size:1.438rem;letter-spacing:-.03em;margin:0}main{padding:28px;max-width:1216px;margin:auto}section{margin-bottom:24px;background:white;border:1px solid #d5e1dd;border-radius:20px;padding:24px;min-width:0}h2{font-size:1.438rem;margin:0 0 16px;letter-spacing:-.025em}p{line-height:1.65}a{color:#086963;text-underline-offset:4px}table{display:block;width:100%;max-width:100%;overflow-x:auto;border-collapse:collapse;font-size:0.875rem;margin:20px 0;scrollbar-color:#9aafaa #f4f7f6}th,td{text-align:left;padding:14px 12px;border-bottom:1px solid #d5e1dd;vertical-align:middle;min-width:90px;max-width:320px;overflow-wrap:anywhere}th{color:#4d6269;font-size:0.8125rem;font-weight:650;white-space:nowrap}code{background:#eaf3ef;padding:3px 6px;border-radius:6px;font-size:0.8125rem;overflow-wrap:anywhere}button{background:#086963;border:0;color:white;padding:12px 16px;border-radius:12px;cursor:pointer;font:600 .875rem system-ui;min-height:46px}button:hover{background:#07564f}button.danger{background:#a32e2e}button.ghost{background:#eaf3ef;color:#086963}button:disabled{background:#d5e1dd;color:#4d6269;cursor:wait}input,select,textarea{background:white;border:1px solid #9aafaa;color:#162b33;padding:12px;border-radius:10px;font:inherit;min-height:46px;max-width:100%}input[type=checkbox]{min-height:0;accent-color:#086963;width:18px;height:18px}form.inline{display:flex;gap:12px;flex-wrap:wrap;align-items:center}form.inline>label{line-height:1.6;font-size:.875rem}form.inline>label>input:not([type=checkbox]),form.inline>label>select{display:block;width:100%;margin-top:6px}textarea{resize:vertical}.badge{display:inline-block;padding:4px 10px;border-radius:999px;font-size:0.75rem;white-space:nowrap}.badge.on{background:#dcf1e5;color:#175436}.badge.off{background:#edf1ef;color:#4d6269}.badge.wait{background:#fff0d2;color:#79500e}.hidden,#login.hidden{display:none!important}#login{max-width:440px;margin:60px auto;padding:28px;border:1px solid #d5e1dd;border-radius:20px;background:white;display:flex;flex-direction:column;gap:14px}#login label{font-size:0.875rem;font-weight:650}.key{font-family:ui-monospace,monospace;word-break:break-all}.muted{color:#4d6269;font-size:0.875rem;line-height:1.65}footer{padding:24px 28px;color:#4d6269;font-size:0.875rem;line-height:1.65;max-width:1216px;margin:auto}details{background:#f4f7f6;border-radius:12px;padding:16px}summary{cursor:pointer;font-weight:600;color:#086963;min-height:28px}.admin-nav{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:24px}.admin-nav a{background:#eaf3ef;padding:10px 14px;border-radius:10px;text-decoration:none}.overview{padding:4px 0 20px}.overview h2{font-size:1.875rem}.overview p{max-width:760px;margin:8px 0}.eyebrow{font-size:0.75rem;letter-spacing:.08em;text-transform:uppercase;color:#086963;font-weight:700}:focus-visible{outline:3px solid #b66022;outline-offset:4px}@media(max-width:600px){header{padding:18px;align-items:flex-start;flex-wrap:wrap}main{padding:20px 14px}section{padding:20px 16px}h2{font-size:1.375rem}#login{margin:30px 18px}.overview h2{font-size:1.75rem}form.inline{align-items:stretch}form.inline>input:not([type=checkbox]),form.inline>select,form.inline>button,form.inline>label{width:100%}th,td{padding:12px 10px}.admin-nav a{font-size:0.875rem}footer{padding:20px 18px}}
 </style>
 </head>
 <body>
 <header>
-<h1>Mnet admin</h1>
+<div><div class="eyebrow">Mnet / Operator</div><h1>Network dashboard</h1></div>
 <div><button class="ghost hidden" id="refresh">Refresh</button> <button class="ghost hidden" id="logout">Sign out</button></div>
 </header>
 <div id="login" class="hidden">
-<h2>Sign in</h2>
+<div class="eyebrow">Operator access</div><h2>Sign in to manage networks</h2><p class="muted">Use your assigned operator password. Member access is separate.</p><label for="pw">Admin password</label>
 <input id="pw" type="password" placeholder="Admin password" autocomplete="current-password">
 <button id="loginBtn">Sign in</button>
 <div class="muted" id="loginMsg"></div>
 </div>
 <main id="app" class="hidden">
-<section>
+<div class="overview"><p class="eyebrow">Control service</p><h2>Network overview</h2><p class="muted">Inspect and manage this Mnet control service. Device approval, account membership and current connectivity are separate.</p></div>
+<nav class="admin-nav" aria-label="Dashboard sections"><a href="#networkSection">Networks</a><a href="#approvalSection">Approvals</a><a href="#nodeSection">Devices</a><a href="#keySection">Auth keys</a><a href="#membershipSection">Account access</a><a href="#policySection">ACL policy</a></nav>
+<section id="networkSection">
 <h2>Networks</h2>
-<table id="nets"><thead><tr><th>Name</th><th>ID</th><th>Created</th></tr></thead><tbody></tbody></table>
+<table id="nets" tabindex="0" aria-label="Networks, scroll horizontally for all columns"><thead><tr><th>Name</th><th>ID</th><th>Created</th></tr></thead><tbody></tbody></table>
 <form class="inline" id="newNet" style="margin-top:.7rem">
-<input id="netName" placeholder="new network name" required>
+<label for="netName">Network name<input id="netName" placeholder="new network name" required></label>
 <button>Create network</button>
 </form>
 </section>
-<section>
+<section id="approvalSection">
 <h2>Pending approvals</h2>
-<table id="pending"><thead><tr><th>Name</th><th>IP</th><th>Key</th><th>Asked</th><th></th></tr></thead><tbody></tbody></table>
+<table id="pending" tabindex="0" aria-label="Pending device approvals, scroll horizontally for all columns"><thead><tr><th>Name</th><th>IP</th><th>Key</th><th>Asked</th><th></th></tr></thead><tbody></tbody></table>
 <div class="muted" id="noPending">Nothing waiting.</div>
 </section>
-<section>
-<h2>Nodes</h2>
-<table id="nodes"><thead><tr><th>Name</th><th>Network</th><th>IP</th><th>User</th><th>Relay connection</th><th>Endpoints</th><th>Last seen</th><th>Key expiry</th><th></th></tr></thead><tbody></tbody></table>
+<section id="nodeSection">
+<h2>Devices</h2>
+<table id="nodes" tabindex="0" aria-label="Devices, scroll horizontally for all columns"><thead><tr><th>Name</th><th>Network</th><th>IP</th><th>User</th><th>Relay connection</th><th>Endpoints</th><th>Last seen</th><th>Key expiry</th><th></th></tr></thead><tbody></tbody></table>
 </section>
-<section>
+<section id="keySection">
 <h2>Auth keys</h2>
-<table id="keys"><thead><tr><th>Key</th><th>Network</th><th>Note</th><th>Reusable</th><th>Uses</th><th>Expires</th><th></th></tr></thead><tbody></tbody></table>
+<table id="keys" tabindex="0" aria-label="Auth keys, scroll horizontally for all columns"><thead><tr><th>Key</th><th>Network</th><th>Note</th><th>Reusable</th><th>Uses</th><th>Expires</th><th></th></tr></thead><tbody></tbody></table>
 <form class="inline" id="newKey" style="margin-top:.7rem">
-<select id="keyNet"></select>
-<input id="keyNote" placeholder="note (optional)">
+<label for="keyNet">Network<select id="keyNet"></select></label>
+<label for="keyNote">Note (optional)<input id="keyNote" placeholder="note (optional)"></label>
 <label class="muted"><input id="keyReusable" type="checkbox"> reusable</label>
-<input id="keyTTL" type="number" min="0" placeholder="hours" style="width:6rem" title="Lifetime in hours, 0 for never">
+<label for="keyTTL">Lifetime, hours (0: never)<input id="keyTTL" type="number" min="0" placeholder="hours" style="width:6rem" title="Lifetime in hours, 0 for never"></label>
 <button>Create key</button>
 </form>
 </section>
@@ -173,13 +146,14 @@ footer{padding:1.5rem;color:#9da7b1;font-size:.8rem}
 <button type="submit">Review membership grant</button>
 </form></details>
 <p id="memberMsg" class="muted" role="status"></p>
-<table id="members"><thead><tr><th>Verified issuer</th><th>Subject</th><th></th></tr></thead><tbody></tbody></table>
+<table id="members" tabindex="0" aria-label="Account membership grants, scroll horizontally for all columns"><thead><tr><th>Verified issuer</th><th>Subject</th><th></th></tr></thead><tbody></tbody></table>
 </section>
-<section class="card">
+<section class="card" id="policySection">
 <h2>ACL policy</h2>
 <p class="muted">JSON rules: <code>[{"src":"*","dst":"*"}]</code>. Empty means allow all. With any rule present the default is deny. src is a node name or *; dst is a node name, *, or a subnet CIDR. Exit-node selection and internet routing are unsupported; an ACL does not enable them.</p>
-<p><select id="aclNet"></select> <button id="aclSave">Save policy</button> <span id="aclMsg" class="muted"></span></p>
-<textarea id="aclText" rows="8" style="width:100%;font-family:monospace"></textarea>
+<p><label for="aclNet">Network <select id="aclNet"></select></label></p>
+<label for="aclText">Rules (JSON)</label><textarea id="aclText" rows="8" style="width:100%;font-family:monospace"></textarea>
+<p style="margin:20px 0 0"><button id="aclSave">Save policy</button> <span id="aclMsg" class="muted" role="status"></span></p>
 </section>
 </main>
 <footer>Mnet is provided by Fintex Australia Pty Ltd (ABN 60 688 406 108), New South Wales, Australia. Contact: contact@fintex.au.</footer>
