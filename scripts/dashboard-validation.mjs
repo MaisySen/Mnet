@@ -70,13 +70,13 @@ try{
  await js(`(async()=>{document.querySelector('#keyNote').focus();await load();})()`);
  if(!await js(`document.activeElement.id==='keyNote'`))throw new Error('background refresh stole keyboard focus');
  await shot('dashboard-320');
- await js(`document.querySelector('#members').scrollIntoView();document.querySelector('#members').focus()`);
+ await js(`document.querySelector('#nets').scrollIntoView();document.querySelector('#nets').focus()`);
  await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});
  await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});
- await until(()=>js(`document.querySelector('#members').scrollLeft>0`),'keyboard table scrolling');
- await js(`(()=>{const t=document.querySelector('#members');t.scrollLeft=t.scrollWidth})()`);
- if(!await js(`(()=>{const t=document.querySelector('#members');return t.scrollLeft+t.clientWidth>=t.scrollWidth-2})()`))throw new Error('membership table end unreachable');
- await shot('dashboard-320-membership-table-end',true);
+ await until(()=>js(`document.querySelector('#nets').scrollLeft>0`),'keyboard table scrolling');
+ await js(`(()=>{const t=document.querySelector('#nets');t.scrollLeft=t.scrollWidth})()`);
+ if(!await js(`(()=>{const t=document.querySelector('#nets');return t.scrollLeft+t.clientWidth>=t.scrollWidth-2})()`))throw new Error('network table end unreachable');
+ await shot('dashboard-320-network-table-end',true);
 
  await js(`document.documentElement.style.fontSize='200%'`);
  if(!await js(`document.documentElement.scrollWidth<=320`))throw new Error('operator page overflows enlarged text');
@@ -362,8 +362,21 @@ try{
  await until(()=>js(`document.querySelector('#members tbody').textContent.includes('<img src=x onerror=alert(1)>')`),'actual explicit grant rendered');
  if(!await js(`document.querySelectorAll('#members tbody tr').length===1 && !document.querySelector('#members tbody img')`))throw new Error('private grant did not render as text');
  const memberAX=await cdp('Accessibility.getFullAXTree');
- if(!memberAX.nodes.some(n=>n.role?.value==='button' && n.name?.value==='Remove membership for <img src=x onerror=alert(1)>, issuer https://issuer.example'))throw new Error('membership action lacks contextual accessible name');
+ if(!memberAX.nodes.some(n=>n.role?.value==='button' && n.name?.value==='Remove grant for <img src=x onerror=alert(1)>, issuer https://issuer.example. Account membership.'))throw new Error('membership action lacks contextual accessible name');
  await shot('dashboard-memberships');
+ await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+ await js(`document.querySelector('#members').scrollIntoView({block:'start'})`);
+ if(!await js(`getComputedStyle(document.querySelector('#members tbody tr')).display==='block' && document.querySelectorAll('#members .record-label').length===2 && document.querySelector('#members').scrollWidth<=document.querySelector('#members').clientWidth+1`))throw new Error('membership mobile record labels/layout overflow');
+ await shot('membership-record-390',true);
+ await cdp('Emulation.setDeviceMetricsOverride',{width:320,height:720,deviceScaleFactor:1,mobile:true});
+ await js(`document.documentElement.style.fontSize='200%';document.querySelector('#members').scrollIntoView({block:'start'})`);
+ if(!await js(`document.documentElement.scrollWidth<=innerWidth && document.querySelector('#members button').getBoundingClientRect().right<=innerWidth`))throw new Error('enlarged membership action overflows');
+ await shot('membership-record-320',true);
+ const mobileMemberAX=await cdp('Accessibility.getFullAXTree');
+ if(!mobileMemberAX.nodes.some(n=>n.role?.value==='table' && n.name?.value==='Account membership grants') || !mobileMemberAX.nodes.some(n=>n.role?.value==='columnheader' && n.name?.value==='Verified issuer'))throw new Error('membership responsive table semantics missing');
+ await js(`document.documentElement.style.fontSize=''`);await cdp('Emulation.clearDeviceMetricsOverride');
+ await until(()=>js(`getComputedStyle(document.querySelector('#members tbody tr')).display==='table-row'`),'membership desktop table restored');
+
  // Cancellation is not a write; a confirmed removal targets the listed tuple
  // through the real guarded API, and refreshing proves it disappeared.
  await js(`window.realConfirm=window.confirm;window.confirm=()=>false;document.querySelector('#members tbody button').click()`);

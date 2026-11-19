@@ -104,15 +104,15 @@ const dashboardHTML = `<!doctype html>
 #memberRead{scroll-margin-block:16px}
 .record-label{display:none}
 @media(max-width:600px){
-  #pending,#nodes,#keys{overflow:visible}
-  #pending thead,#nodes thead,#keys thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
-  #pending tbody,#nodes tbody,#keys tbody{display:block;width:100%}
-  #pending tbody tr,#nodes tbody tr,#keys tbody tr{display:block;border:1px solid rgb(0 0 0 / .09);border-radius:10px;background:#f5f5f7;padding:16px;margin-bottom:16px}
-  #pending td,#nodes td,#keys td{display:block;min-width:0;max-width:none;border:0;padding:0 0 16px;overflow-wrap:anywhere}
-  #pending td:last-child,#nodes td:last-child,#keys td:last-child{padding-bottom:0}
+  #pending,#nodes,#keys,#members{overflow:visible}
+  #pending thead,#nodes thead,#keys thead,#members thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  #pending tbody,#nodes tbody,#keys tbody,#members tbody{display:block;width:100%}
+  #pending tbody tr,#nodes tbody tr,#keys tbody tr,#members tbody tr{display:block;border:1px solid rgb(0 0 0 / .09);border-radius:10px;background:#f5f5f7;padding:16px;margin-bottom:16px}
+  #pending td,#nodes td,#keys td,#members td{display:block;min-width:0;max-width:none;border:0;padding:0 0 16px;overflow-wrap:anywhere}
+  #pending td:last-child,#nodes td:last-child,#keys td:last-child,#members td:last-child{padding-bottom:0}
   #pending td:first-child,#nodes td:first-child{font-size:1rem;font-weight:650}
   .record-label{display:block;font-size:.75rem;font-weight:650;color:#5a5a5f;margin-bottom:6px;line-height:1.5}
-  #pending .row-actions,#nodes .row-actions,#keys .row-actions{display:flex;flex-wrap:wrap;gap:8px;min-width:0;white-space:normal}
+  #pending .row-actions,#nodes .row-actions,#keys .row-actions,#members .row-actions{display:flex;flex-wrap:wrap;gap:8px;min-width:0;white-space:normal}
   .row-actions button{flex:1 1 120px;min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;margin:0}
 }
 @media(forced-colors:active){button,.button{border:1px solid ButtonText}button:disabled{border-color:GrayText;color:GrayText}:focus-visible{outline-color:Highlight}}</style>
@@ -175,7 +175,7 @@ const dashboardHTML = `<!doctype html>
 <button type="submit">Review membership grant</button>
 </form></details>
 <p id="memberMsg" class="muted" role="status" aria-live="polite" tabindex="-1"></p><button id="memberRead" class="ghost" type="button">Inspect grants</button>
-<table id="members" tabindex="0" aria-label="Account membership grants, scroll horizontally for all columns"><thead><tr><th>Verified issuer</th><th>Subject</th><th></th></tr></thead><tbody></tbody></table>
+<table id="members" role="table" tabindex="0" aria-label="Account membership grants"><thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Verified issuer</th><th role="columnheader" scope="col">Subject</th><th role="columnheader" scope="col">Actions</th></tr></thead><tbody></tbody></table>
 </section>
 <section class="card" id="policySection">
 <h2>ACL policy</h2>
@@ -324,18 +324,20 @@ async function loadMembers(){
     if(generation!==viewGeneration || request!==memberRequest || signingOut || $('#memberNet').value!==id) return;
     if(!j || !Array.isArray(j.memberships) || !j.memberships.every(member=>member && member.network_id===id && typeof member.issuer==='string' && member.issuer.length>0 && typeof member.subject==='string' && member.subject.length>0)) throw new Error('invalid response');
     const rows=j.memberships.map(member=>{
-      const row=document.createElement('tr');
-      for(const value of [member.issuer,member.subject]){
-        const cell=document.createElement('td'); cell.style.overflowWrap='anywhere'; cell.textContent=value; row.append(cell);
+      const row=document.createElement('tr');row.setAttribute('role','row');
+      for(const [index,value] of [member.issuer,member.subject].entries()){
+        const cell=document.createElement('td');cell.setAttribute('role','cell');cell.style.overflowWrap='anywhere';
+        const label=document.createElement('span');label.className='record-label';label.setAttribute('aria-hidden','true');label.textContent=index?'Subject':'Verified issuer';
+        cell.append(label,document.createTextNode(value));row.append(cell);
       }
-      const action=document.createElement('td'), remove=document.createElement('button');
-      remove.className='danger'; remove.textContent='Remove membership';
-      remove.setAttribute('aria-label','Remove membership for '+member.subject+', issuer '+member.issuer);
+      const action=document.createElement('td'), remove=document.createElement('button');action.className='row-actions';action.setAttribute('role','cell');
+      remove.className='danger'; remove.textContent='Remove grant';
+      remove.setAttribute('aria-label','Remove grant for '+member.subject+', issuer '+member.issuer+'. Account membership.');
       remove.onclick=()=>revokeMember(id,member.issuer,member.subject,generation,request);
       action.append(remove); row.append(action);
       return row;
     });
-    $('#members tbody').replaceChildren(...rows);
+    $('#members tbody').setAttribute('role','rowgroup');$('#members tbody').replaceChildren(...rows);
     if(inspecting && memberOperation===inspecting){resetMembership();if(inspecting.allow)clearGrant();}
     $('#memberMsg').textContent=rows.length ? rows.length+' explicit grant(s).' : 'No explicit grants for this network.';
     if(inspecting)$('#memberMsg').focus({preventScroll:true});
