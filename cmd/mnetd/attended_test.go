@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"image"
 	"image/jpeg"
 	"net"
@@ -508,5 +509,179 @@ func TestAttendedInputOwnerCheckedAfterBackendCreation(t *testing.T) {
 	}
 	if backend.calls.Load() != 0 {
 		t.Fatal("retired input owner dispatched")
+	}
+}
+
+type checkedAttendedFixtureInput struct {
+	attendedFixtureInput
+	checked atomic.Int32
+	retire  func()
+}
+
+func (i *checkedAttendedFixtureInput) InjectAuthorized(ev session.InputEvent, live func() bool) error {
+	i.checked.Add(1)
+	if !live() {
+		return errors.New("not live on entry")
+	}
+	// Simulate owner retirement during one multi-action backend event.
+	i.retire()
+	if live() {
+		return errors.New("retired owner still live")
+	}
+	return errors.New("interrupted event")
+}
+
+func TestAttendedInputDispatchCarriesExactEventAuthorization(t *testing.T) {
+	client, server := attendedPair(t, true)
+	vc := session.NewViewerControl(nil)
+	_ = session.ConnectViewerWithOptions(client, session.ViewerOptions{Control: vc})
+	gate := session.NewHostControl(nil)
+	gate.Start(server)
+	defer gate.End()
+	waitAttended(t, vc, "available")
+	if err := vc.Request(); err != nil {
+		t.Fatal(err)
+	}
+	waitAttended(t, vc, "pending")
+	until := time.Now().Add(time.Second)
+	for gate.Snapshot().State != "pending" {
+		if time.Now().After(until) {
+			t.Fatal("no host request")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	snapshot := gate.Snapshot()
+	backend := &checkedAttendedFixtureInput{retire: func() { gate.End() }}
+	input := &attendedInput{gate: gate, live: func() bool { return true }, create: func() (session.Injector, error) { return backend, nil }}
+	if err := input.decide(snapshot, true); err != nil {
+		t.Fatal(err)
+	}
+	ev := session.InputEvent{Kind: "key", Text: "fixture", ControlSession: snapshot.Session, ControlRequest: "retired-request"}
+	if err := input.Inject(ev); err != nil {
+		t.Fatal(err)
+	}
+	if backend.checked.Load() != 0 {
+		t.Fatal("wrong request reached checked backend")
+	}
+	ev.ControlRequest = snapshot.Request
+	if err := input.Inject(ev); err == nil {
+		t.Fatal("interrupted event reported success")
+	}
+	if backend.checked.Load() != 1 || backend.calls.Load() != 0 || backend.closes.Load() != 1 {
+		t.Fatal("exact checked dispatch/terminal cleanup missing")
+	}
+}
+
+// The in-flight backend must see End/transport closure without waiting for
+// input.Close to acquire the same dispatch lock it is currently holding.
+type waitingAttendedFixtureInput struct {
+	attendedFixtureInput
+	entered chan struct{}
+	stopped chan struct{}
+}
+
+func (i *waitingAttendedFixtureInput) InjectAuthorized(_ session.InputEvent, live func() bool) error {
+	close(i.entered)
+	defer close(i.stopped)
+	deadline := time.Now().Add(time.Second)
+	for live() {
+		if time.Now().After(deadline) {
+			return errors.New("in-flight event did not see stop")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return errors.New("in-flight event interrupted")
+}
+func TestAttendedTransportEndInterruptsInFlightCheckedInput(t *testing.T) {
+	client, server := attendedPair(t, true)
+	vc := session.NewViewerControl(nil)
+	viewer := session.ConnectViewerWithOptions(client, session.ViewerOptions{Control: vc})
+	ui := &fixtureAttendedUI{make(chan localPromptCall, 8)}
+	input := &waitingAttendedFixtureInput{entered: make(chan struct{}), stopped: make(chan struct{})}
+	capture := &attendedFixtureCapture{}
+	_, done := serveAttendedSession(context.Background(), server, "fixture-peer", true, ui, capture, func() (session.Injector, error) { return input, nil }, func() bool { return true })
+	t.Cleanup(func() { client.Close(); <-done })
+	active := takePrompt(t, ui, "active")
+	waitAttended(t, vc, "available")
+	if err := vc.Request(); err != nil {
+		t.Fatal(err)
+	}
+	control := takePrompt(t, ui, "control")
+	control.answer <- "allow"
+	waitAttended(t, vc, "allowed")
+	if err := viewer.SendInput(session.InputEvent{Kind: "key", Text: "fixture"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-input.entered:
+	case <-time.After(time.Second):
+		t.Fatal("no in-flight input")
+	}
+	active.answer <- "end"
+	select {
+	case <-input.stopped:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("local End did not interrupt in-flight input")
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("in-flight teardown not joined")
+	}
+	if input.closes.Load() != 1 || !capture.closed.Load() {
+		t.Fatal("input/capture cleanup missing")
+	}
+}
+
+type mismatchedAttendedFixtureInput struct {
+	attendedFixtureInput
+	failClose bool
+	bound     atomic.Int32
+}
+
+func (i *mismatchedAttendedFixtureInput) CheckCaptureGeometry(w, h int) error {
+	if w == 16 && h == 16 {
+		i.bound.Add(1)
+	}
+	return errors.New("synthetic geometry mismatch")
+}
+func (i *mismatchedAttendedFixtureInput) Close() error {
+	i.closes.Add(1)
+	if i.failClose {
+		return errors.New("synthetic refused-backend cleanup failure")
+	}
+	return nil
+}
+func TestAttendedCaptureMismatchRefusesGrantAndJoinsRejectedBackend(t *testing.T) {
+	for _, failClose := range []bool{false, true} {
+		t.Run(fmt.Sprint(failClose), func(t *testing.T) {
+			client, server := attendedPair(t, true)
+			vc := session.NewViewerControl(nil)
+			_ = session.ConnectViewerWithOptions(client, session.ViewerOptions{Control: vc})
+			ui := &fixtureAttendedUI{make(chan localPromptCall, 8)}
+			input := &mismatchedAttendedFixtureInput{failClose: failClose}
+			capture := &attendedFixtureCapture{}
+			_, done := serveAttendedSession(context.Background(), server, "fixture-peer", true, ui, capture, func() (session.Injector, error) { return input, nil }, func() bool { return true })
+			t.Cleanup(func() { client.Close(); <-done })
+			_ = takePrompt(t, ui, "active")
+			waitAttended(t, vc, "available")
+			if err := vc.Request(); err != nil {
+				t.Fatal(err)
+			}
+			control := takePrompt(t, ui, "control")
+			control.answer <- "allow"
+			if failClose {
+				select {
+				case <-done:
+				case <-time.After(time.Second):
+					t.Fatal("refused-backend cleanup failure did not terminate session")
+				}
+			} else {
+				waitAttended(t, vc, "declined")
+			}
+			if input.bound.Load() != 1 || input.closes.Load() != 1 || input.calls.Load() != 0 {
+				t.Fatal("geometry refusal did not close exactly its unused backend")
+			}
+		})
 	}
 }

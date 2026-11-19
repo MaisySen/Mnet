@@ -197,7 +197,9 @@ func TestAttendedX11RealLocalSurface(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer observer.Close()
-	root := xproto.Setup(observer).DefaultScreen(observer).Root
+	screen := xproto.Setup(observer).DefaultScreen(observer)
+	root := screen.Root
+	pointerScale := capScale(int(screen.WidthInPixels), int(screen.HeightInPixels))
 	if err := v.SendInput(session.InputEvent{Kind: "pointer", Action: "click", Button: "left", X: 20, Y: 20}); err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +207,7 @@ func TestAttendedX11RealLocalSurface(t *testing.T) {
 	var p *xproto.QueryPointerReply
 	for {
 		p, err = xproto.QueryPointer(observer, root).Reply()
-		if err == nil && p.RootX == 20 && p.RootY == 20 {
+		if err == nil && int(p.RootX) == 20*pointerScale && int(p.RootY) == 20*pointerScale {
 			break
 		}
 		if time.Now().After(pointerUntil) {

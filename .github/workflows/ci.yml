@@ -132,7 +132,9 @@ jobs:
       - name: live session proof against a local control plane
         run: sh scripts/session-validation.sh
       - name: attended Linux local approval and reserved live-stop (disposable X11)
-        run: python3 scripts/attended-x11-validation.py
+        run: |
+          python3 scripts/attended-x11-validation.py
+          MNET_ATTENDED_DISPLAY_SIZE=2048x1536x24 python3 scripts/attended-x11-validation.py
       - name: retain failed proof diagnostics (no credentials or node state)
         if: failure()
         uses: actions/upload-artifact@v4

@@ -64,7 +64,14 @@ func (i *attendedInput) Inject(ev session.InputEvent) error {
 	if i.backend == nil || (i.live != nil && !i.live()) || !i.gate.InputAllowed(ev) {
 		return nil
 	}
-	err := i.backend.Inject(ev)
+	var err error
+	if checked, ok := i.backend.(interface {
+		InjectAuthorized(session.InputEvent, func() bool) error
+	}); ok {
+		err = checked.InjectAuthorized(ev, func() bool { return (i.live == nil || i.live()) && i.gate.InputAllowed(ev) })
+	} else {
+		err = i.backend.Inject(ev)
+	}
 	if err != nil {
 		i.failed = true
 		i.gate.End()
@@ -108,7 +115,13 @@ func (i *attendedInput) decide(s session.ControlStatus, allow bool) error {
 		backend, err := i.create()
 		if err != nil || backend == nil {
 			if c, ok := backend.(io.Closer); ok {
-				_ = c.Close()
+				if c.Close() != nil {
+					i.failed = true
+					i.gate.End()
+					if i.fail != nil {
+						i.fail()
+					}
+				}
 			}
 			_ = i.gate.Decide(s.Session, s.Request, false)
 			return errors.New("local input unavailable")
@@ -173,7 +186,31 @@ func serveAttendedSession(parent context.Context, m *session.Mux, peer string, n
 			input.mu.Unlock()
 		}
 	})
-	input = &attendedInput{gate: gate, create: createInput, live: authorized, fail: func() { m.Close() }}
+	live := func() bool {
+		if ctx.Err() != nil {
+			return false
+		}
+		select {
+		case <-m.Closed():
+			return false
+		default:
+		}
+		return authorized == nil || authorized()
+	}
+	createOwnedInput := func() (session.Injector, error) {
+		backend, err := createInput()
+		if err != nil || backend == nil {
+			return backend, err
+		}
+		if geometry, ok := backend.(interface{ CheckCaptureGeometry(int, int) error }); ok {
+			w, h := capture.Geometry()
+			if err = geometry.CheckCaptureGeometry(w, h); err != nil {
+				return backend, err // the grant owner joins/reports cleanup failure
+			}
+		}
+		return backend, nil
+	}
+	input = &attendedInput{gate: gate, create: createOwnedInput, live: live, fail: func() { m.Close() }}
 	h := session.ServeHostWithOptions(m, capture, input, 8, session.HostOptions{Control: gate, NegotiateControl: negotiate, Authorized: authorized})
 	peer = attendedPeerLabel(peer)
 	var wg sync.WaitGroup
