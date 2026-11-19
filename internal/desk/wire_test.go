@@ -236,3 +236,52 @@ func TestWirePairReleaseFailureNeverAcknowledgesSuccess(t *testing.T) {
 		t.Fatal("native cleanup failure lost")
 	}
 }
+
+func TestWirePairIdleNativeDeathRetiresTransport(t *testing.T) {
+	layout, binding, primary, recipient := pairTransportFixture(t)
+	backend := &terminalBackend{done: make(chan struct{})}
+	approval, _ := NewApproval(binding, layout, func() bool { return true }, func(func() bool) (NativeInput, error) { return backend, nil })
+	c, s := tlsFixturePair(t, primary, recipient)
+	done := make(chan error, 1)
+	go func() { done <- approval.ServePair(s) }()
+	client, err := ConnectPair(c, binding, layout, func() bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Release()
+	close(backend.done)
+	select {
+	case <-client.Stopped():
+	case <-time.After(time.Second):
+		t.Fatal("idle native death left TLS pair active")
+	}
+	if err = <-done; err == nil {
+		t.Fatal("native death reported clean stop")
+	}
+	if backend.released != 1 {
+		t.Fatal("native death cleanup not joined")
+	}
+}
+
+func TestWirePairIntentionalNativeCloseStillAcknowledgesStop(t *testing.T) {
+	layout, binding, primary, recipient := pairTransportFixture(t)
+	backend := &closingTerminalBackend{terminalBackend: terminalBackend{done: make(chan struct{})}}
+	approval, _ := NewApproval(binding, layout, func() bool { return true }, func(func() bool) (NativeInput, error) { return backend, nil })
+	c, s := tlsFixturePair(t, primary, recipient)
+	done := make(chan error, 1)
+	go func() { done <- approval.ServePair(s) }()
+	client, err := ConnectPair(c, binding, layout, func() bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = client.Release(); err != nil {
+		t.Fatal("intentional native close lost stop acknowledgement", err)
+	}
+	if err = <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+type closingTerminalBackend struct{ terminalBackend }
+
+func (b *closingTerminalBackend) Release() error { b.released++; close(b.done); return nil }

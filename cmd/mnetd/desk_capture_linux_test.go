@@ -19,7 +19,7 @@ import (
 )
 
 func TestDeskX11TwoDisplayCaptureAndReclaim(t *testing.T) {
-	for _, mode := range []string{"local-stop", "stop-chord", "idle-peer-loss"} {
+	for _, mode := range []string{"local-stop", "stop-chord", "idle-peer-loss", "idle-native-child-loss"} {
 		t.Run(mode, func(t *testing.T) { deskTwoDisplayCaptureFixture(t, mode) })
 	}
 }
@@ -81,12 +81,14 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 	serverDone := make(chan error, 1)
 	var channel *tls.Conn
 	var serverConn *tls.Conn
+	var nativeProcess *attendedProcessInjector
 	channel, serverConn = deskTLSPairFixture(t, sourceCert, targetCert)
 	approval, err := desk.NewApproval(binding, layout, live.Load, func(current func() bool) (desk.NativeInput, error) {
 		process, err := newInputProcessWithInit(command, &attendedProcessCommand{Kind: "desk-init", Keyboard: keyboard})
 		if err != nil {
 			return nil, err
 		}
+		nativeProcess = process
 		return &deskProcessInput{process, current}, nil
 	})
 	if err != nil {
@@ -175,7 +177,7 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 			time.Sleep(time.Millisecond)
 		}
 	}
-	if mode == "idle-peer-loss" {
+	if mode == "idle-peer-loss" || mode == "idle-native-child-loss" {
 		press(xproto.KeyRelease, 38)
 		until := time.Now().Add(time.Second)
 		for c.forwarded.Load() < 4 {
@@ -184,7 +186,13 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 			}
 			time.Sleep(time.Millisecond)
 		}
-		serverConn.NetConn().Close()
+		if mode == "idle-native-child-loss" {
+			if err = nativeProcess.cmd.Process.Kill(); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			serverConn.NetConn().Close()
+		}
 		until = time.Now().Add(time.Second)
 		for {
 			grabbed, err := xproto.GrabKeyboard(source, false, sourceScreen.Root, xproto.TimeCurrentTime, xproto.GrabModeAsync, xproto.GrabModeAsync).Reply()
@@ -202,6 +210,19 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 		}
 		if err = <-serverDone; err == nil {
 			t.Fatal("lost peer reported clean stop")
+		}
+		if mode == "idle-native-child-loss" {
+			pointer, err := xproto.QueryPointer(target, targetScreen.Root).Reply()
+			if err != nil || pointer.Mask&xproto.ButtonMask1 == 0 {
+				t.Fatal("expected XTEST injector-death negative changed", err)
+			}
+			// This is fixture cleanup only, never a proposed production recovery.
+			if err = xtest.Init(target); err != nil {
+				t.Fatal(err)
+			}
+			if err = xtest.FakeInputChecked(target, xproto.ButtonRelease, 1, 0, targetScreen.Root, 0, 0, 0).Check(); err != nil {
+				t.Fatal(err)
+			}
 		}
 		return
 	}

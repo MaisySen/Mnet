@@ -155,6 +155,21 @@ func (a *Approval) ServePair(conn *tls.Conn) (result error) {
 		}
 		return err
 	}
+	var stopping atomic.Bool
+	if terminal := nativeTerminal(backend); terminal != nil {
+		go func() {
+			select {
+			case <-done:
+				return
+			case <-terminal:
+				if stopping.Load() {
+					return
+				}
+				active.Store(false)
+				conn.NetConn().Close()
+			}
+		}()
+	}
 	var display Display
 	for _, d := range a.layout.displays {
 		if d.ID == a.binding.Display {
@@ -202,6 +217,7 @@ func (a *Approval) ServePair(conn *tls.Conn) (result error) {
 			if message.Input != nil {
 				return errors.New("invalid desk stop")
 			}
+			stopping.Store(true)
 			if err = recipient.Close(); err != nil {
 				return err
 			}
