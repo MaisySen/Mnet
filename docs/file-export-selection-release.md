@@ -52,3 +52,8 @@ Full repository race/vet and current normal CI status are reported separately. T
 - [Android selection lifetime](android-document-selection-ownership.md)
 - [Android descriptor ownership](android-document-export-preparation.md)
 - [Half-close and reset ownership](stream-halfclose-reset-ownership.md)
+
+
+## Later private exact-decision preparation
+
+The [private native decision adapter](file-native-decision-ownership.md) now retains the original exact gate/request and synchronizes successful Choose with its prompt Done watcher. Explicit owner close and receiver cleanup share one-time selected release. It adds no exported mobile/native route and does not execute JNI or Android callbacks.

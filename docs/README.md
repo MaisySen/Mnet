@@ -9,6 +9,7 @@ These documents describe a development project, not a production-readiness guara
 | [Product scope](product-scope.md) | Desired account/device/startup experience and current platform gaps. |
 | [Operations](operations.md) | Setup, local state, service operation, authentication, routing limits and recovery. |
 | [Architecture](architecture.md) | Components and trust boundaries. |
+| [Private native file decision](file-native-decision-ownership.md) | Exact original Go request, successful Done versus cancellation, real-mux tests and absent public/native route. |
 | [Export-selection release](file-export-selection-release.md) | Actual receiver ownership from approved selection through pre-open failure and terminal cleanup. |
 | [Android document-selection ownership](android-document-selection-ownership.md) | Disabled exact-offer native routing, Activity/grant lifetime, framework evidence and open bridge/UX gates. |
 | [Android document-output preparation](android-document-export-preparation.md) | Disabled Java-owned adapter, fake-provider evidence and unresolved integration/provider gates. |
