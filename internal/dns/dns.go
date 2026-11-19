@@ -245,11 +245,34 @@ func (s *Server) handle(w dns.ResponseWriter, r *dns.Msg) {
 	}
 
 	// Everything else goes upstream.
-	resp, err := dns.Exchange(r, upstreamServer())
+	// One total budget covers UDP and any TCP retry. The upstream library
+	// deliberately does not retry truncated replies itself.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	upstream := upstreamServer()
+	client := &dns.Client{Net: "udp", Timeout: 2 * time.Second}
+	resp, _, err := client.ExchangeContext(ctx, r, upstream)
+	if err == nil && resp.Truncated {
+		client.Net = "tcp"
+		resp, _, err = client.ExchangeContext(ctx, r, upstream)
+		if err == nil && resp.Truncated {
+			err = fmt.Errorf("upstream TCP answer truncated")
+		}
+	}
 	if err != nil {
 		m.SetRcode(r, dns.RcodeServerFailure)
 		w.WriteMsg(m)
 		return
+	}
+	// A full TCP-fetched answer may not fit the original UDP caller. Return
+	// a correctly truncated packet rather than an oversized partial datagram;
+	// local TCP callers retain the complete answer.
+	if w.LocalAddr().Network() == "udp" {
+		size := dns.MinMsgSize
+		if opt := r.IsEdns0(); opt != nil && int(opt.UDPSize()) > size {
+			size = int(opt.UDPSize())
+		}
+		resp.Truncate(size)
 	}
 	w.WriteMsg(resp)
 }
