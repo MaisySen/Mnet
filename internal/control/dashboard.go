@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"net/url"
 )
 
 // handleHealthz is the unauthenticated liveness probe for hosting platforms.
@@ -31,9 +32,16 @@ func (s *Server) handleDashboardPage(w http.ResponseWriter, r *http.Request) {
 // handleApprovePage is the link a client prints while it waits for approval.
 // It sends the admin to the dashboard with the pending node highlighted.
 func (s *Server) handleApprovePage(w http.ResponseWriter, r *http.Request) {
-	id := html.EscapeString(r.URL.Query().Get("node_id"))
+	rawID := r.URL.Query().Get("node_id")
+	id := html.EscapeString(rawID)
+	target := url.URL{Path: "/admin"}
+	if rawID == "" {
+		id = "Not supplied"
+	} else {
+		target.Fragment = "pending-" + rawID
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, approveHTML, id, id)
+	fmt.Fprintf(w, approveHTML, id, html.EscapeString(target.String()))
 }
 
 const landingHTML = `<!doctype html>
@@ -60,26 +68,30 @@ const landingHTML = `<!doctype html>
 </div></body>
 </html>`
 
+const joinPageStyle = `
+:root{font:100%% system-ui,-apple-system,sans-serif;color:#162b33;background:#f4f7f6;color-scheme:light}*{box-sizing:border-box}body{margin:0;padding:48px 24px}.shell{max-width:720px;margin:auto}header{margin-bottom:28px;color:#086963;font-weight:700;font-size:1.375rem;letter-spacing:-.03em}.card{background:white;border:1px solid #d5e1dd;border-radius:20px;padding:32px}h1{font-size:2rem;line-height:1.2;letter-spacing:-.035em;margin:12px 0 24px}p{line-height:1.65;overflow-wrap:anywhere}.eyebrow{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:#086963}code{display:block;background:#f4f7f6;border-radius:12px;padding:14px 16px;margin-top:8px;overflow-wrap:anywhere;font-size:.875rem}.hint{color:#4d6269;font-size:.875rem}a{color:#086963;text-underline-offset:4px}.button{display:inline-block;background:#086963;color:white;padding:14px 20px;border-radius:12px;text-decoration:none;font-weight:600;margin:12px 0;min-height:50px}:focus-visible{outline:3px solid #b66022;outline-offset:4px}.back{display:inline-block;margin-top:24px;padding:12px 0}@media(max-width:600px){body{padding:24px 18px}.card{padding:24px 18px}h1{font-size:1.5rem}.button{display:block;text-align:center}}
+`
+
 const approveHTML = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Approve device - Mnet</title>
-<style>
-body{font-family:system-ui,-apple-system,sans-serif;margin:0;background:#0b0f14;color:#e6edf3;display:flex;min-height:100vh;align-items:center;justify-content:center}
-.card{max-width:560px;padding:2rem}
-a{color:#58a6ff}
-code{background:#161b22;padding:.15rem .4rem;border-radius:6px}
-</style>
+<style>` + joinPageStyle + `</style>
 </head>
-<body>
-<div class="card">
-<h1>A device is asking to join</h1>
-<p>Node <code>%s</code> is waiting for approval. Sign in to the <a href="/admin#pending-%s">admin dashboard</a> to approve or deny it.</p>
-</div>
-</body>
+<body><div class="shell"><header>Mnet</header>
+<main class="card">
+<p class="eyebrow">Device enrollment</p><h1>Review a device request</h1>
+<p>Device ID from this link <code>%s</code></p>
+<p>Use your assigned operator account to inspect the request in the dashboard, then approve or deny it there.</p>
+<a class="button" href="%s">Open operator dashboard</a>
+<p class="hint">This link does not check the device's current approval or connection status. Opening it does not approve a device or grant account membership.</p>
+</main><a class="back" href="/">Back to Mnet</a></div></body>
 </html>`
+
+// Success follows verified identity and persisted approval, not a live VPN check.
+const deviceApprovedHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Device approved - Mnet</title><style>` + joinPageStyle + `footer{font-size:.875rem;color:#4d6269;line-height:1.65;margin-top:24px;overflow-wrap:anywhere}.identity{overflow-wrap:anywhere}.identity b{font-size:.875em}</style></head><body><div class="shell"><header>Mnet</header><main class="card"><p class="eyebrow">Device enrollment</p><h1>Device approved</h1><p class="identity">Signed in as <b>%s</b>.</p><p>Your identity was verified and this device was approved to join the network.</p><p>Return to Mnet to check the connection status. You can close this tab.</p><p class="hint">Device approval does not confirm a live VPN connection or create account membership.</p></main><footer>Mnet is provided by Fintex Australia Pty Ltd (ABN 60 688 406 108), New South Wales, Australia.</footer></div></body></html>`
 
 const dashboardHTML = `<!doctype html>
 <html lang="en">

@@ -152,5 +152,27 @@ try{
  const replay=await fetch(base+'/admin/api/state',{headers:{Cookie:'mnet_admin='+token}});if(replay.status!==401)throw new Error('logged-out cookie replay accepted');
  const remaining=(await cdp('Network.getCookies',{urls:[base]})).cookies;if(remaining.some(c=>c.name==='mnet_admin'))throw new Error('logout cookie not cleared');
  await shot('dashboard-signed-out');
- console.log('PASS real Chrome dashboard: login visibility, same-origin sign-in, network/key render, actual scoped membership reads, reviewed manual grant/cancel/unchecked rejection, cancel/confirmed removal and refresh, lost-committed-response inspection, stale row/confirmation guard, HTML-as-text, empty grants, failed-read clear/retry, invalid-response handling, same-network out-of-order reads, network-switch/logout late-result suppression, expiry boundaries, sign-out, cleared populated private UI, delayed-refresh suppression and logged-out token replay');
+ // The public request page guides operators, but does not assert unverified live state.
+ await cdp('Page.navigate',{url:base+'/join/approve?node_id=fixture-device-request'});
+ await until(()=>js(`document.querySelector('h1')?.textContent==='Review a device request'`),'device request guidance');
+ if(!await js(`document.querySelector('code').textContent==='fixture-device-request' && document.querySelector('a.button').getAttribute('href')==='/admin#pending-fixture-device-request' && document.body.textContent.includes('does not check')`))throw new Error('device request changed scope or target');
+ await shot('approval-request');
+ await cdp('Emulation.setDeviceMetricsOverride',{width:320,height:720,deviceScaleFactor:1,mobile:true});
+ await js(`document.documentElement.style.fontSize='200%'`);
+ if(!await js(`document.documentElement.scrollWidth<=320`))throw new Error('device request overflows enlarged text');
+ await shot('approval-request-320-large');
+ await js(`document.querySelector('a.button').scrollIntoView({block:'center'})`);
+ await shot('approval-request-320-action',true);
+ await cdp('Emulation.clearDeviceMetricsOverride');
+ await js(`document.querySelector('a.button').click()`);
+ await until(()=>js(`document.querySelector('#loginBtn') && getComputedStyle(document.querySelector('#app')).display==='none'`),'request link still requires operator sign-in');
+ const literalID='<img src=x onerror="window.injected=true"> & # ? /';
+ await cdp('Page.navigate',{url:base+'/join/approve?node_id='+encodeURIComponent(literalID)});
+ await until(()=>js(`document.querySelector('code')`),'literal request ID');
+ if(!await js(`!document.querySelector('img') && !window.injected && document.querySelector('code').textContent===${JSON.stringify(literalID)} && decodeURIComponent(new URL(document.querySelector('a.button').href).hash.slice(1))===${JSON.stringify('pending-'+literalID)}`))throw new Error('device request parsed ID as markup or changed fragment');
+ await cdp('Page.navigate',{url:base+'/join/approve'});
+ await until(()=>js(`document.querySelector('code')?.textContent==='Not supplied'`),'missing device ID');
+ if(!await js(`document.querySelector('a.button').getAttribute('href')==='/admin'`))throw new Error('missing device ID fabricated target');
+
+ console.log('PASS real Chrome dashboard: login visibility, same-origin sign-in, network/key render, actual scoped membership reads, reviewed manual grant/cancel/unchecked rejection, cancel/confirmed removal and refresh, lost-committed-response inspection, stale row/confirmation guard, HTML-as-text, empty grants, failed-read clear/retry, invalid-response handling, same-network out-of-order reads, network-switch/logout late-result suppression, expiry boundaries, sign-out, cleared populated private UI, delayed-refresh suppression and logged-out token replay and non-authorizing device-request guidance');
 }finally{ws?.close();await Promise.all([stopChild(chrome),stopChild(control)]);rmSync(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});}

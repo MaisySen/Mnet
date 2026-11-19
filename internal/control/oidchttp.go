@@ -117,12 +117,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mnet</title>
-<body style="font-family:system-ui;max-width:36em;margin:4em auto;padding:0 1em">
-<h1>Device connected</h1>
-<p>Signed in as <b>%s</b>. This device is now on the mesh. You can close this tab.</p>
-<footer><small>Mnet is provided by Fintex Australia Pty Ltd (ABN 60 688 406 108), New South Wales, Australia.</small></footer>`, html.EscapeString(user))
+	fmt.Fprintf(w, deviceApprovedHTML, html.EscapeString(user))
 }
 
 // Only the query-based authorization-code flow is supported. Reject other

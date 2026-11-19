@@ -141,5 +141,20 @@ try{
  await js(`document.querySelector('a[href="/account/"]').click()`);
  await until(()=>js(`document.querySelector('#login') && !document.querySelector('#login').hidden`),'return from failed sign-in');
 
- console.log('PASS real Chrome account: signed-provider login, explicit member two-device scoped render, HTML-as-text, empty/denied states, narrow layout, failed logout, private UI cleanup, delayed-refresh suppression and logout replay denial');
+
+ // Actual local provider redirect/code exchange and persisted node approval.
+ const deviceApprovalURL=process.env.MNET_DEVICE_APPROVAL_URL;
+ if(!deviceApprovalURL)throw new Error('device approval fixture missing');
+ await cdp('Page.navigate',{url:deviceApprovalURL});
+ await until(()=>js(`document.querySelector('h1')?.textContent==='Device approved'`),'verified device approval success');
+ if(!await js(`document.body.textContent.includes('does not confirm a live VPN connection') && !document.body.textContent.includes('This device is now on the mesh') && document.querySelector('b').textContent==='dev@fintex.au'`))throw new Error('approval success misstates connectivity or lost verified label');
+ await shot('device-approved');
+ await cdp('Emulation.setDeviceMetricsOverride',{width:320,height:720,deviceScaleFactor:1,mobile:true});
+ await js(`document.documentElement.style.fontSize='200%'`);
+ if(!await js(`document.documentElement.scrollWidth<=320`))throw new Error('approval success overflows enlarged text');
+ await shot('device-approved-320-large');
+ await js(`document.querySelector('.hint').scrollIntoView({block:'center'})`);
+ await shot('device-approved-320-status',true);
+ if(await js(`(async()=>{const r=await fetch('/account/api/devices');return r.status})()`)!==401)throw new Error('device approval created member access');
+ console.log('PASS real Chrome account: signed-provider login, explicit member two-device scoped render, HTML-as-text, empty/denied states, narrow layout, failed logout, private UI cleanup, delayed-refresh suppression, logout replay denial and verified device-approval success without member access');
 }finally{ws?.close();chrome?.kill();await delay(150);rmSync(dir,{recursive:true,force:true});}

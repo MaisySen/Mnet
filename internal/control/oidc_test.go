@@ -186,6 +186,10 @@ func TestOIDCJoinFlow(t *testing.T) {
 		t.Fatalf("login flow: %d %s", code, page)
 	}
 
+	if !strings.Contains(page, "Device approved") || !strings.Contains(page, "does not confirm a live VPN connection") || strings.Contains(page, "This device is now on the mesh") {
+		t.Fatal("approval page overclaims live connection state")
+	}
+
 	headers := map[string]string{"X-Node-ID": jr.NodeID, "X-Node-Token": jr.NodeToken}
 	code, m := getMap(t, base, jr, headers)
 	if code != 200 {

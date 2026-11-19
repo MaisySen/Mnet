@@ -14,6 +14,8 @@ The actual control-service landing, member account/sign-in/recovery and operator
 
 Fresh local checks passed: full `go test -race -count=1 ./...`, `go vet ./...`, both real Chrome account/operator regressions and the tracked-source gate. General CI for this follow-up is collected separately; local checks are not a live deployment or Multies sign-in. Android viewer checkpoint `db4f9211ade70b3da9bf1bd58096d7e21e21f471` has [all-five general CI success](https://github.com/MaisySen/Mnet/actions/runs/44427880365); its closed combined native workflow was cancelled. No new device, signing or release work was started.
 
+The device-request and OIDC approval-success follow-up uses the same design and distinguishes supplied link IDs, persisted device approval, account membership and live connection status. Local Chrome covers the actual signed-provider callback and confirms approval does not grant member-account access. Both browser regressions, full uncached Go race tests and vet pass locally. No provider-error redesign or approval/auth policy change is included.
+
 ## Source-safety evidence from overnight (2026-11-19, Australia/Sydney)
 
 This section supersedes older uses of "latest", "current source" and "pending" below. The rest of this page is a dated history, not an up-to-date release verdict. Source improvements are not changes to the preserved Android binaries or hosted test deployment.

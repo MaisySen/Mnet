@@ -32,4 +32,12 @@ sh scripts/check-secrets.sh
 
 The existing browser regressions retain real sign-in/logout, identity-filtered account reads, empty/error/retry handling, stale/lost responses, reviewed manual grants, removal, HTML-as-text and session-replay checks. New geometry assertions check320px layouts,200% root text, lower action placement, table keyboard scrolling and policy edit/save order. They are regression coverage, not full accessibility certification. Initial enlarged-text failures exposed header/heading overflow and were fixed before these captures. End did not scroll the table horizontally; ArrowRight is the tested key.
 
-This checkpoint does not cover native phone/browser integration, physical-device networking, new Multies enrollment, all assistive technologies or production load. Existing signing, release and native-control gates remain separate. The older browser approval surface is not redesigned by this checkpoint.
+This checkpoint does not cover native phone/browser integration, physical-device networking, new Multies enrollment, all assistive technologies or production load. Existing signing, release and native-control gates remain separate. The manual request and verified device-approval success follow-up is described below.
+
+## Device-request and approved-device follow-up
+
+The manual [device-request page](ui/web/approval-request.png) now matches the rest of the UI. It labels the ID as supplied by the link, rather than claiming an unverified device is currently waiting. It takes the operator to the same dashboard pending-row anchor. Missing IDs use the dashboard root, not a fabricated node ID. IDs stay text and are URL-fragment encoded. [320px/200% action viewport](ui/web/approval-request-320-action.png).
+
+The actual [verified OIDC approval success page](ui/web/device-approved.png) now says Device approved, not Device connected/on the mesh. The callback has verified identity and persisted approval, not measured live connectivity. It guides the user back to Mnet to check connection status. Existing provider/legal text and the actual approval mechanism are unchanged. [320px/200% status viewport](ui/web/device-approved-320-status.png).
+
+The real Chrome fixture follows the local provider authorization redirect, code exchange and actual persisted node approval in a separate disposable network. It verifies that approval does not create member-account access. Existing OIDC signature, identity escape and admission tests are retained. The dashboard browser fixture checks the manual link still requires operator sign-in, ID-as-text/encoded-fragment behavior, missing-ID guidance and enlarged-text layout. Provider-error responses were not redesigned in this follow-up.

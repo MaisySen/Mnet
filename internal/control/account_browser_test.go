@@ -2,6 +2,7 @@ package control_test
 
 import (
 	"encoding/json"
+	"net/url"
 	"os"
 	"os/exec"
 	"testing"
@@ -55,8 +56,14 @@ func TestAccountRealChrome(t *testing.T) {
 			}
 		}
 	}
+	// A separate network avoids changing the account's two-device scope fixture.
+	pending, err := store.Join(netmap.JoinRequest{Network: other.ID, Name: "approval-browser-device", PubKey: fakePubKey(0x77)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approvalURL := ts.URL + "/oidc/start?" + url.Values{"node_id": {pending.NodeID}, "token": {pending.NodeToken}}.Encode()
 	cmd := exec.Command("node", "../../scripts/account-validation.mjs")
-	cmd.Env = append(os.Environ(), "MNET_ACCOUNT_BASE="+ts.URL, "MNET_ACCOUNT_NETWORK="+network.ID, "MNET_ACCOUNT_FIXTURE_PASSWORD="+pw, "MNET_ACCOUNT_FIXTURE_ISSUER="+fake.srv.URL)
+	cmd.Env = append(os.Environ(), "MNET_ACCOUNT_BASE="+ts.URL, "MNET_ACCOUNT_NETWORK="+network.ID, "MNET_ACCOUNT_FIXTURE_PASSWORD="+pw, "MNET_ACCOUNT_FIXTURE_ISSUER="+fake.srv.URL, "MNET_DEVICE_APPROVAL_URL="+approvalURL)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("real Chrome account proof failed: %v\n%s", err, output)
