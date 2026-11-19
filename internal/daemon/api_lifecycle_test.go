@@ -181,3 +181,49 @@ func TestLocalAPICanResetSavedRouting(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLocalAPIUpRejectsAmbiguousJSONBeforeStarting(t *testing.T) {
+	dir := t.TempDir()
+	d, err := New(Config{StateDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ready := make(chan error, 1)
+	done := make(chan error, 1)
+	go func() { done <- d.ServeLocalAPIContext(ctx, ready) }()
+	if err := <-ready; err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	}()
+	network, addr := SocketPath(dir)
+	base := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, addr)
+	}}
+	defer base.CloseIdleConnections()
+	client := &http.Client{Transport: localapi.Transport{StateDir: dir, Base: base}, Timeout: 5 * time.Second}
+	for _, body := range []string{
+		`null`, `{} {}`, `{"server":"first","server":"second"}`, `{"server":"first","SERVER":"second"}`, `{"SERVER":"wrong-case"}`,
+		`{"network":null}`, `{"auth_key":null}`, `{"reset_routing":null}`, `{"advertise_routes":null}`, `{"advertise_routes":[null]}`,
+		`{"unexpected":true}`, `{"name":7}`, `{"reset_routing":"true"}`,
+	} {
+		response, err := client.Post("http://mnetd/localapi/up", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusBadRequest {
+			t.Errorf("ambiguous Up JSON accepted: %s status%d", body, response.StatusCode)
+		}
+	}
+	if d.Status().Status != "down" || d.State().PrivateKey != "" {
+		t.Fatal("rejected input changed daemon state or created identity")
+	}
+}

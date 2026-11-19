@@ -1,5 +1,7 @@
 # Releases
 
+Latest source-only local API fix: [exact Up request admission](local-up-request-admission.md) refuses ambiguous JSON before asynchronous startup. Empty-object saved-state Up and explicit routing reset remain supported. Old-source HTTP failures,20focused race repetitions and full local race/vet pass. Native CI coverage explicitly includes recent account/provider/DNS and local request regressions. No live node, release, native entry point or default change.
+
 Latest source-only account-page fix: [sign-in response ownership](account-signin-response-ownership.md) retires late navigation/error/cleanup after sign-out and preserves a newer pending attempt. Real-Chrome old-source failure, three fresh complete browser repetitions and inspected retry pixels support the change. Full local race/vet pass. No control-service deployment, app release, Multies, provider or design/legal change.
 
 Latest source-only resolver fix: [forwarded-query TCP recovery](dns-forwarded-tcp-recovery.md) prevents repeated incomplete replies when upstream UDP requires TCP. Real local UDP/TCP socket regressions, response sizing, failure/deadline checks,20focused race repetitions and full local race/vet pass. Existing upstream choice, OS settings, app releases and native/device acceptance are unchanged.

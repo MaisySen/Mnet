@@ -136,17 +136,8 @@ func (d *Daemon) ServeLocalAPIContext(ctx context.Context, ready chan<- error) e
 			http.Error(w, "POST only", http.StatusMethodNotAllowed)
 			return
 		}
-		var req struct {
-			Server          string   `json:"server"`
-			Network         string   `json:"network"`
-			Name            string   `json:"name"`
-			AuthKey         string   `json:"auth_key"`
-			AdvertiseExit   bool     `json:"advertise_exit_node"`
-			AdvertiseRoutes []string `json:"advertise_routes"`
-			UseExitNode     string   `json:"exit_node"`
-			ResetRouting    bool     `json:"reset_routing"`
-		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+		req, err := decodeLocalUp(json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)))
+		if err != nil {
 			http.Error(w, "invalid request JSON", http.StatusBadRequest)
 			return
 		}
