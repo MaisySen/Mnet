@@ -191,6 +191,9 @@ func (c *Client) DialRelay(ctx context.Context, selfPubkey string, onPacket func
 	r := &Relay{ws: ws, done: make(chan struct{})}
 	go func() {
 		defer close(r.done)
+		// ReadMessage errors do not close TCP. Release this reader's socket
+		// before Done allows the daemon to reconnect. Repeated Close is safe.
+		defer ws.Close()
 		ws.SetReadLimit(relay.MaxPacket + relay.KeyLen + 16)
 		for {
 			mt, msg, err := ws.ReadMessage()
