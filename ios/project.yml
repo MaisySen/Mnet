@@ -19,6 +19,7 @@ targets:
     platform: iOS
     sources:
       - path: ContentView.swift
+      - path: MnetConnectionPanel.swift
       - path: MnetApp.swift
       - path: TunnelManagerPolicy.swift
       - path: EnrollmentPreferences.swift

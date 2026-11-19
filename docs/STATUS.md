@@ -16,6 +16,10 @@ Fresh local checks passed: full `go test -race -count=1 ./...`, `go vet ./...`, 
 
 The device-request and OIDC approval-success follow-up uses the same design and distinguishes supplied link IDs, persisted device approval, account membership and live connection status. Local Chrome covers the actual signed-provider callback and confirms approval does not grant member-account access. Both browser regressions, full uncached Go race tests and vet pass locally. No provider-error redesign or approval/auth policy change is included.
 
+## iOS UI preparation (2026-11-19, visual acceptance pending)
+
+The real app now uses a shared pure SwiftUI connection/setup component, with masked auth input, persistent labels, expandable manual settings and readable OS-state labels. Existing preference, manager, event and explicit tunnel-action ownership remains in ContentView. A bounded native macOS SwiftUI ImageRenderer harness interprets only that production component plus synthetic state, without installing/signing an app or invoking simulator/preferences/provider/tunnel work. [Scope, reproduction and remaining visual gates](ios-ui-layouts.md). Source-only wiring checks pass locally. macOS renderer/SDK output and pixel inspection are still pending, not claimed successful.
+
 ## Source-safety evidence from overnight (2026-11-19, Australia/Sydney)
 
 This section supersedes older uses of "latest", "current source" and "pending" below. The rest of this page is a dated history, not an up-to-date release verdict. Source improvements are not changes to the preserved Android binaries or hosted test deployment.

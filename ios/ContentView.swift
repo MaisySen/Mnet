@@ -14,38 +14,26 @@ struct ContentView: View {
     @State private var connected = false
     @State private var busy = false
     @State private var statusReads = StatusReadGate()
+    @State private var showSettings = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Control plane") {
-                    TextField("Control server URL", text: $server)
-                        .textContentType(.URL)
-                        .autocapitalization(.none)
-                    TextField("Network name", text: $network)
-                        .autocapitalization(.none)
-                    TextField("Auth key (first join)", text: $authKey)
-                        .autocapitalization(.none)
-                    TextField("This device name", text: $nodeName)
-                    TextField("Exit node (optional, peer name)", text: $exitNode)
-                        .autocapitalization(.none)
-                }
-                Section {
-                    Button(connected ? "Disconnect" : (busy ? "Working..." : "Connect")) {
-                        save()
-                        connected ? disconnect() : connect()
-                    }
-                    .disabled(busy)
-                }
-                Section("Status") {
-                    Text(statusText)
-                        .font(.system(.footnote, design: .monospaced))
+            ScrollView {
+                MnetConnectionPanel(server: $server, network: $network,
+                                    authKey: $authKey, nodeName: $nodeName,
+                                    exitNode: $exitNode, showSettings: $showSettings,
+                                    statusText: statusText, connected: connected, busy: busy) {
+                    save()
+                    connected ? disconnect() : connect()
                 }
             }
+            .background(Color(red: 0.957, green: 0.969, blue: 0.965))
             .navigationTitle("Mnet")
+            .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 EnrollmentPreferences.removeLegacyKey(from: .standard)
+                if server.isEmpty || network.isEmpty { showSettings = true }
                 refresh()
             }
             .onReceive(NotificationCenter.default.publisher(for: .NEVPNStatusDidChange)) { _ in refresh() }
@@ -175,7 +163,15 @@ struct ContentView: View {
                     return
                 }
                 connected = manager.connection.status == .connected || manager.connection.status == .connecting
-                statusText = "VPN status: \(manager.connection.status.rawValue)"
+                switch manager.connection.status {
+                case .invalid: statusText = "VPN configuration unavailable"
+                case .disconnected: statusText = "Disconnected"
+                case .connecting: statusText = "Connecting"
+                case .connected: statusText = "VPN connected"
+                case .reasserting: statusText = "Reconnecting"
+                case .disconnecting: statusText = "Disconnecting"
+                @unknown default: statusText = "VPN status unavailable"
+                }
             }
         }
     }

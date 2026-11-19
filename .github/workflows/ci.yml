@@ -191,6 +191,19 @@ jobs:
       - name: iOS app manager policy and SDK source typecheck (no signing or runtime)
         if: runner.os == 'macOS'
         run: sh scripts/test-ios-source.sh
+      - name: shared production SwiftUI layout pixels (macOS renderer, no iOS runtime)
+        if: runner.os == 'macOS'
+        env:
+          MNET_SWIFTUI_OUTPUT: ${{ runner.temp }}/mnet-swiftui-pixels
+        run: sh scripts/render-swiftui-layouts.sh
+      - name: retain synthetic shared-component SwiftUI pixels
+        if: always() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: swiftui-component-previews
+          retention-days: 7
+          if-no-files-found: ignore
+          path: ${{ runner.temp }}/mnet-swiftui-pixels/*.png
       - name: unsigned iOS simulator app and embedded tunnel Go linkage (no launch/signing)
         if: runner.os == 'macOS'
         run: sh scripts/test-ios-linked-build.sh
