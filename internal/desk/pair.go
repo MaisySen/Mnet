@@ -226,3 +226,51 @@ func (s *Switchboard) backendRetired(recipient *Recipient) {
 		s.retireLocked()
 	}
 }
+
+// PrimaryDisplay describes the first native slice's single local display.
+// Geometry can express more; the adapter must refuse unsupported layouts.
+func (s *Switchboard) PrimaryDisplay() (Display, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var local Display
+	count := 0
+	for _, d := range s.layout.displays {
+		if d.Device == s.primary {
+			local = d
+			count++
+		}
+	}
+	if count != 1 {
+		return Display{}, errors.New("native primary requires exactly one local display")
+	}
+	return local, nil
+}
+
+// ReturnLocalEdge is a terminal return, not activation of another pair. Held
+// input blocks crossing. Disable local forwarding before awaiting recipient
+// release; only a confirmed release permits mapped local pointer placement.
+func (s *Switchboard) ReturnLocalEdge(edge Edge, along int64) (Candidate, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopped.Load() || !s.live() {
+		s.stopCapture()
+		return Candidate{}, false, errors.Join(errors.New("desk primary retired"), s.retireLocked())
+	}
+	if s.recipient == nil || s.recipient.Held() {
+		return Candidate{}, false, nil
+	}
+	candidate, found, err := s.layout.MapEdge(s.current, edge, along)
+	if err != nil {
+		return Candidate{}, false, err
+	}
+	if !found || candidate.Device != s.primary {
+		return Candidate{}, false, nil
+	}
+	s.stopCapture()
+	if err = s.retireLocked(); err != nil {
+		return Candidate{}, false, err
+	}
+	s.current = candidate.Display
+	s.x, s.y = candidate.X, candidate.Y
+	return candidate, true, nil
+}

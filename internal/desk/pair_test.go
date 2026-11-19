@@ -213,3 +213,68 @@ func TestPairAlreadyTerminalBackendRefusedBeforeEntry(t *testing.T) {
 	}
 	board.Stop()
 }
+
+func TestPairReturnLocalEdgeHeldGuardAndTerminalMapping(t *testing.T) {
+	layout, binding := pairFixture(t)
+	disabled := false
+	board, _ := NewSwitchboard(layout, "key-a", "local", func() bool { return true }, func() { disabled = true })
+	backend := &ownedFixture{}
+	if err := board.Cross(Right, 50, binding, func(Binding) (NativeInput, error) { return backend, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := board.Apply(Input{Sequence: 2, Kind: "button", Action: "down", Code: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := board.ReturnLocalEdge(Left, 100); err != nil || ok || disabled {
+		t.Fatal("held input crossed", err)
+	}
+	if err := board.Apply(Input{Sequence: 3, Kind: "button", Action: "up", Code: 1}); err != nil {
+		t.Fatal(err)
+	}
+	mapped, ok, err := board.ReturnLocalEdge(Left, 100)
+	if err != nil || !ok || mapped.X != 99 || mapped.Y != 50 || !disabled || backend.released != 1 {
+		t.Fatal("mapped local return failed", mapped, ok, err)
+	}
+	if err = board.Apply(Input{Sequence: 4, Kind: "key", Action: "down", Code: 38}); err == nil {
+		t.Fatal("returned run forwarded input")
+	}
+}
+
+func TestPairReturnLocalDisablesBeforeBlockedRelease(t *testing.T) {
+	layout, binding := pairFixture(t)
+	disabled := make(chan struct{})
+	board, _ := NewSwitchboard(layout, "key-a", "local", func() bool { return true }, func() { close(disabled) })
+	backend := &blockedRelease{entered: make(chan struct{}), allow: make(chan struct{})}
+	if err := board.Cross(Right, 50, binding, func(Binding) (NativeInput, error) { return backend, nil }); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if _, ok, err := board.ReturnLocalEdge(Left, 100); err != nil || !ok {
+			t.Error("local return failed", err)
+		}
+	}()
+	<-backend.entered
+	select {
+	case <-disabled:
+	default:
+		t.Fatal("source forwarding active while edge return waits for recipient release")
+	}
+	close(backend.allow)
+	<-done
+}
+func TestPairReturnLocalReleaseFailureHasNoMappedActivation(t *testing.T) {
+	layout, binding := pairFixture(t)
+	board, _ := NewSwitchboard(layout, "key-a", "local", func() bool { return true }, func() {})
+	backend := &ownedFixture{releaseErr: errors.New("native release unavailable")}
+	if err := board.Cross(Right, 50, binding, func(Binding) (NativeInput, error) { return backend, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := board.ReturnLocalEdge(Left, 100); err == nil || ok {
+		t.Fatal("failed release produced local pointer placement")
+	}
+	if err := board.Stop(); err == nil {
+		t.Fatal("edge return lost cleanup error")
+	}
+}

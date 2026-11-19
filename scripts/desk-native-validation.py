@@ -9,9 +9,11 @@ subprocess.run(['go','test','-race','-c','-o',str(out/'desk.test'),'./cmd/mnetd'
 xs=[];test=None
 try:
  displays=[]
+ target_size=os.environ.get('MNET_DESK_TARGET_SIZE','1024x768x24')
+ if target_size not in ('1024x768x24','1280x960x24','2048x1536x24'):raise SystemExit('unsupported disposable target size')
  for role in ('source','target'):
   with open(out/(role+'-display'),'w') as fd,open(out/(role+'-xvfb.log'),'w') as log:
-   xs.append(subprocess.Popen(['Xvfb','-noreset','-nolisten','tcp','-displayfd',str(fd.fileno()),'-screen','0','1024x768x24'],pass_fds=(fd.fileno(),),stdout=log,stderr=log))
+   xs.append(subprocess.Popen(['Xvfb','-noreset','-nolisten','tcp','-displayfd',str(fd.fileno()),'-screen','0',target_size if role=='target' else '1024x768x24'],pass_fds=(fd.fileno(),),stdout=log,stderr=log))
   for _ in range(100):
    number=(out/(role+'-display')).read_text().strip()
    if number:break
@@ -30,6 +32,13 @@ try:
   for role,display in zip(('source','target'),displays):
    subprocess.run(['import','-display',display,'-window','root',str(out/(role+'-held.png'))],check=True)
   (out/'held.captured').write_text('both actual display roots captured')
+  until=time.monotonic()+15
+  while not (out/'return.stage').exists():
+   if test.poll() is not None:raise AssertionError((out/'test.log').read_text())
+   if time.monotonic()>until:raise AssertionError('mapped return stage not reached')
+   time.sleep(.01)
+  subprocess.run(['import','-display',displays[0],'-window','root',str(out/'source-return.png')],check=True)
+  (out/'return.captured').write_text('actual local return pixels captured')
   test.wait(timeout=35)
   if test.returncode:raise AssertionError((out/'test.log').read_text())
  print((out/'test.log').read_text(),flush=True)

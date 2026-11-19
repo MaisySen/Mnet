@@ -19,7 +19,7 @@ import (
 )
 
 func TestDeskX11TwoDisplayCaptureAndReclaim(t *testing.T) {
-	for _, mode := range []string{"local-stop", "stop-chord", "idle-peer-loss", "idle-native-child-loss"} {
+	for _, mode := range []string{"local-stop", "stop-chord", "idle-peer-loss", "idle-native-child-loss", "edge-return"} {
 		t.Run(mode, func(t *testing.T) { deskTwoDisplayCaptureFixture(t, mode) })
 	}
 }
@@ -176,6 +176,77 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 			}
 			time.Sleep(time.Millisecond)
 		}
+	}
+	if mode == "edge-return" {
+		// Cross left while key/button held: native routing must remain remote.
+		if err = xtest.FakeInputChecked(source, xproto.MotionNotify, 0, 0, sourceScreen.Root, 0, int16(sourceScreen.HeightInPixels/2), 0).Check(); err != nil {
+			t.Fatal(err)
+		}
+		until = time.Now().Add(time.Second)
+		for {
+			p, e := xproto.QueryPointer(target, targetScreen.Root).Reply()
+			if e == nil && p.RootX == 0 && c.forwarded.Load() >= 4 {
+				break
+			}
+			if time.Now().After(until) {
+				t.Fatal("held edge fixture did not reach recipient boundary")
+			}
+			time.Sleep(time.Millisecond)
+		}
+		select {
+		case <-c.done:
+			t.Fatal("held edge crossed")
+		default:
+		}
+		press(xproto.KeyRelease, 38)
+		press(xproto.ButtonRelease, 1)
+		until = time.Now().Add(time.Second)
+		for c.forwarded.Load() < 6 {
+			if time.Now().After(until) {
+				t.Fatal("edge fixture releases not acknowledged")
+			}
+			time.Sleep(time.Millisecond)
+		}
+		if err = xtest.FakeInputChecked(source, xproto.MotionNotify, 0, 0, sourceScreen.Root, int16(sourceScreen.WidthInPixels/2-5), int16(sourceScreen.HeightInPixels/2), 0).Check(); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-c.done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("native motion did not return across approved local edge")
+		}
+		if err = c.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err = <-serverDone; err != nil {
+			t.Fatal(err)
+		}
+		p, err := xproto.QueryPointer(source, sourceScreen.Root).Reply()
+		if err != nil || p.RootX != int16(sourceScreen.WidthInPixels-1) || int64(p.RootY) != (startY+20)*int64(sourceScreen.HeightInPixels)/int64(targetScreen.HeightInPixels) {
+			t.Fatal("local pointer not restored to mapped pixel", p, err)
+		}
+		deskFixtureObserved(t, source, sourceWindow, fmt.Sprintf("OBSERVED: local edge return at (%d, %d); recipient cleanup acknowledged", p.RootX, p.RootY))
+		if artifacts := os.Getenv("MNET_DESK_ARTIFACTS"); artifacts != "" {
+			if err = os.WriteFile(filepath.Join(artifacts, "return.stage"), []byte("local pointer mapped after cleanup"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			until = time.Now().Add(10 * time.Second)
+			for {
+				if _, err = os.Stat(filepath.Join(artifacts, "return.captured")); err == nil {
+					break
+				}
+				if time.Now().After(until) {
+					t.Fatal("return screenshot acknowledgement missing")
+				}
+				time.Sleep(time.Millisecond)
+			}
+		}
+		grab, err := xproto.GrabKeyboard(source, false, sourceScreen.Root, xproto.TimeCurrentTime, xproto.GrabModeAsync, xproto.GrabModeAsync).Reply()
+		if err != nil || grab.Status != xproto.GrabStatusSuccess {
+			t.Fatal("edge return left source keyboard grabbed")
+		}
+		xproto.UngrabKeyboardChecked(source, xproto.TimeCurrentTime).Check()
+		return
 	}
 	if mode == "idle-peer-loss" || mode == "idle-native-child-loss" {
 		press(xproto.KeyRelease, 38)

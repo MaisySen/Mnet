@@ -60,8 +60,15 @@ func newDeskPrimaryCapture(board *desk.Switchboard, keyboard string, live func()
 	if err != nil || actual != keyboard || keyboard == "" {
 		return nil, errors.New("desk source keyboard differs")
 	}
+	localDisplay, err := board.PrimaryDisplay()
+	if err != nil {
+		return nil, err
+	}
 	setup := xproto.Setup(conn)
 	screen := setup.DefaultScreen(conn)
+	if localDisplay.PixelWidth != int64(screen.WidthInPixels) || localDisplay.PixelHeight != int64(screen.HeightInPixels) {
+		return nil, errors.New("desk primary actual geometry differs from approved layout")
+	}
 	if len(setup.Roots) != 1 || screen.WidthInPixels < 64 || screen.HeightInPixels < 64 || screen.WidthInPixels > 32767 || screen.HeightInPixels > 32767 {
 		return nil, errors.New("desk primary display geometry unsupported")
 	}
@@ -149,10 +156,38 @@ func newDeskPrimaryCapture(board *desk.Switchboard, keyboard string, live func()
 					lastX, lastY = centerX, centerY
 					continue
 				}
-				// First slice clamps motion at the destination. Cross-device automatic
-				// edge activation and local-return pointer placement remain separate work.
-				x = max(0, min(target.PixelWidth-1, x+int64(e.RootX-lastX)))
-				y = max(0, min(target.PixelHeight-1, y+int64(e.RootY-lastY)))
+				nextX, nextY := x+int64(e.RootX-lastX), y+int64(e.RootY-lastY)
+				var edge desk.Edge
+				var along int64
+				switch {
+				case nextX < 0:
+					edge = desk.Left
+					along = max(0, min(target.PixelHeight-1, nextY))
+				case nextX >= target.PixelWidth:
+					edge = desk.Right
+					along = max(0, min(target.PixelHeight-1, nextY))
+				case nextY < 0:
+					edge = desk.Top
+					along = max(0, min(target.PixelWidth-1, nextX))
+				case nextY >= target.PixelHeight:
+					edge = desk.Bottom
+					along = max(0, min(target.PixelWidth-1, nextX))
+				}
+				if edge != "" {
+					mapped, returned, err := board.ReturnLocalEdge(edge, along)
+					if err != nil {
+						c.runErr = err
+						return
+					}
+					if returned {
+						// Capture is already disabled. A fresh local connection restores only
+						// the verified primary pixel after recipient cleanup was acknowledged.
+						c.runErr = deskRestoreLocalPointer(localDisplay, mapped)
+						return
+					}
+				}
+				x = max(0, min(target.PixelWidth-1, nextX))
+				y = max(0, min(target.PixelHeight-1, nextY))
 				lastX, lastY = e.RootX, e.RootY
 				input = desk.Input{Kind: "pointer", Action: "move", X: x, Y: y}
 				if xproto.WarpPointerChecked(conn, 0, screen.Root, 0, 0, 0, 0, centerX, centerY).Check() != nil {
@@ -209,4 +244,25 @@ func (c *deskPrimaryCapture) Close() error {
 	c.disable()
 	<-c.done
 	return errors.Join(c.err, c.runErr, c.board.Stop())
+}
+
+func deskRestoreLocalPointer(local desk.Display, mapped desk.Candidate) error {
+	if mapped.Display != local.ID || mapped.Device != local.Device || mapped.X < 0 || mapped.Y < 0 || mapped.X >= local.PixelWidth || mapped.Y >= local.PixelHeight {
+		return errors.New("desk local return differs from approved primary")
+	}
+	c, err := xgb.NewConn()
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	setup := xproto.Setup(c)
+	screen := setup.DefaultScreen(c)
+	if len(setup.Roots) != 1 || int64(screen.WidthInPixels) != local.PixelWidth || int64(screen.HeightInPixels) != local.PixelHeight {
+		return errors.New("desk local display changed before return")
+	}
+	geometry, err := xproto.GetGeometry(c, xproto.Drawable(screen.Root)).Reply()
+	if err != nil || int64(geometry.Width) != local.PixelWidth || int64(geometry.Height) != local.PixelHeight {
+		return errors.New("desk local display changed before return")
+	}
+	return xproto.WarpPointerChecked(c, 0, screen.Root, 0, 0, 0, 0, int16(mapped.X), int16(mapped.Y)).Check()
 }

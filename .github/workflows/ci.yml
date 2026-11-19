@@ -141,7 +141,9 @@ jobs:
           python3 scripts/native-viewer-validation.py
           MNET_VIEWER_DISPLAY_SIZE=2048x1536x24 python3 scripts/native-viewer-validation.py
       - name: independent Shared Desk TLS pair and native input (two disposable X11 displays)
-        run: python3 scripts/desk-native-validation.py
+        run: |
+          python3 scripts/desk-native-validation.py
+          MNET_DESK_TARGET_SIZE=1280x960x24 python3 scripts/desk-native-validation.py
       - name: retain failed proof diagnostics (no credentials or node state)
         if: failure()
         uses: actions/upload-artifact@v4
@@ -164,6 +166,7 @@ jobs:
             /tmp/mnet-native-viewer.*/*/*.png
             /tmp/mnet-desk-native.*/test.log
             /tmp/mnet-desk-native.*/*-held.png
+            /tmp/mnet-desk-native.*/source-return.png
             /tmp/mnet-desk-native.*/*-xvfb.log
 
   native-platform:
