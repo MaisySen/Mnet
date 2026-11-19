@@ -16,6 +16,7 @@ type accountSession struct {
 	NetworkID, Issuer, Subject string
 	Provider                   *OIDCProvider
 	Expires                    time.Time
+	BrowserHash                [32]byte // private callback-flow revocation binding
 }
 type accountSessions struct {
 	mu      sync.Mutex
@@ -26,6 +27,9 @@ type accountSessions struct {
 // Only the verified account OIDC callback issues tokens. Caller claims must be
 // verified by the exact current provider, not supplied by JSON or display email.
 func (s *Server) newAccountSession(networkID string, p *OIDCProvider, claims *OIDCClaims) (string, error) {
+	return s.newAccountSessionFromLogin(networkID, p, claims, "", nil)
+}
+func (s *Server) newAccountSessionFromLogin(networkID string, p *OIDCProvider, claims *OIDCClaims, state string, login *accountLogin) (string, error) {
 	s.oidcMu.Lock()
 	defer s.oidcMu.Unlock()
 	if p == nil || p != s.oidc || claims == nil || claims.Subject == "" {
@@ -37,6 +41,14 @@ func (s *Server) newAccountSession(networkID string, p *OIDCProvider, claims *OI
 	now := time.Now()
 	s.accounts.mu.Lock()
 	defer s.accounts.mu.Unlock()
+	var browserHash [32]byte
+	if login != nil {
+		current, ok := s.accounts.pending[state]
+		if !ok || current != *login || !current.claimed || !now.Before(current.Expires) {
+			return "", ErrUnauthorized
+		}
+		browserHash = current.BrowserHash
+	}
 	if s.accounts.byToken == nil {
 		s.accounts.byToken = make(map[string]accountSession)
 	}
@@ -49,7 +61,7 @@ func (s *Server) newAccountSession(networkID string, p *OIDCProvider, claims *OI
 		return "", fmt.Errorf("too many account sessions")
 	}
 	token := newOIDCState()
-	s.accounts.byToken[token] = accountSession{NetworkID: networkID, Issuer: p.cfg.Issuer, Subject: claims.Subject, Provider: p, Expires: now.Add(accountSessionLifetime)}
+	s.accounts.byToken[token] = accountSession{NetworkID: networkID, Issuer: p.cfg.Issuer, Subject: claims.Subject, Provider: p, Expires: now.Add(accountSessionLifetime), BrowserHash: browserHash}
 	return token, nil
 }
 
@@ -86,4 +98,22 @@ func (s *Server) revokeAccountSession(token string) {
 	s.accounts.mu.Lock()
 	delete(s.accounts.byToken, token)
 	s.accounts.mu.Unlock()
+}
+
+// Caller holds accounts.mu. Proofs and their hashes are private server state,
+// never account/device authority and never exposed in a response or log.
+func (a *accountSessions) retireBrowserProof(hash [32]byte) {
+	if hash == ([32]byte{}) {
+		return
+	}
+	for state, login := range a.pending {
+		if login.BrowserHash == hash {
+			delete(a.pending, state)
+		}
+	}
+	for token, session := range a.byToken {
+		if session.BrowserHash == hash {
+			delete(a.byToken, token)
+		}
+	}
 }

@@ -15,6 +15,7 @@ type accountLogin struct {
 	Provider    *OIDCProvider
 	BrowserHash [32]byte
 	Expires     time.Time
+	claimed     bool // one callback may exchange, but logout still owns retirement
 }
 
 func (s *Server) accountCookie(w http.ResponseWriter, name, token string, expiry time.Time, maxAge int) {
@@ -80,6 +81,12 @@ func (s *Server) handleAccountLogin(w http.ResponseWriter, r *http.Request) {
 			delete(s.accounts.pending, key)
 		}
 	}
+	// Replacing this browser's login proof must retire an earlier callback,
+	// including one already exchanging with the provider. Otherwise it could
+	// arrive after a newer flow was signed out and restore account access.
+	if previous, err := r.Cookie("mnet_account_login"); err == nil && previous.Value != "" {
+		s.accounts.retireBrowserProof(sha256.Sum256([]byte(previous.Value)))
+	}
 	if len(s.accounts.pending) >= maxPendingOIDCStates {
 		s.accounts.mu.Unlock()
 		writeErr(w, 429, "too many pending account logins")
@@ -106,15 +113,23 @@ func (s *Server) handleAccountCallback(w http.ResponseWriter, r *http.Request) {
 	login, ok := s.accounts.pending[state]
 	// A callback without the originating browser proof cannot consume the
 	// real browser's flow. Every matching attempt is one-use, even on denial.
-	matches := ok && subtle.ConstantTimeCompare(hash[:], login.BrowserHash[:]) == 1
+	matches := ok && !login.claimed && subtle.ConstantTimeCompare(hash[:], login.BrowserHash[:]) == 1
 	if matches {
-		delete(s.accounts.pending, state)
+		login.claimed = true
+		s.accounts.pending[state] = login
 	}
 	s.accounts.mu.Unlock()
 	if !matches {
 		accountLoginFailure(w, http.StatusBadRequest)
 		return
 	}
+	defer func() {
+		s.accounts.mu.Lock()
+		if s.accounts.pending[state] == login {
+			delete(s.accounts.pending, state)
+		}
+		s.accounts.mu.Unlock()
+	}()
 	s.accountCookie(w, "mnet_account_login", "", time.Unix(1, 0), -1)
 	if !time.Now().Before(login.Expires) || login.Provider != s.oidcProvider() || login.Provider == nil || r.URL.Query().Get("error") != "" {
 		accountLoginFailure(w, http.StatusForbidden)
@@ -125,7 +140,7 @@ func (s *Server) handleAccountCallback(w http.ResponseWriter, r *http.Request) {
 		accountLoginFailure(w, http.StatusForbidden)
 		return
 	}
-	token, err := s.newAccountSession(login.NetworkID, login.Provider, claims)
+	token, err := s.newAccountSessionFromLogin(login.NetworkID, login.Provider, claims, state, &login)
 	if err != nil {
 		accountLoginFailure(w, http.StatusForbidden)
 		return
@@ -162,9 +177,21 @@ func (s *Server) handleAccountLogout(w http.ResponseWriter, r *http.Request) {
 	if !accountMethod(w, r, "POST") || !s.requireAdminJSON(w, r) {
 		return
 	}
-	if cookie, err := r.Cookie("mnet_account"); err == nil {
-		s.revokeAccountSession(cookie.Value)
+	// Pending/exchanging callbacks and any just-issued session share the
+	// originating browser proof. Revoke under the same lock used to issue a
+	// callback session so a late response cannot resurrect sign-in.
+	proof, proofErr := r.Cookie("mnet_account_login")
+	var hash [32]byte
+	if proofErr == nil && proof.Value != "" {
+		hash = sha256.Sum256([]byte(proof.Value))
 	}
+	s.accounts.mu.Lock()
+	if cookie, err := r.Cookie("mnet_account"); err == nil {
+		delete(s.accounts.byToken, cookie.Value)
+	}
+	s.accounts.retireBrowserProof(hash)
+	s.accounts.mu.Unlock()
+	s.accountCookie(w, "mnet_account_login", "", time.Unix(1, 0), -1)
 	s.accountCookie(w, "mnet_account", "", time.Unix(1, 0), -1)
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }

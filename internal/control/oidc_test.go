@@ -34,6 +34,8 @@ type fakeOIDC struct {
 	email        string
 	badNonce     bool
 	denyIdentity bool
+	tokenEntered chan struct{}
+	tokenRelease chan struct{}
 }
 
 func newFakeOIDC(t *testing.T, evil bool) *fakeOIDC {
@@ -62,6 +64,17 @@ func newFakeOIDC(t *testing.T, evil bool) *fakeOIDC {
 		http.Redirect(w, r, q.Get("redirect_uri")+"?code="+url.QueryEscape(q.Get("nonce"))+"&state="+url.QueryEscape(q.Get("state")), http.StatusFound)
 	})
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		if f.tokenEntered != nil {
+			select {
+			case f.tokenEntered <- struct{}{}:
+			default:
+			}
+			select {
+			case <-f.tokenRelease:
+			case <-r.Context().Done():
+				return
+			}
+		}
 		r.ParseForm()
 		if r.Form.Get("code") == "" || r.Form.Get("client_secret") != "test-secret" {
 			http.Error(w, "bad code", 400)
