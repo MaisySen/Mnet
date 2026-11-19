@@ -29,8 +29,10 @@ A prompt's local correlation binding authenticates no human by itself. Future UI
 - Actual `ServeHostWithOptions` tests prove the required mode uses only the locally selected directory, while the unchanged legacy default uses its configured directory without prompting.
 - Invalid name/size/digest offers never reach the local decision queue. Approved-mode destination collision, digest mismatch and overflow keep existing bytes and remove temporary files. Local request display/JSON redaction and zero-gate refusal are covered.
 - Fresh full-repository `go test -race -count=1 ./...` and `go vet ./...` pass. The first broader pass caught an extra authorization poll disturbing legacy boundary-test call order; the new poll was moved into opt-in mode and the full suite reran successfully. Credential/style and diff checks pass.
-- Normal automatic cross-platform CI is pending at this source checkpoint. No new native/emulator/device sequence was started. There are no new UI pixels to accept because this change exposes no end-user UI.
+- Normal automatic cross-platform CI at611846f passed all five jobs in [run44493356722](https://github.com/MaisySen/Mnet/actions/runs/44493356722). No new native/emulator/device sequence was started. There are no new UI pixels to accept because this change exposes no end-user UI.
 
 ## Still needed
 
 A real attended receiver needs a local chooser and file-specific decision surface, reliable prompt cancellation under its native lifecycle, supported destination access/persistence, user-visible outcomes and installed-platform acceptance. Headless default migration requires an explicit policy choice. Production Multies authority and membership-loss propagation remain outside this local gate. None of these gates is cleared by the Go tests.
+
+A later [sender reset-ownership correction](file-sender-reset-ownership.md) stops failed-transfer copy/queue work without ending unrelated session traffic. It does not add native file consent.

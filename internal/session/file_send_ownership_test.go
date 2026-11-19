@@ -10,6 +10,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -139,3 +141,173 @@ func TestSendFileSourceMutationNeverSendsAppendedBytes(t *testing.T) {
 		})
 	}
 }
+
+func TestSendFileReceiverResetStopsOnlyTransfer(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "large.bin")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.Truncate(64 << 20); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	client, host := pipe(t)
+	defer client.Close()
+	defer host.Close()
+	reset := make(chan struct{})
+	chat := make(chan string, 1)
+	destination := t.TempDir()
+	host.OnStream(func(s Stream) {
+		defer s.release()
+		if s.ID == StreamChat {
+			frame, err := s.Recv(time.Second)
+			if err == nil {
+				chat <- string(frame.Payload)
+			}
+			return
+		}
+		var offer FileOffer
+		if json.Unmarshal(s.OpenJSON, &offer) == nil && offer.Name == "after.bin" {
+			FileReceiver{Mux: host, Dir: destination}.Handle(s)
+			return
+		}
+		if err := host.SendJSON(s.ID, PriBulk, FileAccept{OK: true}); err != nil {
+			return
+		}
+		if _, err := s.Recv(2 * time.Second); err != nil {
+			return
+		}
+		host.tryReset(s.ID)
+		close(reset)
+		// Leave the session alive, but do not consume any further file DATA.
+	})
+	sent := make(chan error, 1)
+	go func() { sent <- SendFile(client, path) }()
+	select {
+	case <-reset:
+	case <-time.After(3 * time.Second):
+		t.Fatal("receiver did not reset")
+	}
+	select {
+	case err := <-sent:
+		if err == nil {
+			t.Fatal("reset transfer reported success")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("sender kept transfer alive after receiver reset")
+	}
+	select {
+	case <-client.Closed():
+		t.Fatal("file cancellation ended shared session")
+	default:
+	}
+	client.wmu.Lock()
+	for _, queue := range client.pending {
+		for _, frame := range queue {
+			if frame.StreamID >= StreamFile && frame.Type == msgData {
+				client.wmu.Unlock()
+				t.Fatal("canceled file DATA remains queued")
+			}
+		}
+	}
+	client.wmu.Unlock()
+	if err := client.SendJSON(StreamChat, PriChat, ChatMessage{Text: "still viewing"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case text := <-chat:
+		if !strings.Contains(text, "still viewing") {
+			t.Fatal("unrelated chat changed")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("file reset prevented unrelated traffic")
+	}
+
+	after := filepath.Join(t.TempDir(), "after.bin")
+	if err := os.WriteFile(after, []byte("separate transfer"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := SendFile(client, after); err != nil {
+		t.Fatal("reset poisoned later file", err)
+	}
+	b, err := os.ReadFile(filepath.Join(destination, "after.bin"))
+	if err != nil || string(b) != "separate transfer" {
+		t.Fatal("later file changed", err)
+	}
+
+}
+
+func TestFileOutboundRetirementPreservesUnrelatedQueues(t *testing.T) {
+	a, b := net.Pipe()
+	defer a.Close()
+	defer b.Close()
+	m := newMux(a, StreamFile)
+	id := uint32(StreamFile)
+	for pri := range m.pending {
+		m.pending[pri] = []Frame{{StreamID: id, Type: msgData, Payload: []byte("private-file")}, {StreamID: StreamChat, Type: msgData, Payload: []byte("keep")}, {StreamID: id + 2, Type: msgData, Payload: []byte("other-file")}}
+		for _, f := range m.pending[pri] {
+			m.queuedBytes += headerLen + len(f.Payload)
+		}
+	}
+	m.retireFileOutbound(id)
+	total := 0
+	for _, queue := range m.pending {
+		if len(queue) != 2 || queue[0].StreamID != StreamChat || queue[1].StreamID != id+2 {
+			t.Fatal("retired unrelated output")
+		}
+		for _, f := range queue {
+			total += headerLen + len(f.Payload)
+		}
+	}
+	if total != m.queuedBytes {
+		t.Fatal("outbound accounting drift", total, m.queuedBytes)
+	}
+	m.retireFileOutbound(id)
+	if total != m.queuedBytes {
+		t.Fatal("retirement not idempotent")
+	}
+}
+
+func TestFileSendCancellationWakesFullOutboundCapacity(t *testing.T) {
+	a, b := net.Pipe()
+	defer a.Close()
+	defer b.Close()
+	m := newMux(a, StreamFile)
+	m.started = true
+	m.queuedBytes = maxQueuedBytes
+	waiting := make(chan struct{})
+	m.cond = sync.NewCond(fileWaitSignaler{&m.wmu, waiting})
+	canceled := make(chan struct{})
+	done := make(chan error, 1)
+	go func() { done <- m.sendWithCancel(StreamFile, msgData, PriBulk, []byte("no"), true, canceled) }()
+	select {
+	case <-waiting:
+	case <-time.After(time.Second):
+		t.Fatal("send never waited for capacity")
+	}
+	// Holding wmu makes close+broadcast atomic with the send's wait/recheck.
+	m.wmu.Lock()
+	close(canceled)
+	m.cond.Broadcast()
+	m.wmu.Unlock()
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrStreamReset) {
+			t.Fatal("wrong cancel result", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("outbound wait ignored file cancellation")
+	}
+	if m.queuedBytes != maxQueuedBytes || len(m.pending[PriBulk]) != 0 {
+		t.Fatal("canceled file enqueued")
+	}
+}
+
+type fileWaitSignaler struct {
+	mu      *sync.Mutex
+	waiting chan struct{}
+}
+
+func (l fileWaitSignaler) Lock()   { l.mu.Lock() }
+func (l fileWaitSignaler) Unlock() { close(l.waiting); l.mu.Unlock() }

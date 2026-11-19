@@ -259,6 +259,7 @@ func SendFile(m *Mux, path string) error {
 	complete := false
 	defer func() {
 		if !complete {
+			m.retireFileOutbound(s.ID)
 			m.tryReset(s.ID)
 		}
 		s.release()
@@ -283,7 +284,28 @@ func SendFile(m *Mux, path string) error {
 			return err
 		}
 	}
-	if err := copyOwnedFileBytes(m.Closed(), fileStreamWriter{m, s.ID}, f, st.Size()-accept.Offset); err != nil {
+
+	// Read terminal receiver replies concurrently with copying. Otherwise a reset
+	// is observed only after the entire source has been queued. This goroutine is
+	// joined on every return; stream release wakes its blocking Recv.
+	type fileReply struct {
+		frame Frame
+		err   error
+	}
+	replies := make(chan fileReply, 1)
+	canceled := make(chan struct{})
+	readerDone := make(chan struct{})
+	go func() {
+		defer close(readerDone)
+		frame, err := s.Recv(0)
+		close(canceled)
+		m.wmu.Lock()
+		m.cond.Broadcast()
+		m.wmu.Unlock()
+		replies <- fileReply{frame, err}
+	}()
+	defer func() { s.release(); <-readerDone }()
+	if err := copyOwnedFileBytes(canceled, fileStreamWriter{mux: m, id: s.ID, canceled: canceled}, f, st.Size()-accept.Offset); err != nil {
 		return err
 	}
 	current, err = f.Stat()
@@ -293,16 +315,21 @@ func SendFile(m *Mux, path string) error {
 	if current.Size() != st.Size() {
 		return fmt.Errorf("session: source size changed during transfer")
 	}
-
-	if err := m.send(s.ID, msgFin, PriBulk, nil); err != nil {
+	if err := m.sendWithCancel(s.ID, msgFin, PriBulk, nil, true, canceled); err != nil {
 		return err
 	}
-	// FIN half-closes our side; the receiver's ack still arrives as
-	// DATA on the same stream id, which the mux routes to s.
-	ack, err := s.Recv(30 * time.Second)
-	if err != nil {
-		return fmt.Errorf("session: transfer sent, ack unread: %w", err)
+	// Only the final acknowledgement wait has a30second deadline. Time spent
+	// transferring a large file does not consume that allowance.
+	var reply fileReply
+	select {
+	case reply = <-replies:
+	case <-time.After(30 * time.Second):
+		return fmt.Errorf("session: transfer sent, ack unread: timeout")
 	}
+	if reply.err != nil {
+		return fmt.Errorf("session: transfer sent, ack unread: %w", reply.err)
+	}
+	ack := reply.frame
 	var fa FileAck
 	if err := json.Unmarshal(ack.Payload, &fa); err != nil {
 		return err
@@ -396,13 +423,34 @@ func copyOwnedFileBytes(closed <-chan struct{}, dst io.Writer, src io.Reader, si
 }
 
 type fileStreamWriter struct {
-	mux *Mux
-	id  uint32
+	mux      *Mux
+	id       uint32
+	canceled <-chan struct{}
 }
 
 func (w fileStreamWriter) Write(p []byte) (int, error) {
-	if err := w.mux.SendBytes(w.id, PriBulk, p); err != nil {
+	if err := w.mux.sendWithCancel(w.id, msgData, PriBulk, p, true, w.canceled); err != nil {
 		return 0, err
 	}
 	return len(p), nil
+}
+
+// Drop only this failed transfer's not-yet-dispatched output. A frame already
+// handed to conn.Write cannot be recalled without ending the shared transport.
+func (m *Mux) retireFileOutbound(id uint32) {
+	m.wmu.Lock()
+	defer m.wmu.Unlock()
+	for pri, queue := range m.pending {
+		keep := queue[:0]
+		for _, frame := range queue {
+			if frame.StreamID == id {
+				m.queuedBytes -= headerLen + len(frame.Payload)
+			} else {
+				keep = append(keep, frame)
+			}
+		}
+		clear(queue[len(keep):])
+		m.pending[pri] = keep
+	}
+	m.cond.Broadcast()
 }

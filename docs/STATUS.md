@@ -1,6 +1,9 @@
 # Mnet project status
 
-Latest source addition: [per-offer file approval boundary](file-offer-approval.md) is wired into opt-in active receiver/host options, with bounded local decisions and real-mux lifecycle/storage tests. Existing headless reception defaults and disabled mobile/viewer entry points remain unchanged. Full local race/vet passes; current cross-platform CI pending. No native chooser or consumer consent acceptance is claimed.
+Latest correction: [file sender reset ownership](file-sender-reset-ownership.md) cancels failed-transfer copy/capacity waits and retires only its queued output. Live chat and a later file remain usable in the same-session regression. Local full race/vet and20 focused race repetitions pass; current automatic CI pending.
+
+
+Latest source addition: [per-offer file approval boundary](file-offer-approval.md) is wired into opt-in active receiver/host options, with bounded local decisions and real-mux lifecycle/storage tests. Existing headless reception defaults and disabled mobile/viewer entry points remain unchanged. Full local race/vet and [all five cross-platform CI jobs](https://github.com/MaisySen/Mnet/actions/runs/44493356722) pass at611846f. No native chooser or consumer consent acceptance is claimed.
 
 
 ## Current source and acceptance summary (2026-11-19 evening, Australia/Sydney)

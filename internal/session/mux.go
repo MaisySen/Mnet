@@ -443,6 +443,17 @@ func (m *Mux) controlJSON(id uint32, v any) error {
 	return m.sendWithWait(id, msgData, PriInteractive, b, false)
 }
 func (m *Mux) sendWithWait(id uint32, typ byte, pri uint8, payload []byte, wait bool) error {
+	return m.sendWithCancel(id, typ, pri, payload, wait, nil)
+}
+
+// sendWithCancel lets one transfer stop waiting for shared outbound capacity
+// without closing unrelated channels. The owner must broadcast cond on cancel.
+func (m *Mux) sendWithCancel(id uint32, typ byte, pri uint8, payload []byte, wait bool, canceled <-chan struct{}) error {
+	select {
+	case <-canceled:
+		return ErrStreamReset
+	default:
+	}
 	if len(payload) > maxPayload {
 		return fmt.Errorf("session: payload %d exceeds %d", len(payload), maxPayload)
 	}
@@ -450,6 +461,8 @@ func (m *Mux) sendWithWait(id uint32, typ byte, pri uint8, payload []byte, wait 
 	// as soon as we return (notably SendFile's chunk buffer).
 	f := Frame{StreamID: id, Type: typ, Priority: pri}
 	select {
+	case <-canceled:
+		return ErrStreamReset
 	case <-m.closed:
 		return io.ErrClosedPipe
 	default:
@@ -457,6 +470,8 @@ func (m *Mux) sendWithWait(id uint32, typ byte, pri uint8, payload []byte, wait 
 	m.wmu.Lock()
 	defer m.wmu.Unlock()
 	select {
+	case <-canceled:
+		return ErrStreamReset
 	case <-m.closed:
 		return io.ErrClosedPipe
 	default:
@@ -482,6 +497,8 @@ func (m *Mux) sendWithWait(id uint32, typ byte, pri uint8, payload []byte, wait 
 			break
 		}
 		select {
+		case <-canceled:
+			return ErrStreamReset
 		case <-m.closed:
 			return io.ErrClosedPipe
 		default:
@@ -492,6 +509,8 @@ func (m *Mux) sendWithWait(id uint32, typ byte, pri uint8, payload []byte, wait 
 		m.cond.Wait()
 	}
 	select {
+	case <-canceled:
+		return ErrStreamReset
 	case <-m.closed:
 		return io.ErrClosedPipe
 	default:
