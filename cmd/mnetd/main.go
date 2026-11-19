@@ -45,12 +45,13 @@ type options struct {
 	advRoutes string
 	useExit   string
 
-	sessHost  bool
-	sessAuto  bool
-	sessAllow string
-	sessRec   string
-	sessProof bool
-	proofDir  string
+	sessHost     bool
+	sessAttended bool
+	sessAuto     bool
+	sessAllow    string
+	sessRec      string
+	sessProof    bool
+	proofDir     string
 
 	serviceAction string
 	ready         chan<- error // set by SCM; console leaves nil
@@ -58,27 +59,28 @@ type options struct {
 
 func main() {
 	var (
-		stateDir  = flag.String("state", defaultStateDir(), "state directory")
-		ifname    = flag.String("ifname", daemon.DefaultInterfaceName(), "TUN interface name (macOS utun selects an available kernel name)")
-		verbose   = flag.Bool("verbose", false, "verbose wireguard logging")
-		showVer   = flag.Bool("version", false, "print version and exit")
-		up        = flag.Bool("up", false, "join immediately using saved state or the flags below")
-		fakeTun   = flag.Bool("fake-tun", false, "validation rigs: in-memory TUN, no root needed")
-		selfTest  = flag.String("self-test", "", "validation rigs: ping this peer mesh IP and exit")
-		server    = flag.String("server", "", "control plane URL, needed on first join")
-		network   = flag.String("network", "", "network to join, needed on first join")
-		name      = flag.String("name", "", "node name (default: hostname)")
-		authKey   = flag.String("auth-key", "", "pre-auth key for instant join")
-		advExit   = flag.Bool("advertise-exit-node", false, "offer to carry other nodes' internet traffic")
-		advRoutes = flag.String("advertise-routes", "", "comma separated subnet CIDRs this node serves")
-		useExit   = flag.String("exit-node", "", "peer name or mesh IP to send internet traffic through")
-		sessHost  = flag.Bool("session-host", false, "host remote-desktop sessions on this node (mesh port 5909)")
-		sessAuto  = flag.Bool("session-auto-accept", false, "accept sessions without prompting (required on headless daemons)")
-		sessAllow = flag.String("session-allow", "", "comma separated node names allowed to start sessions (default: every mesh peer)")
-		sessRec   = flag.String("session-record", "", "record hosted sessions as MJPEG videos in this directory")
-		sessProof = flag.Bool("session-proof", false, "validation rigs: run a full two-node session over the mesh on userspace tunnels and exit")
-		proofDir  = flag.String("proof-dir", "/tmp/mnet-session-proof", "artifact directory for -session-proof")
-		service   = flag.String("service", "", "service control: Windows install/remove/run; Linux print-unit; macOS print-plist (read-only)")
+		stateDir     = flag.String("state", defaultStateDir(), "state directory")
+		ifname       = flag.String("ifname", daemon.DefaultInterfaceName(), "TUN interface name (macOS utun selects an available kernel name)")
+		verbose      = flag.Bool("verbose", false, "verbose wireguard logging")
+		showVer      = flag.Bool("version", false, "print version and exit")
+		up           = flag.Bool("up", false, "join immediately using saved state or the flags below")
+		fakeTun      = flag.Bool("fake-tun", false, "validation rigs: in-memory TUN, no root needed")
+		selfTest     = flag.String("self-test", "", "validation rigs: ping this peer mesh IP and exit")
+		server       = flag.String("server", "", "control plane URL, needed on first join")
+		network      = flag.String("network", "", "network to join, needed on first join")
+		name         = flag.String("name", "", "node name (default: hostname)")
+		authKey      = flag.String("auth-key", "", "pre-auth key for instant join")
+		advExit      = flag.Bool("advertise-exit-node", false, "offer to carry other nodes' internet traffic")
+		advRoutes    = flag.String("advertise-routes", "", "comma separated subnet CIDRs this node serves")
+		useExit      = flag.String("exit-node", "", "peer name or mesh IP to send internet traffic through")
+		sessHost     = flag.Bool("session-host", false, "host remote-desktop sessions on this node (mesh port 5909)")
+		sessAttended = flag.Bool("session-attended", false, "Linux X11: require local view/control approval; no files or recording")
+		sessAuto     = flag.Bool("session-auto-accept", false, "accept sessions without prompting (required on headless daemons)")
+		sessAllow    = flag.String("session-allow", "", "comma separated node names allowed to start sessions (default: every mesh peer)")
+		sessRec      = flag.String("session-record", "", "record hosted sessions as MJPEG videos in this directory")
+		sessProof    = flag.Bool("session-proof", false, "validation rigs: run a full two-node session over the mesh on userspace tunnels and exit")
+		proofDir     = flag.String("proof-dir", "/tmp/mnet-session-proof", "artifact directory for -session-proof")
+		service      = flag.String("service", "", "service control: Windows install/remove/run; Linux print-unit; macOS print-plist (read-only)")
 	)
 	flag.Parse()
 	if *showVer {
@@ -100,6 +102,7 @@ func main() {
 		advRoutes:     *advRoutes,
 		useExit:       *useExit,
 		sessHost:      *sessHost,
+		sessAttended:  *sessAttended,
 		sessAuto:      *sessAuto,
 		sessAllow:     *sessAllow,
 		sessRec:       *sessRec,
@@ -115,6 +118,9 @@ func main() {
 // dispatch routes the run: explicit service control, an implicit
 // Windows service session, or the console daemon.
 func dispatch(o options) error {
+	if err := validateAttendedOptions(o); err != nil {
+		return err
+	}
 	if o.serviceAction != "" {
 		return runServiceAction(o)
 	}
@@ -127,6 +133,17 @@ func dispatch(o options) error {
 // runDaemon boots the daemon and blocks until SIGINT/SIGTERM or, when
 // stop is non-nil (the Windows service manager), until stop closes.
 func runDaemon(o options, stop <-chan struct{}) error {
+	if err := validateAttendedOptions(o); err != nil {
+		return err
+	}
+	var attended attendedUI
+	if o.sessAttended {
+		var err error
+		attended, err = newAttendedUI()
+		if err != nil {
+			return err
+		}
+	}
 	if o.sessProof {
 		if err := runSessionProof(o.server, o.network, o.authKey, o.proofDir, o.verbose); err != nil {
 			return err
@@ -199,7 +216,10 @@ func runDaemon(o options, stop <-chan struct{}) error {
 		}
 		owner := newSessionHostOwner()
 		hostDone := make(chan struct{})
-		go func() { defer close(hostDone); runSessionHost(owner, d, o.stateDir, o.sessAuto, allow, o.sessRec) }()
+		go func() {
+			defer close(hostDone)
+			runSessionHostWithUI(owner, d, o.stateDir, o.sessAuto, allow, o.sessRec, attended)
+		}()
 		defer func() { owner.Close(); <-hostDone }()
 	}
 	log.Printf("mnetd %s ready (state: %s)", version.Version, o.stateDir)

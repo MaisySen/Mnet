@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""Synthetic attended-host proof on an owned disposable X display only."""
+import subprocess,os,time,pathlib,tempfile,shutil,signal
+os.chdir(pathlib.Path(__file__).resolve().parent.parent)
+for command in ['go','Xvfb','xdotool','import']:
+ if shutil.which(command) is None:raise SystemExit('Missing local fixture dependency: '+command)
+
+out=pathlib.Path(tempfile.mkdtemp(prefix='mnet-attended-x11.'))
+print('Attended X11 artifacts: '+str(out),flush=True)
+subprocess.run(['go','test','-race','-c','-o',str(out/'attended.test'),'./cmd/mnetd'],check=True)
+(out/'stage').unlink(missing_ok=True)
+with open(out/'display','w') as fd,open(out/'xvfb.log','w') as log:
+ x=subprocess.Popen(['Xvfb','-noreset','-nolisten','tcp','-displayfd',str(fd.fileno()),'-screen','0','1024x768x24'],stdout=log,stderr=log,pass_fds=(fd.fileno(),))
+test=None
+try:
+ for _ in range(100):
+  if (out/'display').read_text().strip():break
+  if x.poll() is not None:raise AssertionError('Disposable display failed to start')
+  time.sleep(.05)
+ number=(out/'display').read_text().strip()
+ if not number.isdecimal() or x.poll() is not None:raise AssertionError('No owned disposable display identifier')
+ (out/'Xauthority').touch(mode=0o600)
+ env=os.environ|{'DISPLAY':':'+number,'XAUTHORITY':str(out/'Xauthority'),'NO_AT_BRIDGE':'1','MNET_ATTENDED_X11_TEST':'1','MNET_ATTENDED_ARTIFACTS':str(out)}
+ env.pop('WAYLAND_DISPLAY',None)
+ with open(out/'test.log','w') as log:
+  test=subprocess.Popen([str(out/'attended.test'),'-test.run','^TestAttendedX11RealLocalSurface$','-test.v','-test.timeout=30s'],env=env,stdout=log,stderr=log,start_new_session=True)
+  seen=set();start=time.monotonic()
+  def window(title):
+   p=subprocess.run(['xdotool','search','--onlyvisible','--name',title],env=env,text=True,capture_output=True)
+   return p.stdout.strip().splitlines()[-1] if p.returncode==0 and p.stdout.strip() else None
+  def screenshot(wid,name):
+   time.sleep(.12);subprocess.run(['import','-window',wid,str(out/(name+'.png'))],env=env,check=True)
+  def allow(wid):subprocess.run(['xdotool','windowfocus',wid,'key','Tab','Return'],env=env,check=True)
+  while test.poll() is None and time.monotonic()-start<29:
+   stage=(out/'stage').read_text() if (out/'stage').exists() else ''
+   if stage in seen:time.sleep(.01);continue
+   if stage=='view':
+    wid=window('^Mnet: allow viewing');
+    if wid:screenshot(wid,'view');allow(wid);seen.add(stage)
+   elif stage=='active':
+    wid=window('^Mnet: desktop sharing');
+    if wid:screenshot(wid,'active');seen.add(stage);(out/'driver-ack').write_text('active')
+   elif stage in ('control','resume','control-again'):
+    wid=window('^Mnet: allow control');
+    if wid:screenshot(wid,stage);allow(wid);seen.add(stage)
+   elif stage in ('pause','revoke','end-held'):
+    wid=window('^Mnet: desktop sharing');
+    if wid:
+     geo=subprocess.check_output(['xdotool','getwindowgeometry','--shell',wid],env=env,text=True)
+     d=dict(line.split('=',1) for line in geo.splitlines() if '=' in line);w=int(d['WIDTH']);h=int(d['HEIGHT'])
+     screenshot(wid,stage)
+     # Inspect retained pixels too: current native info layout is End, Pause, Revoke.
+     # State assertions fail if a toolkit layout change selects a different action.
+     if stage=='end-held':
+      subprocess.run(['xdotool','windowfocus',wid,'key','Escape'],env=env,check=True)
+     else:
+      offset={'pause':w-225,'revoke':w-75}[stage]
+      subprocess.run(['xdotool','windowraise',wid,'mousemove','--sync','--window',wid,str(offset),str(h-25),'click','1'],env=env,check=True)
+     seen.add(stage)
+   time.sleep(.02)
+  result=test.wait(timeout=3)
+  expected={'view','active','control','pause','resume','revoke','control-again','end-held'}
+  print('Seen fixture stages: '+','.join(sorted(seen)),flush=True)
+  if result!=0 or seen!=expected:raise AssertionError('Attended runtime proof failed; inspect retained test.log and pixels')
+  print('PASS: actual local view/control, pause/resume/revoke, focused Escape with held XTEST input, and joined teardown',flush=True)
+
+finally:
+ if test:
+  try:os.killpg(test.pid,signal.SIGKILL)
+  except ProcessLookupError:pass
+  test.wait()
+ x.terminate();x.wait()

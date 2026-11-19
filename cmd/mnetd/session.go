@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"fintex.au/mnet/internal/daemon"
@@ -85,12 +86,15 @@ func (listener sessionHelloListener) Accept() (net.Conn, error) {
 }
 
 func listenHeadlessSession(listener net.Listener, name string, budget time.Duration, accept func(session.Hello, net.Addr) (bool, string)) (*session.Mux, error) {
+	return listenSessionWithApproval(listener, name, budget, func(h session.Hello, from net.Addr, _ net.Conn) (bool, string) { return accept(h, from) })
+}
+func listenSessionWithApproval(listener net.Listener, name string, budget time.Duration, accept func(session.Hello, net.Addr, net.Conn) (bool, string)) (*session.Mux, error) {
 	var conn net.Conn
-	mux, err := session.Listen(sessionHelloListener{listener, budget, &conn}, name, accept)
+	mux, err := session.Listen(sessionHelloListener{listener, budget, &conn}, name, func(h session.Hello, from net.Addr) (bool, string) { return accept(h, from, conn) })
 	if err != nil {
 		return nil, err
 	}
-	if err := conn.SetDeadline(time.Time{}); err != nil {
+	if err = conn.SetDeadline(time.Time{}); err != nil {
 		mux.Close()
 		return nil, err
 	}
@@ -104,7 +108,18 @@ func listenHeadlessSession(listener net.Listener, name string, budget time.Durat
 // source mesh IP, filtered by the allow list, and recorded in
 // <state>/sessions.jsonl.
 func runSessionHost(owner *sessionHostOwner, d *daemon.Daemon, stateDir string, autoAccept bool, allow map[string]bool, recordDir string) {
-	defer owner.Close()
+	runSessionHostWithUI(owner, d, stateDir, autoAccept, allow, recordDir, nil)
+}
+
+func runSessionHostWithUI(owner *sessionHostOwner, d *daemon.Daemon, stateDir string, autoAccept bool, allow map[string]bool, recordDir string, ui attendedUI) {
+	var attendedDone <-chan struct{}
+	defer func() {
+		owner.Close()
+		if attendedDone != nil {
+			<-attendedDone
+		}
+	}()
+	var attendedBusy atomic.Bool
 	audit := &sessionLogger{path: filepath.Join(stateDir, "sessions.jsonl")}
 	var ip string
 	for {
@@ -134,15 +149,18 @@ func runSessionHost(owner *sessionHostOwner, d *daemon.Daemon, stateDir string, 
 	for {
 		start := time.Now()
 		var viewer, viewerIP, refuseWhy string
+		admittedAttended := false
+		negotiateControl := false
+		budget := 15 * time.Second
 		var admittedKey string
 		var admittedSource net.Addr
-		m, err := listenHeadlessSession(ownedSessionListener{ln, owner}, nodeName, 15*time.Second, func(h session.Hello, from net.Addr) (bool, string) {
+		m, err := listenSessionWithApproval(ownedSessionListener{ln, owner}, nodeName, budget, func(h session.Hello, from net.Addr, conn net.Conn) (bool, string) {
 			viewer = h.NodeName
 			refuseWhy = ""
 			if from != nil {
 				viewerIP, _, _ = net.SplitHostPort(from.String())
 			}
-			if !autoAccept {
+			if !autoAccept && ui == nil {
 				refuseWhy = "host runs headless; restart mnetd with -session-auto-accept"
 				return false, refuseWhy
 			}
@@ -156,9 +174,29 @@ func runSessionHost(owner *sessionHostOwner, d *daemon.Daemon, stateDir string, 
 				refuseWhy = "not on the allow list"
 				return false, "node is not on this host's allow list"
 			}
+			if ui != nil {
+				if !attendedBusy.CompareAndSwap(false, true) {
+					refuseWhy = "attended desktop already has a session"
+					return false, refuseWhy
+				}
+				admittedAttended = true
+				// Only an authenticated, allow-listed peer gets time for a local answer.
+				currentPeer := func() bool {
+					name, key, ok := daemon.MatchSessionPeer(d.SessionPeers(), viewer, admittedSource)
+					return ok && name == viewer && key == admittedKey && allowedViewer(allow, viewer)
+				}
+				if !approveAttendedConnection(owner.ctx, ui, viewer, conn, currentPeer) {
+					refuseWhy = "local viewing approval unavailable, declined or retired"
+					return false, refuseWhy
+				}
+				negotiateControl = h.ControlV1
+			}
 			return true, ""
 		})
 		if err != nil {
+			if admittedAttended {
+				attendedBusy.Store(false)
+			}
 			select {
 			case <-owner.ctx.Done():
 				return
@@ -175,13 +213,29 @@ func runSessionHost(owner *sessionHostOwner, d *daemon.Daemon, stateDir string, 
 			return ok && currentName == viewer && currentKey == admittedKey && allowedViewer(allow, viewer)
 		}
 		if !authorized() {
+			if admittedAttended {
+				attendedBusy.Store(false)
+			}
 			m.Close()
 			continue
 		}
 		cap, capErr := newCapturer(stateDir)
 		if capErr != nil {
 			log.Printf("mnetd: session host: capture unavailable: %v", capErr)
+			if admittedAttended {
+				attendedBusy.Store(false)
+			}
 			m.Close()
+			continue
+		}
+		if ui != nil {
+			_, attendedDone = serveAttendedSession(owner.ctx, m, viewer, negotiateControl, ui, cap, newAttendedInjector, authorized)
+			go func(done <-chan struct{}, viewer, source string, start time.Time) {
+				<-done
+				attendedBusy.Store(false)
+				audit.log(sessionAudit{Event: "attended-end", Viewer: viewer, SourceIP: source, Duration: time.Since(start).Round(time.Second).String()})
+			}(attendedDone, viewer, viewerIP, start)
+			audit.log(sessionAudit{Event: "attended-view", Viewer: viewer, SourceIP: viewerIP})
 			continue
 		}
 		inj, injErr := newInjector()
