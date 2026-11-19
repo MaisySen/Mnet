@@ -7,7 +7,7 @@ import android.os.ParcelFileDescriptor;
 import java.io.IOException;
 import java.io.OutputStream;
 
-// Disabled preparation: package-private, no Activity/service/Go caller. The URI
+// Disabled preparation: only the unregistered selection Activity calls it. The URI
 // must eventually come from an exact current local picker decision, never a peer.
 // Java owns the PFD throughout; no getFd/detachFd or URI-to-path conversion.
 final class DocumentExport {

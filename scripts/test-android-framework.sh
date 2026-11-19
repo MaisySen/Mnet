@@ -3,6 +3,7 @@
 # explicit Go/VPN/accessibility fakes. No emulator, JNI, screen or device proof.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+python3 "$ROOT/scripts/check-disabled-document-save.py"
 MVN=${MVN:-mvn}
 REPO=${MNET_MAVEN_REPO:-$HOME/.m2/repository}
 OUT=$(mktemp -d "${TMPDIR:-/tmp}/mnet-framework.XXXXXX")
@@ -15,7 +16,7 @@ if [ "${1:-}" = vpn ]; then
 else
     cp -R "$ROOT/android/framework-tests/tests/." "$OUT/src/test/java/"
 fi
-for source in DocumentExport AppUi ContentInsets MainActivity HostingActivity HostSessionService SessionControl SessionConsent ProjectionGuard VpnPlatform CaptureEncoder ViewerActivity ViewerGate ViewerTap; do
+for source in DocumentSaveActivity DocumentExport AppUi ContentInsets MainActivity HostingActivity HostSessionService SessionControl SessionConsent ProjectionGuard VpnPlatform CaptureEncoder ViewerActivity ViewerGate ViewerTap; do
     cp "$ROOT/android/app/src/main/java/au/fintex/mnet/$source.java" "$OUT/src/main/java/au/fintex/mnet/"
 done
 if [ "${1:-}" = vpn ]; then

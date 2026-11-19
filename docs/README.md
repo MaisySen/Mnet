@@ -9,6 +9,7 @@ These documents describe a development project, not a production-readiness guara
 | [Product scope](product-scope.md) | Desired account/device/startup experience and current platform gaps. |
 | [Operations](operations.md) | Setup, local state, service operation, authentication, routing limits and recovery. |
 | [Architecture](architecture.md) | Components and trust boundaries. |
+| [Android document-selection ownership](android-document-selection-ownership.md) | Disabled exact-offer native routing, Activity/grant lifetime, framework evidence and open bridge/UX gates. |
 | [Android document-output preparation](android-document-export-preparation.md) | Disabled Java-owned adapter, fake-provider evidence and unresolved integration/provider gates. |
 | [Session layer](session-layer.md) | Protocol, host authorization, queue/stream limits and file publication. |
 | [Session reliability](session-reliability.md) | Reproduction commands, baseline failures, fixes and loss-test limits. |

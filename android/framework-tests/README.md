@@ -63,3 +63,8 @@ The selected suite now passes200 cases locally. Eight added cases execute the ac
 ## Disabled document-output helper
 
 The selected-source list now compiles DocumentExport, which has no production caller. Its52 cases use a registered in-process fake ContentProvider and narrow output faults on APIs24/25/26/33. They cover Java descriptor ownership, exact-byte local completion, open/write/close failure and cancellation, including late returns. Robolectric's createPipe is a temporary-file simulation, not actual pipe/provider acceptance. The JDK17 fixture opens java.io to the test JVM for Robolectric's descriptor interceptor. No app module permissions or runtime reflection policy is changed. See [scope and ownership sources](../../docs/android-document-export-preparation.md).
+
+
+## Disabled document-selection Activity
+
+The selected suite now includes60 cases executing DocumentSaveActivity lifecycle/Intent/result methods across APIs24/25/26/33, bringing the current selected total to312. The Activity is absent from the manifest and has no app/service/Go launcher. Actual source checks guard that disabled state before every suite. Cases cover one-instance exact-request routing, expiry, recreation, identical offers, duplicate attachment/results and lifetime-owned output cleanup. Temporary-grant enforcement, actual picker/process/provider behavior and user-facing timeout/recovery remain untested. See [routing design, source evidence and limits](../../docs/android-document-selection-ownership.md).

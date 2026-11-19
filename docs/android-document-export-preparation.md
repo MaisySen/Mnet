@@ -4,7 +4,7 @@
 
 ## Implemented boundary
 
-`DocumentExport` is package-private and has no Activity, service, mobile or Go caller. No picker, manifest component, persisted URI permission or native descriptor bridge is added. The existing receiver path/defaults and disabled consumer/mobile entry points are unchanged. It is preparation for, not an implementation of, the [receiver export-capability contract](file-export-capability.md).
+`DocumentExport` is package-private. The newer unregistered selection Activity can construct it, but no registered Activity, service, mobile or Go entry point calls it. No enabled picker, manifest component, persisted URI permission or native descriptor bridge is added. The existing receiver path/defaults and disabled consumer/mobile entry points are unchanged. It is preparation for, not an implementation of, the [receiver export-capability contract](file-export-capability.md).
 
 The normal constructor accepts a local `ContentResolver`, a content URI and the expected byte count. A future caller must supply a fresh document selected for the exact local offer. The helper cannot prove a URI came from a picker, denotes a new document, or belongs to an authorized offer. Passing a remote-supplied URI or an existing document would violate the intended boundary. There is deliberately no public/native caller until that binding and lifecycle are implemented and reviewed.
 
@@ -40,6 +40,10 @@ The selected framework suite passes252 cases, including52 new DocumentExport cas
 Robolectric4.18's [ParcelFileDescriptor shadow](https://raw.githubusercontent.com/robolectric/robolectric/robolectric-4.18/shadows/framework/src/main/java/org/robolectric/shadows/ShadowParcelFileDescriptor.java) implements createPipe with a temporary file. The explicitly named simulated-pipe case therefore proves no helper seek/sync requirement, not kernel pipe blocking, reliable peer error delivery or real provider streaming. Descriptor cleanup tests needed JDK17 java.io reflection access, configured in this fixture's Maven process only. Initial failures came from missing fake-provider attachment and that test-runtime reflection restriction; neither is reported as a platform defect.
 
 No visible layout changes or new screenshots are claimed. Normal CI for this new checkpoint remains pending until reported separately.
+
+## Newer routing preparation
+
+The [disabled selection Activity](android-document-selection-ownership.md) now prepares one-instance result routing and temporary-grant lifetime ownership without a manifest registration or production caller. The Go bridge and enabled reception remain absent. Its framework cases do not prove installed permissions or provider behavior.
 
 ## Still open
 
