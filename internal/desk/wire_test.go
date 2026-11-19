@@ -285,3 +285,62 @@ func TestWirePairIntentionalNativeCloseStillAcknowledgesStop(t *testing.T) {
 type closingTerminalBackend struct{ terminalBackend }
 
 func (b *closingTerminalBackend) Release() error { b.released++; close(b.done); return nil }
+
+func TestWirePairPrimaryAuthorityLossStillJoinsCleanup(t *testing.T) {
+	layout, binding, primary, recipient := pairTransportFixture(t)
+	a, b := tlsFixturePair(t, primary, recipient)
+	backend := &ownedFixture{}
+	approval, err := NewApproval(binding, layout, func() bool { return true }, func(func() bool) (NativeInput, error) { return backend, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- approval.ServePair(b) }()
+	var live atomic.Bool
+	live.Store(true)
+	client, err := ConnectPair(a, binding, layout, live.Load)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live.Store(false)
+	if err = client.Release(); err != nil {
+		t.Fatal("cleanup must remain possible after local input authority loss", err)
+	}
+	if err = <-done; err != nil {
+		t.Fatal(err)
+	}
+	if backend.released != 1 || len(backend.events) != 0 {
+		t.Fatal("cleanup sent input or native release not joined", backend.released, len(backend.events))
+	}
+	if err = client.Apply(Input{Sequence: 2, Kind: "key", Action: "down", Code: 38}); err == nil {
+		t.Fatal("cleanup restored input authority")
+	}
+}
+
+func TestWirePairRefusedInputAfterAuthorityLossStillStops(t *testing.T) {
+	layout, binding, primary, recipient := pairTransportFixture(t)
+	a, b := tlsFixturePair(t, primary, recipient)
+	backend := &ownedFixture{}
+	approval, _ := NewApproval(binding, layout, func() bool { return true }, func(func() bool) (NativeInput, error) { return backend, nil })
+	done := make(chan error, 1)
+	go func() { done <- approval.ServePair(b) }()
+	var live atomic.Bool
+	live.Store(true)
+	client, err := ConnectPair(a, binding, layout, live.Load)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live.Store(false)
+	if err = client.Apply(Input{Sequence: 1, Kind: "key", Action: "down", Code: 38}); !errors.Is(err, ErrAuthorityRetired) {
+		t.Fatal("input not refused", err)
+	}
+	if err = client.Release(); err != nil {
+		t.Fatal("cleanup not acknowledged", err)
+	}
+	if err = <-done; err != nil {
+		t.Fatal(err)
+	}
+	if backend.released != 1 || len(backend.events) != 0 {
+		t.Fatal("revoked call forwarded input or failed cleanup")
+	}
+}

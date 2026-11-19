@@ -96,3 +96,47 @@ The user must compare the keys and arrangement through an independent trusted so
 Native acceptance answers both real dialogs on their separate disposable displays before creating the test connection and native recipient, then exercises armed edge entry and actual input. It also presses default Return to decline a separate real dialog, and withdraws current authority while another is visible, verifying closure without approval. Pure regressions reject late successful answers after authority loss and check that required exact evidence is present. The driver waits for a dialog to actually close before moving the pointer, rather than treating an injected approval key as proof that review completed.
 
 Current authority is checked before and after the answer, monitored during review and retained through the resulting approval/capture lifetime. Closing, declining, unavailable dialogs, changed authority and unexpected output refuse the run. Initial discovery, workspace verification, normal app launch wiring, persistent pairing, arrangement editing, live status/stop UI and two-physical-computer acceptance remain open. The normal Desk CLI still only checks an offline layout; these review functions are connected to the native harness, not advertised as an installed consumer app.
+
+## Explicit one-run engineering launcher
+
+The Linux X11 daemon now exposes two separate engineering operations. They cannot combine with daemon, session, service, or other flags:
+
+```text
+mnetd -desk-inspect /absolute/path/to/local-public-cert.pem
+mnetd -desk-run /absolute/path/to/local-run.json
+```
+
+`desk-inspect` reads one local PEM public certificate and the current single X screen. It prints the exact certificate public-key pin, keyboard-map hash and native dimensions, marked local-evidence-only and not approval. It reads no private key, reserves no run, claims no desktop owner, starts no listener and proves no person or workspace identity. Each endpoint can compare this evidence independently before accepting a run. A public certificate file alone does not prove possession; the TLS handshake later must prove the matching private key.
+
+`desk-run` is a finite attended attempt, not a background service or consumer setup. It requires an explicitly prepared version-1 JSON with these fields:
+
+| Field | Required meaning |
+| --- | --- |
+| `role` | Exactly `primary` or `recipient`; neither is selected by discovery. |
+| `address` | Explicit recipient IP and nonzero TCP port. Both files name that same recipient endpoint. DNS, multicast and wildcard listening are refused. The primary dials it; the recipient binds it only after local approval. |
+| `certificate_file`, `private_key_file` | This role's existing matching local certificate/key. Exactly one certificate, with its pin equal to this role's approved binding. Key file must be regular, owned by the launching user and owner-only. No automatic enrollment or key download. |
+| `run_directory` | Existing owner-only directory owned by the launching user. A durable exclusive run marker is reserved before review. Missing/insecure storage refuses the attempt; it is never silently recreated or reset. |
+| `lifetime_seconds` | 1 through 600, measured from launch, including validation, local review, waiting and active input. |
+| `source_display`, `edge` | Exact primary display ID and selected left/right/top/bottom edge leading only to the exact recipient display. |
+| `binding` | Full `run`, `primary_key`, `recipient_key`, `layout_hash`, `keyboard_hash` and `display`, as specified in the exact pair engine above. Both endpoints independently accept the same values. |
+| `layout` | Version-1 layout document. This launcher supports exactly one primary and one recipient display. The offline geometry engine remains broader. |
+
+Set top-level `version` to `1`. Local paths resolve relative to the selected run file, not the daemon state directory. Config/key reads are bounded and refuse a symlink in the named file itself. The private replay directory and its records likewise cannot be named symlinks. The caller must protect local file parents and private state from other processes. Clearing, replacing or choosing a different replay directory removes its historical protection; there is no external anti-replay authority. Do not reset it to reuse a run. Generate and independently approve a new unpredictable 256-bit lowercase-hex run for every attempt, including after decline, closure, failure or cancellation. A consumed run cannot reconnect or resume.
+
+The JSON decoder rejects duplicate, mixed-case, unknown and trailing fields, oversized documents, bad pins and mismatched layout hashes before activation. Local keyboard hash and actual geometry must match the approved layout. Recipient native-child readiness is checked against the same dimensions again after approval. This engineering operation does not generate the run/config/certificates for the user; normal setup, enrollment and arrangement editing remain open work.
+
+The recipient reviews locally before opening its one-connection listener. While waiting, it reserves the local stop shortcut and cooperating input owner without creating an injector. Local stop, process termination or deadline closes that listener. At native handoff, pending real shortcut/mapping/owner loss remains terminal, even if it races deliberate release of the waiting owner. A failed or unauthenticated first connection ends the attempt; it cannot keep probing under an old approval.
+
+The primary reviews locally, arms only the selected edge and stays local until a fresh unheld interior-to-edge arrival. It then dials exactly once and starts exact-key TLS/native capture. Active status is printed in its launching terminal. Local stop, mapped return, peer/backend loss, deadline or process termination ends the attempt. There is no automatic reconnect, input queue replay, saved grant or daemon/network auto-enable. This command does not join a network, open a Remote Desktop session, change any Multies state, or install a service.
+
+Stopping input authority must not prevent cleanup. A bounded stop-only exchange may still run after local revocation solely to obtain recipient native-release acknowledgement. It cannot send input or restore the run. Input remains refused, and missing release acknowledgement remains an error. The first actual launcher test exposed the previous refusal to send cleanup once local authority ended; that failure is retained as the reason for the change, not relabeled a clean shutdown. An in-flight already-acknowledged input can race requested stop and report authority retirement. That diagnostic is treated as expected cancellation only when the source and recipient cleanup checks both succeed. Other errors remain errors.
+
+### Actual command acceptance
+
+`python3 scripts/desk-launch-validation.py` builds and launches two real `mnetd -desk-run` processes on separate disposable X servers. Test-only code prepares their ephemeral TLS files and exact public configuration, but does not run their review, networking, capture or injection functions. The driver compares actual read-only inspection, checks incompatible flag refusal, answers each real dialog, moves across the selected edge and queries native recipient key/button state. It then sends SIGTERM, checks recipient release, reacquires both source keyboard and pointer, and requires clean process exits. Further attempts verify persistent same-config refusal on both endpoints, default-Return decline, local stop while waiting, and automatic deadline/listener closure. The script deletes its disposable private keys before retaining artifacts. Native Windows/macOS, Wayland and physical two-computer acceptance are not established by these tests.
+
+![Actual engineering launcher primary review](ui/shared-desk/launcher-primary.png)
+
+![Actual engineering launcher recipient review](ui/shared-desk/launcher-recipient.png)
+
+These dialogs are real launcher UI, with launch deadline, consumed-attempt warning and complete exact evidence. They remain technical engineering review, not the planned consumer setup or live arrangement/status/stop design. The user should not need to assemble keys, hashes or server details in the intended consumer product. The held production Multies verifier is still absent. Existing X11 physical/synthetic overlap, unrelated active keyboard-grab and killed-injector held-state limitations remain unchanged.

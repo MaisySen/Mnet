@@ -130,7 +130,7 @@ func waitDeskEdge(ctx context.Context, board *desk.Switchboard, edge desk.Edge, 
 		}
 		// Release this arm's cooperating owner before the new capture claims its
 		// own. Capture rechecks preheld state, map and actual source dimensions.
-		if err = safety.Close(); err != nil {
+		if err = closeDeskSafetyForHandoff(safety); err != nil {
 			return nil, err
 		}
 		closed = true

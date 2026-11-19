@@ -65,6 +65,8 @@ func main() {
 		stateDir     = flag.String("state", defaultStateDir(), "state directory")
 		ifname       = flag.String("ifname", daemon.DefaultInterfaceName(), "TUN interface name (macOS utun selects an available kernel name)")
 		verbose      = flag.Bool("verbose", false, "verbose wireguard logging")
+		deskInspect  = flag.String("desk-inspect", "", "read-only Linux X11 geometry/keyboard and public certificate evidence; no approval or listener")
+		deskRunFile  = flag.String("desk-run", "", "Linux X11: explicit one-shot Shared Desk engineering run JSON; no daemon/network membership implied")
 		showVer      = flag.Bool("version", false, "print version and exit")
 		up           = flag.Bool("up", false, "join immediately using saved state or the flags below")
 		fakeTun      = flag.Bool("fake-tun", false, "validation rigs: in-memory TUN, no root needed")
@@ -86,6 +88,26 @@ func main() {
 		service      = flag.String("service", "", "service control: Windows install/remove/run; Linux print-unit; macOS print-plist (read-only)")
 	)
 	flag.Parse()
+	if *deskInspect != "" {
+		if flag.NFlag() != 1 || flag.NArg() != 0 {
+			log.Fatal("desk-inspect cannot combine with daemon, session or service options")
+		}
+		if err := inspectDeskLocal(*deskInspect, os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+	if *deskRunFile != "" {
+		if flag.NFlag() != 1 || flag.NArg() != 0 {
+			log.Fatal("desk-run cannot combine with daemon, session or service options")
+		}
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		if err := runDeskFile(ctx, *deskRunFile, os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if *showVer {
 		log.Printf("mnetd %s", version.Version)
 		return

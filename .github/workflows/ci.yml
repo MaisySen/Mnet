@@ -144,6 +144,10 @@ jobs:
         run: |
           python3 scripts/desk-native-validation.py
           MNET_DESK_TARGET_SIZE=1280x960x24 python3 scripts/desk-native-validation.py
+      - name: actual one-run Shared Desk engineering CLI processes (two disposable X11 displays)
+        run: |
+          python3 scripts/desk-launch-validation.py
+          MNET_DESK_TARGET_SIZE=1280x960x24 python3 scripts/desk-launch-validation.py
       - name: retain failed proof diagnostics (no credentials or node state)
         if: failure()
         uses: actions/upload-artifact@v4
@@ -164,6 +168,8 @@ jobs:
             /tmp/mnet-native-viewer.*/*/test.log
             /tmp/mnet-native-viewer.*/*/viewer.log
             /tmp/mnet-native-viewer.*/*/*.png
+            /tmp/mnet-desk-launch.*/*.log
+            /tmp/mnet-desk-launch.*/launch-review-*.png
             /tmp/mnet-desk-native.*/test.log
             /tmp/mnet-desk-native.*/*-held.png
             /tmp/mnet-desk-native.*/source-return.png

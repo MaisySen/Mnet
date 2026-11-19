@@ -5,6 +5,7 @@ package main
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 
 	"github.com/jezek/xgb"
 	"github.com/jezek/xgb/xproto"
@@ -15,19 +16,21 @@ const attendedStopModifiers = uint16(xproto.ModMaskControl | xproto.ModMask1 | x
 const attendedInputOwnerAtom = "_MNET_NATIVE_INPUT_OWNER_V1"
 
 type x11AttendedSafety struct {
-	conn     *xgb.Conn
-	window   xproto.Window
-	key      xproto.Keycode
-	roots    []xproto.Window
-	closeErr error
-	stopped  chan struct{}
-	done     chan struct{}
-	once     sync.Once
+	conn        *xgb.Conn
+	window      xproto.Window
+	key         xproto.Keycode
+	roots       []xproto.Window
+	closeErr    error
+	stopped     chan struct{}
+	done        chan struct{}
+	once        sync.Once
+	closing     atomic.Bool
+	interrupted atomic.Bool
 }
 
 func (s *x11AttendedSafety) Stopped() <-chan struct{} { return s.stopped }
 func (s *x11AttendedSafety) Close() error {
-	s.once.Do(func() { s.closeErr = s.release(); s.conn.Close() })
+	s.once.Do(func() { s.closing.Store(true); s.closeErr = s.release(); s.conn.Close() })
 	<-s.done
 	return s.closeErr
 }
@@ -133,19 +136,25 @@ func newNativeInputSafety(mappingStillExact func(*xgb.Conn) bool) (attendedSafet
 		for {
 			event, err := conn.WaitForEvent()
 			if err != nil || event == nil {
+				if !s.closing.Load() {
+					s.interrupted.Store(true)
+				}
 				return
 			}
 			switch e := event.(type) {
 			case xproto.KeyPressEvent:
 				if e.Detail == xproto.Keycode(key) && e.State&attendedStopModifiers == attendedStopModifiers {
+					s.interrupted.Store(true)
 					return
 				}
 			case xproto.SelectionClearEvent:
+				s.interrupted.Store(true)
 				return // Losing the shared owner is terminal, never silently reclaimed.
 			case xproto.MappingNotifyEvent:
 				if mappingStillExact != nil && mappingStillExact(conn) {
 					continue
 				}
+				s.interrupted.Store(true)
 				return // Keyboard mapping changed, so the reserved shortcut needs recheck.
 			}
 		}
@@ -199,4 +208,21 @@ func attendedStopKey(c *xgb.Conn) byte {
 		}
 	}
 	return key
+}
+
+// closeForDeskHandoff joins actual stop-event processing before approving a new
+// owner. Deliberate Close cannot erase a shortcut, mapping or ownership loss
+// that raced the transfer. Legacy attended callers keep their Close semantics.
+func (s *x11AttendedSafety) closeForDeskHandoff() error {
+	err := s.Close()
+	if s.interrupted.Load() {
+		return errors.Join(err, errors.New("desk safety interrupted during handoff"))
+	}
+	return err
+}
+func closeDeskSafetyForHandoff(s attendedSafety) error {
+	if h, ok := s.(interface{ closeForDeskHandoff() error }); ok {
+		return h.closeForDeskHandoff()
+	}
+	return errors.New("desk safety handoff unavailable")
 }

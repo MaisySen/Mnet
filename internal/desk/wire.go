@@ -15,6 +15,9 @@ import (
 	"time"
 )
 
+// ErrAuthorityRetired reports input refusal, not a native-release failure.
+var ErrAuthorityRetired = errors.New("desk primary input authority retired")
+
 const wireVersion = "mnet-desk-1"
 const wireDeadline = 2 * time.Second
 
@@ -234,12 +237,14 @@ func (a *Approval) ServePair(conn *tls.Conn) (result error) {
 // PairClient is a NativeInput with acknowledged native effects and release.
 // A transport error is terminal; no queued input is retried or replayed.
 type PairClient struct {
-	mu     sync.Mutex
-	conn   *tls.Conn
-	live   func() bool
-	closed bool
-	err    error
-	done   chan struct{}
+	released   bool
+	releaseErr error
+	mu         sync.Mutex
+	conn       *tls.Conn
+	live       func() bool
+	closed     bool
+	err        error
+	done       chan struct{}
 }
 
 func ConnectPair(conn *tls.Conn, binding Binding, layout *Compiled, live func() bool) (*PairClient, error) {
@@ -303,7 +308,8 @@ func (c *PairClient) callLocked(message wireMessage) error {
 		return errors.Join(errors.New("desk channel retired"), c.err)
 	}
 	if !c.live() {
-		return c.retireLocked(errors.New("desk primary authority retired"))
+		c.stopLocked()
+		return c.retireLocked(ErrAuthorityRetired)
 	}
 	if err := c.conn.SetDeadline(time.Now().Add(wireDeadline)); err != nil {
 		return c.retireLocked(err)
@@ -316,7 +322,8 @@ func (c *PairClient) callLocked(message wireMessage) error {
 		return c.retireLocked(errors.New("desk acknowledgement unavailable"))
 	}
 	if !c.live() {
-		return c.retireLocked(errors.New("desk authority lost during acknowledgement"))
+		c.stopLocked()
+		return c.retireLocked(ErrAuthorityRetired)
 	}
 	return nil
 }
@@ -325,14 +332,44 @@ func (c *PairClient) Apply(input Input) error {
 	defer c.mu.Unlock()
 	return c.callLocked(wireMessage{Kind: "input", Input: &input})
 }
-func (c *PairClient) Release() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+
+// stopLocked is the sole cleanup-only exception to live input authority. It
+// cannot send input or restore a run. A bounded stop ACK proves native release
+// even when local authority expired just before the caller requested cleanup.
+func (c *PairClient) stopLocked() error {
+	if c.released {
+		return c.releaseErr
+	}
 	if c.closed {
 		return c.err
 	}
-	err := c.callLocked(wireMessage{Kind: "stop"})
-	return c.retireLocked(err)
+	c.released = true
+	err := c.conn.SetDeadline(time.Now().Add(wireDeadline))
+	if err == nil {
+		err = writeWire(c.conn, wireMessage{Kind: "stop"})
+	}
+	if err == nil {
+		var reply wireMessage
+		reply, err = readWire(c.conn)
+		if err == nil && (reply.Kind != "stop" || !reply.OK || reply.Input != nil || reply.Binding != nil) {
+			err = errors.New("desk release acknowledgement unavailable")
+		}
+	}
+	c.releaseErr = err
+	return err
+}
+func (c *PairClient) Release() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.released {
+		return c.releaseErr
+	}
+	if c.closed {
+		return c.err
+	}
+	err := c.stopLocked()
+	c.retireLocked(err)
+	return err
 }
 
 func (c *PairClient) Stopped() <-chan struct{} { return c.done }
