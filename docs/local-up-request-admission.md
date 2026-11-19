@@ -18,6 +18,12 @@ The local HTTP regression first failed against the old source. It now checks ref
 
 Normal native-platform CI now explicitly includes these parser/lifecycle cases, the recent account sign-out/provider-retirement cases, and loopback forwarded-DNS fallback cases. Hosted results are collected separately. Local socket/parser evidence is not an installed-app, OS routing, physical-device or live control-service test.
 
+## Native fixture follow-up
+
+The first expanded hosted run at92fe457 passed Go, kernel, session and Windows, but macOS failed before the local API assertions: its long default temporary root plus Go's test-name directories exceeded the Unix socket pathname limit. Later macOS steps were skipped. That run is not all-five acceptance.
+
+The fixture now allocates a private, uniquely owned short directory under the Unix temporary root, checks a conservative socket-path bound, and removes its own directory at cleanup. A separate regression verifies a long TMPDIR cannot lengthen the socket path and confirms an actual Unix listener binds. Real socket/HTTP assertions remain enabled; production socket selection and parser behavior are unchanged. Twenty focused local race repetitions, full local race tests and vet pass. Fresh hosted macOS verification remains required.
+
 ```sh
 go test -race -count=20 -timeout=2m ./internal/daemon \
   -run '^TestLocalAPI|^TestLocalUp'

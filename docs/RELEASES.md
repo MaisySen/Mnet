@@ -1,5 +1,7 @@
 # Releases
 
+Verification follow-up:92fe457 has four normal CI jobs green, but macOS failed before local API assertions because fixture temporary paths exceeded the Unix socket limit. The test-only correction keeps private short directories and actual socket assertions, with a long-TMPDIR regression. Production socket selection is unchanged. Twenty local API/parser race repetitions, full race/vet and source checks pass; fresh hosted verification is required. [Details](local-up-request-admission.md).
+
 Latest source-only local API fix: [exact Up request admission](local-up-request-admission.md) refuses ambiguous JSON before asynchronous startup. Empty-object saved-state Up and explicit routing reset remain supported. Old-source HTTP failures,20focused race repetitions and full local race/vet pass. Native CI coverage explicitly includes recent account/provider/DNS and local request regressions. No live node, release, native entry point or default change.
 
 Latest source-only account-page fix: [sign-in response ownership](account-signin-response-ownership.md) retires late navigation/error/cleanup after sign-out and preserves a newer pending attempt. Real-Chrome old-source failure, three fresh complete browser repetitions and inspected retry pixels support the change. Full local race/vet pass. No control-service deployment, app release, Multies, provider or design/legal change.

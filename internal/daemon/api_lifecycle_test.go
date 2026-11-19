@@ -7,13 +7,51 @@ import (
 	"fintex.au/mnet/internal/localapi"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
 )
 
+// Unix socket path limits include the full directory, not just mnetd.sock.
+// macOS's default temp root plus testing.T's long test-name directory exceeds
+// that limit. Keep a private, uniquely owned fixture under the short Unix temp
+// root and retain the real socket/HTTP path rather than skipping the tests.
+func localAPITestDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("/tmp", "mnet-api-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Error(err)
+		}
+	})
+	_, socket := SocketPath(dir)
+	if len(socket) >= 100 {
+		t.Fatal("fixture Unix socket path exceeds conservative limit")
+	}
+	return dir
+}
+
+func TestLocalAPIFixtureHasBoundedSocketPath(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir()+"/a-long-default-root-that-must-not-affect-the-socket-fixture")
+	dir := localAPITestDir(t)
+	info, err := os.Stat(dir)
+	if err != nil || info.Mode().Perm() != 0700 {
+		t.Fatal("fixture directory is not private", err)
+	}
+	_, socket := SocketPath(dir)
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal("short fixture socket did not bind", err)
+	}
+	listener.Close()
+}
+
 func TestLocalAPIBindReadinessAndClose(t *testing.T) {
-	dir := t.TempDir()
+	dir := localAPITestDir(t)
 	d, err := New(Config{StateDir: dir})
 	if err != nil {
 		t.Fatal(err)
@@ -77,7 +115,7 @@ func TestLocalAPIBindReadinessAndClose(t *testing.T) {
 }
 
 func TestLocalAPIRejectsUnauthenticatedAndMalformedControl(t *testing.T) {
-	dir := t.TempDir()
+	dir := localAPITestDir(t)
 	d, err := New(Config{StateDir: dir})
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +160,7 @@ func TestLocalAPIRejectsUnauthenticatedAndMalformedControl(t *testing.T) {
 }
 
 func TestLocalAPICanResetSavedRouting(t *testing.T) {
-	dir := t.TempDir()
+	dir := localAPITestDir(t)
 	d, err := New(Config{StateDir: dir})
 	if err != nil {
 		t.Fatal(err)
@@ -183,7 +221,7 @@ func TestLocalAPICanResetSavedRouting(t *testing.T) {
 }
 
 func TestLocalAPIUpRejectsAmbiguousJSONBeforeStarting(t *testing.T) {
-	dir := t.TempDir()
+	dir := localAPITestDir(t)
 	d, err := New(Config{StateDir: dir})
 	if err != nil {
 		t.Fatal(err)
