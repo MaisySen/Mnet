@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"os"
@@ -19,7 +20,7 @@ import (
 )
 
 func TestDeskX11TwoDisplayCaptureAndReclaim(t *testing.T) {
-	for _, mode := range []string{"local-stop", "stop-chord", "idle-peer-loss", "idle-native-child-loss", "edge-return"} {
+	for _, mode := range []string{"local-stop", "stop-chord", "idle-peer-loss", "idle-native-child-loss", "edge-return", "armed-edge-entry"} {
 		t.Run(mode, func(t *testing.T) { deskTwoDisplayCaptureFixture(t, mode) })
 	}
 }
@@ -95,14 +96,62 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 		t.Fatal(err)
 	}
 	go func() { serverDone <- approval.ServePair(serverConn) }()
-	err = board.Cross(desk.Right, 300, binding, func(approved desk.Binding) (desk.NativeInput, error) {
+	var c *deskPrimaryCapture
+	create := func(approved desk.Binding) (desk.NativeInput, error) {
 		return desk.ConnectPair(channel, approved, layout, live.Load)
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
-	defer board.Stop()
-	c, err := newDeskPrimaryCapture(board, keyboard, live.Load)
+	if mode == "armed-edge-entry" {
+		xproto.WarpPointerChecked(source, 0, sourceScreen.Root, 0, 0, 0, 0, int16(sourceScreen.WidthInPixels-1), 300).Check()
+		type result struct {
+			capture *deskPrimaryCapture
+			err     error
+		}
+		ready := make(chan result, 1)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go func() {
+			capture, err := waitDeskEdge(ctx, board, desk.Right, binding, keyboard, live.Load, create)
+			ready <- result{capture, err}
+		}()
+		// Already resting on edge must not enable capture. Visit the interior
+		// while holding a button, then return to the edge: still not allowed.
+		time.Sleep(30 * time.Millisecond)
+		select {
+		case <-ready:
+			t.Fatal("resting edge activated")
+		default:
+		}
+		if err = xtest.FakeInputChecked(source, xproto.ButtonPress, 1, 0, sourceScreen.Root, 0, 0, 0).Check(); err != nil {
+			t.Fatal(err)
+		}
+		defer func() { xtest.FakeInputChecked(source, xproto.ButtonRelease, 1, 0, sourceScreen.Root, 0, 0, 0).Check() }()
+		xproto.WarpPointerChecked(source, 0, sourceScreen.Root, 0, 0, 0, 0, 500, 300).Check()
+		time.Sleep(30 * time.Millisecond)
+		xproto.WarpPointerChecked(source, 0, sourceScreen.Root, 0, 0, 0, 0, int16(sourceScreen.WidthInPixels-1), 300).Check()
+		time.Sleep(30 * time.Millisecond)
+		select {
+		case <-ready:
+			t.Fatal("held edge activated")
+		default:
+		}
+		if err = xtest.FakeInputChecked(source, xproto.ButtonRelease, 1, 0, sourceScreen.Root, 0, 0, 0).Check(); err != nil {
+			t.Fatal(err)
+		}
+		xproto.WarpPointerChecked(source, 0, sourceScreen.Root, 0, 0, 0, 0, 500, 300).Check()
+		time.Sleep(30 * time.Millisecond)
+		xproto.WarpPointerChecked(source, 0, sourceScreen.Root, 0, 0, 0, 0, int16(sourceScreen.WidthInPixels-1), 300).Check()
+		select {
+		case answer := <-ready:
+			c, err = answer.capture, answer.err
+		case <-time.After(2 * time.Second):
+			t.Fatal("approved edge arrival did not enable source capture")
+		}
+	} else {
+		err = board.Cross(desk.Right, 300, binding, create)
+		if err == nil {
+			c, err = newDeskPrimaryCapture(board, keyboard, live.Load)
+		}
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
