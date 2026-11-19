@@ -213,6 +213,10 @@ try{
 
  await cdp('Emulation.setDeviceMetricsOverride',{width:320,height:720,deviceScaleFactor:1,mobile:true});
  await js(`document.documentElement.style.fontSize='200%';document.querySelector('#logoutRetry').scrollIntoView({block:'end'})`);await shot('operator-signout-unconfirmed-320',true);
+ await js(`document.querySelector('#logoutMsg').focus()`);
+ await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+ if(!await js(`document.activeElement.id==='logoutRetry' && !document.activeElement.disabled && document.activeElement.getBoundingClientRect().height>=44`))throw new Error('operator sign-out retry not keyboard reachable from outcome');
+
  await js(`document.documentElement.style.fontSize=''`);await cdp('Emulation.clearDeviceMetricsOverride');
  await js(`window.pendingLogoutCount=0;window.fetch=(input,options)=>input==='/admin/api/logout'?(pendingLogoutCount++,new Promise(resolve=>window.releaseLogoutRetry=()=>resolve(new Response('private backend details',{status:503})))):rowFetch(input,options);document.querySelector('#logoutRetry').click();void signOut();`);
  if(!await js(`signingOut && pendingLogoutCount===1 && document.querySelector('#logoutRetry').disabled && document.querySelector('#logout').disabled && document.querySelector('#dashboardControls').disabled`))throw new Error('operator retry duplicated or left changes enabled while signing out');
@@ -345,6 +349,10 @@ try{
  await cdp('Emulation.setDeviceMetricsOverride',{width:320,height:720,deviceScaleFactor:1,mobile:true});
  await js(`document.documentElement.style.fontSize='200%';document.querySelector('#memberRead').scrollIntoView({block:'end'})`);
  await shot('membership-unconfirmed-320',true);
+ await js(`document.querySelector('#memberMsg').focus()`);
+ await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+ if(!await js(`document.activeElement.id==='memberRead' && !document.activeElement.disabled && document.activeElement.getBoundingClientRect().height>=44`))throw new Error('membership recovery not keyboard reachable from outcome');
+
  await js(`document.documentElement.style.fontSize=''`);await cdp('Emulation.clearDeviceMetricsOverride');
  await js(`window.fetch=grantFetch;window.confirm=grantConfirm;document.querySelector('#memberRead').click()`);
  await until(()=>js(`document.querySelector('#members tbody').textContent.includes('lost-grant-response')`),'actual inspection settled committed grant');
