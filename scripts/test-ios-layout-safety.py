@@ -31,11 +31,23 @@ class LayoutSafety(unittest.TestCase):
         self.assertIn('.preferredColorScheme(.light)', panel)
         self.assertIn('.preferredColorScheme(.light)', (ROOT / 'ios/ContentView.swift').read_text())
 
+    def test_missing_input_validation_is_effect_free_and_revealed(self):
+        panel = (ROOT / 'ios/MnetConnectionPanel.swift').read_text()
+        self.assertIn('enum MnetSetupInput', panel)
+        self.assertIn('trimmingCharacters(in: .whitespacesAndNewlines)', panel)
+        self.assertIn('.focused($focusedField, equals: .server)', panel)
+        self.assertIn('.focused($focusedField, equals: .network)', panel)
+        self.assertIn('.accessibilityLabel(issue.message)', panel)
+        self.assertIn('setup-required-320', (ROOT / 'ios-tests/MnetLayoutRender.swift').read_text())
+
     def test_production_uses_same_component_and_explicit_action(self):
         source = (ROOT / 'ios/ContentView.swift').read_text()
         body = source.split('var body:', 1)[1].split('private func save()', 1)[0]
         self.assertIn('MnetConnectionPanel(server: $server', body)
-        self.assertIn('save()\n                    connected ? disconnect() : connect()', body)
+        self.assertIn('MnetSetupInput.missing(server: server, network: network)', body)
+        self.assertLess(body.index('MnetSetupInput.missing('), body.index('save()'))
+        self.assertIn('showSettings = true', body)
+        self.assertIn('connected ? disconnect() : connect()', body)
         self.assertNotIn('startVPNTunnel', body)
         self.assertIn('- path: MnetConnectionPanel.swift', (ROOT / 'ios/project.yml').read_text())
         self.assertIn('"$ROOT/ios/MnetConnectionPanel.swift"', (ROOT / 'scripts/test-ios-source.sh').read_text())

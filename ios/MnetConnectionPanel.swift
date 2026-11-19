@@ -12,7 +12,9 @@ struct MnetConnectionPanel: View {
     let statusText: String
     let connected: Bool
     let busy: Bool
+    var validationIssue: MnetSetupInput.Field? = nil
     let action: () -> Void
+    @FocusState private var focusedField: MnetSetupInput.Field?
 
     private let ink = Color(red: 0.114, green: 0.114, blue: 0.122)
     private let accent = Color(red: 0, green: 0.4, blue: 0.8)
@@ -36,7 +38,13 @@ struct MnetConnectionPanel: View {
                     .font(.title2.bold()).fixedSize(horizontal: false, vertical: true)
                 Text("This status comes from the VPN configuration on this device. Device approval and account membership are separate.")
                     .font(.subheadline).foregroundStyle(muted)
-                Button(action: action) {
+                Button(action: {
+                    if !connected, let missing = MnetSetupInput.missing(server: server, network: network) {
+                        showSettings = true
+                        DispatchQueue.main.async { focusedField = missing }
+                    }
+                    action()
+                }) {
                     Text(busy ? "Working..." : (connected ? "Disconnect" : "Connect"))
                         .font(.headline).frame(maxWidth: .infinity, minHeight: 28)
                         .padding(.vertical, 10)
@@ -53,16 +61,23 @@ struct MnetConnectionPanel: View {
                     TextField("This device", text: $nodeName)
                         .accessibilityLabel("Device name")
                 }
+                if let issue = validationIssue {
+                    Text(issue.message).font(.subheadline).foregroundStyle(ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityLabel(issue.message)
+                }
                 DisclosureGroup(isExpanded: $showSettings) {
                     VStack(alignment: .leading, spacing: 18) {
                         field("Control server URL") {
                             TextField("https://control.example", text: $server)
                                 .accessibilityLabel("Control server URL")
+                                .focused($focusedField, equals: .server)
                                 .mnetIdentifierInput()
                         }
                         field("Network name") {
                             TextField("From your operator", text: $network)
                                 .accessibilityLabel("Network name")
+                                .focused($focusedField, equals: .network)
                                 .mnetIdentifierInput()
                         }
                         field("Auth key, first join") {
@@ -141,5 +156,25 @@ private struct MultiesBrandMark: View {
             context.stroke(m, with: .color(Color(red: 29.0/255, green: 29.0/255, blue: 31.0/255)), style: StrokeStyle(lineWidth: 21, lineCap: .round, lineJoin: .round))
             context.fill(Path(ellipseIn: CGRect(x: 39, y: 9, width: 22, height: 22)), with: .color(Color(red: 1, green: 106.0/255, blue: 26.0/255)))
         }
+    }
+}
+
+
+// Required-input preflight only. It does not validate ownership, server trust,
+// enrollment or networking and never normalizes a submitted identifier.
+enum MnetSetupInput {
+    enum Field: Hashable {
+        case server, network
+        var message: String {
+            switch self {
+            case .server: return "Enter the control server URL from your network operator. Nothing was saved or connected."
+            case .network: return "Enter the network name from your network operator. Nothing was saved or connected."
+            }
+        }
+    }
+    static func missing(server: String, network: String) -> Field? {
+        if server.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .server }
+        if network.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .network }
+        return nil
     }
 }

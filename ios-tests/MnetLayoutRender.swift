@@ -12,6 +12,7 @@ struct MnetLayoutRender {
         let directory = URL(fileURLWithPath: path, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         for fixture in [
+            Fixture(name: "setup-required-320", width: 320, expanded: true, connected: false, busy: false, status: "Disconnected", type: .large, required: true),
             Fixture(name: "setup-390", width: 390, expanded: true, connected: false, busy: false, status: "Disconnected", type: .large),
             Fixture(name: "settings-320", width: 320, expanded: true, connected: false, busy: false, status: "Disconnected", type: .large),
             Fixture(name: "connected-390", width: 390, expanded: false, connected: true, busy: false, status: "VPN connected", type: .large),
@@ -24,6 +25,7 @@ struct MnetLayoutRender {
                 authKey: .constant(""), nodeName: .constant("My iPhone"),
                 exitNode: .constant(""), showSettings: .constant(fixture.expanded),
                 statusText: fixture.status, connected: fixture.connected, busy: fixture.busy,
+                validationIssue: fixture.required ? .server : nil,
                 action: { fatalError("Render-only fixture must never invoke an action") })
                 .environment(\.colorScheme, .light)
                 .environment(\.dynamicTypeSize, fixture.type)
@@ -63,5 +65,6 @@ struct MnetLayoutRender {
         let busy: Bool
         let status: String
         let type: DynamicTypeSize
+        var required: Bool = false
     }
 }

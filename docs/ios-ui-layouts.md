@@ -38,3 +38,10 @@ Normal CI run44477503883 at76978fbccc7631ff9109153aa0ba20dacc14fe29 passed the i
 - [Current connected state](ui/multies/swiftui-connected-390.png)
 - [Current error, accessibility size requested, not iOS large-text acceptance](ui/multies/swiftui-error-390-accessibility-request.png)
 - [Current busy state](ui/multies/swiftui-busy-640.png)
+
+
+## Required-input preflight, awaiting current compiler/pixel result
+
+Source review found that Connect saved non-secret settings and entered VPN-manager work even with an empty server/network. The explicit action now checks required input before save or manager access. Empty/whitespace-only server or network expands manual settings, focuses the corresponding field and shows a fixed inline explanation that nothing was saved or connected. Disconnect is not blocked by incomplete setup fields. This only classifies missing values; it does not normalize identifiers, authenticate a server or approve enrollment.
+
+A source-boundary regression first failed before the change and now passes. A native Swift policy test for empty/whitespace/exact-value behavior is added to normal CI, and the no-effect hosted renderer adds a sixth setup-required320 fixture. Current source-only wiring/layout/brand checks pass locally. Compiler, Swift policy execution, host pixels and focus behavior are not claimed passed until their actual output is available. Installed iOS focus/keyboard/safe-area behavior remains unverified regardless of host rendering.

@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var busy = false
     @State private var statusReads = StatusReadGate()
     @State private var showSettings = false
+    @State private var setupIssue: MnetSetupInput.Field?
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -23,7 +24,14 @@ struct ContentView: View {
                 MnetConnectionPanel(server: $server, network: $network,
                                     authKey: $authKey, nodeName: $nodeName,
                                     exitNode: $exitNode, showSettings: $showSettings,
-                                    statusText: statusText, connected: connected, busy: busy) {
+                                    statusText: statusText, connected: connected, busy: busy,
+                                    validationIssue: setupIssue) {
+                    if !connected, let missing = MnetSetupInput.missing(server: server, network: network) {
+                        setupIssue = missing
+                        showSettings = true
+                        return
+                    }
+                    setupIssue = nil
                     save()
                     connected ? disconnect() : connect()
                 }
@@ -34,7 +42,7 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 EnrollmentPreferences.removeLegacyKey(from: .standard)
-                if server.isEmpty || network.isEmpty { showSettings = true }
+                if MnetSetupInput.missing(server: server, network: network) != nil { showSettings = true }
                 refresh()
             }
             .onReceive(NotificationCenter.default.publisher(for: .NEVPNStatusDidChange)) { _ in refresh() }
