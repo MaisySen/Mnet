@@ -170,7 +170,7 @@ public class HostingActivity extends Activity {
         // A result is owned by one explicit pending Start. A duplicate or late
         // result after decline must not reuse a projection token or start anew.
         if (req != 42 || !capturePending) return;
-        boolean autoAcceptThisHost = pendingAutoAccept;
+        boolean autoAcceptThisHost = capturePending && pendingAutoAccept;
         capturePending = false;
         pendingAutoAccept = false;
         autoAccept.setChecked(false);

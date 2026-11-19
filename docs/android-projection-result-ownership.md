@@ -17,3 +17,7 @@ Two new tests execute the actual HostingActivity callback on four simulated API 
 The test explicitly supplies pending state through reflection rather than opening real Android projection consent. Intent/service endpoints, Go and capture remain simulated. This does not prove OS projection-token behavior, installed lifecycle, process death, OEM dialogs or physical screen capture. No new pixels are claimed because visible layout is unchanged.
 
 Existing projection callback-order/release/nonsticky/duplicate-start/frame-gate source/helper checks pass, including100 JVM stop races. API24-36 compatibility/source checks and credential/style/diff checks pass. Initial local setup used the default JDK11, which could not read the pinned framework dependency's JDK17 classes; rerunning with the already available JDK17 produced the stated test failures and passing result. Current normal cross-platform CI is pending; no native/device workflow was started.
+
+## CI source-guard reconciliation
+
+Normal CI at efadf7c and3933032 failed the existing lifecycle source assertion because the snapshot expression no longer explicitly contained capturePending. The new early pending guard made the removed conjunct logically redundant, but preserving the explicit snapshot invariant is clearer. Restored that conjunct without weakening the assertion or result-ownership guard. All200 framework cases, lifecycle source checks, projection helper100races and API compatibility checks pass fresh. Replacement normal CI remains pending; the earlier runs are not reported green.
