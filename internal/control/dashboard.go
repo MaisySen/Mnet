@@ -129,6 +129,7 @@ const dashboardHTML = `<!doctype html>
 <div class="muted" id="loginMsg" role="status" aria-live="polite"></div>
 </div>
 <section id="stateReadFeedback" class="hidden" style="position:sticky;top:0;z-index:10;max-width:1160px;margin:12px auto;background:#fff" aria-label="Dashboard refresh status"><p id="stateReadMsg" role="status" aria-live="polite"></p><button id="stateReadRetry" type="button">Retry dashboard refresh</button></section>
+<section id="logoutFeedback" class="hidden" style="max-width:1160px;margin:16px auto" aria-label="Sign-out status"><p id="logoutMsg" class="muted" role="status" aria-live="polite" tabindex="-1"></p><button id="logoutRetry" class="ghost" type="button">Retry sign-out</button></section>
 <main id="app" class="hidden"><fieldset id="dashboardControls" style="border:0;min-width:0;padding:0;margin:0" aria-label="Dashboard controls">
 <div class="overview"><p class="eyebrow">Control service</p><h2 id="overviewHeading" tabindex="-1">Network overview</h2><p class="muted">Inspect and manage this Mnet control service. Device approval, account membership and current connectivity are separate.</p></div>
 <nav class="admin-nav" aria-label="Dashboard sections"><a href="#networkSection">Networks</a><a href="#approvalSection">Approvals</a><a href="#nodeSection">Devices</a><a href="#keySection">Auth keys</a><a href="#membershipSection">Account access</a><a href="#policySection">ACL policy</a></nav>
@@ -206,7 +207,7 @@ function lockMembership(){
 }
 function resetMembership(){memberOperation=null;lockMembership();}
 function clearMembers(){ memberRequest++; $('#members tbody').replaceChildren(); $('#memberMsg').textContent=''; }
-function showLogin(){ viewGeneration++; clearRowAction(); clearCreateForms(); clearACL(); resetMembership(); clearMembers(); clearGrant(); state=null;stateFresh=false;$('#dashboardControls').disabled=false;$('#stateReadFeedback').classList.add('hidden');$('#stateReadMsg').textContent=''; $('#pw').value=''; $('#login').classList.remove('hidden'); $('#app').classList.add('hidden'); $('#refresh').classList.add('hidden'); $('#logout').classList.add('hidden'); for(const selector of ['#nets tbody','#nodes tbody','#keys tbody','#pending tbody']) $(selector).innerHTML=''; $('#aclText').value=''; for(const selector of ['#keyNet','#aclNet','#memberNet']) $(selector).innerHTML=''; $('#pw').focus(); }
+function showLogin(){ $('#logoutFeedback').classList.add('hidden');$('#logoutMsg').textContent='';viewGeneration++; clearRowAction(); clearCreateForms(); clearACL(); resetMembership(); clearMembers(); clearGrant(); state=null;stateFresh=false;$('#dashboardControls').disabled=false;$('#stateReadFeedback').classList.add('hidden');$('#stateReadMsg').textContent=''; $('#pw').value=''; $('#login').classList.remove('hidden'); $('#app').classList.add('hidden'); $('#refresh').classList.add('hidden'); $('#logout').classList.add('hidden'); for(const selector of ['#nets tbody','#nodes tbody','#keys tbody','#pending tbody']) $(selector).innerHTML=''; $('#aclText').value=''; for(const selector of ['#keyNet','#aclNet','#memberNet']) $(selector).innerHTML=''; $('#pw').focus(); }
 
 function showApp(){ const entering=$('#app').classList.contains('hidden'); $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); $('#refresh').classList.remove('hidden'); $('#logout').classList.remove('hidden'); if(entering) $('#overviewHeading').focus(); }
 function esc(s){ const d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML.replaceAll('"','&quot;').replaceAll("'",'&#39;'); }
@@ -491,13 +492,27 @@ $('#loginBtn').onclick = async ()=>{
 $('#pw').addEventListener('input',()=>$('#pw').removeAttribute('aria-invalid'));
 $('#pw').addEventListener('keydown', e=>{ if(e.key==='Enter') $('#loginBtn').click(); });
 $('#refresh').onclick = load;
-$('#logout').onclick = async ()=>{
-  viewGeneration++; signingOut=true; if(memberOperation)memberOperation={network:memberOperation.network,allow:memberOperation.allow,busy:false}; clearMembers(); clearGrant();lockMembership();
-  $('#logout').disabled=true;
-  try { await api('/admin/api/logout',{}); showLogin(); $('#loginMsg').textContent='Signed out.'; }
-  catch(e){ if(e.message!=='auth') alert('Sign out failed: '+e.message); }
-  finally { signingOut=false; $('#logout').disabled=false;if(memberOperation){$('#memberMsg').textContent='Sign-out was not confirmed. The membership change is still unconfirmed. Inspect grants before making another change.';lockMembership();} }
-};
+async function signOut(){
+  if(signingOut)return;
+  const generation=++viewGeneration;signingOut=true;
+  if(memberOperation)memberOperation={network:memberOperation.network,allow:memberOperation.allow,busy:false};
+  clearMembers();clearGrant();lockMembership();
+  $('#logoutFeedback').classList.remove('hidden');$('#logoutMsg').textContent='Signing out...';
+  $('#logout').disabled=true;$('#logoutRetry').disabled=true;$('#dashboardControls').disabled=true;
+  try{await api('/admin/api/logout',{});showLogin();$('#loginMsg').textContent='Signed out.';}
+  catch(error){
+    if(error.message==='auth')$('#loginMsg').textContent='This session is no longer active.';
+    else if(generation===viewGeneration){
+      $('#logoutMsg').textContent='Sign-out was not confirmed. This session may still be active. Retry sign-out before leaving this device.';
+      $('#logoutMsg').focus();$('#logoutFeedback').scrollIntoView({block:'start'});
+    }
+  }finally{
+    signingOut=false;$('#logout').disabled=false;$('#logoutRetry').disabled=false;$('#dashboardControls').disabled=!!state&&!stateFresh;
+    if(memberOperation){$('#memberMsg').textContent='Sign-out was not confirmed. The membership change is still unconfirmed. Inspect grants before making another change.';lockMembership();}
+  }
+}
+$('#logout').onclick=signOut;
+$('#logoutRetry').onclick=signOut;
 const createStates={newNet:{busy:false,uncertain:false},newKey:{busy:false,uncertain:false}};
 function enableCreateForm(id,enabled){document.querySelectorAll('#'+id+' input,#'+id+' select,#'+id+' button').forEach(control=>control.disabled=!enabled);}
 function clearCreateForms(){for(const id of ['newNet','newKey']){createStates[id].busy=false;createStates[id].uncertain=false;enableCreateForm(id,true);$('#'+id).reset();$('#'+id+'Msg').textContent='';$('#'+id+'Inspect').classList.add('hidden');$('#'+id+'Inspect').disabled=false;}}
