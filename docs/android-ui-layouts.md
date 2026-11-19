@@ -61,3 +61,8 @@ Normal general CI now runs the isolated actual-resource layout suite and retains
 ## Remaining product work
 
 iOS and desktop UI are separate remaining lanes. Manual server/network/key setup is an honest development limitation, not the intended completed Multies journey. Workspace integration stays deferred. Native device acceptance, signing, deployment, publication, retention and other policy decisions remain outside this checkpoint.
+
+
+## Local Multies branding correction
+
+The later19November correction replaces the independently chosen treatment with the actual Multies default identity and components. See multies-brand-alignment.md for pinned source provenance, local verification and remaining platform limits. Earlier images above remain historical layout evidence, not the current brand reference. New source and pixels remain local while public-documentation publishing is undecided.

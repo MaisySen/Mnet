@@ -51,6 +51,25 @@ try{
  await js(`document.documentElement.style.fontSize=''`);
  await js(`document.querySelector('a[href="/account/"]').click()`);
  await until(()=>js(`document.querySelector('#login') && !document.querySelector('#login').hidden`),'member sign-in visible');
+ if(!await js(`document.activeElement.id==='network'`))throw new Error('member login keyboard focus missing');
+ await js(`document.querySelector('#network').value='   ';document.querySelector('#loginForm').requestSubmit()`);
+ if(!await js(`document.activeElement.id==='network' && document.querySelector('#network').getAttribute('aria-invalid')==='true'`))throw new Error('blank network did not recover field');
+ await js(`window.signInFetch=fetch;window.signInCalls=0;window.fetch=(input,options)=>input==='/account/api/login'?(window.signInCalls++,new Promise(resolve=>window.releaseSignIn=()=>resolve(new Response('{}',{status:503})))):signInFetch(input,options);document.querySelector('#network').value='fixture-network';document.querySelector('#loginForm').requestSubmit();document.querySelector('#loginForm').requestSubmit();`);
+ if(!await js(`signInCalls===1 && document.querySelector('#signIn').disabled`))throw new Error('member sign-in repeated pending request');
+ await js(`releaseSignIn()`);
+ await until(()=>js(`!document.querySelector('#signIn').disabled && document.querySelector('#message').textContent.includes('Could not start')`),'member sign-in retry available');
+ if(!await js(`document.activeElement.id==='network' && document.querySelector('#network').value==='fixture-network' && document.querySelector('#network').getAttribute('aria-invalid')!=='true'`))throw new Error('member sign-in failure lost field or marked uncertain ID invalid');
+ await js(`window.fetch=signInFetch`);
+ await cdp('Emulation.setDeviceMetricsOverride',{width:320,height:720,deviceScaleFactor:1,mobile:true});
+ await js(`document.documentElement.style.fontSize='200%';document.querySelector('#network').scrollIntoView({block:'center'})`);
+ await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+ await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+ if(!await js(`document.activeElement.id==='signIn' && document.documentElement.scrollWidth<=320`))throw new Error('member keyboard retry unreachable at enlarged text');
+ await js(`document.querySelector('#loginFeedback').scrollIntoView({block:'start'})`);
+ if(!await js(`document.querySelector('#loginFeedback').textContent.includes('Could not start') && document.querySelector('#signIn').getBoundingClientRect().bottom<=innerHeight`))throw new Error('member inline failure and retry cannot share viewport');
+ await shot('account-login-retry-320',true);
+ await cdp('Emulation.clearDeviceMetricsOverride');
+ await js(`document.documentElement.style.fontSize='100%'`);
  await shot('account-signed-out');
  await js(`document.querySelector('#network').value=${JSON.stringify(network)};document.querySelector('#loginForm').requestSubmit()`);
  await until(()=>js(`document.querySelector('#devices') && !document.querySelector('#devices').hidden && document.querySelector('#deviceRows').textContent.includes('personal-laptop')`),'signed-provider member device render');
@@ -59,6 +78,9 @@ try{
  if(actual.status!==200||actual.body.network_id!==network||actual.body.devices.length!==2||actual.body.devices.some(d=>Object.keys(d).some(k=>!['ID','Name','IPv4'].includes(k))))throw new Error('account response scope or summary fields wrong');
  if(!await js(`document.body.textContent.includes('not a live online-status check')`))throw new Error('device list implies online proof');
  if(!await js(`document.querySelector('#currentNetwork').textContent===${JSON.stringify(network)}`))throw new Error('member view omitted authenticated network context');
+ if(!await js(`document.activeElement.id==='devicesHeading'`))throw new Error('member entered view focus missing');
+ await js(`(async()=>{document.querySelector('#refresh').focus();await load();})()`);
+ if(!await js(`document.activeElement.id==='refresh'`))throw new Error('member refresh stole focus');
  await shot('account-signed-in');
  // Rendering boundary: untrusted names must be text, never executable HTML.
  await js(`(async()=>{window.originalFetch=fetch;window.injected=false;window.fetch=(input,options)=>input==='/account/api/devices'?Promise.resolve(new Response(JSON.stringify({network_id:${JSON.stringify(network)},devices:[{ID:'fixture-render-only',Name:'<img src=x onerror="window.injected=true">',IPv4:'100.64.0.9'}]}),{status:200,headers:{'Content-Type':'application/json'}})):originalFetch(input,options);await load();})()`);
@@ -66,8 +88,29 @@ try{
  // Reject the entire response before rendering if any row has wrong shape.
  for(const body of ['null','{}',JSON.stringify({devices:[]}),JSON.stringify({network_id:null,devices:[]}),JSON.stringify({network_id:7,devices:[]}),JSON.stringify({network_id:'',devices:[]}),JSON.stringify({network_id:network,devices:[null]}),JSON.stringify({network_id:network,devices:[{ID:'partial',Name:'would-be-partial',IPv4:'100.64.0.8'},{}]}),JSON.stringify({network_id:network,devices:[{ID:7,Name:'bad',IPv4:'100.64.0.8'}]}),JSON.stringify({network_id:network,devices:[{ID:'bad',Name:{private:'details'},IPv4:'100.64.0.8'}]})]){
   await js(`(async()=>{window.fetch=(input,options)=>input==='/account/api/devices'?Promise.resolve(new Response(${JSON.stringify(body)},{status:200,headers:{'Content-Type':'application/json'}})):originalFetch(input,options);await load();})()`);
-  if(!await js(`!document.querySelector('#deviceRows').textContent && !document.querySelector('#currentNetwork').textContent && document.querySelector('#devices').hidden && !document.querySelector('#login').hidden && document.querySelector('#message').textContent==='Could not read your devices. Try again.'`))throw new Error('malformed member response rendered partial private rows or empty-success state');
+  if(!await js(`!document.querySelector('#deviceRows').textContent && !document.querySelector('#currentNetwork').textContent && document.querySelector('#devices').hidden && document.querySelector('#login').hidden && !document.querySelector('#sessionRecovery').hidden && document.querySelector('#message').textContent==='Could not read your devices. Try again.'`))throw new Error('malformed member response rendered partial private rows or empty-success state');
  }
+ // Service failure must not claim signed-out state or require a new identity-provider login.
+ for(const mode of ['service','connection']){
+  await js(`(async()=>{window.fetch=(input,options)=>input==='/account/api/devices'?${mode==='service'?"Promise.resolve(new Response('{}',{status:503}))":"Promise.reject(new TypeError('fixture offline'))"}:originalFetch(input,options);await load();})()`);
+  if(!await js(`document.querySelector('#login').hidden && !document.querySelector('#sessionRecovery').hidden && document.querySelector('#devices').hidden && !document.querySelector('#deviceRows').textContent && document.activeElement.id==='sessionRecoveryHeading'`))throw new Error('read unavailable incorrectly signed out or left stale private data');
+ }
+ await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+ await js(`document.querySelector('#sessionRecovery').scrollIntoView({block:'start'})`);
+ await shot('account-device-read-retry-390',true);
+ await cdp('Emulation.setDeviceMetricsOverride',{width:320,height:720,deviceScaleFactor:1,mobile:true});
+ await js(`document.documentElement.style.fontSize='200%';document.querySelector('#retryDevices').scrollIntoView({block:'center'});document.querySelector('#retryDevices').focus()`);
+ if(!await js(`document.documentElement.scrollWidth<=320`))throw new Error('read retry overflows enlarged narrow viewport');
+ await shot('account-device-read-retry-320',true);
+ await js(`document.documentElement.style.fontSize='';window.fetch=(input,options)=>input==='/account/api/logout'?Promise.reject(new TypeError('fixture logout offline')):originalFetch(input,options);document.querySelector('#recoveryLogout').click()`);
+ await until(()=>js(`document.querySelector('#message').textContent==='Could not confirm sign-out. Retry before leaving this browser.' && document.activeElement.id==='retrySignout'`),'unavailable-read sign-out recovery');
+ await js(`window.fetch=originalFetch;document.querySelector('#inspectSession').click()`);
+ await until(()=>js(`!document.querySelector('#devices').hidden && document.querySelector('#deviceRows').textContent.includes('personal-laptop')`),'same session survives failed logout');
+ // Test the visible retry itself on a second failed read.
+ await js(`(async()=>{window.fetch=(input,options)=>input==='/account/api/devices'?Promise.resolve(new Response('{}',{status:503})):originalFetch(input,options);await load();window.fetch=originalFetch;document.querySelector('#retryDevices').click();})()`);
+
+ await until(()=>js(`!document.querySelector('#devices').hidden && document.querySelector('#sessionRecovery').hidden && document.querySelector('#deviceRows').textContent.includes('personal-laptop')`),'same-session direct device retry');
+ await cdp('Emulation.setDeviceMetricsOverride',{width:1280,height:1000,deviceScaleFactor:1,mobile:false});
  // The latest refresh wins when two reads finish in reverse order.
  await js(`(async()=>{window.deviceReleases=[];window.fetch=(input,options)=>input==='/account/api/devices'?new Promise(resolve=>deviceReleases.push(name=>resolve(new Response(JSON.stringify({network_id:${JSON.stringify(network)},devices:[{ID:'fixture',Name:name,IPv4:'100.64.0.8'}]}),{status:200,headers:{'Content-Type':'application/json'}})))):originalFetch(input,options);window.olderLoad=load();window.newerLoad=load();deviceReleases[1]('latest-device');await newerLoad;deviceReleases[0]('stale-device');await olderLoad;})()`);
  if(!await js(`document.querySelector('#deviceRows').rows.length===1 && document.querySelector('#deviceRows').textContent.includes('latest-device') && !document.querySelector('#deviceRows').textContent.includes('stale-device')`))throw new Error('older member refresh replaced latest result');
@@ -85,26 +128,57 @@ try{
  await js(`document.documentElement.style.fontSize='200%'`);
  if(!await js(`document.documentElement.scrollWidth<=320`))throw new Error('member page overflows compact enlarged text');
  await shot('account-320-large');
+ if(!await js(`document.querySelector('.device-table').scrollWidth<=document.querySelector('.device-table').clientWidth && Array.from(document.querySelectorAll('#deviceRows .device-field-label')).every(label=>getComputedStyle(label).display==='block')`))throw new Error('member mobile records lose labels or overflow');
+ if(process.env.MNET_ACCOUNT_SHOTS){const clip=await js(`(()=>{const r=document.querySelector('.device-table').getBoundingClientRect();return {x:r.x+scrollX,y:r.y+scrollY,width:r.width,height:r.height,scale:1};})()`);const image=await cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:true,clip});writeFileSync(join(process.env.MNET_ACCOUNT_SHOTS,'account-records-320-large.png'),Buffer.from(image.data,'base64'));}
+
  await js(`document.querySelector('#logout').scrollIntoView({block:'center'})`);
  if(!await js(`document.querySelector('#logout').getBoundingClientRect().right<=innerWidth && document.querySelector('#logout').getBoundingClientRect().height>=48`))throw new Error('member logout not usable at enlarged text');
  await shot('account-320-large-bottom',true);
  await js(`document.documentElement.style.fontSize='';window.scrollTo(0,0)`);
  await cdp('Emulation.clearDeviceMetricsOverride');
+ await until(()=>js(`innerWidth>600 && getComputedStyle(document.querySelector('#deviceRows tr')).display==='table-row' && getComputedStyle(document.querySelector('.device-field-label')).display==='none'`),'member desktop table restored');
  // A failed logout must not say signed out or restore the previous rows.
  await js(`window.fetch=(input,options)=>input==='/account/api/logout'?Promise.resolve(new Response('{}',{status:503})):originalFetch(input,options);document.querySelector('#logout').click()`);
  await until(()=>js(`document.querySelector('#message').textContent.includes('Could not confirm sign-out')`),'failed sign-out accurately reported');
  if(!await js(`!document.querySelector('#deviceRows').textContent && !document.querySelector('#currentNetwork').textContent && document.querySelector('#login').hidden`))throw new Error('failed sign-out restored private rows or pretended signed out');
+ if(!await js(`document.activeElement.id==='retrySignout'`))throw new Error('failed logout retry lost focus');
+ await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+ await js(`document.querySelector('#message').scrollIntoView({block:'start'})`);
+ await shot('account-signout-unconfirmed-390',true);
+ if(!await js(`document.querySelector('#devices').hidden && !document.querySelector('#logoutRecovery').hidden && document.activeElement.id==='retrySignout'`))throw new Error('unconfirmed sign-out shows an empty account rather than recovery');
+ await cdp('Emulation.setDeviceMetricsOverride',{width:320,height:720,deviceScaleFactor:1,mobile:true});
+ await js(`document.documentElement.style.fontSize='200%';document.querySelector('#retrySignout').scrollIntoView({block:'center'})`);
+ if(!await js(`document.documentElement.scrollWidth<=320`))throw new Error('unconfirmed sign-out recovery overflows enlarged viewport');
+ await shot('account-signout-unconfirmed-320',true);
+ await js(`document.documentElement.style.fontSize=''`);
+
+ await cdp('Emulation.clearDeviceMetricsOverride');
+
  await js(`window.fetch=originalFetch`);
 
  const cookie=(await cdp('Network.getCookies',{urls:[base+'/account/']})).cookies.find(c=>c.name==='mnet_account');if(!cookie)throw new Error('account cookie absent');
  // A valid response already in flight cannot repaint private devices after logout.
  await js(`(async()=>{window.savedFetch=fetch;window.held=await(await savedFetch('/account/api/devices')).text();window.releaseHeld=null;window.fetch=(input,options)=>input==='/account/api/devices'?new Promise(resolve=>{window.releaseHeld=()=>resolve(new Response(held,{status:200,headers:{'Content-Type':'application/json'}}));}):savedFetch(input,options);window.pendingLoad=load();})()`);
- await js(`document.querySelector('#logout').click()`);
+ await js(`document.querySelector('#retrySignout').click()`);
  await until(()=>js(`document.querySelector('#message').textContent==='Signed out.'`),'account sign-out confirmed');
  await js(`(async()=>{releaseHeld();await pendingLoad;window.fetch=savedFetch;})()`);
  if(!await js(`document.querySelector('#devices').hidden && !document.querySelector('#login').hidden && !document.querySelector('#deviceRows').textContent && !document.querySelector('#network').value && !document.querySelector('#currentNetwork').textContent`))throw new Error('private device data survived sign-out or late refresh');
  const replay=await fetch(base+'/account/api/devices',{headers:{Cookie:'mnet_account='+cookie.value}});if(replay.status!==401)throw new Error('account session replay after logout accepted');
+ if(!await js(`document.activeElement.id==='network'`))throw new Error('member sign-out focus missing');
  await shot('account-after-logout');
+ await cdp('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'dark'}]});
+ if(!await js(`matchMedia('(prefers-color-scheme: dark)').matches && getComputedStyle(document.documentElement).colorScheme==='light' && getComputedStyle(document.body).color==='rgb(29, 29, 31)' && getComputedStyle(document.querySelector('#network')).backgroundColor==='rgb(255, 255, 255)'`))throw new Error('supported light palette changed under dark system preference');
+ await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+ await js(`document.querySelector('#network').scrollIntoView({block:'center'})`);
+ await shot('member-system-dark-light-ui',true);
+ await cdp('Emulation.setEmulatedMedia',{features:[{name:'forced-colors',value:'active'}]});
+ if(!await js(`matchMedia('(forced-colors: active)').matches`))throw new Error('forced colors emulation not active');
+ if(!await js(`getComputedStyle(document.querySelector('#signIn')).borderTopStyle==='solid' && parseFloat(getComputedStyle(document.querySelector('#signIn')).borderTopWidth)>=1`))throw new Error('forced-colors action boundary missing');
+ await shot('member-forced-colors',true);
+
+ await cdp('Emulation.setEmulatedMedia',{features:[]});
+ await cdp('Emulation.clearDeviceMetricsOverride');
+
  // A logout may commit while only its response is lost. Keep the UI honest,
  // clear private rows, deny old-token replay and let an idempotent retry finish.
  await js(`document.querySelector('#network').value=${JSON.stringify(network)};document.querySelector('#loginForm').requestSubmit()`);
@@ -114,7 +188,7 @@ try{
  await until(()=>js(`document.querySelector('#message').textContent.includes('Could not confirm sign-out')`),'lost committed logout kept uncertain');
  if(!await js(`!document.querySelector('#deviceRows').textContent && !document.querySelector('#currentNetwork').textContent && document.querySelector('#login').hidden`))throw new Error('lost logout response restored private rows or claimed signed out');
  const lostReplay=await fetch(base+'/account/api/devices',{headers:{Cookie:'mnet_account='+lostCookie.value}});if(lostReplay.status!==401)throw new Error('committed logout token remained usable');
- await js(`window.fetch=logoutFetch;document.querySelector('#logout').click()`);
+ await js(`window.fetch=logoutFetch;document.querySelector('#retrySignout').click()`);
  await until(()=>js(`document.querySelector('#message').textContent==='Signed out.' && document.querySelector('#devices').hidden`),'idempotent logout retry confirmed');
  // Existing operator session can remove the grant; an already active member
  // session must immediately lose its query without a new login round trip.
@@ -156,5 +230,5 @@ try{
  await js(`document.querySelector('.hint').scrollIntoView({block:'center'})`);
  await shot('device-approved-320-status',true);
  if(await js(`(async()=>{const r=await fetch('/account/api/devices');return r.status})()`)!==401)throw new Error('device approval created member access');
- console.log('PASS real Chrome account: signed-provider login, explicit member two-device scoped render, HTML-as-text, empty/denied states, narrow layout, failed logout, private UI cleanup, delayed-refresh suppression, logout replay denial and verified device-approval success without member access');
+ console.log('PASS real Chrome account: labeled enlarged member records with desktop restoration, dedicated unconfirmed-signout retry/session check, whitespace/pending login guard, failed sign-in keyboard retry, focus transitions and refresh retention, signed-provider login, explicit member two-device scoped render, HTML-as-text, empty/denied states, narrow layout, unavailable/malformed read recovery without new sign-in, direct same-session read retry, failed recovery logout, private UI cleanup, delayed-refresh suppression, logout replay denial and verified device-approval success without member access');
 }finally{ws?.close();chrome?.kill();await delay(150);rmSync(dir,{recursive:true,force:true});}

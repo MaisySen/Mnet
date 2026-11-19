@@ -192,7 +192,7 @@ public class MnetVpnService extends VpnService {
                 getString(R.string.notification_channel))
                 .setContentTitle(getString(R.string.app_name))
                 .setContentText(text)
-                .setSmallIcon(R.drawable.ic_mnet)
+                .setSmallIcon(R.drawable.multies_notification)
                 .setOngoing(true);
         if (!VpnAlwaysOn.managed(this)) {
             Intent stop = new Intent(this, MnetVpnService.class).setAction("disconnect");

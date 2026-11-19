@@ -77,13 +77,21 @@ public class ViewerActivityTest {
    root.measure(View.MeasureSpec.makeMeasureSpec(390,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(640,View.MeasureSpec.EXACTLY));root.layout(0,0,390,640);
    frame(callbacks.get(),400,400);controls.get().onControl("{\"state\":\"allowed\"}");Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
    ImageView screen=(ImageView)field(activity,"screen");android.graphics.Rect bounds=new android.graphics.Rect();screen.getDrawingRect(bounds);root.offsetDescendantRectToMyCoords(screen,bounds);
+   // Branding can move the picture below the fold. Scroll the real nested
+   // viewport to its center before dispatching a user tap, never tap a footer.
+   android.widget.ScrollView viewport=(android.widget.ScrollView)root.getChildAt(0);
+   viewport.scrollBy(0,Math.max(0,Math.round(bounds.exactCenterY()-viewport.getHeight()/2f)));
+   Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+   screen.getDrawingRect(bounds);root.offsetDescendantRectToMyCoords(screen,bounds);
    float x=bounds.exactCenterX(),y=bounds.exactCenterY();
+   assertTrue("remote tap target must be visible inside scroll viewport",y>0&&y<viewport.getHeight());
+   int beforeScroll=viewport.getScrollY();
    long now=android.os.SystemClock.uptimeMillis();
    for(int action:new int[]{MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP}){MotionEvent event=MotionEvent.obtain(now,now+10,action,x,y,0);root.dispatchTouchEvent(event);event.recycle();}
    deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(2);while(viewer.input.size()<1&&System.nanoTime()<deadline)Thread.sleep(1);assertEquals(1,viewer.input.size());
    for(int i=0;i<4;i++){MotionEvent event=MotionEvent.obtain(now+100,now+100+i*20,new int[]{MotionEvent.ACTION_DOWN,MotionEvent.ACTION_MOVE,MotionEvent.ACTION_MOVE,MotionEvent.ACTION_UP}[i],x,y-new int[]{0,50,150,150}[i],0);root.dispatchTouchEvent(event);event.recycle();}
    Thread.sleep(50);assertEquals("scroll must not become a remote tap",1,viewer.input.size());
-   assertTrue("whole viewer must actually scroll",((android.widget.ScrollView)root.getChildAt(0)).getScrollY()>0);
+   assertTrue("whole viewer must actually scroll beyond its tap position",viewport.getScrollY()>beforeScroll);
   }finally{controller.pause().stop().destroy();MnetVpnService.node=null;}
  }
  private static Object field(Object object,String name)throws Exception{java.lang.reflect.Field f=object.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(object);}
@@ -119,4 +127,40 @@ public class ViewerActivityTest {
    assertNull(gate.current());assertNull(screen.getDrawable());assertFalse((boolean)field(activity,"controlAllowed"));assertFalse((boolean)field(activity,"retryPending"));
   }finally{controller.pause().stop().destroy();MnetVpnService.node=null;}
  }
+ @Test public void chatKeepsFailedAndNewerDraftsAndGuardsPendingSend()throws Exception{
+  java.util.concurrent.CountDownLatch entered=new java.util.concurrent.CountDownLatch(1),release=new java.util.concurrent.CountDownLatch(1);
+  java.util.concurrent.atomic.AtomicInteger calls=new java.util.concurrent.atomic.AtomicInteger();
+  mobile.SessionViewer viewer=new mobile.SessionViewer(){@Override public void sendChat(String text){int call=calls.incrementAndGet();if(call==1)throw new RuntimeException("fixture private send error");if(call==2){entered.countDown();try{release.await(5,java.util.concurrent.TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}}}};
+  MnetVpnService.node=new mobile.Node(){@Override public mobile.SessionViewer connectSessionWithControl(String peer,mobile.ViewerCallbacks cb,mobile.ControlCallbacks control){return viewer;}};
+  var controller=Robolectric.buildActivity(ViewerActivity.class,new Intent().putExtra("peer_ip","100.64.0.2")).create().start().resume();
+  try{
+   ViewerActivity a=controller.get();@SuppressWarnings("unchecked") ViewerGate<mobile.SessionViewer> gate=(ViewerGate<mobile.SessionViewer>)field(a,"viewers");
+   long until=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);while(gate.current()==null && System.nanoTime()<until){Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();Thread.sleep(1);}assertSame(viewer,gate.current());
+   android.widget.EditText input=(android.widget.EditText)field(a,"chatIn");android.widget.Button send=(android.widget.Button)field(a,"sendChat");android.widget.TextView feedback=(android.widget.TextView)field(a,"chatFeedback");
+   input.setText("first draft");send.performClick();
+   until=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);while((Boolean)field(a,"chatSending") && System.nanoTime()<until){Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();Thread.sleep(1);}
+   assertEquals("first draft",input.getText().toString());assertTrue(feedback.getText().toString().contains("Could not confirm"));assertFalse(feedback.getText().toString().contains("private send"));
+   send.performClick();assertTrue(entered.await(5,java.util.concurrent.TimeUnit.SECONDS));send.performClick();assertEquals(2,calls.get());assertFalse(send.isEnabled());input.setText("newer unsent draft");release.countDown();
+   until=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);while((Boolean)field(a,"chatSending") && System.nanoTime()<until){Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();Thread.sleep(1);}
+   assertEquals("newer unsent draft",input.getText().toString());assertTrue(feedback.getText().toString().contains("Delivery is not confirmed"));
+   send.performClick();until=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);while((Boolean)field(a,"chatSending") && System.nanoTime()<until){Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();Thread.sleep(1);}
+   assertEquals("",input.getText().toString());assertEquals(3,calls.get());
+  }finally{release.countDown();controller.pause().stop().destroy();MnetVpnService.node=null;}
+ }
+
+ @Test public void lateChatCompletionCannotEraseDraftAfterViewingEnds()throws Exception{
+  java.util.concurrent.CountDownLatch entered=new java.util.concurrent.CountDownLatch(1),release=new java.util.concurrent.CountDownLatch(1);
+  mobile.SessionViewer viewer=new mobile.SessionViewer(){@Override public void sendChat(String text){entered.countDown();try{release.await(5,java.util.concurrent.TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}}};
+  MnetVpnService.node=new mobile.Node(){@Override public mobile.SessionViewer connectSessionWithControl(String peer,mobile.ViewerCallbacks cb,mobile.ControlCallbacks control){return viewer;}};
+  var controller=Robolectric.buildActivity(ViewerActivity.class,new Intent().putExtra("peer_ip","100.64.0.2")).create().start().resume();
+  try{
+   ViewerActivity a=controller.get();@SuppressWarnings("unchecked") ViewerGate<mobile.SessionViewer> gate=(ViewerGate<mobile.SessionViewer>)field(a,"viewers");
+   long until=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);while(gate.current()==null && System.nanoTime()<until){Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();Thread.sleep(1);}assertSame(viewer,gate.current());
+   android.widget.EditText input=(android.widget.EditText)field(a,"chatIn");android.widget.Button send=(android.widget.Button)field(a,"sendChat");
+   input.setText("draft at end");send.performClick();assertTrue(entered.await(5,java.util.concurrent.TimeUnit.SECONDS));
+   ((android.widget.Button)field(a,"endViewing")).performClick();release.countDown();Thread.sleep(50);Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+   assertEquals("draft at end",input.getText().toString());assertFalse(send.isEnabled());assertFalse((Boolean)field(a,"chatSending"));assertTrue(viewer.closed);assertNull(gate.current());
+  }finally{release.countDown();controller.pause().stop().destroy();MnetVpnService.node=null;}
+ }
+
 }

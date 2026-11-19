@@ -15,7 +15,7 @@ struct MnetLayoutRender {
             Fixture(name: "setup-390", width: 390, expanded: true, connected: false, busy: false, status: "Disconnected", type: .large),
             Fixture(name: "settings-320", width: 320, expanded: true, connected: false, busy: false, status: "Disconnected", type: .large),
             Fixture(name: "connected-390", width: 390, expanded: false, connected: true, busy: false, status: "VPN connected", type: .large),
-            Fixture(name: "error-390-large", width: 390, expanded: true, connected: false, busy: false, status: "VPN configuration not saved. Try again from this device.", type: .accessibility3),
+            Fixture(name: "error-390-accessibility-request", width: 390, expanded: true, connected: false, busy: false, status: "VPN configuration not saved. Try again from this device.", type: .accessibility3),
             Fixture(name: "busy-640", width: 640, expanded: false, connected: false, busy: true, status: "Connecting", type: .large)
         ] {
             let panel = MnetConnectionPanel(
@@ -43,6 +43,11 @@ struct MnetLayoutRender {
             RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.15))
             guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { fatalError("Native bitmap failed") }
             host.cacheDisplay(in: host.bounds, to: bitmap)
+            // Do not accept a successful render with an unconstrained width.
+            let expectedWidth = Int((fixture.width * window.backingScaleFactor).rounded())
+            guard bitmap.pixelsWide == expectedWidth, bitmap.pixelsHigh > 0 else {
+                fatalError("Native bitmap dimensions do not match the requested width")
+            }
             guard let png = bitmap.representation(using: .png, properties: [:]) else { fatalError("PNG encoding failed") }
             try png.write(to: directory.appendingPathComponent(fixture.name + ".png"))
             print("Rendered \(fixture.name): \(bitmap.pixelsWide)x\(bitmap.pixelsHigh) native macOS hosted SwiftUI pixels, synthetic state")

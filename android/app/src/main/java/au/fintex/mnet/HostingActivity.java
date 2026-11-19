@@ -87,7 +87,7 @@ public class HostingActivity extends Activity {
         });
         stop = AppUi.button(footer, "Stop hosting", false);
         stop.setTextColor(new android.content.res.ColorStateList(new int[][]{new int[]{-android.R.attr.state_enabled},new int[]{}},
-                new int[]{AppUi.MUTED,android.graphics.Color.rgb(155,43,43)}));
+                new int[]{AppUi.MUTED,android.graphics.Color.rgb(176,0,23)}));
         stop.setOnClickListener(v -> {
             stop.setEnabled(false);
             hostStatus.setText("Stopping screen sharing...");

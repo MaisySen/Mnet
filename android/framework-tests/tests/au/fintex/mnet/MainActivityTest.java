@@ -20,6 +20,20 @@ public class MainActivityTest {
   BroadcastReceiver receiver=(BroadcastReceiver)field("statusReceiver");
   receiver.onReceive(activity,new Intent(MnetVpnService.ACTION_STATUS).putExtra(MnetVpnService.EXTRA_STATUS,"{\"status\":\""+state+"\"}").putExtra(MnetVpnService.EXTRA_ALWAYS_ON,always));
  }
+ @Test public void statusDetailsActionOnlyFocusesExistingDetails()throws Exception{
+  Button action=(Button)field("detailsAction");assertEquals(android.view.View.GONE,action.getVisibility());
+  status("waiting-approval",false);assertEquals("View approval details",action.getText().toString());
+  action.performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+  assertTrue(((TextView)field("detailsHeading")).hasFocus());
+  assertTrue((Boolean)field("connected"));
+  assertNull(Shadows.shadowOf(activity).getNextStartedService());
+  assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
+  BroadcastReceiver receiver=(BroadcastReceiver)field("statusReceiver");
+  receiver.onReceive(activity,new Intent(MnetVpnService.ACTION_STATUS).putExtra(MnetVpnService.EXTRA_STATUS,"{\"status\":\"down\",\"last_error\":\"Fixture unavailable\"}"));
+  assertEquals("View error details",action.getText().toString());
+  assertFalse((Boolean)field("connected"));
+  status("up",false);assertEquals("View connection details",action.getText().toString());
+ }
  @Test public void emptySetupRevealsFormWithoutConsentSavingOrService()throws Exception{
   ((EditText)activity.findViewById(R.id.network_name)).setText("");
   ((Button)activity.findViewById(R.id.connect_button)).performClick();
@@ -27,6 +41,26 @@ public class MainActivityTest {
   assertNotNull(((EditText)activity.findViewById(R.id.network_name)).getError());
   assertFalse(activity.getSharedPreferences("mnet",0).contains("network"));
   assertFalse(activity.getSharedPreferences("mnet",0).getBoolean(MnetVpnService.VPN_DISCLOSURE_KEY,false));
+  assertNull(Shadows.shadowOf(activity).getNextStartedService());
+ }
+ @Test public void keyboardOrderIsExplicitAndDoneNeverConnects()throws Exception{
+  int[] ids={R.id.server_url,R.id.network_name,R.id.auth_key,R.id.device_name,R.id.exit_node};
+  for(int i=0;i<ids.length-1;i++){
+   EditText input=activity.findViewById(ids[i]);
+   assertEquals(ids[i+1],input.getNextFocusForwardId());
+   assertEquals(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT,input.getImeOptions()&android.view.inputmethod.EditorInfo.IME_MASK_ACTION);
+  }
+  EditText last=activity.findViewById(R.id.exit_node);
+  last.onEditorAction(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+  assertNull(Shadows.shadowOf(activity).getNextStartedService());
+  assertFalse(activity.getSharedPreferences("mnet",0).getBoolean(MnetVpnService.VPN_DISCLOSURE_KEY,false));
+  assertFalse(activity.getSharedPreferences("mnet",0).contains("network"));
+ }
+ @Test public void incompleteSetupFocusesMissingFieldWithoutConnecting()throws Exception{
+  EditText missing=activity.findViewById(R.id.network_name);missing.setText("");
+  activity.findViewById(R.id.connect_button).performClick();
+  Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+  assertTrue(missing.hasFocus());assertNotNull(missing.getError());
   assertNull(Shadows.shadowOf(activity).getNextStartedService());
  }
  @Test public void peerDialogNeedsAddressAndDoesNotStartUntilExplicitConnect(){

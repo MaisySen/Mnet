@@ -26,7 +26,8 @@ import org.json.JSONObject;
 public class MainActivity extends Activity {
 
     private EditText server, network, authKey, name, exitNode;
-    private Button toggle;
+    private Button toggle, detailsAction;
+    private TextView detailsHeading;
     private TextView status, connectionTitle, connectionHint;
     private LinearLayout setupFields;
     private Button setupToggle;
@@ -63,6 +64,17 @@ public class MainActivity extends Activity {
         toggle = AppUi.button(connection, "Connect", true);
         toggle.setId(R.id.connect_button);
         toggle.setOnClickListener(v -> onToggle());
+        detailsAction = AppUi.button(connection, "View connection details", false);
+        detailsAction.setVisibility(android.view.View.GONE);
+        detailsAction.setOnClickListener(v -> {
+            detailsHeading.requestFocus();
+            page.post(() -> {
+                android.graphics.Rect bounds = new android.graphics.Rect();
+                detailsHeading.getDrawingRect(bounds);
+                page.offsetDescendantRectToMyCoords(detailsHeading, bounds);
+                page.scrollTo(0, Math.max(0, bounds.top - dp(16)));
+            });
+        });
         AppUi.gap(root, 24);
 
         AppUi.text(root, "Screen sessions", 21, AppUi.INK, true);
@@ -97,6 +109,27 @@ public class MainActivity extends Activity {
         name.setId(R.id.device_name);
         exitNode = field(setupFields, "Exit node (optional)", R.string.exitnode_hint);
         exitNode.setId(R.id.exit_node);
+        EditText[] orderedFields = {server, network, authKey, name, exitNode};
+        for (int i = 0; i < orderedFields.length; i++) {
+            EditText input = orderedFields[i];
+            input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);
+            if (i + 1 < orderedFields.length) input.setNextFocusForwardId(orderedFields[i+1].getId());
+        }
+        // Keyboard Done finishes editing only. Connection still needs the
+        // visible Review & connect action and existing disclosure/OS consent.
+        exitNode.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+        exitNode.setOnEditorActionListener((input, action, event) -> {
+            if (action != android.view.inputmethod.EditorInfo.IME_ACTION_DONE) return false;
+            android.view.inputmethod.InputMethodManager keyboard =
+                    (android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
+            if (keyboard != null) keyboard.hideSoftInputFromWindow(input.getWindowToken(), 0);
+            input.clearFocus();
+            return true;
+        });
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            authKey.setImeOptions(authKey.getImeOptions() |
+                    android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING);
+        }
         AppUi.text(setupFields, "Use details from your network administrator. An empty exit node keeps the existing default routing.", 13, AppUi.MUTED, false);
 
         SharedPreferences prefs = getSharedPreferences("mnet", MODE_PRIVATE);
@@ -112,7 +145,8 @@ public class MainActivity extends Activity {
 
         AppUi.gap(root, 16);
         LinearLayout details = AppUi.card(root);
-        AppUi.text(details, "Connection details", 18, AppUi.INK, true);
+        detailsHeading = AppUi.text(details, "Connection details", 18, AppUi.INK, true);
+        detailsHeading.setFocusableInTouchMode(true);
         status = AppUi.text(details, "No active connection. Your connection details will appear here.", 14, AppUi.MUTED, false);
         status.setTextIsSelectable(true);
         Button privacy = AppUi.button(root, "Privacy and support", false);
@@ -134,6 +168,7 @@ public class MainActivity extends Activity {
         in.setSingleLine(true);
         in.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
         in.setMinimumHeight(dp(52));
+        AppUi.input(in);
         form.addView(in);
         android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
                 .setTitle("View another device").setView(form)
@@ -181,7 +216,7 @@ public class MainActivity extends Activity {
         e.setHint(hint); e.setTextSize(16); e.setTextColor(AppUi.INK);
         e.setHintTextColor(AppUi.MUTED);
         e.setSingleLine(true); e.setMinimumHeight(dp(52));
-        e.setBackgroundTintList(android.content.res.ColorStateList.valueOf(AppUi.ACCENT));
+        AppUi.input(e);
         root.addView(e, new LinearLayout.LayoutParams(-1, -2));
         // Bind the persistent label after callers assign the resource ID.
         e.post(() -> title.setLabelFor(e.getId()));
@@ -201,13 +236,14 @@ public class MainActivity extends Activity {
         if (server.getText().toString().trim().isEmpty() || network.getText().toString().trim().isEmpty()) {
             setSetupOpen(true);
             EditText missing = server.getText().toString().trim().isEmpty() ? server : network;
+            missing.requestFocus();
             missing.setError(missing == server ? "Enter your control server URL" : "Enter your network name");
             // Reveal the real setup form, without saving or starting a service.
             page.post(() -> {
                 android.graphics.Rect bounds = new android.graphics.Rect();
                 missing.getDrawingRect(bounds);
                 page.offsetDescendantRectToMyCoords(missing, bounds);
-                page.smoothScrollTo(0, Math.max(0, bounds.top - dp(72)));
+                page.scrollTo(0, Math.max(0, bounds.top - dp(72)));
             });
             return;
         }
@@ -291,6 +327,9 @@ public class MainActivity extends Activity {
                 }
             }
             status.setText(sb.toString());
+            detailsAction.setText("waiting-approval".equals(state) ? "View approval details" :
+                    st.optString("last_error").isEmpty() ? "View connection details" : "View error details");
+            detailsAction.setVisibility(android.view.View.VISIBLE);
             connected = "up".equals(state) || "joining".equals(state) || "waiting-approval".equals(state);
             toggle.setText(connected ? "Disconnect" : "Connect");
             connectionTitle.setText("up".equals(state) ? "Connected" : "joining".equals(state) ? "Connecting" : "waiting-approval".equals(state) ? "Approval needed" : "Not connected");

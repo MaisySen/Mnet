@@ -15,11 +15,12 @@ import android.widget.TextView;
 
 /** Shared native screen furniture. No session, transport or permission decisions. */
 final class AppUi {
-    static final int INK = Color.rgb(22, 43, 51);
-    static final int MUTED = Color.rgb(77, 98, 105);
-    static final int ACCENT = Color.rgb(8, 105, 99);
-    static final int CANVAS = Color.rgb(244, 247, 246);
-    static final int LINE = Color.rgb(213, 225, 221);
+    static final int INK = Color.rgb(29, 29, 31);
+    static final int MUTED = Color.rgb(95, 95, 100);
+    static final int ACCENT = Color.rgb(0, 102, 204);
+    static final int CANVAS = Color.rgb(242, 242, 247);
+    static final int LINE = Color.argb(23, 0, 0, 0);
+    static final int FILL = Color.rgb(232, 232, 237);
     private AppUi() {}
 
     static int dp(Context c, int n) { return Math.round(n * c.getResources().getDisplayMetrics().density); }
@@ -32,6 +33,9 @@ final class AppUi {
     static LinearLayout screen(Activity a, LinearLayout footer) {
         LinearLayout shell = column(a);
         shell.setBackgroundColor(CANVAS);
+        // This companion currently ships the Multies light palette only.
+        // Do not let Android algorithmically recolor the exact brand assets.
+        if (android.os.Build.VERSION.SDK_INT >= 29) shell.setForceDarkAllowed(false);
         shell.setFocusableInTouchMode(true);
         shell.requestFocus();
         ScrollView scroll = new ScrollView(a);
@@ -48,6 +52,12 @@ final class AppUi {
         }
         ContentInsets.install(shell);
         a.setContentView(shell);
+        android.widget.ImageView brand = new android.widget.ImageView(a);
+        brand.setImageResource(R.drawable.multies_mark);
+        brand.setContentDescription("Multies");
+        LinearLayout.LayoutParams brandSize = new LinearLayout.LayoutParams(dp(a,40),dp(a,40));
+        brandSize.bottomMargin = dp(a,16);
+        body.addView(brand,brandSize);
         return body;
     }
     static TextView text(LinearLayout parent, String text, int sp, int color, boolean bold) {
@@ -71,21 +81,45 @@ final class AppUi {
     }
     static LinearLayout card(LinearLayout parent) {
         LinearLayout v = column(parent.getContext());
-        int p = dp(v.getContext(), 18); v.setPadding(p,p,p,p);
-        v.setBackground(shape(v.getContext(), Color.WHITE, LINE));
+        int p = dp(v.getContext(), 16); v.setPadding(p,p,p,p);
+        v.setBackground(shape(v.getContext(), Color.WHITE, 0));
+        v.setElevation(dp(v.getContext(), 2));
         parent.addView(v, new LinearLayout.LayoutParams(-1, -2));
         return v;
+    }
+    private static GradientDrawable controlShape(Context c, int fill) {
+        GradientDrawable g = shape(c, fill, 0);
+        g.setCornerRadius(dp(c, 12));
+        return g;
+    }
+    static void input(android.widget.EditText e) {
+        Context c = e.getContext();
+        e.setTextSize(16); e.setTextColor(INK); e.setHintTextColor(MUTED);
+        e.setMinimumHeight(dp(c, 48));
+        e.setPadding(dp(c,12),dp(c,12),dp(c,12),dp(c,12));
+        e.setBackgroundTintList(null);
+        android.graphics.drawable.StateListDrawable bg = new android.graphics.drawable.StateListDrawable();
+        GradientDrawable focused = controlShape(c, Color.WHITE);
+        focused.setStroke(dp(c,1), ACCENT);
+        GradientDrawable normal = controlShape(c, Color.WHITE);
+        normal.setStroke(dp(c,1), Color.argb(41,0,0,0));
+        bg.addState(new int[]{android.R.attr.state_focused}, focused);
+        bg.addState(new int[]{}, normal);
+        e.setBackground(bg);
     }
     static Button button(LinearLayout parent, String label, boolean primary) {
         Button b = new Button(parent.getContext()); b.setText(label); b.setAllCaps(false);
         b.setTextSize(16); b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         b.setTextColor(new ColorStateList(new int[][]{new int[]{-android.R.attr.state_enabled},new int[]{}},
-                new int[]{MUTED,primary ? Color.WHITE : ACCENT}));
+                new int[]{MUTED,primary ? Color.WHITE : INK}));
         b.setBackgroundTintList(null);
         android.graphics.drawable.StateListDrawable bg = new android.graphics.drawable.StateListDrawable();
-        bg.addState(new int[]{-android.R.attr.state_enabled}, shape(b.getContext(), LINE, 0));
-        bg.addState(new int[]{android.R.attr.state_pressed}, shape(b.getContext(), primary ? Color.rgb(5,78,74) : LINE, 0));
-        bg.addState(new int[]{}, shape(b.getContext(), primary ? ACCENT : Color.rgb(234,243,239), 0));
+        bg.addState(new int[]{-android.R.attr.state_enabled}, controlShape(b.getContext(), FILL));
+        bg.addState(new int[]{android.R.attr.state_pressed}, controlShape(b.getContext(), primary ? Color.rgb(0,88,176) : Color.rgb(235,235,239)));
+        GradientDrawable focused = controlShape(b.getContext(), primary ? Color.rgb(0,88,176) : FILL);
+        focused.setStroke(dp(b.getContext(),2),primary ? INK : ACCENT);
+        bg.addState(new int[]{android.R.attr.state_focused}, focused);
+        bg.addState(new int[]{}, controlShape(b.getContext(), primary ? ACCENT : FILL));
         b.setBackground(bg); b.setMinimumHeight(dp(b.getContext(),52));
         b.setPadding(dp(b.getContext(),16),dp(b.getContext(),12),dp(b.getContext(),16),dp(b.getContext(),12));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT);

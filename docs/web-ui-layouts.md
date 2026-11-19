@@ -2,7 +2,7 @@
 
 Updated 19 November 2026, Australia/Sydney. These are implemented Go-served pages, captured in an isolated real Chrome browser against local disposable control/store fixtures. Member sign-in uses a local test identity provider. No user account, production deployment, Multies change or app release is implied.
 
-The same gray-green canvas, white cards, dark type and teal actions now connect the landing page, member account, sign-in recovery and operator dashboard to the Android visual system. Member and operator paths remain separate. Device approval, account membership and current connectivity retain their existing meaning. The legal/provider identity text is unchanged.
+The earlier independently chosen gray-green/teal treatment connected the landing page, member account, sign-in recovery and operator dashboard to the Android visual system. Member and operator paths remain separate. Device approval, account membership and current connectivity retain their existing meaning. The legal/provider identity text is unchanged.
 
 ## Inspected pixels
 
@@ -41,3 +41,8 @@ The manual [device-request page](ui/web/approval-request.png) now matches the re
 The actual [verified OIDC approval success page](ui/web/device-approved.png) now says Device approved, not Device connected/on the mesh. The callback has verified identity and persisted approval, not measured live connectivity. It guides the user back to Mnet to check connection status. Existing provider/legal text and the actual approval mechanism are unchanged. [320px/200% status viewport](ui/web/device-approved-320-status.png).
 
 The real Chrome fixture follows the local provider authorization redirect, code exchange and actual persisted node approval in a separate disposable network. It verifies that approval does not create member-account access. Existing OIDC signature, identity escape and admission tests are retained. The dashboard browser fixture checks the manual link still requires operator sign-in, ID-as-text/encoded-fragment behavior, missing-ID guidance and enlarged-text layout. Provider-error responses were not redesigned in this follow-up.
+
+
+## Local Multies branding correction
+
+The later19November correction replaces the independently chosen treatment with the actual Multies default identity and components. See multies-brand-alignment.md for pinned source provenance, local verification and remaining platform limits. Earlier images above remain historical layout evidence, not the current brand reference. New source and pixels remain local while public-documentation publishing is undecided.

@@ -22,7 +22,9 @@ import mobile.ViewerCallbacks;
 public class ViewerActivity extends Activity {
 
     private ImageView screen;
-    private TextView chat;
+    private TextView chat, chatFeedback;
+    private boolean chatSending;
+    private int chatSendVersion;
     private EditText chatIn;
     private TextView controlStatus, sessionStatus, emptyScreen;
     private Button sendChat;
@@ -56,7 +58,7 @@ public class ViewerActivity extends Activity {
         AppUi.gap(root, 16);
 
         android.widget.FrameLayout picture = new android.widget.FrameLayout(this);
-        picture.setBackground(AppUi.shape(this, android.graphics.Color.rgb(22,43,51), 0));
+        picture.setBackground(AppUi.shape(this, android.graphics.Color.rgb(29,29,31), 0));
         picture.setClipToOutline(true);
         int screenHeight = getResources().getConfiguration().screenHeightDp;
         int pictureHeight = AppUi.dp(this, Math.max(200, Math.min(480, Math.round(screenHeight * .52f))));
@@ -106,8 +108,12 @@ public class ViewerActivity extends Activity {
         chat.setMaxLines(6);
         chat.setTextIsSelectable(true);
         chat.setMovementMethod(new android.text.method.ScrollingMovementMethod());
+        TextView chatLabel = AppUi.text(chatPanel, "Message", 14, AppUi.INK, true);
         chatIn = new EditText(this);
+        chatIn.setId(android.view.View.generateViewId());
+        chatLabel.setLabelFor(chatIn.getId());
         chatIn.setHint("Message the other device");
+        AppUi.input(chatIn);
         chatIn.setTextSize(16);chatIn.setTextColor(AppUi.INK);chatIn.setHintTextColor(AppUi.MUTED);
         chatIn.setMinHeight(AppUi.dp(this,52));
         chatIn.setMaxLines(4);
@@ -115,16 +121,32 @@ public class ViewerActivity extends Activity {
         chatPanel.addView(chatIn, new LinearLayout.LayoutParams(-1,-2));
         sendChat = AppUi.button(chatPanel, "Send message", false);
         sendChat.setEnabled(false);
+        chatFeedback = AppUi.text(chatPanel, "Messages are available while this session is connected.", 13, AppUi.MUTED, false);
+        chatFeedback.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);
         sendChat.setOnClickListener(v -> {
-            String t = chatIn.getText().toString().trim();
-            SessionViewer viewer = viewers.current();
-            if (!t.isEmpty() && viewer != null) {
-                new Thread(() -> {
-                    try { viewer.sendChat(t); }
-                    catch (Exception ignored) { }
-                }).start();
-                chatIn.setText("");
-            }
+            if (chatSending || userClosed) return;
+            final String draft = chatIn.getText().toString();
+            final String text = draft.trim();
+            final SessionViewer viewer = viewers.current();
+            if (text.isEmpty()) { chatIn.setError("Enter a message"); chatIn.requestFocus(); return; }
+            if (viewer == null) { chatFeedback.setText("Session disconnected. Your draft is kept."); return; }
+            chatSending=true;sendChat.setEnabled(false);chatFeedback.setText("Sending message...");
+            final int version=++chatSendVersion;
+            new Thread(() -> {
+                boolean sent=false;
+                try { viewer.sendChat(text);sent=true; } catch (Exception ignored) { }
+                final boolean completed=sent;
+                runOnUiThread(() -> {
+                    if(userClosed || version!=chatSendVersion || viewer!=viewers.current())return;
+                    chatSending=false;sendChat.setEnabled(true);
+                    if(completed){
+                        if(chatIn.getText().toString().equals(draft))chatIn.setText("");
+                        chatFeedback.setText("Message queued. Delivery is not confirmed.");
+                    }else{
+                        chatFeedback.setText("Could not confirm send. Draft kept. Check chat before retrying.");
+                    }
+                });
+            },"session-chat-send").start();
         });
         endViewing = AppUi.button(footer, "End viewing", false);
         endViewing.setOnClickListener(v->{stopViewing();finish();});
@@ -223,7 +245,7 @@ public class ViewerActivity extends Activity {
                     }
                     retryMs = 1000;
                     sessionStatus.setText(frameW > 0 ? "Viewing screen" : "Connected. Waiting for screen...");
-                    sendChat.setEnabled(true);
+                    sendChat.setEnabled(!chatSending);
                     try{applyControl(new JSONObject(connected.controlStatus()).optString("state"));}
                     catch(Exception unavailable){applyControl("unavailable");}
                     appendChat("connected to " + peerIp);
@@ -241,6 +263,9 @@ public class ViewerActivity extends Activity {
         applyControl("unavailable");
         frameW = frameH = 0;
         screen.setImageDrawable(null);
+        chatSendVersion++;
+        if(chatSending)chatFeedback.setText("Connection interrupted. Draft kept; send is unconfirmed.");
+        chatSending=false;
         sendChat.setEnabled(false);
         sessionStatus.setText(message.equals("connect the mesh first") ? "Network connection needed" : "Connection interrupted");
         emptyScreen.setText(message.equals("connect the mesh first") ? "Connect Mnet to your network first.\nEnd viewing to return to setup." : "No screen to display.\nCheck that the host is ready to share.");
@@ -325,6 +350,7 @@ public class ViewerActivity extends Activity {
     // A queued connect/control/frame callback cannot reopen a closed ViewerGate.
     private void stopViewing(){
         userClosed=true;
+        chatSendVersion++;chatSending=false;
         taps.cancel();
         reconnects.removeCallbacks(retryTask);
         retryPending=false;

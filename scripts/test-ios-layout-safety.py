@@ -24,8 +24,12 @@ class LayoutSafety(unittest.TestCase):
         self.assertIn('NSHostingView(rootView: panel)', renderer)
         self.assertIn('host.cacheDisplay(in: host.bounds, to: bitmap)', renderer)
         self.assertNotIn('ContentView(', renderer)
+        self.assertIn('bitmap.pixelsWide == expectedWidth', renderer)
+        self.assertNotIn('error-390-large', renderer)
         self.assertIn('SecureField(', panel)
         self.assertIn('.disabled(busy)', panel)
+        self.assertIn('.preferredColorScheme(.light)', panel)
+        self.assertIn('.preferredColorScheme(.light)', (ROOT / 'ios/ContentView.swift').read_text())
 
     def test_production_uses_same_component_and_explicit_action(self):
         source = (ROOT / 'ios/ContentView.swift').read_text()

@@ -28,7 +28,8 @@ struct ContentView: View {
                     connected ? disconnect() : connect()
                 }
             }
-            .background(Color(red: 0.957, green: 0.969, blue: 0.965))
+            .background(Color(red: 242.0/255, green: 242.0/255, blue: 247.0/255))
+            .preferredColorScheme(.light)
             .navigationTitle("Mnet")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {

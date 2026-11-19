@@ -1,0 +1,93 @@
+{
+  "source_revision": "8a0e6e2655363ec392c42922fea27e4a7b779a3f",
+  "sources": [
+    {
+      "path": "docs/brand.md",
+      "url": "https://github.com/MaisySen/multies/blob/8a0e6e2655363ec392c42922fea27e4a7b779a3f/docs/brand.md",
+      "sha": "3486a88ffa93224cd56ec8f8b0ac52b694dde5dc"
+    },
+    {
+      "path": "brand/tokens.json",
+      "url": "https://github.com/MaisySen/multies/blob/8a0e6e2655363ec392c42922fea27e4a7b779a3f/brand/tokens.json",
+      "sha": "d5edd1003be4e9882a0f0fd358b2c984ec327ad1"
+    },
+    {
+      "path": "brand/logo-mark.svg",
+      "url": "https://github.com/MaisySen/multies/blob/8a0e6e2655363ec392c42922fea27e4a7b779a3f/brand/logo-mark.svg",
+      "sha": "8e454853f13a8f50a03dc94d27b2fe2ef15a2eec"
+    },
+    {
+      "path": "src/web/index.css",
+      "url": "https://github.com/MaisySen/multies/blob/8a0e6e2655363ec392c42922fea27e4a7b779a3f/src/web/index.css",
+      "sha": "3a04194aa2c565a09d9d15ae5ee72264adc1317e"
+    },
+    {
+      "path": "src/web/components/ui/button.tsx",
+      "url": "https://github.com/MaisySen/multies/blob/8a0e6e2655363ec392c42922fea27e4a7b779a3f/src/web/components/ui/button.tsx",
+      "sha": "49f69599cc525d813a2d9a7f427fc6cceb4226ee"
+    },
+    {
+      "path": "src/shared/branding.ts",
+      "url": "https://github.com/MaisySen/multies/blob/8a0e6e2655363ec392c42922fea27e4a7b779a3f/src/shared/branding.ts",
+      "sha": "4676efba018297909c5f6f10ad5974f9e1570bf8"
+    },
+    {
+      "path": "src/web/lib/design-des1.ts",
+      "url": "https://github.com/MaisySen/multies/blob/8a0e6e2655363ec392c42922fea27e4a7b779a3f/src/web/lib/design-des1.ts",
+      "sha": "82d0311fa847e0f02b3005b47f6096e51a4ed768"
+    },
+    {
+      "path": "src/server/config.ts",
+      "url": "https://github.com/MaisySen/multies/blob/8a0e6e2655363ec392c42922fea27e4a7b779a3f/src/server/config.ts",
+      "sha": "bc07235b82b47d3e84649501f227a374a0dce00b"
+    },
+    {
+      "path": "mobile/src/theme.ts",
+      "url": "https://github.com/MaisySen/multies/blob/8a0e6e2655363ec392c42922fea27e4a7b779a3f/mobile/src/theme.ts",
+      "sha": "cbd837881339838700e1b234875c2b1c57311e9d"
+    },
+    {
+      "path": "mobile/src/components/ui.tsx",
+      "url": "https://github.com/MaisySen/multies/blob/8a0e6e2655363ec392c42922fea27e4a7b779a3f/mobile/src/components/ui.tsx",
+      "sha": "cd4f2f7222153ac26741e7fc41777c5c5cb61cb3"
+    },
+    {
+      "path": "mobile/src/components/logo.tsx",
+      "url": "https://github.com/MaisySen/multies/blob/8a0e6e2655363ec392c42922fea27e4a7b779a3f/mobile/src/components/logo.tsx",
+      "sha": "f49eeb889e8756a7a3a9b03a36cbd279708332a6"
+    },
+    {
+      "path": "brand/mobile/icon.png",
+      "url": "https://github.com/MaisySen/multies/blob/8a0e6e2655363ec392c42922fea27e4a7b779a3f/brand/mobile/icon.png",
+      "sha": "51aa1cb94f11f617c879615d0a121629e9a714ec"
+    },
+    {
+      "path": "brand/mobile/notification-icon.png",
+      "url": "https://github.com/MaisySen/multies/blob/8a0e6e2655363ec392c42922fea27e4a7b779a3f/brand/mobile/notification-icon.png",
+      "sha": "61e3c4684e41eecdd8c564b9ac5d5a51e0cd5d97"
+    }
+  ],
+  "copied_sha256": {
+    "logo-mark.svg": "0424f82395800bd9a3ffc9043a24b7dce59d52b96161a6e2edee2495066cd852",
+    "logo-light.svg": "7f2973f5a5500ee3f918d042296ceba4d7e0fc37d526df176da8b6e17f1268ae",
+    "tokens.json": "ebce093ecc882351c9dd3dd64ec86ba4960de3b40b078c4ef3385ae310d3e269",
+    "logo-mark-tile.svg": "bb02095bb826bdc35abab7f920dd31975ac4bf9089e8a49e03473feda97f9d64"
+  },
+  "android_artwork_sha256": {
+    "multies_launcher.png": "418cce2bf0c92f07037e9cd5d3fddfa79f83757154884ffbffa5650b6f49e0b8",
+    "multies_notification.png": "66940462c4f1808b153bb91febffe28fe4c0f8b3323ce1b480cdb0d86dd78005"
+  },
+  "native_mapping": {
+    "background": "#F2F2F7",
+    "surface": "#FFFFFF",
+    "ink": "#1D1D1F",
+    "muted": "#5F5F64",
+    "primary": "#0066CC",
+    "pressed": "#0058B0",
+    "secondary": "#E8E8ED",
+    "card_radius": 18,
+    "control_radius": 12,
+    "min_target": 44,
+    "source": "mobile/src/theme.ts and mobile/src/components/ui.tsx"
+  }
+}
