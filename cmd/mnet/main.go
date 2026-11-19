@@ -227,16 +227,29 @@ func writeHumanStatus(out io.Writer, st *daemon.Status) {
 	fmt.Fprintln(w, "NAME\tIP\tSTATUS\tPATH\tLAST HANDSHAKE\tRX/TX")
 	for _, p := range st.Peers {
 		online := "offline"
+		if p.HandshakeState == "unavailable" || p.HandshakeState == "clock-skew" {
+			online = "unknown"
+		}
 		if p.Online {
 			online = "online"
 		}
-		path := "direct"
-		if p.Relay {
+		path := "unknown"
+		if p.Endpoint != "" {
+			path = "direct"
+		}
+		if p.Relay && p.Endpoint != "" {
 			path = "relay"
 		}
 		handshake := "never"
-		if p.LastHandshake >= 0 {
-			handshake = fmt.Sprintf("%ds ago", p.LastHandshake)
+		switch p.HandshakeState {
+		case "unavailable":
+			handshake = "unavailable"
+		case "clock-skew":
+			handshake = "clock skew"
+		default:
+			if p.LastHandshake >= 0 {
+				handshake = fmt.Sprintf("%ds ago", p.LastHandshake)
+			}
 		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d/%d\n", p.Name, p.IPv4, online, path, handshake, p.Rx, p.Tx)
 	}

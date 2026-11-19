@@ -55,9 +55,10 @@ func (d *Daemon) Status() *Status {
 		DNSError:    d.dnsErr,
 		DNSFailure:  dnsFailureCategory(d.dnsErr),
 	}
-	if d.lastMap != nil {
-		st.IPv4 = d.lastMap.Self.IPv4
-		st.Network = d.lastMap.Network.Name
+	snapshotMap := d.lastMap
+	if snapshotMap != nil {
+		st.IPv4 = snapshotMap.Self.IPv4
+		st.Network = snapshotMap.Network.Name
 	}
 	d.mu.Unlock()
 	st.DNSReady = d.dns != nil && d.dns.Ready()
@@ -65,7 +66,10 @@ func (d *Daemon) Status() *Status {
 		st.DNSPackets = d.localDNS.Diagnostics()
 	}
 	d.applyMu.Unlock()
-	st.Peers = d.PeerStatuses()
+	// Device counters are later observations, but peer identities must belong to
+	// the same immutable map as the node snapshot. Do not hold the application
+	// barrier over device IPC or block revocation on a diagnostic read.
+	st.Peers = renderPeerStatuses(snapshotMap, d.stats(), time.Now())
 	return st
 }
 

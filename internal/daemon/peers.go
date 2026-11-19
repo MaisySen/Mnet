@@ -23,16 +23,17 @@ import (
 
 // PeerStatus is the CLI view of one peer.
 type PeerStatus struct {
-	Name          string `json:"name"`
-	IPv4          string `json:"ipv4"`
-	FQDN          string `json:"fqdn"`
-	PubKeyShort   string `json:"pubkey_short"`
-	Endpoint      string `json:"endpoint"`
-	Relay         bool   `json:"relay"`
-	LastHandshake int64  `json:"last_handshake_ago_sec"`
-	Rx            int64  `json:"rx_bytes"`
-	Tx            int64  `json:"tx_bytes"`
-	Online        bool   `json:"online"`
+	Name           string `json:"name"`
+	IPv4           string `json:"ipv4"`
+	FQDN           string `json:"fqdn"`
+	PubKeyShort    string `json:"pubkey_short"`
+	Endpoint       string `json:"endpoint"`
+	Relay          bool   `json:"relay"`
+	LastHandshake  int64  `json:"last_handshake_ago_sec"`
+	HandshakeState string `json:"handshake_state,omitempty"`
+	Rx             int64  `json:"rx_bytes"`
+	Tx             int64  `json:"tx_bytes"`
+	Online         bool   `json:"online"`
 }
 
 // peerTrack is the path-selection state for one peer.
@@ -538,30 +539,40 @@ func (d *Daemon) relayLoop(ctx context.Context) {
 
 // PeerStatuses renders the current peer table for the CLI.
 func (d *Daemon) PeerStatuses() []PeerStatus {
-	stats := d.stats()
-	now := time.Now()
+	return renderPeerStatuses(d.currentMap(), d.stats(), time.Now())
+}
+
+// Render evidence, not assumed reachability. A missing device/stat entry has
+// no handshake age. Future timestamps after a wall-clock step cannot be called
+// online. Invalid map keys were never usable WG peers and must not panic here.
+func renderPeerStatuses(m *netmap.Map, stats map[string]*peerStats, now time.Time) []PeerStatus {
 	var out []PeerStatus
-	m := d.currentMap()
 	if m == nil {
 		return out
 	}
 	for _, p := range m.Peers {
-		ps := PeerStatus{
-			Name:        p.Name,
-			IPv4:        p.IPv4,
-			FQDN:        p.FQDN(m.Network.Name),
-			PubKeyShort: p.PubKey[:12] + "...",
+		raw, err := base64.StdEncoding.Strict().DecodeString(p.PubKey)
+		if err != nil || len(raw) != 32 || base64.StdEncoding.EncodeToString(raw) != p.PubKey {
+			continue
 		}
+		ps := PeerStatus{Name: p.Name, IPv4: p.IPv4, FQDN: p.FQDN(m.Network.Name), PubKeyShort: p.PubKey[:12] + "...", LastHandshake: -1, HandshakeState: "unavailable"}
 		if s := stats[p.PubKey]; s != nil {
 			ps.Endpoint = s.endpoint
 			ps.Relay = strings.HasPrefix(s.endpoint, bind.RelayPrefix)
-			if s.handshake > 0 {
-				ps.LastHandshake = now.Unix() - s.handshake
-			} else {
-				ps.LastHandshake = -1
-			}
 			ps.Rx, ps.Tx = s.rx, s.tx
-			ps.Online = s.handshake > 0 && now.Unix()-s.handshake < 180
+			switch {
+			case s.handshake <= 0:
+				ps.HandshakeState = "never"
+			case s.handshake > now.Unix():
+				ps.HandshakeState = "clock-skew"
+			default:
+				ps.LastHandshake = now.Unix() - s.handshake
+				ps.Online = ps.LastHandshake < 180
+				ps.HandshakeState = "stale"
+				if ps.Online {
+					ps.HandshakeState = "recent"
+				}
+			}
 		}
 		out = append(out, ps)
 	}

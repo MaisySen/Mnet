@@ -70,3 +70,34 @@ func TestHumanStatusActualInterface(t *testing.T) {
 		})
 	}
 }
+
+func TestHumanPeerStatusMissingAndFutureEvidence(t *testing.T) {
+	for _, tc := range []struct {
+		state              string
+		age                int64
+		endpoint           string
+		relay, online      bool
+		want, status, path string
+	}{
+		{"unavailable", -1, "", false, false, "unavailable", "unknown", "unknown"},
+		{"clock-skew", -1, "127.0.0.1:1234", false, false, "clock skew", "unknown", "direct"},
+		{"never", -1, "127.0.0.1:1234", false, false, "never", "offline", "direct"},
+		{"recent", 0, "127.0.0.1:1234", false, true, "0s ago", "online", "direct"},
+		{"stale", 180, "relay://fixture", true, false, "180s ago", "offline", "relay"},
+		{"recent", 42, "", false, true, "42s ago", "online", "unknown"},
+		// Older daemons omit handshake_state. Preserve their age/sentinel display.
+		{"", -1, "127.0.0.1:1234", false, false, "never", "offline", "direct"},
+		{"", 1, "127.0.0.1:1234", false, true, "1s ago", "online", "direct"},
+	} {
+		t.Run(tc.state+tc.want+tc.path, func(t *testing.T) {
+			var out bytes.Buffer
+			writeHumanStatus(&out, &daemon.Status{Status: "up", Peers: []daemon.PeerStatus{{Name: "fixture", IPv4: "100.64.0.2", LastHandshake: tc.age, HandshakeState: tc.state, Endpoint: tc.endpoint, Online: tc.online, Relay: tc.relay, Rx: 4, Tx: 8}}})
+			lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+			row := strings.Fields(lines[len(lines)-1])
+			want := strings.Fields("fixture 100.64.0.2 " + tc.status + " " + tc.path + " " + tc.want + " 4/8")
+			if strings.Join(row, "|") != strings.Join(want, "|") {
+				t.Fatal("peer status evidence changed", out.String())
+			}
+		})
+	}
+}

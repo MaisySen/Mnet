@@ -23,6 +23,10 @@ jobs:
           systemd-analyze verify "$RUNNER_TEMP/mnetd.service"
           python3 scripts/check-linux-unit.py "$RUNNER_TEMP/mnetd-unit"
           python3 scripts/check-daemon-ownership.py "$RUNNER_TEMP/mnetd-unit"
+      - name: actual CLI peer-status evidence (private Unix fixture only)
+        run: |
+          go build -o "$RUNNER_TEMP/mnet-status-evidence" ./cmd/mnet
+          python3 scripts/status-evidence-validation.py "$RUNNER_TEMP/mnet-status-evidence"
       - name: cross-compile Windows and Darwin daemons
         run: |
           GOOS=windows go build ./...
