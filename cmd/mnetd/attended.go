@@ -49,13 +49,15 @@ func validateAttendedOptions(o options) error {
 // Serialize input backend ownership with grant transitions. In particular a
 // paused/revoked host releases its owned pressed keys/buttons before prompting.
 type attendedInput struct {
-	mu      sync.Mutex
-	gate    *session.HostControl
-	backend session.Injector
-	create  func() (session.Injector, error)
-	fail    func()
-	failed  bool
-	live    func() bool
+	mu              sync.Mutex
+	gate            *session.HostControl
+	backend         session.Injector
+	create          func() (session.Injector, error)
+	fail            func()
+	failed          bool
+	live            func() bool
+	backendRetired  chan struct{}
+	backendWatchers sync.WaitGroup
 }
 
 func (i *attendedInput) Inject(ev session.InputEvent) error {
@@ -80,6 +82,10 @@ func (i *attendedInput) Inject(ev session.InputEvent) error {
 	return err
 }
 func (i *attendedInput) closeLocked() {
+	if i.backendRetired != nil {
+		close(i.backendRetired)
+		i.backendRetired = nil
+	}
 	if c, ok := i.backend.(io.Closer); ok {
 		if c.Close() != nil {
 			i.failed = true
@@ -95,10 +101,39 @@ func (i *attendedInput) closeLocked() {
 }
 func (i *attendedInput) Close() error {
 	i.mu.Lock()
-	defer i.mu.Unlock()
 	i.gate.End()
 	i.closeLocked()
+	i.mu.Unlock()
+	i.backendWatchers.Wait()
 	return nil
+}
+
+// A termination report belongs to exactly this backend lifetime. Retire the
+// watcher before normal Close so old-process exit cannot end a resumed grant.
+func (i *attendedInput) watchLocked(backend session.Injector) {
+	lifetime, ok := backend.(interface{ Stopped() <-chan struct{} })
+	if !ok {
+		return
+	}
+	retired := make(chan struct{})
+	i.backendRetired = retired
+	i.backendWatchers.Add(1)
+	go func() {
+		defer i.backendWatchers.Done()
+		select {
+		case <-retired:
+			return
+		case <-lifetime.Stopped():
+		}
+		i.mu.Lock()
+		defer i.mu.Unlock()
+		if i.backendRetired != retired {
+			return
+		}
+		i.failed = true
+		i.gate.End()
+		i.closeLocked()
+	}()
 }
 func (i *attendedInput) decide(s session.ControlStatus, allow bool) error {
 	i.mu.Lock()
@@ -127,6 +162,7 @@ func (i *attendedInput) decide(s session.ControlStatus, allow bool) error {
 			return errors.New("local input unavailable")
 		}
 		i.backend = backend
+		i.watchLocked(backend)
 	}
 	if i.live != nil && !i.live() {
 		i.closeLocked()

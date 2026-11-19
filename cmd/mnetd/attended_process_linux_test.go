@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -102,9 +103,9 @@ func TestAttendedX11ProcessCloseAndForeignPreheld(t *testing.T) {
 
 func testAttendedProcessInjector() (session.Injector, error) {
 	if executable := os.Getenv("MNET_ATTENDED_TEST_EXECUTABLE"); executable != "" {
-		return newAttendedProcessInjector(exec.Command(executable, attendedProcessArg))
+		return startAttendedProcessCommand(exec.Command(executable, attendedProcessArg))
 	}
-	return newAttendedProcessInjector(processFixtureCommand())
+	return startAttendedProcessCommand(processFixtureCommand())
 }
 
 func TestAttendedX11ProcessExclusiveInjectorOwner(t *testing.T) {
@@ -205,5 +206,53 @@ func TestAttendedX11ProcessMalformedCommandRetiresOwnedInput(t *testing.T) {
 	state, err := xproto.QueryPointer(c, root).Reply()
 	if err != nil || state.Mask&xproto.ButtonMask1 != 0 {
 		t.Fatal("malformed-command retirement kept own input", state, err)
+	}
+}
+
+func TestAttendedX11ProcessDeathRetiresIdleGrantedSession(t *testing.T) {
+	requireSafetyDisplay(t)
+	client, server := attendedPair(t, true)
+	vc := session.NewViewerControl(nil)
+	_ = session.ConnectViewerWithOptions(client, session.ViewerOptions{Control: vc})
+	ui := &fixtureAttendedUI{make(chan localPromptCall, 8)}
+	child := make(chan *attendedProcessInjector, 1)
+	capture, err := newCapturer(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, done := serveAttendedSession(context.Background(), server, "fixture-peer", true, ui, capture, func() (session.Injector, error) {
+		p, err := newAttendedProcessInjector(processFixtureCommand())
+		if err == nil {
+			child <- p
+		}
+		return p, err
+	}, func() bool { return true })
+	t.Cleanup(func() { client.Close(); <-done })
+	_ = takePrompt(t, ui, "active")
+	waitAttended(t, vc, "available")
+	if err := vc.Request(); err != nil {
+		t.Fatal(err)
+	}
+	prompt := takePrompt(t, ui, "control")
+	prompt.answer <- "allow"
+	waitAttended(t, vc, "allowed")
+	p := <-child
+	if err := p.cmd.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	<-p.exit
+	// No subsequent remote input is sent to discover the dead child.
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("dead injector left idle session/control grant active")
+	}
+
+}
+
+func TestAttendedProcessStartupFailureReturnsNoBackend(t *testing.T) {
+	input, err := startAttendedProcessCommand(exec.Command(filepath.Join(t.TempDir(), "absent-executable")))
+	if err == nil || input != nil {
+		t.Fatal("failed local process exposed a nonnil backend", input, err)
 	}
 }

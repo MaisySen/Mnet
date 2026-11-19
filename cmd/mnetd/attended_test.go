@@ -685,3 +685,70 @@ func TestAttendedCaptureMismatchRefusesGrantAndJoinsRejectedBackend(t *testing.T
 		})
 	}
 }
+
+type lifetimeAttendedFixtureInput struct {
+	attendedFixtureInput
+	stopped chan struct{}
+}
+
+func (i *lifetimeAttendedFixtureInput) Stopped() <-chan struct{} { return i.stopped }
+func TestAttendedBackendDeathBelongsToExactGrant(t *testing.T) {
+	client, server := attendedPair(t, true)
+	vc := session.NewViewerControl(nil)
+	viewer := session.ConnectViewerWithOptions(client, session.ViewerOptions{Control: vc})
+	ui := &fixtureAttendedUI{make(chan localPromptCall, 8)}
+	made := make(chan *lifetimeAttendedFixtureInput, 4)
+	capture := &attendedFixtureCapture{}
+	_, done := serveAttendedSession(context.Background(), server, "fixture-peer", true, ui, capture, func() (session.Injector, error) {
+		input := &lifetimeAttendedFixtureInput{stopped: make(chan struct{})}
+		made <- input
+		return input, nil
+	}, func() bool { return true })
+	t.Cleanup(func() { client.Close(); <-done })
+	active := takePrompt(t, ui, "active")
+	waitAttended(t, vc, "available")
+	if err := vc.Request(); err != nil {
+		t.Fatal(err)
+	}
+	prompt := takePrompt(t, ui, "control")
+	prompt.answer <- "allow"
+	waitAttended(t, vc, "allowed")
+	old := <-made
+	active.answer <- "pause"
+	waitAttended(t, vc, "paused")
+	var resume localPromptCall
+	for n := 0; n < 2; n++ {
+		call := <-ui.calls
+		if call.prompt.Kind == "control" {
+			resume = call
+		}
+	}
+	resume.answer <- "allow"
+	waitAttended(t, vc, "allowed")
+	current := <-made
+	close(old.stopped)
+	if err := viewer.SendInput(session.InputEvent{Kind: "pointer", Action: "click"}); err != nil {
+		t.Fatal(err)
+	}
+	until := time.Now().Add(time.Second)
+	for current.calls.Load() == 0 {
+		select {
+		case <-done:
+			t.Fatal("old backend exit retired new grant")
+		default:
+		}
+		if time.Now().After(until) {
+			t.Fatal("new input did not progress")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	close(current.stopped)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("current backend death did not retire idle session")
+	}
+	if old.closes.Load() != 1 || current.closes.Load() != 1 || !capture.closed.Load() {
+		t.Fatal("backend-death teardown not joined exactly once")
+	}
+}

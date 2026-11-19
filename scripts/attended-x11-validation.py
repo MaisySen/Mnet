@@ -39,7 +39,7 @@ try:
  root_info=subprocess.check_output(['xwininfo','-root'],env=env,text=True)
  root=root_info.split('Window id: ',1)[1].split()[0]
  with open(out/'safety.log','w') as safety_log:
-  subprocess.run([str(out/'attended.test'),'-test.run','^TestAttendedX11(Safety|Text|Scaled|Pointer|ProcessClose|ProcessExclusive|ProcessOwner|ProcessMalformed)','-test.v','-test.timeout=15s'],env=env,stdout=safety_log,stderr=safety_log,check=True)
+  subprocess.run([str(out/'attended.test'),'-test.run','^TestAttendedX11(Safety|Text|Scaled|Pointer|ProcessClose|ProcessExclusive|ProcessOwner|ProcessMalformed|ProcessDeath)','-test.v','-test.timeout=15s'],env=env,stdout=safety_log,stderr=safety_log,check=True)
  with open(out/'test.log','w') as log:
   test=subprocess.Popen([str(out/'attended.test'),'-test.run','^TestAttendedX11RealLocalSurface$','-test.v','-test.timeout=30s'],env=env,stdout=log,stderr=log,start_new_session=True)
   seen=set();start=time.monotonic()

@@ -217,7 +217,7 @@ func newAttendedProcessInjector(command *exec.Cmd) (*attendedProcessInjector, er
 	inRead.Close()
 	outWrite.Close()
 	p := &attendedProcessInjector{writer: inWrite, replies: make(chan attendedProcessReply, 2), exit: make(chan struct{}), terminal: make(chan struct{}), cmd: command}
-	go func() { p.err = command.Wait(); close(p.exit) }()
+	go func() { p.err = command.Wait(); close(p.exit); p.retire() }()
 	go func() {
 		defer outRead.Close()
 		scanner := bufio.NewScanner(outRead)
@@ -352,5 +352,15 @@ func startAttendedProcessInjector() (session.Injector, error) {
 	if err != nil {
 		return nil, errors.New("local injector executable unavailable")
 	}
-	return newAttendedProcessInjector(exec.Command(executable, attendedProcessArg))
+	return startAttendedProcessCommand(exec.Command(executable, attendedProcessArg))
+}
+
+func (p *attendedProcessInjector) Stopped() <-chan struct{} { return p.terminal }
+
+func startAttendedProcessCommand(command *exec.Cmd) (session.Injector, error) {
+	process, err := newAttendedProcessInjector(command)
+	if err != nil {
+		return nil, err
+	}
+	return process, nil
 }
