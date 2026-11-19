@@ -137,6 +137,33 @@ try{
  await js(`document.documentElement.style.fontSize='';window.scrollTo(0,0)`);
  await cdp('Emulation.clearDeviceMetricsOverride');
  await until(()=>js(`innerWidth>600 && getComputedStyle(document.querySelector('#deviceRows tr')).display==='table-row' && getComputedStyle(document.querySelector('.device-field-label')).display==='none'`),'member desktop table restored');
+ // A late sign-in response must not navigate away after an intervening
+ // authenticated view has been signed out. Hold a real-form request while
+ // a session recheck supplies the already-authenticated browser state.
+ for(const mode of ['headers','json','error']) {
+ await js(`window.lateLoginFetch=fetch;window.fetch=(input,options)=>input==='/account/api/devices'?Promise.resolve(new Response('{}',{status:401})):lateLoginFetch(input,options);load()`);
+ await until(()=>js(`!document.querySelector('#login').hidden`),'late-login fixture shows sign-in');
+ const held=mode==='json'?`Promise.resolve({ok:true,json:()=>new Promise(resolve=>window.finishLateLogin=()=>resolve({authorization_url:location.origin+'/account/?retired-login-response=1'}))})`:mode==='error'?`new Promise((resolve,reject)=>window.finishLateLogin=()=>reject(new TypeError('fixture retired request')))`:`new Promise(resolve=>window.finishLateLogin=()=>resolve(new Response(JSON.stringify({authorization_url:location.origin+'/account/?retired-login-response=1'}),{status:200,headers:{'Content-Type':'application/json'}})))`;
+ await js(`window.finishLateLogin=null;window.fetch=(input,options)=>input==='/account/api/login'?${held}:lateLoginFetch(input,options);document.querySelector('#network').value=${JSON.stringify(network)};document.querySelector('#loginForm').requestSubmit()`);
+ await until(()=>js(`typeof window.finishLateLogin==='function'`),'held sign-in '+mode);
+ await js(`load()`);
+ await until(()=>js(`!document.querySelector('#devices').hidden`),'intervening authenticated session recheck');
+ await js(`document.querySelector('#logout').click()`);
+ await until(()=>js(`document.querySelector('#message').textContent==='Signed out.'`),'intervening session sign-out');
+ await js(`window.fetch=(input,options)=>input==='/account/api/login'?new Promise(resolve=>window.finishNewerLogin=()=>resolve(new Response('{}',{status:503}))):lateLoginFetch(input,options);document.querySelector('#network').value='newer-attempt';document.querySelector('#loginForm').requestSubmit();window.lateLoginMarker=true;finishLateLogin()`);
+ await delay(100);
+ if(!await js(`window.lateLoginMarker===true && !location.search && document.querySelector('#message').textContent==='Opening your identity provider...' && document.querySelector('#signIn').disabled && document.querySelector('#network').value==='newer-attempt'`))throw new Error('retired sign-in response navigated or changed newer attempt');
+ await js(`finishNewerLogin()`);
+ await until(()=>js(`!document.querySelector('#signIn').disabled && document.querySelector('#message').textContent.includes('Could not start')`),'newer sign-in owns retry after stale completion');
+ await js(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+ await delay(250);
+ await shot('account-stale-signin-retry-'+mode);
+ await js(`window.fetch=lateLoginFetch;document.querySelector('#network').value=${JSON.stringify(network)};document.querySelector('#loginForm').requestSubmit()`);
+ await until(()=>js(`document.querySelector('#deviceRows').textContent.includes('personal-laptop')`),'fresh login after retired response');
+ await js(`window.originalFetch=fetch`);
+
+ }
+
  // A failed logout must not say signed out or restore the previous rows.
  await js(`window.fetch=(input,options)=>input==='/account/api/logout'?Promise.resolve(new Response('{}',{status:503})):originalFetch(input,options);document.querySelector('#logout').click()`);
  await until(()=>js(`document.querySelector('#message').textContent.includes('Could not confirm sign-out')`),'failed sign-out accurately reported');

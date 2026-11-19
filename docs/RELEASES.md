@@ -1,5 +1,7 @@
 # Releases
 
+Latest source-only account-page fix: [sign-in response ownership](account-signin-response-ownership.md) retires late navigation/error/cleanup after sign-out and preserves a newer pending attempt. Real-Chrome old-source failure, three fresh complete browser repetitions and inspected retry pixels support the change. Full local race/vet pass. No control-service deployment, app release, Multies, provider or design/legal change.
+
 Latest source-only resolver fix: [forwarded-query TCP recovery](dns-forwarded-tcp-recovery.md) prevents repeated incomplete replies when upstream UDP requires TCP. Real local UDP/TCP socket regressions, response sizing, failure/deadline checks,20focused race repetitions and full local race/vet pass. Existing upstream choice, OS settings, app releases and native/device acceptance are unchanged.
 
 Latest source-only approval fix: [provider-retirement ownership](oidc-provider-retirement-ownership.md) makes node approval serialize with provider replacement and keeps active exchanges revocable. Four failing old-source HTTP cases now pass, alongside duplicate/replay, same-provider idempotence and fresh-current-provider persistence tests. Focused20race repetitions, full local race/vet and isolated Chrome pass. Hosted CI, live deployment and native/device acceptance are separate.
