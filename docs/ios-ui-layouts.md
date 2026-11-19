@@ -6,7 +6,7 @@ The actual iOS ContentView now delegates its visible content to MnetConnectionPa
 
 ## Render boundary
 
-`sh scripts/render-swiftui-layouts.sh` interprets only the production layout and a synthetic render harness on macOS, using NSHostingView and AppKit bitmap capture. It does not compile/link/install a new host or iOS app, avoiding a host executable's default ad-hoc signature. It does not invoke a simulator, signing tool, provisioning, an account API, preferences, NetworkExtension, provider installation or tunnel startup. The renderer's action closure fails immediately if called. Output is five synthetic-state PNGs in MNET_SWIFTUI_OUTPUT, collected by normal macOS CI as swiftui-component-previews.
+`sh scripts/render-swiftui-layouts.sh` interprets only the production layout and a synthetic render harness on macOS, using NSHostingView and AppKit bitmap capture. It does not compile/link/install a new host or iOS app, avoiding a host executable's default ad-hoc signature. It does not invoke a simulator, signing tool, provisioning, an account API, preferences, NetworkExtension, provider installation or tunnel startup. The renderer's action closure fails immediately if called. Output is six synthetic-state PNGs in MNET_SWIFTUI_OUTPUT, collected by normal macOS CI as swiftui-component-previews.
 
 The implementation is shared with production, not a separately authored mockup. The renderer is native macOS SwiftUI, not iOS. Actual output must be inspected before claiming even shared-component layout acceptance. macOS text fields/buttons, Dynamic Type handling, text metrics and intrinsic sizing can differ from iOS. Full iOS safe-area/navigation/keyboard/scroll/assistive-technology and device rendering remain unverified. No physical-device or VPN runtime investigation is selected.
 
@@ -40,8 +40,12 @@ Normal CI run44477503883 at76978fbccc7631ff9109153aa0ba20dacc14fe29 passed the i
 - [Current busy state](ui/multies/swiftui-busy-640.png)
 
 
-## Required-input preflight, awaiting current compiler/pixel result
+## Required-input preflight, compiler and hosted pixels verified
 
 Source review found that Connect saved non-secret settings and entered VPN-manager work even with an empty server/network. The explicit action now checks required input before save or manager access. Empty/whitespace-only server or network expands manual settings, focuses the corresponding field and shows a fixed inline explanation that nothing was saved or connected. Disconnect is not blocked by incomplete setup fields. This only classifies missing values; it does not normalize identifiers, authenticate a server or approve enrollment.
 
-A source-boundary regression first failed before the change and now passes. A native Swift policy test for empty/whitespace/exact-value behavior is added to normal CI, and the no-effect hosted renderer adds a sixth setup-required320 fixture. Current source-only wiring/layout/brand checks pass locally. Compiler, Swift policy execution, host pixels and focus behavior are not claimed passed until their actual output is available. Installed iOS focus/keyboard/safe-area behavior remains unverified regardless of host rendering.
+A source-boundary regression first failed before the change and now passes. Normal CI runs the native Swift policy test for empty/whitespace/exact-value behavior, SDK typecheck, hosted render and unsigned compile/link checks. All five CI jobs passed at83503de39981e69da3c0561372caef50987b14e5 ([run44490319807](https://github.com/MaisySen/Mnet/actions/runs/44490319807)).
+
+Artifact14512920751, SHA256273896b253885b5cb35b46cfaad7f324e3eeba6168494f095b3ec98b0f840c70, was downloaded, hash-verified and all six PNGs inspected. The required-server fixture is actually empty and its inline message fits320px. Pixel review caught and corrected an earlier inconsistent populated-server fixture before publication. The five existing states still fit their requested widths. These are native macOS shared-component pixels, not iOS runtime or Dynamic Type acceptance. Installed iOS focus, keyboard and safe-area behavior remain unverified.
+
+- [Required server guidance at320px](ui/multies/swiftui-setup-required-320.png)
