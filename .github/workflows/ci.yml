@@ -170,7 +170,7 @@ jobs:
       - name: native control-client credential redirect refusal
         run: go test -race -count=3 -timeout=5m ./internal/controlclient
       - name: native control-state private file and shape checks
-        run: go test -race -count=3 -timeout=5m ./internal/control -run 'TestControlState|TestStoreRejectsNullShape|TestOldObjectState|TestACLRequest|TestACLPolicy'
+        run: go test -race -count=3 -timeout=5m ./internal/control -run 'TestControlState|TestStoreRejectsNullShape|TestOldObjectState|TestACLRequest|TestACLPolicy|TestJoinKeyEncoding|TestRejoinRequiresSavedNodeCredential|TestExpiredRejoinNeedsFreshEnrollmentAuthorization'
       - name: native identity persistence and in-memory WireGuard IPC
         run: go test -race -count=1 -timeout=5m ./internal/daemon -run 'TestPrivateStateAtomicRoundTrip|TestStateRefusesLinkedIdentity|TestStateRejectsBrokenIdentity|TestStateRejectsIncompleteEnrollment|TestStateGeneratedIdentityReload|TestIdentityGenerationFailedSave|TestRoutingFailedSave|TestStartupConfigFailedSave|TestPendingApprovalURLNotLogged|TestJoinIncompleteCredential|TestJoinAcceptedCredential|TestEnrolledJoinTarget|TestFreshJoinTarget|TestStatsReadsActualDeviceIPC|TestParseWireGuardPeerStats'
       - name: native local key expiry and daemon restart

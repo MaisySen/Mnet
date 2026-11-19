@@ -321,9 +321,11 @@ func nextMeshIP(cursor, max int, used map[string]bool) (int, string, error) {
 	return 0, "", fmt.Errorf("mesh address space exhausted")
 }
 
+// The encoded key is also an identity index. Accept one canonical spelling
+// so equivalent base64 forms cannot allocate an alias of an existing node.
 func validPubKey(pk string) bool {
-	b, err := base64.StdEncoding.DecodeString(pk)
-	return err == nil && len(b) == 32
+	b, err := base64.StdEncoding.Strict().DecodeString(pk)
+	return err == nil && len(b) == 32 && base64.StdEncoding.EncodeToString(b) == pk
 }
 
 // Join registers (or refreshes) a node. With a valid auth key the node is
