@@ -37,6 +37,10 @@ type Status struct {
 
 // Status renders current state.
 func (d *Daemon) Status() *Status {
+	// Map/expiry application publishes device authorization then status under
+	// applyMu. Take the same barrier before snapshotting, not after, or a reader
+	// can wait for completed removal yet return its earlier cached up state.
+	d.applyMu.Lock()
 	d.mu.Lock()
 	st := &Status{
 		Status:      d.status,
@@ -56,7 +60,6 @@ func (d *Daemon) Status() *Status {
 		st.Network = d.lastMap.Network.Name
 	}
 	d.mu.Unlock()
-	d.applyMu.Lock()
 	st.DNSReady = d.dns != nil && d.dns.Ready()
 	if d.localDNS != nil {
 		st.DNSPackets = d.localDNS.Diagnostics()
