@@ -56,3 +56,10 @@ Full local build, Windows/Darwin cross-build, vet, vulnerability scan, uncached 
 ## Still open
 
 The real Multies authorization/enrollment/revocation bridge, physical Linux/local-reclaim acceptance, Wayland/Windows/macOS attended surfaces and actual OS behavior, consumer file destination/approval, recording consent/retention and signed distribution remain separate. No production account/service, Multies, TestFlight, signing or release change is made by this source checkpoint.
+
+
+## First hosted GUI result and fixture correction
+
+The original attended checkpoint `c6b9caf` finished with four normal jobs successful (Go, Windows, macOS and kernel-vpn) and session-validation failed. It did not pass normal CI: its [session-validation job](https://github.com/MaisySen/Mnet/actions/runs/44587709286/job/135785042473) passed the preceding existing live session proof, then failed the new GUI proof while waiting for Pause. The [retained synthetic artifact](https://github.com/MaisySen/Mnet/actions/runs/44587709286/artifacts/14559689884) shows the hosted 606x341 native window had its button band at y268-312. The driver clicked y316 (`height-25`), below the button. No Pause result occurred; the grant correctly remained allowed until test cleanup. This is failed acceptance evidence, not a product pass or a held-input recovery result.
+
+The corrective fixture changes only its local action hit point to an interior row shared by the inspected local GTK3 and hosted GTK4 layouts. It checks both exact observed button rectangles before running; gate, real XTEST, focused-Escape and joined-teardown assertions are retained. Local corrected runs passed at ordinary, 1.2 and 1.4 text scale, plus a fresh ordinary run with the pixel-rectangle guards. This is not a general high-DPI/accessibility claim or an actual local GTK4 run. Fresh hosted corrected verification remains required. No product timeout, grant policy, launch or workflow permission/trigger change is made to address this fixture mismatch. The failed first run is preserved and not blindly rerun.

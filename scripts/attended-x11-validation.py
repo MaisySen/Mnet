@@ -1,6 +1,17 @@
 #!/usr/bin/env python3
 """Synthetic attended-host proof on an owned disposable X display only."""
 import subprocess,os,time,pathlib,tempfile,shutil,signal
+def action_point(width,height,stage):
+ return width-{'pause':225,'revoke':75}[stage],round(height*.86)
+
+# Exact observed button rectangles from retained local GTK3 and hosted GTK4
+# pixels. The old bottom-edge point is outside the hosted Pause rectangle.
+for width,height,pause,revoke in [(564,225,(276,185,413,218),(419,185,557,218)),(606,341,(216,268,391,312),(403,268,577,312))]:
+ for stage,rect in [('pause',pause),('revoke',revoke)]:
+  px,py=action_point(width,height,stage)
+  assert rect[0]<px<rect[2] and rect[1]<py<rect[3], 'fixture action misses inspected native button'
+assert not (268<341-25<312), 'original hosted mismatch no longer represented'
+
 os.chdir(pathlib.Path(__file__).resolve().parent.parent)
 for command in ['go','Xvfb','xdotool','import']:
  if shutil.which(command) is None:raise SystemExit('Missing local fixture dependency: '+command)
@@ -50,12 +61,13 @@ try:
      d=dict(line.split('=',1) for line in geo.splitlines() if '=' in line);w=int(d['WIDTH']);h=int(d['HEIGHT'])
      screenshot(wid,stage)
      # Inspect retained pixels too: current native info layout is End, Pause, Revoke.
-     # State assertions fail if a toolkit layout change selects a different action.
+     # The lower 86% row lies inside both inspected GTK3/GTK4 button bands;
+     # h-25 missed the taller GTK4 buttons. State assertions remain authoritative.
      if stage=='end-held':
       subprocess.run(['xdotool','windowfocus',wid,'key','Escape'],env=env,check=True)
      else:
-      offset={'pause':w-225,'revoke':w-75}[stage]
-      subprocess.run(['xdotool','windowraise',wid,'mousemove','--sync','--window',wid,str(offset),str(h-25),'click','1'],env=env,check=True)
+      px,py=action_point(w,h,stage)
+      subprocess.run(['xdotool','windowraise',wid,'mousemove','--sync','--window',wid,str(px),str(py),'click','1'],env=env,check=True)
      seen.add(stage)
    time.sleep(.02)
   result=test.wait(timeout=3)
