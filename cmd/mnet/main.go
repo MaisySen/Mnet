@@ -135,7 +135,7 @@ func main() {
 		}
 	case "ip":
 		st := status(hc)
-		if st.IPv4 == "" {
+		if st.Status != "up" || st.IPv4 == "" {
 			fatal("not up")
 		}
 		fmt.Println(st.IPv4)
