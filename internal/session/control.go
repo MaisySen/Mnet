@@ -201,28 +201,42 @@ func (c *HostControl) End() {
 // ViewerControl accepts only host-originated status on the dedicated stream.
 // It never treats a viewer request, a chat message or a local UI label as a grant.
 type ViewerControl struct {
-	ended    bool
-	notifyMu sync.Mutex
-	mu       sync.Mutex
-	status   ControlStatus
-	mux      *Mux
-	stream   uint32
-	attached bool
-	onStatus func(ControlStatus)
+	ended         bool
+	notifyMu      sync.Mutex
+	notifying     bool // one callback drain, never a lock across app code
+	notifyPending bool // coalesce to the current snapshot, not captured states
+	mu            sync.Mutex
+	status        ControlStatus
+	mux           *Mux
+	stream        uint32
+	attached      bool
+	onStatus      func(ControlStatus)
 }
 
 func NewViewerControl(callback func(ControlStatus)) *ViewerControl {
 	return &ViewerControl{status: ControlStatus{State: "unavailable"}, onStatus: callback}
 }
 func (c *ViewerControl) Snapshot() ControlStatus { c.mu.Lock(); defer c.mu.Unlock(); return c.status }
-func (c *ViewerControl) notify(_ ControlStatus) {
+func (c *ViewerControl) notify() {
 	c.notifyMu.Lock()
-	defer c.notifyMu.Unlock()
-	// A local pending notification can race an incoming host answer. Always
-	// publish the latest snapshot, serially, never a captured older state.
-	if c.onStatus != nil {
-		c.onStatus(c.Snapshot())
+	c.notifyPending = true
+	if c.notifying {
+		c.notifyMu.Unlock()
+		return
 	}
+	c.notifying = true
+	for c.notifyPending {
+		c.notifyPending = false
+		c.notifyMu.Unlock()
+		// Reentrant Cancel or End queues the latest status for this same drain.
+		// Never wait for app code while holding a notification or state lock.
+		if c.onStatus != nil {
+			c.onStatus(c.Snapshot())
+		}
+		c.notifyMu.Lock()
+	}
+	c.notifying = false
+	c.notifyMu.Unlock()
 }
 func (c *ViewerControl) Handle(s Stream) {
 	c.mu.Lock()
@@ -276,9 +290,8 @@ func (c *ViewerControl) Handle(s Stream) {
 		}
 		c.status.State = msg.State
 		c.status.Revision = msg.Revision
-		snapshot := c.status
 		c.mu.Unlock()
-		c.notify(snapshot)
+		c.notify()
 	}
 }
 func (c *ViewerControl) Request() error {
@@ -295,9 +308,8 @@ func (c *ViewerControl) Request() error {
 	c.status.Request = token
 	c.status.State = "pending"
 	err := c.mux.controlJSON(c.stream, controlMessage{Kind: controlKind, Session: c.status.Session, Request: token, State: "request"})
-	snapshot := c.status
 	c.mu.Unlock()
-	c.notify(snapshot)
+	c.notify()
 	if err != nil {
 		c.End()
 		c.mux.Close()
@@ -312,9 +324,8 @@ func (c *ViewerControl) Cancel() error {
 	}
 	c.status.State = "declined"
 	err := c.mux.controlJSON(c.stream, controlMessage{Kind: controlKind, Session: c.status.Session, Request: c.status.Request, State: "cancel"})
-	snapshot := c.status
 	c.mu.Unlock()
-	c.notify(snapshot)
+	c.notify()
 	if err != nil {
 		c.End()
 		c.mux.Close()
@@ -333,9 +344,12 @@ func (c *ViewerControl) BindInput(ev *InputEvent) error {
 }
 func (c *ViewerControl) End() {
 	c.mu.Lock()
+	if c.ended {
+		c.mu.Unlock()
+		return
+	}
 	c.ended = true
 	c.status.State = "unavailable"
-	snapshot := c.status
 	c.mu.Unlock()
-	c.notify(snapshot)
+	c.notify()
 }

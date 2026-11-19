@@ -179,7 +179,7 @@ jobs:
         run: go test -race -count=10 -timeout=3m ./internal/daemon -run '^TestClosedNode|^TestClose|^TestPendingTunnel|^TestDownReleasesPending'
       - name: native OS TCP session and file transfer
         run: |
-          go test -race -count=3 -timeout=5m ./internal/session -run 'TestSessionOverTCP|TestQueuedFileSeesStartupOptions|TestRepeatedFileTransfersReleaseStreams|TestFrameTraceBoundedMetadataOnly|TestTrace|TestOwnedFile|TestSendFileSource'
+          go test -race -count=3 -timeout=5m ./internal/session -run 'TestViewerControlCallback|TestSessionOverTCP|TestQueuedFileSeesStartupOptions|TestRepeatedFileTransfersReleaseStreams|TestFrameTraceBoundedMetadataOnly|TestTrace|TestOwnedFile|TestSendFileSource'
           go test -race -count=30 -timeout=3m ./internal/session -run '^TestFileReceiverClosed|^TestFileReceiverCloseAt|^TestRecv|^TestMuxClose|^TestHostTerminal|^TestMuxInbound|^TestOpenPreflight'
       - name: native mobile and headless session ownership (loopback only)
         run: |
