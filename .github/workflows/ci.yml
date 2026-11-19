@@ -108,6 +108,7 @@ jobs:
           node-version: '22'
       - name: consumer journey prototype model and browser simulation
         run: |
+          node --test scripts/chrome-pipe-diagnostics.test.mjs
           node --test prototype/model.test.mjs
           node prototype/verify.mjs
       - name: isolated real Chrome admin login and logout

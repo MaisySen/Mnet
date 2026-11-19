@@ -1,12 +1,14 @@
 // Local-only browser verification. Requires Node22+ and Chrome; no user profile is loaded.
 import { createServer } from 'node:http';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
+import {readFileSync} from 'node:fs';
 import { mkdtemp, readFile, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import {chromeStartupDiagnostics} from '../scripts/chrome-startup-diagnostics.mjs';
+import {chromePipeDiagnostics,chromeVersionCategory,chromeProcessState} from '../scripts/chrome-pipe-diagnostics.mjs';
 const here=dirname(fileURLToPath(import.meta.url));
 const files=new Map([['/','index.html'],['/index.html','index.html'],['/style.css','style.css'],['/app.mjs','app.mjs'],['/model.mjs','model.mjs']]);
 const server=createServer(async(req,res)=>{const file=files.get(req.url);if(!file){res.writeHead(404);res.end();return;}try{res.setHeader('content-type',file.endsWith('.mjs')?'text/javascript':file.endsWith('.css')?'text/css':'text/html');res.end(await readFile(join(here,file)));}catch{res.writeHead(500);res.end();}});
@@ -17,6 +19,21 @@ const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>k!=='LD_P
 const chrome=spawn(process.env.CHROME_BIN||'google-chrome',['--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--disable-background-networking','--no-first-run','--remote-debugging-pipe',`--user-data-dir=${profile}`,'about:blank'],{stdio:['ignore','ignore','pipe','pipe','pipe'],env,detached:true});
 let next=0,buf='',session,errors=[],transportFailure,responseSeen=false;const pending=new Map();
 const startup=chromeStartupDiagnostics();
+const pipeDiagnostics=chromePipeDiagnostics();
+chrome.once('spawn',()=>pipeDiagnostics.spawned());
+chrome.stdio[3].once('end',()=>pipeDiagnostics.sendEnded());
+chrome.stdio[3].once('close',()=>pipeDiagnostics.sendClosed());
+chrome.stdio[4].once('end',()=>pipeDiagnostics.receiveEnded());
+chrome.stdio[4].once('close',()=>pipeDiagnostics.receiveClosed());
+function startupContext(){
+ let browserVersion='unavailable',childState='unavailable';
+ try{browserVersion=chromeVersionCategory(execFileSync(process.env.CHROME_BIN||'google-chrome',['--version'],{env,timeout:2000,maxBuffer:4096,stdio:['ignore','pipe','ignore']}));}catch{}
+ try{childState=chromeProcessState(readFileSync(`/proc/${chrome.pid}/stat`,'utf8'));}catch{}
+ const nodeVersion=/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(process.version)?process.version:'unavailable';
+ const platform=['linux','darwin','win32'].includes(process.platform)?process.platform:'other';
+ const architecture=['x64','arm64'].includes(process.arch)?process.arch:'other';
+ return `browserVersion=${browserVersion} nodeVersion=${nodeVersion} platform=${platform} architecture=${architecture} childState=${childState} ${pipeDiagnostics.summary()}`;
+}
 // Drain Chrome diagnostics so a full stderr pipe cannot freeze the process.
 // Never dump environment/browser output into public logs on transport failure.
 chrome.stderr.on('data',chunk=>startup.feed(chunk));
@@ -25,8 +42,8 @@ chrome.on('error',()=>failTransport(Error('Chrome could not start')));
 chrome.on('exit',()=>failTransport(Error('Chrome exited during verification')));
 for(const pipe of [chrome.stdio[3],chrome.stdio[4]])pipe.on('error',()=>failTransport(Error('Chrome debugging transport failed')));
 const exited=new Promise(r=>chrome.once('close',r));
-chrome.stdio[4].setEncoding('utf8');chrome.stdio[4].on('data',s=>{responseSeen=true;buf+=s;let i;while((i=buf.indexOf('\0'))>=0){const m=JSON.parse(buf.slice(0,i));buf=buf.slice(i+1);if(m.id){const p=pending.get(m.id);if(p){pending.delete(m.id);clearTimeout(p.timer);m.error?p.reject(Error(JSON.stringify(m.error))):p.resolve(m.result);}}else if(m.method==='Runtime.exceptionThrown'){errors.push(m.params.exceptionDetails.text);}}});
-function send(method,params={},sid=session){const id=++next;return new Promise((resolve,reject)=>{if(transportFailure){reject(transportFailure);return;}const timer=setTimeout(()=>{pending.delete(id);reject(Error('CDP timeout: '+method+' responseSeen='+responseSeen+' childExited='+(chrome.exitCode!==null||chrome.signalCode!==null)+' '+startup.summary()));},15000);pending.set(id,{resolve,reject,timer});chrome.stdio[3].write(JSON.stringify({id,method,params,...(sid?{sessionId:sid}:{})})+'\0');});}
+chrome.stdio[4].setEncoding('utf8');chrome.stdio[4].on('data',s=>{pipeDiagnostics.received(s);responseSeen=true;buf+=s;let i;while((i=buf.indexOf('\0'))>=0){const m=JSON.parse(buf.slice(0,i));buf=buf.slice(i+1);if(m.id){const p=pending.get(m.id);if(p){pending.delete(m.id);clearTimeout(p.timer);m.error?p.reject(Error(JSON.stringify(m.error))):p.resolve(m.result);}}else if(m.method==='Runtime.exceptionThrown'){errors.push(m.params.exceptionDetails.text);}}});
+function send(method,params={},sid=session){const id=++next;return new Promise((resolve,reject)=>{if(transportFailure){reject(transportFailure);return;}const timer=setTimeout(()=>{pending.delete(id);reject(Error('CDP timeout: '+method+' responseSeen='+responseSeen+' childExited='+(chrome.exitCode!==null||chrome.signalCode!==null)+' '+startup.summary()+' '+startupContext()));},15000);pending.set(id,{resolve,reject,timer});pipeDiagnostics.writing();chrome.stdio[3].write(JSON.stringify({id,method,params,...(sid?{sessionId:sid}:{})})+'\0',error=>pipeDiagnostics.wrote(error));});}
 const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(r.exceptionDetails.text);return r.result.value;};
 const click=async a=>assert.equal(await evaluate(`(()=>{const b=document.querySelector('[data-action="${a}"]');if(!b)return false;b.scrollIntoView({block:'center'});b.click();return true;})()`),true,'missing action '+a);
 const setup=['SIGN_IN','RETURN','CHOOSE','ADD','ALLOW','CHECK','VERIFY','DONE'];
@@ -69,5 +86,5 @@ try{
  await send('Emulation.setEmulatedMedia',{features:[{name:'forced-colors',value:'active'}]});
  assert.equal(await evaluate(`matchMedia('(forced-colors:active)').matches && getComputedStyle(document.querySelector('.primary')).borderTopStyle==='solid' && parseFloat(getComputedStyle(document.querySelector('.primary')).borderTopWidth)>=1`),true,'forced-colors action boundary absent');
  await send('Emulation.setEmulatedMedia',{features:[]});
- assert.deepEqual(errors,[],'browser exceptions');console.log(`PASS: ${checked} screen/width checks, no horizontal overflow, minimum44px buttons, heading focus/visibility after scrolled actions and no browser exceptions.`);
+ assert.deepEqual(errors,[],'browser exceptions');console.log('Chrome startup diagnostics: '+startupContext());console.log(`PASS: ${checked} screen/width checks, no horizontal overflow, minimum44px buttons, heading focus/visibility after scrolled actions and no browser exceptions.`);
 }finally{try{process.kill(-chrome.pid,'SIGKILL');}catch{}server.close();await exited;await rm(profile,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
