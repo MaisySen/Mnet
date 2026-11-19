@@ -2,7 +2,7 @@
 
 ## Current UI layout checkpoint
 
-The November19 home/setup/sharing implementation adds `AppUi` screen furniture, required setup guidance, peer-address validation and service-owned hosting state. Fresh local functional suites pass164 selected cases plus78VPN cases. These suites still do not validate app resources or pixels. A separate [packaged-resource native-raster layout suite](../../docs/android-ui-layouts.md) renders the actual implemented Views/resources and covers compact/enlarged-text scroll reachability and the fixed Stop footer. Its pixels remain simulated Android layout evidence, not phone/emulator/JNI/consent acceptance. Older counts and results below are historical checkpoints.
+The November19 home/setup/sharing implementation adds `AppUi` screen furniture, required setup guidance, peer-address validation and service-owned hosting state. Fresh local functional suites pass168 selected cases plus78VPN cases. These suites still do not validate app resources or pixels. A separate [packaged-resource native-raster layout suite](../../docs/android-ui-layouts.md) renders the actual implemented Views/resources and covers compact/enlarged-text scroll reachability and the fixed Stop/End footers, viewer control states and chat. Its pixels remain simulated Android layout evidence, not phone/emulator/JNI/consent acceptance. Older counts and results below are historical checkpoints.
 
 ## Run
 

@@ -59,7 +59,7 @@ public class ControlUiTest {
     assertEquals(mode.equals("pending"),button.getText().toString().equals("Cancel request"));
     assertEquals(mode.equals("available")||mode.equals("pending")||mode.equals("declined")||mode.equals("revoked"),button.isEnabled());
     assertFalse(status.getText().toString().isEmpty());
-    for(int width:new int[]{320,390}){render(root,"viewer-"+mode,width);assertTrue(button.getHeight()>=48);assertTrue(status.getBottom()<=button.getTop());assertTrue(button.getRight()<=width);assertTrue(end.getHeight()>=48);assertTrue(end.getTop()>=0);assertTrue(end.getBottom()<=((View)field(activity,"screen")).getTop());}
+    for(int width:new int[]{320,390}){render(root,"viewer-"+mode,width);assertTrue(button.getHeight()>=48);assertTrue(status.getBottom()<=button.getTop());assertTrue(button.getRight()<=width);assertTrue(end.getHeight()>=48);assertTrue(end.getTop()>=0);android.graphics.Rect endRect=new android.graphics.Rect();end.getDrawingRect(endRect);((ViewGroup)root).offsetDescendantRectToMyCoords(end,endRect);assertTrue(endRect.bottom<=root.getHeight());assertTrue(endRect.top>=((ViewGroup)root).getChildAt(0).getBottom());}
    }
    state(activity,"available");button.performClick();
    until=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(2);while(viewer.requests==0&&System.nanoTime()<until){idle();Thread.sleep(1);}assertEquals(1,viewer.requests);

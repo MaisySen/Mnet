@@ -24,7 +24,8 @@ public class ViewerActivity extends Activity {
     private ImageView screen;
     private TextView chat;
     private EditText chatIn;
-    private TextView controlStatus;
+    private TextView controlStatus, sessionStatus, emptyScreen;
+    private Button sendChat;
     private Button controlRequest;
     private Button endViewing;
     private mobile.SessionConnect pendingConnect;
@@ -43,30 +44,42 @@ public class ViewerActivity extends Activity {
             return;
         }
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout footer = AppUi.column(this);
+        LinearLayout root = AppUi.screen(this, footer);
+        AppUi.text(root, "Screen session", 26, AppUi.INK, true);
+        TextView peer = AppUi.text(root, peerIp, 14, AppUi.MUTED, false);
+        peer.setMaxLines(1);
+        peer.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+        AppUi.gap(root, 8);
+        sessionStatus = AppUi.text(root, "Connecting...", 16, AppUi.ACCENT, true);
+        sessionStatus.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        AppUi.gap(root, 16);
 
-        endViewing=new Button(this);
-        endViewing.setText("End viewing");
-        endViewing.setMinHeight((int)(48*getResources().getDisplayMetrics().density));
-        endViewing.setOnClickListener(v->{stopViewing();finish();});
-        root.addView(endViewing);
-
+        android.widget.FrameLayout picture = new android.widget.FrameLayout(this);
+        picture.setBackground(AppUi.shape(this, android.graphics.Color.rgb(22,43,51), 0));
+        picture.setClipToOutline(true);
+        int screenHeight = getResources().getConfiguration().screenHeightDp;
+        int pictureHeight = AppUi.dp(this, Math.max(200, Math.min(480, Math.round(screenHeight * .52f))));
+        root.addView(picture, new LinearLayout.LayoutParams(-1, pictureHeight));
         screen = new ImageView(this);
         screen.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
-        root.addView(screen, sp);
+        screen.setContentDescription("Remote screen. Input requires the host's separate approval.");
+        picture.addView(screen, new android.widget.FrameLayout.LayoutParams(-1,-1));
+        emptyScreen = new TextView(this);
+        emptyScreen.setText("Waiting for a screen\nThe host may need to approve viewing.");
+        emptyScreen.setTextColor(android.graphics.Color.WHITE);
+        emptyScreen.setTextSize(16);
+        emptyScreen.setGravity(android.view.Gravity.CENTER);
+        int inset=AppUi.dp(this,24);emptyScreen.setPadding(inset,inset,inset,inset);
+        picture.addView(emptyScreen,new android.widget.FrameLayout.LayoutParams(-1,-1));
+        AppUi.gap(root, 16);
 
-        controlStatus=new TextView(this);
-        controlStatus.setTextSize(14);
-        controlStatus.setPadding(16,8,16,8);
-        controlStatus.setText("View only. Control is unavailable until a compatible host responds.");
-        root.addView(controlStatus);
-        controlRequest=new Button(this);
-        controlRequest.setText("Request control");
+        LinearLayout controls = AppUi.card(root);
+        AppUi.text(controls, "Remote control", 20, AppUi.INK, true);
+        controlStatus = AppUi.text(controls, "View only. Control is unavailable until a compatible host responds.", 14, AppUi.MUTED, false);
+        controlStatus.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        controlRequest = AppUi.button(controls, "Request control", false);
         controlRequest.setEnabled(false);
-        controlRequest.setMinHeight((int)(48*getResources().getDisplayMetrics().density));
         controlRequest.setOnClickListener(v->{
             SessionViewer viewer=viewers.current();if(viewer==null)return;
             boolean cancel=controlPending;
@@ -76,39 +89,45 @@ public class ViewerActivity extends Activity {
                 catch(Exception unavailable){reconnects.post(()->{if(viewers.current()==viewer)applyControl("unavailable");});}
             },"session-control").start();
         });
-        root.addView(controlRequest);
+        AppUi.gap(root, 16);
 
-        chat = new TextView(this);
-        chat.setTypeface(android.graphics.Typeface.MONOSPACE);
-        chat.setTextSize(11);
-        chat.setMaxLines(4);
-        root.addView(chat);
-
-        LinearLayout bar = new LinearLayout(this);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout messages = AppUi.card(root);
+        Button chatToggle = AppUi.button(messages, "Open session chat", false);
+        LinearLayout chatPanel = AppUi.column(this);
+        messages.addView(chatPanel, new LinearLayout.LayoutParams(-1,-2));
+        chatPanel.setVisibility(android.view.View.GONE);
+        chatToggle.setOnClickListener(v -> {
+            boolean open = chatPanel.getVisibility() != android.view.View.VISIBLE;
+            chatPanel.setVisibility(open ? android.view.View.VISIBLE : android.view.View.GONE);
+            chatToggle.setText(open ? "Hide session chat" : "Open session chat");
+        });
+        AppUi.gap(chatPanel, 12);
+        chat = AppUi.text(chatPanel, "", 14, AppUi.MUTED, false);
+        chat.setMaxLines(6);
+        chat.setTextIsSelectable(true);
+        chat.setMovementMethod(new android.text.method.ScrollingMovementMethod());
         chatIn = new EditText(this);
-        LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        bar.addView(chatIn, ep);
-        Button send = new Button(this);
-        send.setText("Send");
-        send.setOnClickListener(v -> {
+        chatIn.setHint("Message the other device");
+        chatIn.setTextSize(16);chatIn.setTextColor(AppUi.INK);chatIn.setHintTextColor(AppUi.MUTED);
+        chatIn.setMinHeight(AppUi.dp(this,52));
+        chatIn.setMaxLines(4);
+        chatIn.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        chatPanel.addView(chatIn, new LinearLayout.LayoutParams(-1,-2));
+        sendChat = AppUi.button(chatPanel, "Send message", false);
+        sendChat.setEnabled(false);
+        sendChat.setOnClickListener(v -> {
             String t = chatIn.getText().toString().trim();
             SessionViewer viewer = viewers.current();
             if (!t.isEmpty() && viewer != null) {
                 new Thread(() -> {
-                    try {
-                        viewer.sendChat(t);
-                    } catch (Exception ignored) {
-                    }
+                    try { viewer.sendChat(t); }
+                    catch (Exception ignored) { }
                 }).start();
                 chatIn.setText("");
             }
         });
-        bar.addView(send);
-        root.addView(bar);
-        ContentInsets.install(root);
-        setContentView(root);
+        endViewing = AppUi.button(footer, "End viewing", false);
+        endViewing.setOnClickListener(v->{stopViewing();finish();});
 
         screen.setOnTouchListener((v, ev) -> {
             SessionViewer viewer = viewers.current();
@@ -179,6 +198,9 @@ public class ViewerActivity extends Activity {
         if (userClosed || isFinishing()) return;
         ViewerGate.Ticket attempt = viewers.begin();
         if (attempt == null) return;
+        sessionStatus.setText("Connecting...");
+        emptyScreen.setVisibility(android.view.View.VISIBLE);
+        emptyScreen.setText("Waiting for a screen\nThe host may need to approve viewing.");
         Node node=MnetVpnService.currentNode();
         if(node==null){failed(attempt,"connect the mesh first");return;}
         final mobile.SessionConnect connecting;
@@ -200,6 +222,8 @@ public class ViewerActivity extends Activity {
                         return;
                     }
                     retryMs = 1000;
+                    sessionStatus.setText(frameW > 0 ? "Viewing screen" : "Connected. Waiting for screen...");
+                    sendChat.setEnabled(true);
                     try{applyControl(new JSONObject(connected.controlStatus()).optString("state"));}
                     catch(Exception unavailable){applyControl("unavailable");}
                     appendChat("connected to " + peerIp);
@@ -217,6 +241,10 @@ public class ViewerActivity extends Activity {
         applyControl("unavailable");
         frameW = frameH = 0;
         screen.setImageDrawable(null);
+        sendChat.setEnabled(false);
+        sessionStatus.setText(message.equals("connect the mesh first") ? "Network connection needed" : "Connection interrupted");
+        emptyScreen.setText(message.equals("connect the mesh first") ? "Connect Mnet to your network first.\nEnd viewing to return to setup." : "No screen to display.\nCheck that the host is ready to share.");
+        emptyScreen.setVisibility(android.view.View.VISIBLE);
         closeViewer(viewers.end(attempt));
         appendChat(message);
         scheduleReconnect();
@@ -243,6 +271,8 @@ public class ViewerActivity extends Activity {
                     frameW = bmp.getWidth();
                     frameH = bmp.getHeight();
                     screen.setImageBitmap(bmp);
+                    emptyScreen.setVisibility(android.view.View.GONE);
+                    sessionStatus.setText("Viewing screen");
                 });
             }
             @Override
@@ -304,6 +334,9 @@ public class ViewerActivity extends Activity {
         if(screen!=null)screen.setImageDrawable(null);
         if(controlRequest!=null)applyControl("unavailable");
         if(endViewing!=null)endViewing.setEnabled(false);
+        if(sendChat!=null)sendChat.setEnabled(false);
+        if(sessionStatus!=null)sessionStatus.setText("Viewing ended");
+        if(emptyScreen!=null){emptyScreen.setVisibility(android.view.View.VISIBLE);emptyScreen.setText("Viewing ended");}
     }
 
     @Override

@@ -62,6 +62,30 @@ public class ViewerActivityTest {
   assertTrue(viewer.closed);
  }
 
+ @Test public void realNestedRootTapAndScrollDoNotConfuseRemoteInput()throws Exception{
+  mobile.SessionViewer viewer=new mobile.SessionViewer();
+  java.util.concurrent.atomic.AtomicReference<mobile.ViewerCallbacks> callbacks=new java.util.concurrent.atomic.AtomicReference<>();
+  java.util.concurrent.atomic.AtomicReference<mobile.ControlCallbacks> controls=new java.util.concurrent.atomic.AtomicReference<>();
+  MnetVpnService.node=new mobile.Node(){@Override public mobile.SessionViewer connectSessionWithControl(String peer,mobile.ViewerCallbacks cb,mobile.ControlCallbacks control){callbacks.set(cb);controls.set(control);return viewer;}};
+  ActivityController<ViewerActivity> controller=Robolectric.buildActivity(ViewerActivity.class,new Intent().putExtra("peer_ip","100.64.0.2")).setup();
+  try{
+   ViewerActivity activity=controller.get();
+   @SuppressWarnings("unchecked") ViewerGate<mobile.SessionViewer> gate=(ViewerGate<mobile.SessionViewer>)field(activity,"viewers");
+   long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+   while(gate.current()==null&&System.nanoTime()<deadline){Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();Thread.sleep(1);}assertSame(viewer,gate.current());
+   ViewGroup root=(ViewGroup)((ViewGroup)activity.findViewById(android.R.id.content)).getChildAt(0);
+   root.measure(View.MeasureSpec.makeMeasureSpec(390,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(640,View.MeasureSpec.EXACTLY));root.layout(0,0,390,640);
+   frame(callbacks.get(),400,400);controls.get().onControl("{\"state\":\"allowed\"}");Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+   ImageView screen=(ImageView)field(activity,"screen");android.graphics.Rect bounds=new android.graphics.Rect();screen.getDrawingRect(bounds);root.offsetDescendantRectToMyCoords(screen,bounds);
+   float x=bounds.exactCenterX(),y=bounds.exactCenterY();
+   long now=android.os.SystemClock.uptimeMillis();
+   for(int action:new int[]{MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP}){MotionEvent event=MotionEvent.obtain(now,now+10,action,x,y,0);root.dispatchTouchEvent(event);event.recycle();}
+   deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(2);while(viewer.input.size()<1&&System.nanoTime()<deadline)Thread.sleep(1);assertEquals(1,viewer.input.size());
+   for(int i=0;i<4;i++){MotionEvent event=MotionEvent.obtain(now+100,now+100+i*20,new int[]{MotionEvent.ACTION_DOWN,MotionEvent.ACTION_MOVE,MotionEvent.ACTION_MOVE,MotionEvent.ACTION_UP}[i],x,y-new int[]{0,50,150,150}[i],0);root.dispatchTouchEvent(event);event.recycle();}
+   Thread.sleep(50);assertEquals("scroll must not become a remote tap",1,viewer.input.size());
+   assertTrue("whole viewer must actually scroll",((android.widget.ScrollView)root.getChildAt(0)).getScrollY()>0);
+  }finally{controller.pause().stop().destroy();MnetVpnService.node=null;}
+ }
  private static Object field(Object object,String name)throws Exception{java.lang.reflect.Field f=object.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(object);}
  @Test public void visibleStopClosesLateUnpublishedViewerWithoutReconnect()throws Exception{
   java.util.concurrent.CountDownLatch entered=new java.util.concurrent.CountDownLatch(1),release=new java.util.concurrent.CountDownLatch(1);

@@ -1,10 +1,18 @@
 # Mnet project status
 
-## Current evidence checkpoint (2026-11-19, Australia/Sydney)
+## Current UI work (2026-11-19 morning, Australia/Sydney)
+
+The owner deferred Multies changes and selected Mnet UI/UX/layout work. Multies remains untouched. The actual Android home/setup/sharing checkpoint `5637b9d4c8a65649b9f516d299d62d430255b1b5` has [all-five general CI success](https://github.com/MaisySen/Mnet/actions/runs/44426342827). Its automatically triggered combined native workflow was cancelled, not treated as new acceptance.
+
+The viewer follow-up adds explicit waiting/missing-network/interrupted states, the same native styling, expandable chat and fixed End viewing. Fresh local evidence:168 selected framework cases,78VPN framework cases, nine actual-resource native-raster layout fixtures and full production Java/resource/min-API24 dex compilation. [Inspected images, reproduction and limits](android-ui-layouts.md). Viewer follow-up general CI is collected separately; local checks do not imply it already passed.
+
+These are implemented application screens with simulated Android layout pixels, not a new signed APK, phone screenshot, Play beta, live workspace integration or native-network/control acceptance. Single-line inputs scroll horizontally; lower controls and fixed stop/end actions are covered at320dp/160% text and landscape. iOS/desktop UI and the product gates below remain separate.
+
+## Source-safety evidence from overnight (2026-11-19, Australia/Sydney)
 
 This section supersedes older uses of "latest", "current source" and "pending" below. The rest of this page is a dated history, not an up-to-date release verdict. Source improvements are not changes to the preserved Android binaries or hosted test deployment.
 
-The latest fully collected source checkpoint is `0a35762b803a79de37bcfb5fca82b3bce1c03a49`: [general CI](https://github.com/MaisySen/Mnet/actions/runs/44306472522) has all five jobs successful. The first macOS job never acquired a hosted runner and ran zero steps; its [capacity failure](https://github.com/MaisySen/Mnet/actions/runs/44306472522/job/134809225048) is retained. One same-configuration macOS-only retry [completed successfully](https://github.com/MaisySen/Mnet/actions/runs/44306472522/job/134826268185). The other four results were carried forward, not rerun. [Windows first-attempt evidence](https://github.com/MaisySen/Mnet/actions/runs/44306472522/job/134809224362) remains the Windows source checkpoint.
+The overnight transport/source-safety checkpoint is `0a35762b803a79de37bcfb5fca82b3bce1c03a49`: [general CI](https://github.com/MaisySen/Mnet/actions/runs/44306472522) has all five jobs successful. The first macOS job never acquired a hosted runner and ran zero steps; its [capacity failure](https://github.com/MaisySen/Mnet/actions/runs/44306472522/job/134809225048) is retained. One same-configuration macOS-only retry [completed successfully](https://github.com/MaisySen/Mnet/actions/runs/44306472522/job/134826268185). The other four results were carried forward, not rerun. [Windows first-attempt evidence](https://github.com/MaisySen/Mnet/actions/runs/44306472522/job/134809224362) remains the Windows source checkpoint.
 
 ### Newer implemented and verified source
 

@@ -131,4 +131,64 @@ public class LayoutRenderTest {
             assertTrue("bottom clipped",scroll.getChildAt(0).getHeight()-scroll.getScrollY()<=scroll.getHeight());
         }
     }
+    private static Button findButton(View root,String label){
+        if(root instanceof Button && ((Button)root).getText().toString().equals(label))return (Button)root;
+        if(root instanceof ViewGroup){ViewGroup group=(ViewGroup)root;for(int i=0;i<group.getChildCount();i++){Button button=findButton(group.getChildAt(i),label);if(button!=null)return button;}}
+        return null;
+    }
+    private void viewer(String prefix,int width,int height,float scale)throws Exception {
+        var resources=RuntimeEnvironment.getApplication().getResources();var config=resources.getConfiguration();config.fontScale=scale;resources.updateConfiguration(config,null);
+        java.util.concurrent.atomic.AtomicReference<mobile.ViewerCallbacks> frames=new java.util.concurrent.atomic.AtomicReference<>();
+        mobile.SessionViewer viewer=new mobile.SessionViewer();
+        MnetVpnService.node=new mobile.Node(){@Override public mobile.SessionViewer connectSessionWithControl(String peer,mobile.ViewerCallbacks callback,mobile.ControlCallbacks control){frames.set(callback);return viewer;}};
+        try(var c=Robolectric.buildActivity(ViewerActivity.class,new Intent().putExtra("peer_ip","100.64.0.3")).setup()){
+            ViewerActivity a=c.get();
+            @SuppressWarnings("unchecked") ViewerGate<mobile.SessionViewer> gate=(ViewerGate<mobile.SessionViewer>)field(a,"viewers");
+            long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+            while(gate.current()==null&&System.nanoTime()<deadline){Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();Thread.sleep(1);}
+            assertSame(viewer,gate.current());
+            capture(a,prefix+"-viewer-waiting",width,height);
+            Bitmap bitmap=Bitmap.createBitmap(600,900,Bitmap.Config.ARGB_8888);Canvas canvas=new Canvas(bitmap);
+            canvas.drawColor(android.graphics.Color.rgb(224,234,230));
+            android.graphics.Paint paint=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);paint.setColor(AppUi.INK);paint.setTextSize(36);
+            canvas.drawText("LAYOUT TEST FRAME",65,360,paint);paint.setTextSize(28);canvas.drawText("Not a remote device",65,420,paint);
+            java.io.ByteArrayOutputStream encoded=new java.io.ByteArrayOutputStream();bitmap.compress(Bitmap.CompressFormat.JPEG,90,encoded);bitmap.recycle();
+            frames.get().onFrame(encoded.toByteArray());Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            var apply=ViewerActivity.class.getDeclaredMethod("applyControl",String.class);apply.setAccessible(true);
+            ScrollView scroll=(ScrollView)((ViewGroup)root(a)).getChildAt(0);
+            for(String mode:new String[]{"available","pending","allowed","paused","declined","revoked","unavailable"}){
+                apply.invoke(a,mode);layout(a,width,height);
+                scroll.scrollTo(0,scroll.getChildAt(0).getHeight());
+                capture(a,prefix+"-viewer-"+mode,width,height);
+                android.graphics.Rect stopBounds=new android.graphics.Rect();View stop=(View)field(a,"endViewing");stop.getDrawingRect(stopBounds);((ViewGroup)root(a)).offsetDescendantRectToMyCoords(stop,stopBounds);
+                assertTrue("End viewing outside viewport",stopBounds.top>=0&&stopBounds.bottom<=height);
+                assertEquals(mode.equals("allowed"),field(a,"controlAllowed"));
+            }
+            Button chatToggle=findButton(root(a),"Open session chat");assertNotNull(chatToggle);chatToggle.performClick();
+            layout(a,width,height);scroll.scrollTo(0,scroll.getChildAt(0).getHeight());
+            capture(a,prefix+"-viewer-chat",width,height);
+            View send=(View)field(a,"sendChat");android.graphics.Rect sendBounds=new android.graphics.Rect();send.getDrawingRect(sendBounds);scroll.offsetDescendantRectToMyCoords(send,sendBounds);
+            assertTrue("chat send clipped",sendBounds.bottom-scroll.getScrollY()<=scroll.getHeight());
+            chatToggle.performClick();layout(a,width,height);
+            scroll.scrollTo(0,0);capture(a,prefix+"-viewer-frame",width,height);
+            frames.get().onClosed();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertFalse((Boolean)field(a,"controlAllowed"));
+            capture(a,prefix+"-viewer-interrupted",width,height);
+            ((Button)field(a,"endViewing")).performClick();assertTrue(viewer.closed);
+            assertTrue(a.isFinishing());
+        }finally{MnetVpnService.node=null;}
+    }
+    @Test public void viewerWithoutNetwork()throws Exception{
+        MnetVpnService.node=null;
+        try(var c=Robolectric.buildActivity(ViewerActivity.class,new Intent().putExtra("peer_ip","100.64.0.3")).setup()){
+            ViewerActivity a=c.get();capture(a,"390-viewer-no-network",390,844);
+            assertEquals("Network connection needed",((TextView)field(a,"sessionStatus")).getText().toString());
+            assertFalse(((Button)field(a,"sendChat")).isEnabled());
+            ((Button)field(a,"endViewing")).performClick();assertTrue(a.isFinishing());
+        }
+    }
+    @Test public void viewerStandard()throws Exception{viewer("390",390,844,1f);}
+    @Test @Config(qualifiers="w320dp-h720dp-mdpi") public void viewerLargeText()throws Exception{viewer("320-large",320,720,1.6f);}
+    @Test @Config(qualifiers="w740dp-h360dp-land-mdpi") public void viewerLandscape()throws Exception{viewer("740-land",740,360,1f);}
+
 }

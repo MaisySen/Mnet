@@ -23,6 +23,8 @@ BT=$SDK/build-tools/${MNET_ANDROID_BUILD_TOOLS:-36.0.0}
 "$BT/aapt2" compile --dir "$ROOT/android/app/src/main/res" -o "$OUT/res.zip"
 "$BT/aapt2" link -o "$OUT/resources.apk" -I "$SDK/platforms/android-${MNET_ANDROID_COMPILE_API:-36}/android.jar" --manifest "$ROOT/android/app/src/main/AndroidManifest.xml" --java "$OUT/src/main/java" "$OUT/res.zip"
 printf 'android_merged_manifest=%s\nandroid_resource_apk=%s\nandroid_custom_package=au.fintex.mnet\n' "$ROOT/android/app/src/main/AndroidManifest.xml" "$OUT/resources.apk" > "$OUT/src/test/resources/com/android/tools/test_config.properties"
+cd "$OUT"
+"$MVN" -B -Dmaven.repo.local="$REPO" test-compile
 python3 - "$REPO" "$OUT/libs" <<'PY'
 from pathlib import Path
 import sys,zipfile

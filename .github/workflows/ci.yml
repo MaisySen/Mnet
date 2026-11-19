@@ -65,6 +65,20 @@ jobs:
           java -cp "$RUNNER_TEMP/mnet-android-policy" au.fintex.mnet.ViewerTapTest
       - name: Android selected-service framework simulation (no device/JNI)
         run: sh scripts/test-android-framework.sh
+      - name: Android actual-resource native-raster layout fixtures (no emulator/JNI)
+        env:
+          MNET_LAYOUT_OUTPUT: ${{ runner.temp }}/mnet-layout-pixels
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
+          sh scripts/render-android-layouts.sh
+      - name: retain non-secret synthetic layout previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-layout-previews
+          retention-days: 7
+          if-no-files-found: ignore
+          path: ${{ runner.temp }}/mnet-layout-pixels/*.png
       - name: Android VPN service framework simulation (fake system mode and node)
         run: sh scripts/test-android-framework.sh vpn
       - name: Android always-on mode policy (JVM fakes and source only)
