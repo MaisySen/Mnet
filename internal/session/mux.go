@@ -69,6 +69,9 @@ type streamState struct {
 	queuedBytes int64
 	released    bool
 	ch          chan Frame
+	peerReset   chan struct{} // peer cancellation, including after FIN
+	peerFIN     chan struct{}
+	remoteFin   bool          // read-loop-owned receive half-close; owner still owes release
 	done        chan struct{} // closes on local release to unblock read-loop delivery
 	open        json.RawMessage
 	handled     bool
@@ -265,7 +268,7 @@ func (m *Mux) open(priority uint8, openPayload any, wait bool) (Stream, error) {
 		m.streamMu.Unlock()
 		return Stream{}, fmt.Errorf("session: active stream limit reached")
 	}
-	s.state = &streamState{ch: s.in, done: make(chan struct{}), open: raw, handled: true}
+	s.state = &streamState{ch: s.in, done: make(chan struct{}), peerReset: make(chan struct{}), peerFIN: make(chan struct{}), open: raw, handled: true}
 	m.streams[id] = s.state
 	m.streamMu.Unlock()
 	if err := m.sendWithWait(id, msgOpen, priority, raw, wait); err != nil {
@@ -299,9 +302,10 @@ func (m *Mux) SendBytes(streamID uint32, priority uint8, b []byte) error {
 // blocks until a frame, FIN/RST, local release or mux close. Known terminal
 // state wins over queued frames/FIN; already-returned work is not revoked.
 func (s Stream) Recv(timeout time.Duration) (Frame, error) {
-	var released <-chan struct{}
+	var released, reset <-chan struct{}
 	if s.state != nil {
 		released = s.state.done
+		reset = s.state.peerReset
 	}
 	terminal := func() bool {
 		select {
@@ -312,6 +316,11 @@ func (s Stream) Recv(timeout time.Duration) (Frame, error) {
 		default:
 			return false
 		}
+	}
+	select {
+	case <-reset:
+		return Frame{}, ErrStreamReset
+	default:
 	}
 	if terminal() {
 		return Frame{}, io.ErrClosedPipe
@@ -329,6 +338,11 @@ func (s Stream) Recv(timeout time.Duration) (Frame, error) {
 		}
 		// A ready frame/FIN and terminal signal may be selected together.
 		// Return its budget, but never dispatch known retired-session work.
+		select {
+		case <-reset:
+			return Frame{}, ErrStreamReset
+		default:
+		}
 		if terminal() {
 			return Frame{}, io.ErrClosedPipe
 		}
@@ -344,6 +358,8 @@ func (s Stream) Recv(timeout time.Duration) (Frame, error) {
 			return Frame{}, io.ErrClosedPipe
 		}
 		return Frame{}, fmt.Errorf("session: recv timeout")
+	case <-reset:
+		return Frame{}, ErrStreamReset
 	case <-released:
 		return Frame{}, io.ErrClosedPipe
 	case <-s.Mux.closed:
@@ -678,7 +694,7 @@ func (m *Mux) readLoop() {
 					m.Close()
 					return
 				}
-				st = &streamState{ch: make(chan Frame, 16), done: make(chan struct{}), open: json.RawMessage(f.Payload)}
+				st = &streamState{ch: make(chan Frame, 16), done: make(chan struct{}), peerReset: make(chan struct{}), peerFIN: make(chan struct{}), open: json.RawMessage(f.Payload)}
 				if h := m.streamHandler(); h != nil {
 					st.handled = true
 					m.streams[f.StreamID] = st
@@ -696,21 +712,39 @@ func (m *Mux) readLoop() {
 		if !ok {
 			continue // DATA for a stream we did not see OPEN: drop
 		}
-		if f.Type == msgFin || f.Type == msgRst {
-			if f.Type == msgRst {
-				select {
-				case st.ch <- f:
-				case <-st.done:
-				case <-m.closed:
-					return
-				}
+
+		if f.Type == msgRst {
+			// A reset remains observable after a peer FIN while local final
+			// processing is active. readLoop is the sole channel closer.
+			if st.peerReset != nil {
+				close(st.peerReset)
 			}
-			close(st.ch)
+			if !st.remoteFin {
+				close(st.ch)
+				st.remoteFin = true
+			}
 			m.streamMu.Lock()
-			delete(m.streams, f.StreamID)
+			if m.streams[f.StreamID] == st {
+				delete(m.streams, f.StreamID)
+			}
 			m.streamMu.Unlock()
 			continue
 		}
+		if f.Type == msgFin {
+			if !st.remoteFin {
+				st.remoteFin = true
+				if st.peerFIN != nil {
+					close(st.peerFIN)
+				}
+				close(st.ch)
+			}
+			// FIN ends receiving bytes, not owner finalization. Retain this
+			// bounded entry until release so a later reset can reach its owner.
+			continue
+		}
+		if st.remoteFin {
+			continue
+		} // never send DATA into a half-closed channel
 		// Bound retained wire DATA across streams, not only each channel.
 		// Slow consumers must not turn 256 independent queues into GiBs.
 		st.accountMu.Lock()
@@ -796,4 +830,12 @@ func (m *Mux) releaseStreamBudget(st *streamState) {
 	}
 	m.inboundBytes.Add(-st.queuedBytes)
 	st.queuedBytes = 0
+}
+
+// peerResetSignal remains live through FIN until the local owner releases work.
+func (s Stream) peerResetSignal() <-chan struct{} {
+	if s.state == nil {
+		return nil
+	}
+	return s.state.peerReset
 }

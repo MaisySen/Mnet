@@ -111,18 +111,16 @@ func TestInboundBudgetReleaseAfterFINAndConcurrentDrain(t *testing.T) {
 	if err := client.send(sent.ID, msgFin, PriBulk, nil); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(time.Second)
-	for {
-		host.streamMu.Lock()
-		_, exists := host.streams[sent.ID]
-		host.streamMu.Unlock()
-		if !exists {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("FIN not received")
-		}
-		time.Sleep(time.Millisecond)
+	select {
+	case <-received.state.peerFIN:
+	case <-time.After(time.Second):
+		t.Fatal("FIN not received")
+	}
+	host.streamMu.Lock()
+	retained := host.streams[sent.ID] == received.state
+	host.streamMu.Unlock()
+	if !retained {
+		t.Fatal("FIN retired owner before release")
 	}
 	drained := make(chan struct{})
 	go func() {

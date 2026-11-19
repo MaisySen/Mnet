@@ -466,3 +466,88 @@ func TestFileExportByteBudgetRejectsWithoutOverflow(t *testing.T) {
 	}
 	budget.release(1)
 }
+
+func TestFileExportResetAfterFINCancelsOnlyExport(t *testing.T) {
+	client, host := pipe(t)
+	defer client.Close()
+	defer host.Close()
+	gate := NewFileApprovalGate(0)
+	defer gate.Close()
+	adapter := &blockingFileExport{mode: "finish", entered: make(chan struct{}), release: make(chan struct{}), aborted: make(chan struct{})}
+	defer close(adapter.release)
+	root := filepath.Join(t.TempDir(), "private-stage")
+	done := make(chan struct{})
+	notified := false
+	chat := make(chan struct{})
+	host.OnStream(func(s Stream) {
+		if s.ID == StreamChat {
+			defer s.release()
+			if _, err := s.Recv(time.Second); err == nil {
+				close(chat)
+			}
+			return
+		}
+		defer close(done)
+		FileReceiver{Mux: host, RequireApproval: true, Approval: gate, OnDone: func(string, int64) { notified = true }}.Handle(s)
+	})
+	s, err := client.Open(PriBulk, FileOffer{Name: "safe.bin", Size: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := gate.decideExport(approvalRequest(t, gate), root, newFileExportSelection(adapter)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Recv(time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if err = client.SendBytes(s.ID, PriBulk, []byte("abc")); err != nil {
+		t.Fatal(err)
+	}
+	if err = client.send(s.ID, msgFin, PriBulk, nil); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-adapter.entered:
+	case <-time.After(time.Second):
+		t.Fatal("finish not entered")
+	}
+	if !client.tryReset(s.ID) {
+		t.Fatal("reset not queued")
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("reset after FIN did not retire export")
+	}
+	if notified {
+		t.Fatal("canceled export notified success")
+	}
+	select {
+	case <-adapter.aborted:
+	default:
+		t.Fatal("canceled output not released")
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil || len(entries) != 0 {
+		t.Fatal("canceled staging leaked")
+	}
+	select {
+	case <-host.Closed():
+		t.Fatal("file reset ended shared session")
+	default:
+	}
+	if err = client.SendJSON(StreamChat, PriChat, ChatMessage{Text: "viewing continues"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-chat:
+	case <-time.After(time.Second):
+		t.Fatal("unrelated chat stopped")
+	}
+	host.streamMu.Lock()
+	retained := len(host.streams)
+	host.streamMu.Unlock()
+	if retained > 1 {
+		t.Fatal("completed reset stream retained", retained)
+	}
+}

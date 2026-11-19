@@ -102,7 +102,7 @@ type stagedExportTransaction struct {
 	abortOnce  sync.Once
 }
 
-func beginExportReceive(destination fileReceiveDestination, offer FileOffer, closed <-chan struct{}, allowed func() bool) (receiveTransaction, error) {
+func beginExportReceive(destination fileReceiveDestination, offer FileOffer, closed, reset <-chan struct{}, allowed func() bool) (receiveTransaction, error) {
 	selection := destination.export
 	selection.mu.Lock()
 	valid := selection.claimed && !selection.started && selection.request.Offer == offer
@@ -151,6 +151,8 @@ func beginExportReceive(destination fileReceiveDestination, offer FileOffer, clo
 		defer close(watcher)
 		select {
 		case <-closed:
+			cancel()
+		case <-reset:
 			cancel()
 		case <-ctx.Done():
 		}

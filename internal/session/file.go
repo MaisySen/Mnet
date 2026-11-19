@@ -54,6 +54,8 @@ func (r FileReceiver) Handle(s Stream) {
 	// sides of it so a late true result cannot grant work to a retired mux.
 	allowed := func() bool {
 		select {
+		case <-s.peerResetSignal():
+			return false
 		case <-r.Mux.Closed():
 			return false
 		default:
@@ -62,6 +64,8 @@ func (r FileReceiver) Handle(s Stream) {
 			return false
 		}
 		select {
+		case <-s.peerResetSignal():
+			return false
 		case <-r.Mux.Closed():
 			return false
 		default:
@@ -127,7 +131,7 @@ func (r FileReceiver) Handle(s Stream) {
 	var storage receiveTransaction
 	var err error
 	if destination.export != nil {
-		storage, err = beginExportReceive(destination, offer, r.Mux.Closed(), allowed)
+		storage, err = beginExportReceive(destination, offer, r.Mux.Closed(), s.peerResetSignal(), allowed)
 	} else {
 		storage, err = begin(destination.dir, name)
 	}

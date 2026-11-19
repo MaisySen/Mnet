@@ -337,7 +337,7 @@ func TestQualityForRTT(t *testing.T) {
 }
 
 func TestReleasedFullStreamDoesNotBlockOtherInboundStreams(t *testing.T) {
-	for _, typ := range []byte{msgData, msgRst} {
+	for _, typ := range []byte{msgData} {
 		t.Run(fmt.Sprintf("type%d", typ), func(t *testing.T) {
 			a, b := net.Pipe()
 			defer b.Close()

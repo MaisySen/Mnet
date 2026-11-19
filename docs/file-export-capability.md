@@ -31,7 +31,7 @@ Fresh full-repository race tests and vet pass. Twenty fresh repetitions of file 
 - Private staging modes, eight-active refusal, declared-byte overflow refusal, exact reservation return and a later successful transfer after capacity recovery.
 - Existing filesystem no-overwrite/private-mode/cleanup and sender-reset behavior remain covered.
 
-Current normal cross-platform CI is pending. No additional native/emulator/device workflow, new pixels or installed-provider acceptance is claimed.
+Baseline1b78155 passed all five normal CI jobs in [run44507446267](https://github.com/MaisySen/Mnet/actions/runs/44507446267). No additional native/emulator/device workflow, new pixels or installed-provider acceptance is claimed.
 
 ## Unresolved native and product gates
 
@@ -45,6 +45,6 @@ Sources read directly:
 
 The final native implementation must pin its SDK/source, select and verify descriptor/stream ownership, bind picker lifecycle/results to the exact pending request, and test inaccessible/moved/crashed providers. A provider's observed local Finish is not atomic publication, cloud durability, rollback or proof that a remote endpoint is trustworthy. Those claims cannot be inherited from the path backend's hard link.
 
-Picker lifetime versus the existing20second local approval/30second sender acceptance waits is not solved. The current mux removes a receiving stream's dispatch entry on FIN, so a later same-stream reset is not a new cancellation signal for an export already processing that FIN; session End still cancels it. A future provider/protocol rollout must resolve its late-cancel and receipt semantics explicitly, not pretend this internal adapter is an end-user contract. Cancellation cannot recall bytes already handed to a provider.
+Picker lifetime versus the existing20second local approval/30second sender acceptance waits is not solved. The original baseline removed receive dispatch on FIN, dropping a later reset during export. A subsequent [half-close/reset ownership correction](stream-halfclose-reset-ownership.md) retains bounded owner state until release and carries reset to cooperative finalization without ending shared viewing. Its source checks are separate from baseline CI and still do not establish provider/native behavior. Cancellation cannot recall bytes already handed to a provider.
 
 Consumer/mobile reception, native chooser/provider/process acceptance, persisted/background grants, headless default migration, Multies authority, device routes, signing and release remain unchanged and open.
