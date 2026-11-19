@@ -71,3 +71,8 @@ The corrective fixture changes only its local action hit point to an interior ro
 ## Subsequent input review
 
 The reserved live-stop source `7ef7d3a` completed all five [normal CI jobs](https://github.com/MaisySen/Mnet/actions/runs/44594539145) and [Pages](https://github.com/MaisySen/Mnet/actions/runs/44594537966); guide/STATUS/RELEASES/active-image bytes were verified deployed. Follow-up review then found the inherited text-remapping/in-flight-loop and downscaled-pointer defects. Their separate [attended input correction](attended-text-ownership.md) preserves the negative evidence, limits supported text/layouts and runs both native display sizes. That later source needs its own hosted verification. A successful earlier pointer journey is not full exact-keyboard/coordinate or consumer-safe acceptance.
+
+
+## Recipient-local failure owner
+
+The attended control backend now uses a dedicated [recipient-local injector owner](attended-recipient-owner.md) with inherited pipes and a separate local liveness lease. Actual coordinator-death tests improve only the case where the injector and X server survive. Injector death still leaves a measured stuck-button negative, and overlapping physical/synthetic ownership is not distinguishable in X11. This later engineering source needs its own local/hosted acceptance; the prior222 all-five result does not certify it.

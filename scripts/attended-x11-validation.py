@@ -21,6 +21,7 @@ if display_size not in ('1024x768x24','2048x1536x24'):raise SystemExit('Unsuppor
 out=pathlib.Path(tempfile.mkdtemp(prefix='mnet-attended-x11.'))
 print('Attended X11 artifacts: '+str(out),flush=True)
 subprocess.run(['go','test','-race','-c','-o',str(out/'attended.test'),'./cmd/mnetd'],check=True)
+subprocess.run(['go','build','-o',str(out/'mnetd'),'./cmd/mnetd'],check=True)
 (out/'stage').unlink(missing_ok=True)
 with open(out/'display','w') as fd,open(out/'xvfb.log','w') as log:
  x=subprocess.Popen(['Xvfb','-noreset','-nolisten','tcp','-displayfd',str(fd.fileno()),'-screen','0',os.environ.get('MNET_ATTENDED_DISPLAY_SIZE','1024x768x24')],stdout=log,stderr=log,pass_fds=(fd.fileno(),))
@@ -33,12 +34,12 @@ try:
  number=(out/'display').read_text().strip()
  if not number.isdecimal() or x.poll() is not None:raise AssertionError('No owned disposable display identifier')
  (out/'Xauthority').touch(mode=0o600)
- env=os.environ|{'DISPLAY':':'+number,'XAUTHORITY':str(out/'Xauthority'),'NO_AT_BRIDGE':'1','MNET_ATTENDED_X11_TEST':'1','MNET_ATTENDED_ARTIFACTS':str(out)}
+ env=os.environ|{'DISPLAY':':'+number,'XAUTHORITY':str(out/'Xauthority'),'NO_AT_BRIDGE':'1','MNET_ATTENDED_X11_TEST':'1','MNET_ATTENDED_ARTIFACTS':str(out),'MNET_ATTENDED_TEST_EXECUTABLE':str(out/'mnetd')}
  env.pop('WAYLAND_DISPLAY',None)
  root_info=subprocess.check_output(['xwininfo','-root'],env=env,text=True)
  root=root_info.split('Window id: ',1)[1].split()[0]
  with open(out/'safety.log','w') as safety_log:
-  subprocess.run([str(out/'attended.test'),'-test.run','^TestAttendedX11(Safety|Text|Scaled|Pointer)','-test.v','-test.timeout=15s'],env=env,stdout=safety_log,stderr=safety_log,check=True)
+  subprocess.run([str(out/'attended.test'),'-test.run','^TestAttendedX11(Safety|Text|Scaled|Pointer|ProcessClose|ProcessExclusive|ProcessOwner|ProcessMalformed)','-test.v','-test.timeout=15s'],env=env,stdout=safety_log,stderr=safety_log,check=True)
  with open(out/'test.log','w') as log:
   test=subprocess.Popen([str(out/'attended.test'),'-test.run','^TestAttendedX11RealLocalSurface$','-test.v','-test.timeout=30s'],env=env,stdout=log,stderr=log,start_new_session=True)
   seen=set();start=time.monotonic()

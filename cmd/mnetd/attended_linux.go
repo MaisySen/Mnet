@@ -93,5 +93,5 @@ func (z zenityUI) Ask(ctx context.Context, p attendedPrompt) (string, error) {
 }
 
 // Attended control never changes clipboard contents through an environment
-// override. Its X11 backend uses direct keysym input only.
-func newAttendedInjector() (session.Injector, error) { return newAttendedX11Injector() }
+// override. The dedicated local X11 injector owns its grant-lifetime ledger.
+func newAttendedInjector() (session.Injector, error) { return startAttendedProcessInjector() }

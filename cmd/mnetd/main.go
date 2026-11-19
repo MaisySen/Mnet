@@ -58,6 +58,9 @@ type options struct {
 }
 
 func main() {
+	if maybeRunAttendedProcess() {
+		return
+	}
 	var (
 		stateDir     = flag.String("state", defaultStateDir(), "state directory")
 		ifname       = flag.String("ifname", daemon.DefaultInterfaceName(), "TUN interface name (macOS utun selects an available kernel name)")

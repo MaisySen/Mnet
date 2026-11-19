@@ -135,6 +135,7 @@ jobs:
         run: |
           python3 scripts/attended-x11-validation.py
           MNET_ATTENDED_DISPLAY_SIZE=2048x1536x24 python3 scripts/attended-x11-validation.py
+          python3 scripts/attended-process-validation.py
       - name: retain failed proof diagnostics (no credentials or node state)
         if: failure()
         uses: actions/upload-artifact@v4
@@ -148,6 +149,8 @@ jobs:
             /tmp/mnet-session.*/swap.log
             /tmp/mnet-attended-x11.*/test.log
             /tmp/mnet-attended-x11.*/safety.log
+            /tmp/mnet-recipient-guardian.*/*.stdout
+            /tmp/mnet-recipient-guardian.*/*.stderr
             /tmp/mnet-attended-x11.*/*.png
 
   native-platform:

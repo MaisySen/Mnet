@@ -158,7 +158,7 @@ func TestAttendedX11RealLocalSurface(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, sessionDone := serveAttendedSession(ctx, host, "Fixture mesh viewer", true, ui, cap, newAttendedInjector, attendedSafetyAuthorized(safety, func() bool { return true }))
+	_, sessionDone := serveAttendedSession(ctx, host, "Fixture mesh viewer", true, ui, cap, testAttendedProcessInjector, attendedSafetyAuthorized(safety, func() bool { return true }))
 	done := bindAttendedSafety(ctx, host, safety, sessionDone, func(err error) { t.Errorf("safety cleanup: %v", err) })
 	defer func() {
 		host.Close()

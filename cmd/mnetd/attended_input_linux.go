@@ -63,6 +63,32 @@ func (i *attendedX11Injector) InjectAuthorized(ev session.InputEvent, live func(
 			if ev.DY == 0 {
 				return errors.New("empty attended scroll")
 			}
+			x := i.host
+			x.inputMu.Lock()
+			defer x.inputMu.Unlock()
+			if x.closed.Load() {
+				return errors.New("attended injector retired")
+			}
+			button := byte(5)
+			if ev.DY < 0 {
+				button = 4
+			}
+			state, err := xproto.QueryPointer(x.conn, x.root).Reply()
+			if err != nil || state.Mask&(uint16(1)<<uint(button+7)) != 0 {
+				return errors.New("preheld scroll refused")
+			}
+			if !live() {
+				return errors.New("retired attended scroll")
+			}
+			if err = xtest.FakeInputChecked(x.conn, xproto.ButtonPress, button, 0, x.root, 0, 0, 0).Check(); err != nil {
+				return err
+			}
+			x.pressed[button] = true
+			err = xtest.FakeInputChecked(x.conn, xproto.ButtonRelease, button, 0, x.root, 0, 0, 0).Check()
+			if err == nil {
+				x.pressed[button] = false
+			}
+			return err
 		default:
 			return errors.New("unsupported attended pointer action")
 		}
@@ -126,6 +152,13 @@ func (i *attendedX11Injector) InjectAuthorized(ev session.InputEvent, live func(
 		pointer, err := xproto.QueryPointer(x.conn, root).Reply()
 		if err != nil || pointer.Mask&(255|0x6000) != 0 {
 			return errors.New("attended text requires unmodified local keyboard state")
+		}
+		if !live() {
+			return errors.New("retired attended text")
+		}
+		keys, keyErr := xproto.QueryKeymap(x.conn).Reply()
+		if keyErr != nil || keys.Keys[stroke.key/8]&(1<<uint(stroke.key%8)) != 0 {
+			return errors.New("preheld attended text key refused")
 		}
 		if !live() {
 			return errors.New("retired attended text")

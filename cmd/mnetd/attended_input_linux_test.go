@@ -24,7 +24,7 @@ func TestAttendedX11TextDoesNotRemapDesktop(t *testing.T) {
 		return r.Keysyms
 	}
 	before := read()
-	input, e := newAttendedInjector()
+	input, e := newAttendedX11Injector()
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -62,7 +62,7 @@ func TestAttendedX11TextCancellationAndShiftRelease(t *testing.T) {
 	if err = xproto.SetInputFocusChecked(c, xproto.InputFocusPointerRoot, window, xproto.TimeCurrentTime).Check(); err != nil {
 		t.Fatal(err)
 	}
-	input, err := newAttendedInjector()
+	input, err := newAttendedX11Injector()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestAttendedX11TextRejectsForeignModifierWithoutReleasingIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer xtest.FakeInput(c, xproto.KeyRelease, ctrl, 0, root, 0, 0, 0)
-	input, err := newAttendedInjector()
+	input, err := newAttendedX11Injector()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestAttendedX11ScaledPointer(t *testing.T) {
 	if scale < 2 {
 		t.Skip("requires downscaled capture display")
 	}
-	input, err := newAttendedInjector()
+	input, err := newAttendedX11Injector()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestAttendedX11ScaledPointer(t *testing.T) {
 func TestAttendedX11PointerBoundsAndGeometry(t *testing.T) {
 	c := requireSafetyDisplay(t)
 	root := xproto.Setup(c).DefaultScreen(c).Root
-	input, err := newAttendedInjector()
+	input, err := newAttendedX11Injector()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,5 +224,36 @@ func TestAttendedX11PointerBoundsAndGeometry(t *testing.T) {
 		if err != nil || after.RootX != before.RootX || after.RootY != before.RootY || after.Mask != before.Mask {
 			t.Fatal("invalid pointer changed desktop input", after, err)
 		}
+	}
+}
+
+func TestAttendedX11TextRefusesPreheldOrdinaryKey(t *testing.T) {
+	c := requireSafetyDisplay(t)
+	if err := xtest.Init(c); err != nil {
+		t.Fatal(err)
+	}
+	root := xproto.Setup(c).DefaultScreen(c).Root
+	key := keycodeFor(c, 'a')
+	if key == 0 {
+		t.Fatal("no fixture a")
+	}
+	if err := xtest.FakeInputChecked(c, xproto.KeyPress, key, 0, root, 0, 0, 0).Check(); err != nil {
+		t.Fatal(err)
+	}
+	defer xtest.FakeInput(c, xproto.KeyRelease, key, 0, root, 0, 0, 0)
+	input, err := newAttendedX11Injector()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.(interface{ Close() error }).Close()
+	if err = input.(*attendedX11Injector).InjectAuthorized(session.InputEvent{Kind: "key", Text: "a"}, func() bool { return true }); err == nil {
+		t.Fatal("preheld ordinary key accepted")
+	}
+	keys, err := xproto.QueryKeymap(c).Reply()
+	if err != nil || keys.Keys[key/8]&(1<<uint(key%8)) == 0 {
+		t.Fatal("refusal released external ordinary key", keys, err)
+	}
+	if err = xtest.FakeInputChecked(c, xproto.KeyRelease, key, 0, root, 0, 0, 0).Check(); err != nil {
+		t.Fatal(err)
 	}
 }
