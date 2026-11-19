@@ -1,5 +1,18 @@
 # Mnet project status
 
+## Current source and acceptance summary (2026-11-19 evening, Australia/Sydney)
+
+This summary supersedes current/pending phrasing in the dated entries below. Mnet remains an unfinished test-only engineering companion, not a working Multies-integrated consumer product. Multies code, configuration and deployment are unchanged. Engineering docs/synthetic previews were published with permission; no app release, new APK, production control deployment, signing or device test is implied.
+
+- **Implemented application UI:** the Android, web member/operator and shared SwiftUI source follow pinned Multies identity/tokens rather than the independently chosen morning teal palette. Android has192 selected framework cases and90 synthetic actual-resource images; current app source passes normal CI. [Current implementation, images and exact verification](multies-brand-alignment.md).
+- **Web recovery and layout:** membership grant/removal locks, retained rejected drafts, explicit uncertain-outcome inspection, persistent operator sign-out retry, and compact labelled membership/device records are implemented. All five jobs passed for [latest application checkpoint91b3894](https://github.com/MaisySen/Mnet/actions/runs/44487100579). Browser keyboard/pixel evidence does not certify screen-reader behavior. Application source publication does not deploy these screens to the hosted control service.
+- **Apple evidence:** corrected-brand iOS SDK typecheck, unsigned simulator linkage and five hosted macOS SwiftUI component images are now verified. The historical unsupported-control ImageRenderer output is not current accepted evidence. Actual iOS runtime, blue primary-control appearance, Dynamic Type, safe areas and keyboard remain unverified. [Current artifact and limits](ios-ui-layouts.md).
+- **Consumer prototype:** remains a separate28-state sample simulation, not a connected app. Its mark/palette now follow the pinned Multies source; it cannot authorize, enroll or control a real device. [Prototype review](../prototype/README.md).
+- **Integrated product:** real Multies sign-in/workspace authority, production verifier/one-use exchange, device eligibility and revocation wiring remain unimplemented and permission-gated. Inactive Mnet-side foundations and the prototype do not satisfy them. [Product gates](product-scope.md), [authorization boundary](multies-boundary.md).
+- **Native and distribution:** the existing failed Android reliability matrix, physical/OEM/keyboard/TalkBack/OS-icon tests, cross-platform actual consent/cleanup, consumer file destination/approval and signed delivery remain open. General CI success does not clear them. Closed Android diagnostic/combined workflows are not restarted by this UI lane. No release or personal-device/account work is inferred.
+
+The historical morning and overnight sections below retain their original source/check scope. Use the current guides above for completed UI work and the open product gates for unfinished work, not a count of old passing simulations.
+
 ## Current UI work (2026-11-19 morning, Australia/Sydney)
 
 The owner deferred Multies changes and selected Mnet UI/UX/layout work. Multies remains untouched. The actual Android home/setup/sharing checkpoint `5637b9d4c8a65649b9f516d299d62d430255b1b5` has [all-five general CI success](https://github.com/MaisySen/Mnet/actions/runs/44426342827). Its automatically triggered combined native workflow was cancelled, not treated as new acceptance.

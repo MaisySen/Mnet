@@ -24,6 +24,15 @@ class BrandTests(unittest.TestCase):
     self.assertIn(color,text)
    for retired in ['#086963','#f4f7f6','#b66022','#4d6269']:
     self.assertNotIn(retired,text)
+ def test_prototype_uses_pinned_brand_and_keeps_simulation_boundary(self):
+  css=(ROOT/'prototype/style.css').read_text()
+  for token in ['#0066cc','#0058b0','#f5f5f7','#1d1d1f','#5a5a5f','#e8e8ed']:
+   self.assertIn(token,css)
+  self.assertNotIn('#773ec8',css)
+  html=(ROOT/'prototype/index.html').read_text()
+  self.assertIn('Sample data only. No sign-in, VPN or remote-control action is real.',html)
+  self.assertIn('points="20,79 20,39 50,67 80,39 80,79"',html)
+  self.assertIn('fill="#FF6A1A"',html)
  def test_android_mark_geometry_preserved(self):
   tree=ET.parse(ROOT/'android/app/src/main/res/drawable/multies_mark.xml')
   ns='{http://schemas.android.com/apk/res/android}'

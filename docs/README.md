@@ -4,6 +4,7 @@ These documents describe a development project, not a production-readiness guara
 
 | Document | Owns |
 | --- | --- |
+| [Multies brand and UI recovery](multies-brand-alignment.md) | Current implemented screens, inspected synthetic previews, source provenance and open platform limits. |
 | [Project status](STATUS.md) | Source, released artifacts, last deployment verification, evidence and open work. |
 | [Product scope](product-scope.md) | Desired account/device/startup experience and current platform gaps. |
 | [Operations](operations.md) | Setup, local state, service operation, authentication, routing limits and recovery. |

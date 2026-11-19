@@ -28,7 +28,7 @@ const exited=new Promise(r=>chrome.once('close',r));
 chrome.stdio[4].setEncoding('utf8');chrome.stdio[4].on('data',s=>{responseSeen=true;buf+=s;let i;while((i=buf.indexOf('\0'))>=0){const m=JSON.parse(buf.slice(0,i));buf=buf.slice(i+1);if(m.id){const p=pending.get(m.id);if(p){pending.delete(m.id);clearTimeout(p.timer);m.error?p.reject(Error(JSON.stringify(m.error))):p.resolve(m.result);}}else if(m.method==='Runtime.exceptionThrown'){errors.push(m.params.exceptionDetails.text);}}});
 function send(method,params={},sid=session){const id=++next;return new Promise((resolve,reject)=>{if(transportFailure){reject(transportFailure);return;}const timer=setTimeout(()=>{pending.delete(id);reject(Error('CDP timeout: '+method+' responseSeen='+responseSeen+' childExited='+(chrome.exitCode!==null||chrome.signalCode!==null)+' '+startup.summary()));},15000);pending.set(id,{resolve,reject,timer});chrome.stdio[3].write(JSON.stringify({id,method,params,...(sid?{sessionId:sid}:{})})+'\0');});}
 const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(r.exceptionDetails.text);return r.result.value;};
-const click=async a=>assert.equal(await evaluate(`(()=>{const b=document.querySelector('[data-action="${a}"]');if(!b)return false;b.click();return true;})()`),true,'missing action '+a);
+const click=async a=>assert.equal(await evaluate(`(()=>{const b=document.querySelector('[data-action="${a}"]');if(!b)return false;b.scrollIntoView({block:'center'});b.click();return true;})()`),true,'missing action '+a);
 const setup=['SIGN_IN','RETURN','CHOOSE','ADD','ALLOW','CHECK','VERIFY','DONE'];
 const request=[...setup,'DETAIL','CONNECT','REQUEST','HOST_REPLY'];
 const cases=[
@@ -51,9 +51,23 @@ try{
    assert.equal(await evaluate('Array.from(document.querySelectorAll("button")).every(b=>b.getBoundingClientRect().height >=44)'),true,`${width}: ${name}: short touch target`);
    assert.equal(await evaluate('document.querySelector("#scenario").getBoundingClientRect().right + 8 <= document.querySelector("#reset").getBoundingClientRect().left'),true,`${width}: overlapping review controls`);
    assert.equal(await evaluate('document.activeElement.tagName'), 'H1',`${name}: focus not moved to heading`);
+   assert.equal(await evaluate('(()=>{const r=document.querySelector("h1").getBoundingClientRect();return r.top>=0 && r.bottom<=innerHeight})()'),true,`${width}: ${name}: focused heading outside viewport`);
+   if(process.env.SCREENSHOT_DIR && width===320 && ['denied','ended'].includes(name)){
+    await mkdir(process.env.SCREENSHOT_DIR,{recursive:true});
+    const {data}=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
+    await writeFile(join(process.env.SCREENSHOT_DIR,`${name}-320-viewport.png`),Buffer.from(data,'base64'));
+   }
    if(process.env.SCREENSHOT_DIR){await mkdir(process.env.SCREENSHOT_DIR,{recursive:true});const {cssContentSize:size}=await send('Page.getLayoutMetrics');const {data}=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true,clip:{x:0,y:0,width,height:size.height,scale:1}});await writeFile(join(process.env.SCREENSHOT_DIR,`${name}-${width}.png`),Buffer.from(data,'base64'));}
    checked++;
   }
  }
- assert.deepEqual(errors,[],'browser exceptions');console.log(`PASS: ${checked} screen/width checks, no horizontal overflow, minimum44px buttons, heading focus and no browser exceptions.`);
+ await send('Emulation.setDeviceMetricsOverride',{width:320,height:900,deviceScaleFactor:1,mobile:false});
+ await evaluate(`(()=>{const s=document.querySelector('#scenario');s.value='Owner setup';s.dispatchEvent(new Event('change'));})()`);
+ assert.equal(await evaluate(`getComputedStyle(document.body).backgroundColor==='rgb(245, 245, 247)' && getComputedStyle(document.querySelector('.primary')).backgroundColor==='rgb(0, 102, 204)' && getComputedStyle(document.querySelector('.secondary')||document.querySelector('nav button')).backgroundColor==='rgb(232, 232, 237)'`),true,'source brand palette missing');
+ await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'dark'}]});
+ assert.equal(await evaluate(`getComputedStyle(document.documentElement).colorScheme==='light' && getComputedStyle(document.body).backgroundColor==='rgb(245, 245, 247)'`),true,'unsupported dark preference recolored light prototype');
+ await send('Emulation.setEmulatedMedia',{features:[{name:'forced-colors',value:'active'}]});
+ assert.equal(await evaluate(`matchMedia('(forced-colors:active)').matches && getComputedStyle(document.querySelector('.primary')).borderTopStyle==='solid' && parseFloat(getComputedStyle(document.querySelector('.primary')).borderTopWidth)>=1`),true,'forced-colors action boundary absent');
+ await send('Emulation.setEmulatedMedia',{features:[]});
+ assert.deepEqual(errors,[],'browser exceptions');console.log(`PASS: ${checked} screen/width checks, no horizontal overflow, minimum44px buttons, heading focus/visibility after scrolled actions and no browser exceptions.`);
 }finally{try{process.kill(-chrome.pid,'SIGKILL');}catch{}server.close();await exited;await rm(profile,{recursive:true,force:true,maxRetries:5,retryDelay:100});}

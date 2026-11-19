@@ -65,4 +65,4 @@ iOS and desktop UI are separate remaining lanes. Manual server/network/key setup
 
 ## Local Multies branding correction
 
-The later19November correction replaces the independently chosen treatment with the actual Multies default identity and components. See multies-brand-alignment.md for pinned source provenance, local verification and remaining platform limits. Earlier images above remain historical layout evidence, not the current brand reference. New source and pixels remain local while public-documentation publishing is undecided.
+The later19November correction replaces the independently chosen treatment with the actual Multies default identity and components. See multies-brand-alignment.md for pinned source provenance, local verification and remaining platform limits. Earlier images above remain historical layout evidence, not the current brand reference. Engineering-docs publication was subsequently approved. Current source and inspected synthetic pixels are published in the Multies brand/UI checkpoint; earlier images above remain historical. This does not release an app or deploy the hosted control service.

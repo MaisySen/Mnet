@@ -1,6 +1,6 @@
 # Product scope and current gaps
 
-Updated 2026-11-18, Australia/Sydney. This page separates the intended consumer product from current engineering builds. [STATUS](STATUS.md) records individual commits/checks; the whole-product plan remains the design direction, not proof that these gates passed.
+Updated 2026-11-19, Australia/Sydney. This page separates the intended consumer product from current engineering builds. [STATUS](STATUS.md) records individual commits/checks; the whole-product plan remains the design direction, not proof that these gates passed.
 
 ## Product direction: a Multies-only companion
 
@@ -24,10 +24,12 @@ These are requirements, not descriptions of the current APK. Store download visi
 | Setup and devices | A clickable 28-state prototype exists; current builds retain manual engineering enrollment. | Real Multies sign-in, eligible-workspace/device data, no manual-network fallback, and end-to-end failure/recovery checks. Prototype state is simulated. |
 | Identity and workspace | Mnet-side exact workspace/device/capability policy and native intent binding have local tests but no production verifier or caller. | A scoped Multies authorization bridge and revocation contract. Multies source is not changed. Identity-provider login, MCP OAuth or an old enrollment key cannot substitute. |
 | VPN and DNS | Kernel fixtures and individual Android API34/API36 checks have passed at recorded commits. | A reliable complete Android matrix, default-network separate-app DNS, physical recovery/reconnect and supported platform lifecycle evidence. Current Android native matrix remains failed. |
-| Attended view/control | Current transport has host admission and OS capture/accessibility handling. New Android source has a separate host-side control gate, with view-only default/auto-accept and explicit grant/revoke. The Multies consent model remains inactive. | Physical/OEM verification of the Android gate, adversarial native stale-answer checks, viewer-side control request/status negotiation, authenticated Multies workspace/session binding, and cross-platform enforcement/cleanup. Existing desktop combined admission is not the target separate-consent journey. |
+| Attended view/control | Current transport has host admission and OS capture/accessibility handling. New Android source has a separate host-side control gate, with view-only default/auto-accept and explicit grant/revoke. The Android viewer request/status negotiation is also implemented with protocol/loopback/framework evidence, not current native or physical acceptance. The Multies consent model remains inactive. | Physical/OEM verification of the Android gate, adversarial native stale-answer checks, authenticated Multies workspace/session binding, and cross-platform enforcement/cleanup. Existing desktop combined admission is not the target separate-consent journey. |
 | Incoming files | Configured desktop destinations use bounded transfer, portable names, digest validation and atomic no-overwrite publication. | Real destination selection and approval. Empty destinations refuse; current mobile-host and viewer default file reception is unavailable. A directory setting is not per-file consent or Multies authority. |
 | Stop and recovery | Local transport/worker/capture cleanup regressions exist. | Physical phone recovery, OS permission revocation, sleep/reboot and membership-loss behavior across the real integrated journey. Local Up is not traffic proof. |
 | Distribution | Existing test artifacts remain separate from current source. | No new production or wider beta release is implied by source/CI. Signed iOS delivery and broader rollout readiness remain open. |
+
+The [current source summary](STATUS.md) and [Multies brand/UI checkpoint](multies-brand-alignment.md) separate implemented screen/recovery work from native/device acceptance. [Android request/status negotiation](android-control-negotiation.md) is implemented; its prior placement as wholly missing must not hide that source milestone or imply its native gates passed.
 
 The [Multies boundary](multies-boundary.md) explains the inactive foundations and required bridge. Legacy test enrollment and account administration below describe engineering capability only; they do not meet these release gates. No mock verifier or successful prototype screen may be presented as live authorization.
 

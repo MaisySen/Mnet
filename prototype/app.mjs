@@ -38,7 +38,7 @@ function render(focus = true) {
  }
  root.innerHTML = html + (s.notice ? `<div role="status" class="notice">${s.notice}</div>` : '') + `<footer><strong>Simulation, not implementation proof.</strong> Nothing here enrolls a real device, opens a VPN, collects a password or controls another device. Reloading resets the example.${s.screen !== 'welcome' && s.screen !== 'blocked' ? '<p>'+button('Simulate membership removal','MEMBERSHIP_REMOVED','quiet')+'</p>' : ''}</footer>`;
  document.querySelectorAll('[data-global]').forEach(b => { b.disabled = !['devices','device','settings','offline','declined','ended','ready'].includes(s.screen) || s.session; b.title = b.disabled ? 'Finish or cancel the current step first' : ''; });
- if(focus) root.querySelector('h1')?.focus({preventScroll:true});
+ if(focus){const title=root.querySelector('h1');title?.focus({preventScroll:true});title?.scrollIntoView({block:'start'});}
 }
 root.addEventListener('click', e => { const b=e.target.closest('[data-action]'); if(!b) return; state=step(state,b.dataset.action); render(); });
 choices.addEventListener('change', () => {state=initial(choices.value);render();});
