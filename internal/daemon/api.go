@@ -125,6 +125,26 @@ func (d *Daemon) ServeLocalAPIContext(ctx context.Context, ready chan<- error) e
 	if network == "unix" {
 		os.Chmod(addr, 0o600)
 	}
+	server := &http.Server{Handler: d.localAPIHandler(token), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
+	stopped := make(chan struct{})
+	defer close(stopped)
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = server.Close()
+		case <-stopped:
+		}
+	}()
+	notify(nil)
+	err = server.Serve(ln)
+	if err == http.ErrServerClosed {
+		return nil
+	}
+	return err
+}
+
+// localAPIHandler is shared by the bound server and HTTP lifecycle regressions.
+func (d *Daemon) localAPIHandler(token string) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/localapi/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -145,23 +165,10 @@ func (d *Daemon) ServeLocalAPIContext(ctx context.Context, ready chan<- error) e
 			http.Error(w, "reset_routing cannot be combined with routing roles", http.StatusBadRequest)
 			return
 		}
-		go func() {
-			if req.ResetRouting {
-				if err := d.SetRouting(false, nil, ""); err != nil {
-					d.setErr(fmt.Errorf("reset routing: %w", err))
-					return
-				}
-			}
-			if req.AdvertiseExit || len(req.AdvertiseRoutes) > 0 || req.UseExitNode != "" {
-				if err := d.SetRouting(req.AdvertiseExit, req.AdvertiseRoutes, req.UseExitNode); err != nil {
-					d.setErr(fmt.Errorf("routing: %w", err))
-					return
-				}
-			}
-			if err := d.Up(req.Server, req.Network, req.Name, req.AuthKey); err != nil {
-				d.setErr(fmt.Errorf("up: %w", err))
-			}
-		}()
+		d.mu.Lock()
+		generation := d.stopGeneration
+		d.mu.Unlock()
+		go d.runLocalUp(req, generation)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "starting"})
 	})
@@ -174,20 +181,33 @@ func (d *Daemon) ServeLocalAPIContext(ctx context.Context, ready chan<- error) e
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "down"})
 	})
-	server := &http.Server{Handler: localapi.RequireToken(token, mux), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
-	stopped := make(chan struct{})
-	defer close(stopped)
-	go func() {
-		select {
-		case <-ctx.Done():
-			_ = server.Close()
-		case <-stopped:
-		}
-	}()
-	notify(nil)
-	err = server.Serve(ln)
-	if err == http.ErrServerClosed {
-		return nil
+	return localapi.RequireToken(token, mux)
+}
+
+// runLocalUp owns routing plus startup as one lifecycle operation. Down
+// invalidates an acknowledged but unstarted worker before waiting for it.
+func (d *Daemon) runLocalUp(req localUpRequest, generation uint64) {
+	d.lifecycleMu.Lock()
+	defer d.lifecycleMu.Unlock()
+	d.mu.Lock()
+	retired := generation != d.stopGeneration
+	d.mu.Unlock()
+	if retired {
+		return
 	}
-	return err
+	if req.ResetRouting {
+		if err := d.SetRouting(false, nil, ""); err != nil {
+			d.setErr(fmt.Errorf("reset routing: %w", err))
+			return
+		}
+	}
+	if req.AdvertiseExit || len(req.AdvertiseRoutes) > 0 || req.UseExitNode != "" {
+		if err := d.SetRouting(req.AdvertiseExit, req.AdvertiseRoutes, req.UseExitNode); err != nil {
+			d.setErr(fmt.Errorf("routing: %w", err))
+			return
+		}
+	}
+	if err := d.upLocked(req.Server, req.Network, req.Name, req.AuthKey, &generation); err != nil {
+		d.setErr(fmt.Errorf("up: %w", err))
+	}
 }

@@ -55,10 +55,11 @@ type Daemon struct {
 	applyMu     sync.Mutex // serialize peer replacement and path refresh
 	deviceMu    sync.RWMutex
 
-	mu            sync.Mutex
-	status        string // down, preparing, joining, waiting-approval, up, key-expired
-	interfaceName string // actual kernel TUN name; protected by mu
-	closed        bool   // permanent disposal boundary; protected by mu
+	mu             sync.Mutex
+	status         string // down, preparing, joining, waiting-approval, up, key-expired
+	interfaceName  string // actual kernel TUN name; protected by mu
+	closed         bool   // permanent disposal boundary; protected by mu
+	stopGeneration uint64 // Down retires queued local Up workers; protected by mu
 	// joinMu serializes join and rejoin: the control-plane identity
 	// (node id, token, auth key, control client) swaps as one step,
 	// never concurrently from two loops.
@@ -151,7 +152,17 @@ func (d *Daemon) SetRouting(advertiseExit bool, routes []string, useExit string)
 func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 	d.lifecycleMu.Lock()
 	defer d.lifecycleMu.Unlock()
+	return d.upLocked(server, network, nodeName, authKey, nil)
+}
+
+// upLocked requires lifecycleMu. A local worker must still belong to the
+// generation it acknowledged; direct callers do not supply a generation.
+func (d *Daemon) upLocked(server, network, nodeName, authKey string, generation *uint64) (err error) {
 	d.mu.Lock()
+	if generation != nil && *generation != d.stopGeneration {
+		d.mu.Unlock()
+		return nil
+	}
 	if d.closed {
 		d.mu.Unlock()
 		return fmt.Errorf("node is closed")
@@ -160,6 +171,14 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 		d.mu.Unlock()
 		return fmt.Errorf("already %s", d.status)
 	}
+	// Publish cancellation with startup admission, before disk or control I/O.
+	ctx, cancel := context.WithCancel(context.Background())
+	d.cancel = cancel
+	defer func() {
+		if err != nil {
+			cancel()
+		}
+	}()
 	d.status = "joining"
 	d.dnsErr = ""
 	d.lastErr = "" // start a new attempt; keep any errors raised during it
@@ -227,17 +246,6 @@ func (d *Daemon) Up(server, network, nodeName, authKey string) error {
 		d.setDown()
 		return err
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	d.mu.Lock()
-	if d.closed {
-		d.mu.Unlock()
-		cancel()
-		d.setDown()
-		return fmt.Errorf("node is closed")
-	}
-	d.cancel = cancel
-	d.mu.Unlock()
 
 	if err := d.join(ctx, authKey); err != nil {
 		d.setDown()
@@ -558,6 +566,7 @@ func (d *Daemon) Close() {
 // Down tears the mesh down.
 func (d *Daemon) Down() {
 	d.mu.Lock()
+	d.stopGeneration++
 	cancel := d.cancel
 	d.mu.Unlock()
 	if cancel != nil {
