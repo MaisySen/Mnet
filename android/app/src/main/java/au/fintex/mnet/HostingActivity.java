@@ -21,7 +21,9 @@ import android.widget.TextView;
 // a log of what the session is doing.
 public class HostingActivity extends Activity {
 
-    private TextView log;
+    private TextView log, hostStatus, sharingHint;
+    private Button start, stop;
+    private boolean starting;
     private Switch autoAccept;
     private boolean capturePending;
     private boolean pendingAutoAccept;
@@ -29,6 +31,10 @@ public class HostingActivity extends Activity {
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context ctx, Intent intent) {
+            if (HostSessionService.ACTION_STATE.equals(intent.getAction()) || HostSessionService.ACTION_LOG.equals(intent.getAction())) {
+                starting = false;
+                refreshHostingState();
+            }
             if (HostSessionService.ACTION_LOG.equals(intent.getAction())) {
                 append(intent.getStringExtra(HostSessionService.EXTRA_LOG));
             } else if (HostSessionService.ACTION_ASK.equals(intent.getAction())) {
@@ -49,65 +55,74 @@ public class HostingActivity extends Activity {
     @Override
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        int pad = (int) (20 * getResources().getDisplayMetrics().density);
-        root.setPadding(pad, pad, pad, pad);
+        LinearLayout footer = AppUi.column(this);
+        LinearLayout root = AppUi.screen(this, footer);
+        Button back = AppUi.button(root, "Back to Mnet", false);
+        back.setOnClickListener(v -> finish());
+        AppUi.gap(root, 20);
+        AppUi.text(root, "Share this screen", 28, AppUi.INK, true);
+        AppUi.text(root, "You choose who can view and control this phone.", 16, AppUi.MUTED, false);
+        AppUi.gap(root, 24);
 
-        TextView title = new TextView(this);
-        title.setText("Host a session");
-        title.setTextSize(22);
-        root.addView(title);
-
-        TextView hint = new TextView(this);
-        hint.setText("Sharing your screen lets an approved viewer see this phone over the mesh. Remote control needs separate approval for each viewer. " +
-                "For control, also enable Mnet in Settings > Accessibility.");
-        hint.setPadding(0, pad / 2, 0, pad / 2);
-        root.addView(hint);
-
-        Button accessibility = new Button(this);
-        accessibility.setText("Open accessibility settings");
-        accessibility.setOnClickListener(v -> showAccessibilityDisclosure());
-        root.addView(accessibility);
-
+        LinearLayout sharing = AppUi.card(root);
+        hostStatus = AppUi.text(sharing, "Not sharing", 20, AppUi.INK, true);
+        AppUi.gap(sharing, 8);
+        sharingHint = AppUi.text(sharing, "Android will ask which screen to share. Viewers still need your approval. Avoid opening sensitive content while sharing.", 14, AppUi.MUTED, false);
         autoAccept = new Switch(this);
-        autoAccept.setText("Auto-accept viewing only on next hosting start");
-        root.addView(autoAccept);
-
-        Button start = new Button(this);
+        autoAccept.setText("Auto-accept viewing on the next start only");
+        autoAccept.setTextSize(15); autoAccept.setTextColor(AppUi.INK);
+        autoAccept.setMinimumHeight(AppUi.dp(this, 56));
+        autoAccept.setPadding(0, AppUi.dp(this,12), 0, AppUi.dp(this,12));
+        sharing.addView(autoAccept, new LinearLayout.LayoutParams(-1,-2));
+        AppUi.text(sharing, "Optional. Remote control always needs separate approval.", 13, AppUi.MUTED, false);
+        start = AppUi.button(sharing, "Start hosting", true);
         start.setId(R.id.start_hosting_button);
-        start.setText("Start hosting");
         start.setOnClickListener(v -> {
             if (capturePending) return;
             capturePending = true;
+            refreshHostingState();
             pendingAutoAccept = autoAccept.isChecked();
             MediaProjectionManager mpm = getSystemService(MediaProjectionManager.class);
             startActivityForResult(mpm.createScreenCaptureIntent(), 42);
         });
-        root.addView(start);
+        stop = AppUi.button(footer, "Stop hosting", false);
+        stop.setTextColor(new android.content.res.ColorStateList(new int[][]{new int[]{-android.R.attr.state_enabled},new int[]{}},
+                new int[]{AppUi.MUTED,android.graphics.Color.rgb(155,43,43)}));
+        stop.setOnClickListener(v -> {
+            stop.setEnabled(false);
+            hostStatus.setText("Stopping screen sharing...");
+            startService(new Intent(this, HostSessionService.class).setAction("stop"));
+        });
+        AppUi.gap(root, 16);
 
-        Button control = new Button(this);
-        control.setText("Remote control");
+        LinearLayout controlCard = AppUi.card(root);
+        AppUi.text(controlCard, "Remote control (optional)", 20, AppUi.INK, true);
+        AppUi.text(controlCard, "A viewer requests control after connecting. Review that request here. You can pause or revoke control without stopping viewing.", 14, AppUi.MUTED, false);
+        Button control = AppUi.button(controlCard, "Review remote control", false);
         control.setOnClickListener(v -> showControlConsent());
-        root.addView(control);
+        AppUi.gap(controlCard, 12);
+        AppUi.text(controlCard, "To allow taps and scrolling, Android also needs Mnet Accessibility enabled. Opening settings is a separate choice.", 14, AppUi.MUTED, false);
+        Button accessibility = AppUi.button(controlCard, "Open accessibility settings", false);
+        accessibility.setOnClickListener(v -> showAccessibilityDisclosure());
+        AppUi.gap(root, 16);
 
-        Button stop = new Button(this);
-        stop.setText("Stop hosting");
-        stop.setOnClickListener(v ->
-                startService(new Intent(this, HostSessionService.class).setAction("stop")));
-        root.addView(stop);
+        LinearLayout activity = AppUi.card(root);
+        AppUi.text(activity, "Session activity", 18, AppUi.INK, true);
+        log = AppUi.text(activity, "", 14, AppUi.MUTED, false);
+        log.setHint("No session activity yet.");
+        log.setHintTextColor(AppUi.MUTED);
+        log.setMinHeight(AppUi.dp(this, 52));
+        log.setTextIsSelectable(true);
+        refreshHostingState();
+    }
 
-        log = new TextView(this);
-        log.setTypeface(android.graphics.Typeface.MONOSPACE);
-        log.setTextSize(12);
-        log.setMovementMethod(new ScrollingMovementMethod());
-        log.setPadding(0, pad, 0, 0);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
-        root.addView(log, lp);
-
-        ContentInsets.install(root);
-        setContentView(root);
+    private void refreshHostingState() {
+        boolean active = HostSessionService.isHosting();
+        hostStatus.setText(active ? "Screen sharing active" : capturePending ? "Waiting for screen permission" : starting ? "Starting screen sharing..." : "Not sharing");
+        sharingHint.setText(active ? "Approved viewers can see your screen. Stop hosting before opening sensitive content." : "Android will ask which screen to share. Viewers still need your approval. Avoid opening sensitive content while sharing.");
+        start.setEnabled(!active && !capturePending && !starting);
+        stop.setEnabled(active || starting);
+        autoAccept.setEnabled(!active && !capturePending && !starting);
     }
 
     void showControlConsent(){
@@ -164,8 +179,12 @@ public class HostingActivity extends Activity {
             svc.putExtra(HostSessionService.EXTRA_AUTO_ACCEPT, autoAcceptThisHost);
             if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(svc);
             else startService(svc);
+            starting = true;
+            refreshHostingState();
             append("starting screen capture");
         } else {
+            starting = false;
+            refreshHostingState();
             append("screen capture permission denied");
         }
     }
@@ -182,8 +201,11 @@ public class HostingActivity extends Activity {
         super.onResume();
         IntentFilter f = new IntentFilter();
         f.addAction(HostSessionService.ACTION_LOG);
+        f.addAction(HostSessionService.ACTION_STATE);
         f.addAction(HostSessionService.ACTION_ASK);
         VpnPlatform.registerPrivateReceiver(this, receiver, f);
+        starting = false;
+        refreshHostingState();
     }
 
     @Override

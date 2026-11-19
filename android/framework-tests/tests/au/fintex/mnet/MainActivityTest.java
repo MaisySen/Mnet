@@ -13,12 +13,39 @@ import static org.junit.Assert.*;
 public class MainActivityTest {
  private ActivityController<MainActivity> controller;
  private MainActivity activity;
- @Before public void create(){controller=Robolectric.buildActivity(MainActivity.class).create().start().resume();activity=controller.get();}
+ @Before public void create(){controller=Robolectric.buildActivity(MainActivity.class).create().start().resume();activity=controller.get();((EditText)activity.findViewById(R.id.server_url)).setText("https://fixture.invalid");((EditText)activity.findViewById(R.id.network_name)).setText("fixture-network");}
  @After public void destroy(){controller.pause().stop().destroy();}
  private Object field(String name)throws Exception{java.lang.reflect.Field f=MainActivity.class.getDeclaredField(name);f.setAccessible(true);return f.get(activity);}
  private void status(String state,boolean always)throws Exception{
   BroadcastReceiver receiver=(BroadcastReceiver)field("statusReceiver");
   receiver.onReceive(activity,new Intent(MnetVpnService.ACTION_STATUS).putExtra(MnetVpnService.EXTRA_STATUS,"{\"status\":\""+state+"\"}").putExtra(MnetVpnService.EXTRA_ALWAYS_ON,always));
+ }
+ @Test public void emptySetupRevealsFormWithoutConsentSavingOrService()throws Exception{
+  ((EditText)activity.findViewById(R.id.network_name)).setText("");
+  ((Button)activity.findViewById(R.id.connect_button)).performClick();
+  assertEquals(android.view.View.VISIBLE,((android.view.View)field("setupFields")).getVisibility());
+  assertNotNull(((EditText)activity.findViewById(R.id.network_name)).getError());
+  assertFalse(activity.getSharedPreferences("mnet",0).contains("network"));
+  assertFalse(activity.getSharedPreferences("mnet",0).getBoolean(MnetVpnService.VPN_DISCLOSURE_KEY,false));
+  assertNull(Shadows.shadowOf(activity).getNextStartedService());
+ }
+ @Test public void peerDialogNeedsAddressAndDoesNotStartUntilExplicitConnect(){
+  activity.findViewById(R.id.view_peer_button).performClick();
+  Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+  android.app.AlertDialog dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+  assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
+  dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+  assertTrue(dialog.isShowing());assertNull(Shadows.shadowOf(activity).getNextStartedActivity());
+  android.widget.EditText input=findInput(dialog.getWindow().getDecorView());assertNotNull(input);input.setText("100.64.0.3");
+  dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
+  Intent view=Shadows.shadowOf(activity).getNextStartedActivity();assertEquals("100.64.0.3",view.getStringExtra("peer_ip"));
+  assertEquals(ViewerActivity.class.getName(),view.getComponent().getClassName());
+  assertNull(Shadows.shadowOf(activity).getNextStartedService());
+ }
+ private android.widget.EditText findInput(android.view.View v){
+  if(v instanceof android.widget.EditText)return (android.widget.EditText)v;
+  if(v instanceof android.view.ViewGroup){android.view.ViewGroup g=(android.view.ViewGroup)v;for(int i=0;i<g.getChildCount();i++){android.widget.EditText input=findInput(g.getChildAt(i));if(input!=null)return input;}}
+  return null;
  }
  @Test public void managedStatesDisableDisconnectAndExplainSettings()throws Exception{
   Button toggle=activity.findViewById(R.id.connect_button);

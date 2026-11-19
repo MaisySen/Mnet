@@ -32,6 +32,9 @@ import mobile.Node;
 // Remote input needs a separate session-scoped approval in HostingActivity.
 public class HostSessionService extends Service implements HostCallbacks, mobile.ControlCallbacks {
 
+    public static final String ACTION_STATE = "au.fintex.mnet.HOST_STATE";
+    public static boolean isHosting() { HostSessionService host = currentHost; return host != null && host.running; }
+
     public static final String ACTION_LOG = "au.fintex.mnet.SESSION_LOG";
     public static final String EXTRA_LOG = "log";
     public static final String ACTION_ASK = "au.fintex.mnet.SESSION_ASK";
@@ -171,6 +174,7 @@ public class HostSessionService extends Service implements HostCallbacks, mobile
                 control.end();
                 MnetAccessibilityService.setHosting(false);
             }
+            publishHostingState();
             new Thread(() -> {
                 try {
                     synchronized (hostLifecycle) {
@@ -404,6 +408,12 @@ public class HostSessionService extends Service implements HostCallbacks, mobile
         log("session ended");
     }
 
+    private void publishHostingState() {
+        // Notification only: UI re-reads the service-owned state, never trusts log text.
+        Intent event = new Intent(ACTION_STATE).setPackage(getPackageName());
+        sendBroadcast(event);
+    }
+
     private void log(String s) {
         Intent i = new Intent(ACTION_LOG).putExtra(EXTRA_LOG, s);
         i.setPackage(getPackageName());
@@ -432,6 +442,7 @@ public class HostSessionService extends Service implements HostCallbacks, mobile
             stopping = true;
             if (hostStarted) { stoppingNode = node; hostStarted = false; }
         }
+        publishHostingState();
         // Stop waits for Go capture workers; do not hold their callback lock.
         if (stoppingNode != null) {
             try { stoppingNode.stopSessionHost(); } catch (Exception ignored) { }

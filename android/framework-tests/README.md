@@ -1,5 +1,9 @@
 # Selected Android framework simulation
 
+## Current UI layout checkpoint
+
+The November19 home/setup/sharing implementation adds `AppUi` screen furniture, required setup guidance, peer-address validation and service-owned hosting state. Fresh local functional suites pass164 selected cases plus78VPN cases. These suites still do not validate app resources or pixels. A separate [packaged-resource native-raster layout suite](../../docs/android-ui-layouts.md) renders the actual implemented Views/resources and covers compact/enlarged-text scroll reachability and the fixed Stop footer. Its pixels remain simulated Android layout evidence, not phone/emulator/JNI/consent acceptance. Older counts and results below are historical checkpoints.
+
 ## Run
 
 Run `sh scripts/test-android-framework.sh` and `sh scripts/test-android-framework.sh vpn` with JDK17, Python3, Maven and network access to Maven Central/Google Maven. `MVN` can name the Maven executable; `MNET_MAVEN_REPO` selects the dependency cache. The script copies current production sources into a fresh temporary project, resolves pinned dependencies, runs tests and removes the temporary project.
