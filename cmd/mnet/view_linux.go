@@ -19,6 +19,7 @@ import (
 )
 
 type xDesktopView struct {
+	viewport      viewerViewport
 	lastProbe     time.Time
 	conn          *xgb.Conn
 	window        xproto.Window
@@ -129,7 +130,11 @@ func (v *xDesktopView) State(state string) error {
 		return errors.New("viewer closed")
 	}
 	v.state = state
-	title := v.title + " | " + state
+	mode := "Fit"
+	if v.viewport.one {
+		mode = "1:1 received"
+	}
+	title := v.title + " | " + state + " [" + mode + "]"
 	if err := xproto.ChangePropertyChecked(v.conn, xproto.PropModeReplace, v.window, xproto.AtomWmName, xproto.AtomString, 8, uint32(len(title)), []byte(title)).Check(); err != nil {
 		return err
 	}
@@ -195,7 +200,11 @@ func (v *xDesktopView) draw() error {
 	if err = xproto.ChangeGCChecked(v.conn, v.gc, xproto.GcForeground, []uint32{0xffffff}).Check(); err != nil {
 		return err
 	}
-	for i, text := range []string{safeViewerLabel(v.title), safeViewerLabel(v.state)} {
+	mode := "Fit. 1: received pixels 1:1; arrows/Home/End: pan; F: fit; Escape: end"
+	if v.viewport.one {
+		mode = "1:1 received pixels. Arrows/Home/End: pan; F: fit; Escape: end"
+	}
+	for i, text := range []string{safeViewerLabel(v.title), safeViewerLabel(v.state), mode} {
 		if err = xproto.ImageText8Checked(v.conn, byte(len(text)), target, v.gc, 10, int16(18+i*20), text).Check(); err != nil {
 			return err
 		}
@@ -203,25 +212,26 @@ func (v *xDesktopView) draw() error {
 	publish := func() error {
 		return xproto.CopyAreaChecked(v.conn, target, xproto.Drawable(v.window), v.gc, 0, 0, 0, 0, uint16(v.width), uint16(v.height)).Check()
 	}
-	if v.image == nil || v.height <= 52 {
+	if v.image == nil || v.height <= viewerHeader {
 		return publish()
 	}
 	b := v.image.Bounds()
-	w, h := fitView(b.Dx(), b.Dy(), v.width, v.height-52)
+	region := v.viewport.region(b.Dx(), b.Dy(), v.width, v.height-viewerHeader)
+	w, h := region.target.Dx(), region.target.Dy()
 	if w == 0 || h == 0 {
-		return nil
+		return publish()
 	}
 	rows := v.maxRowsBytes / (w * 4)
 	if rows < 1 {
 		return errors.New("viewer X11 request limit too small")
 	}
-	dx, dy := (v.width-w)/2, 52+(v.height-52-h)/2
+	dx, dy := region.target.Min.X, viewerHeader+region.target.Min.Y
 	for y := 0; y < h; y += rows {
 		n := min(rows, h-y)
 		pixels := make([]byte, w*n*4)
 		for row := 0; row < n; row++ {
 			for x := 0; x < w; x++ {
-				src := v.image.PixOffset(b.Min.X+x*b.Dx()/w, b.Min.Y+(y+row)*b.Dy()/h)
+				src := v.image.PixOffset(b.Min.X+region.source.Min.X+x*region.source.Dx()/w, b.Min.Y+region.source.Min.Y+(y+row)*region.source.Dy()/h)
 				i := (row*w + x) * 4
 				pixels[i], pixels[i+1], pixels[i+2] = v.image.Pix[src+2], v.image.Pix[src+1], v.image.Pix[src]
 			}
@@ -269,9 +279,15 @@ func (v *xDesktopView) Poll() (bool, error) {
 			if err != nil {
 				return false, err
 			}
-			for _, sym := range mapping.Keysyms {
+			if len(mapping.Keysyms) > 0 {
+				sym := uint32(mapping.Keysyms[0])
 				if sym == 0xff1b {
 					return true, nil
+				}
+				if v.image != nil && v.viewport.key(sym, v.image.Bounds().Dx(), v.image.Bounds().Dy(), v.width, v.height-viewerHeader) {
+					if err := v.State(v.state); err != nil {
+						return false, err
+					}
 				}
 			}
 		case xproto.ExposeEvent:

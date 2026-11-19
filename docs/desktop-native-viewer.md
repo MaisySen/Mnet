@@ -14,7 +14,7 @@ No keyboard/pointer forwarding, screen saving, file destination, clipboard, reco
 
 ## Rendering and lifetime
 
-Linux X11 with24-bit TrueColor/32-bit pixels in the supported byte/mask format is required. Wayland, absent/small displays and unsupported formats refuse, without fallback. Complete bounded JPEG images are fit to the local window without stretching. Wire deltas are composed before display coalescing. Offscreen composition prevents exposing partially uploaded strips. Peer text is bounded plain ASCII, and the last-screen receipt time is shown rather than treating an unchanged desktop as a broken connection. This is receipt time, not source capture latency or a freshness guarantee.
+Linux X11 with24-bit TrueColor/32-bit pixels in the supported byte/mask format is required. Wayland, absent/small displays and unsupported formats refuse, without fallback. Complete bounded JPEG images are fit to the local window without stretching. Fit is the default. Local `1` switches to one decoded received-frame pixel per local pixel, arrow keys pan64pixels, Home returns to the top-left and End to the bottom-right. `F` returns to fit. Small received images stay centered without upscaling in1:1mode. Pan clamps after received-frame or window size changes. All these keys stay local and grant no remote input. This avoids an extra client-side shrink but cannot undo host capture scaling or JPEG loss, especially on the2048px fixture. Wire deltas are composed before display coalescing. Offscreen composition prevents exposing partially uploaded strips. Peer text is bounded plain ASCII, and the last-screen receipt time is shown rather than treating an unchanged desktop as a broken connection. This is receipt time, not source capture latency or a freshness guarantee.
 
 One run owns the display/window/GC, pending dial, active mux and one pending completed frame. Local close/cancel, host End, current-authority loss and display failure retire that run. No queued frame revives a retired window. The host now also cancels an unanswered view prompt on pending peer EOF, early data, authority withdrawal or parent cancellation. Its pending-only reader is joined before mux dispatch can start, so it never races the active session reader. No valid client data belongs before the hello reply.
 
@@ -39,3 +39,11 @@ These are synthetic owned desktops through the built client, not user devices:
 ![2048px source fit inside the viewer window](ui/desktop-viewer/viewing-2048.png)
 
 ![Protocol landmark image after resize and expose](ui/desktop-viewer/fit.png)
+
+## Received-pixel1:1 acceptance
+
+The actual native protocol fixture first failed when pressing1left the same fit-scaled pixels. It now checks source landmarks in fit,1:1, bottom-right pan and restored fit, in addition to resize/expose. Geometry tests cover crop bounds, exact source/target pixel dimensions, frame-size changes and unrelated local keys. Both native host display sizes run the mode too with no input injector. Inspected1024px source text avoids the extra fit shrink;2048px source detail remains limited by host downscaling/JPEG.
+
+![Actual received-frame pixels without extra client fit shrink](ui/desktop-viewer/received-pixels.png)
+
+![1:1 protocol crop at bottom-right](ui/desktop-viewer/panned.png)

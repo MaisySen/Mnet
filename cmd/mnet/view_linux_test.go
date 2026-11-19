@@ -50,14 +50,14 @@ func TestDesktopViewX11ProtocolPixelsAndClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	v := display.(*xDesktopView)
-	img := image.NewRGBA(image.Rect(0, 0, 640, 480))
-	for y := 0; y < 480; y++ {
-		for x := 0; x < 640; x++ {
+	img := image.NewRGBA(image.Rect(0, 0, 1280, 960))
+	for y := 0; y < 960; y++ {
+		for x := 0; x < 1280; x++ {
 			c := color.RGBA{R: 220, A: 255}
-			if x >= 320 {
+			if x >= 640 {
 				c = color.RGBA{G: 190, A: 255}
 			}
-			if y >= 240 {
+			if y >= 480 {
 				c.B = 230
 			}
 			img.SetRGBA(x, y, c)
@@ -126,7 +126,7 @@ func TestDesktopViewX11ProtocolPixelsAndClose(t *testing.T) {
 
 type viewerFixtureCapture struct{ data []byte }
 
-func (c *viewerFixtureCapture) Geometry() (int, int)           { return 640, 480 }
+func (c *viewerFixtureCapture) Geometry() (int, int)           { return 1280, 960 }
 func (c *viewerFixtureCapture) Capture() ([]byte, bool, error) { return c.data, true, nil }
 
 func TestDesktopViewUnsupportedDisplayRefuses(t *testing.T) {

@@ -46,7 +46,7 @@ try:
   while time.monotonic()<until:
    subprocess.run(['import','-window',wid,str(protocol/'resized.png')],env=ve,check=True)
    image=Image.open(protocol/'resized.png').convert('RGB')
-   a,b=image.getpixel((50,100)),image.getpixel((400,100))
+   a,b=image.getpixel((70,100)),image.getpixel((400,100))
    fitted=a[0]>150 and a[1]<50 and b[1]>150 and b[0]<50
    if fitted:break
    time.sleep(.02)
@@ -55,14 +55,41 @@ try:
   until=time.monotonic()+3;exposed=False
   while time.monotonic()<until:
    subprocess.run(['import','-window',wid,str(protocol/'exposed.png')],env=ve,check=True)
-   image=Image.open(protocol/'exposed.png').convert('RGB');a,b=image.getpixel((50,100)),image.getpixel((400,100))
+   image=Image.open(protocol/'exposed.png').convert('RGB');a,b=image.getpixel((70,100)),image.getpixel((400,100))
    exposed=a[0]>150 and a[1]<50 and b[1]>150 and b[0]<50
    if exposed:break
    time.sleep(.02)
   assert exposed,'remapped window did not redraw actual image landmarks'
-  subprocess.run(['xdotool','windowfocus',wid,'key','Escape'],env=ve,check=True)
+  subprocess.run(['xdotool','windowfocus',wid,'key','1'],env=ve,check=True)
+  until=time.monotonic()+3;one=False
+  while time.monotonic()<until:
+   subprocess.run(['import','-window',wid,str(protocol/'one-to-one.png')],env=ve,check=True)
+   image=Image.open(protocol/'one-to-one.png').convert('RGB');c=image.getpixel((400,100))
+   one=c[0]>150 and c[1]<50
+   if one:break
+   time.sleep(.02)
+  assert one,'local1 key did not display received pixels1:1'
+  subprocess.run(['xdotool','key','End'],env=ve,check=True)
+  until=time.monotonic()+3;panned=False
+  while time.monotonic()<until:
+   subprocess.run(['import','-window',wid,str(protocol/'panned.png')],env=ve,check=True)
+   image=Image.open(protocol/'panned.png').convert('RGB');c=image.getpixel((400,100))
+   panned=c[1]>150 and c[2]>150 and c[0]<50
+   if panned:break
+   time.sleep(.02)
+  assert panned,'1:1 End pan did not reach bottom-right received image'
+  subprocess.run(['xdotool','key','f'],env=ve,check=True)
+  until=time.monotonic()+3;restored=False
+  while time.monotonic()<until:
+   subprocess.run(['import','-window',wid,str(protocol/'restored-fit.png')],env=ve,check=True)
+   image=Image.open(protocol/'restored-fit.png').convert('RGB');a,b=image.getpixel((70,100)),image.getpixel((400,100))
+   restored=a[0]>150 and a[1]<50 and b[1]>150 and b[0]<50
+   if restored:break
+   time.sleep(.02)
+  assert restored,'localF did not restore fit after pan'
+  subprocess.run(['xdotool','key','Escape'],env=ve,check=True)
   assert test.wait(timeout=3)==0,(protocol/'test.log').read_text()
-  print('PASS protocol frame/fit/resize/expose and joined Escape',flush=True)
+  print('PASS protocol fit/resize/expose, received1:1/pan/restore and joined Escape',flush=True)
  # A valid X server with an unsupported pixel format must fail closed.
  with open(out/'depth-display','w') as fd,open(out/'depth-xvfb.log','w') as log:
   depth=subprocess.Popen(['Xvfb','-noreset','-nolisten','tcp','-displayfd',str(fd.fileno()),'-screen','0','800x600x16'],pass_fds=(fd.fileno(),),stdout=log,stderr=log)
@@ -108,11 +135,22 @@ try:
          changed=False;until=time.monotonic()+3
          while time.monotonic()<until:
           subprocess.run(['import','-window',viewer,str(case/'delta.png')],env=ve,check=True)
-          changed=ImageChops.difference(image.crop((0,52,image.width,image.height)),Image.open(case/'delta.png').convert('RGB').crop((0,52,image.width,image.height))).getbbox() is not None
+          changed=ImageChops.difference(image.crop((0,72,image.width,image.height)),Image.open(case/'delta.png').convert('RGB').crop((0,72,image.width,image.height))).getbbox() is not None
           if changed:break
           time.sleep(.04)
          assert changed,'actual changed desktop did not reach native viewer'
-         subprocess.run(['xdotool','windowfocus',viewer,'key','a','Escape'],env=ve,check=True)
+         subprocess.run(['xdotool','windowfocus',viewer,'key','1'],env=ve,check=True)
+         until=time.monotonic()+3;native_one=False
+         while time.monotonic()<until:
+          title=subprocess.check_output(['xdotool','getwindowname',viewer],env=ve,text=True)
+          # The screen itself is inspected too; key processing is serialized
+          # before the next callback/event, without any remote input request.
+          subprocess.run(['import','-window',viewer,str(case/'one-to-one.png')],env=ve,check=True)
+          native_one='[1:1 received]' in title
+          if native_one:break
+          time.sleep(.02)
+         assert native_one,'native one-to-one window unavailable'
+         subprocess.run(['xdotool','key','f','a','Escape'],env=ve,check=True)
         elif mode=='host-end':subprocess.run(['xdotool','windowfocus',active,'key','Return'],env=env,check=True)
         elif mode=='authority-loss':(case/'withdraw-authority').write_text('withdraw')
         elif mode=='display-loss':xs[1].terminate();xs[1].wait()
