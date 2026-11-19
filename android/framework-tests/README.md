@@ -58,3 +58,8 @@ HostingActivity now uses actual production source instead of a fake in this harn
 ## Projection-result ownership follow-up,19November
 
 The selected suite now passes200 cases locally. Eight added cases execute the actual hosting Activity callback on API24/25/26/33 and first failed against old source for unrequested/late projection service starts. Pending state is supplied explicitly, not obtained from real OS consent. The new guard consumes one pending result and ignores duplicate/late/unrequested success. See [bounded evidence](../../docs/android-projection-result-ownership.md); this does not clear installed native projection/lifecycle gates.
+
+
+## Disabled document-output helper
+
+The selected-source list now compiles DocumentExport, which has no production caller. Its52 cases use a registered in-process fake ContentProvider and narrow output faults on APIs24/25/26/33. They cover Java descriptor ownership, exact-byte local completion, open/write/close failure and cancellation, including late returns. Robolectric's createPipe is a temporary-file simulation, not actual pipe/provider acceptance. The JDK17 fixture opens java.io to the test JVM for Robolectric's descriptor interceptor. No app module permissions or runtime reflection policy is changed. See [scope and ownership sources](../../docs/android-document-export-preparation.md).

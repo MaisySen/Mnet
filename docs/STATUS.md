@@ -1,5 +1,7 @@
 # Mnet project status
 
+Latest Android preparation: [disabled document-output adapter](android-document-export-preparation.md) keeps selected content-URI output and descriptor ownership in Java, with exact-byte completion, cancellation and failure cleanup. All252 selected framework cases pass locally, including52 new fake-provider/output-fault cases. No picker, Go/mobile bridge or consumer reception is enabled. Current checkpoint CI pending; actual provider/device/pipe acceptance and durability remain open.
+
 Latest transport correction: [half-close/reset ownership](stream-halfclose-reset-ownership.md) keeps bounded receive owner state after FIN so a later file reset cancels active finalization without closing shared chat/viewing. Real-mux regression first failed old behavior; full local race/vet and20 focused repetitions pass. Current normal CI pending; no native/provider or consumer feature enablement.
 
 
