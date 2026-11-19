@@ -1,5 +1,7 @@
 # Releases
 
+Latest source-only approval fix: [provider-retirement ownership](oidc-provider-retirement-ownership.md) makes node approval serialize with provider replacement and keeps active exchanges revocable. Four failing old-source HTTP cases now pass, alongside duplicate/replay, same-provider idempotence and fresh-current-provider persistence tests. Focused20race repetitions, full local race/vet and isolated Chrome pass. Hosted CI, live deployment and native/device acceptance are separate.
+
 Latest source-only account fix: [browser sign-out callback ownership](account-signout-callback-ownership.md) prevents pending, blocked-exchange and superseded callbacks from restoring a signed-out session. Focused race tests include20,000 issuance/sign-out interleavings; full local race/vet and isolated Chrome account regression pass. Current hosted checks pending. No live deployment, Multies integration or app release.
 
 Test releases and engineering history. Historical entries record what was claimed at the time, not a current readiness guarantee. Older builds have known security/reliability gaps. Use [STATUS](STATUS.md) for source versus shipped/deployed state.
