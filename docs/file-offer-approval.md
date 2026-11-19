@@ -36,3 +36,5 @@ A prompt's local correlation binding authenticates no human by itself. Future UI
 A real attended receiver needs a local chooser and file-specific decision surface, reliable prompt cancellation under its native lifecycle, supported destination access/persistence, user-visible outcomes and installed-platform acceptance. Headless default migration requires an explicit policy choice. Production Multies authority and membership-loss propagation remain outside this local gate. None of these gates is cleared by the Go tests.
 
 A later [sender reset-ownership correction](file-sender-reset-ownership.md) stops failed-transfer copy/queue work without ending unrelated session traffic. It does not add native file consent.
+
+The later [storage transaction preparation](file-storage-transaction.md) keeps the existing path backend and adds fault-testable finalization/publication ownership. It does not provide a native chooser or document-URI adapter.

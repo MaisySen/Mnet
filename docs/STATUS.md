@@ -1,5 +1,8 @@
 # Mnet project status
 
+Latest preparation: [receiver-owned storage transaction](file-storage-transaction.md) extracts the unchanged private path backend behind write/finalize/publish/abort ownership and adds real-mux fault tests. Full local race/vet and20 focused race repetitions pass; current normal CI pending. No native URI adapter, chooser or consumer reception is enabled.
+
+
 Latest Android source correction: [projection-result ownership](android-projection-result-ownership.md) rejects successful callbacks without one pending hosting Start. Eight new simulated API cases failed old source; all200 selected framework cases now pass locally. Current normal CI pending, no installed projection/device acceptance claimed.
 
 

@@ -27,6 +27,10 @@ const DefaultFileIdleTimeout = 60 * time.Second
 // Dir under their offered base name. An empty Dir disables reception; no
 // implicit process working-directory destination is allowed.
 type FileReceiver struct {
+	// Internal transaction seam for deterministic fault/lifecycle checks. External
+	// callers retain the path backend; this does not enable provider reception.
+	beginStorage func(dir, name string) (receiveTransaction, error)
+
 	// RequireApproval selects per-offer local consent. Its zero value preserves
 	// legacy explicitly configured-directory reception. Consumer callers must opt
 	// in; neither viewing nor a control grant substitutes for this decision.
@@ -115,25 +119,21 @@ func (r FileReceiver) Handle(s Stream) {
 		refuse("file reception is not configured")
 		return
 	}
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		refuse("receiver storage unavailable")
-		return
+
+	begin := r.beginStorage
+	if begin == nil {
+		begin = beginPathReceive
 	}
-	path := filepath.Join(dir, name)
-	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
-		refuse("destination already exists or is inaccessible")
-		return
-	}
-	// Never expose or overwrite the offered destination until the complete
-	// bytes, length and digest have been verified. CreateTemp uses mode 0600.
-	f, err := os.CreateTemp(dir, ".mnet-transfer-*")
+	storage, err := begin(dir, name)
 	if err != nil {
-		refuse("receiver storage unavailable")
+		if errors.Is(err, errReceiveDestination) {
+			refuse("destination already exists or is inaccessible")
+		} else {
+			refuse("receiver storage unavailable")
+		}
 		return
 	}
-	tmp := f.Name()
-	defer os.Remove(tmp)
-	defer f.Close()
+	defer storage.Abort()
 	if err = r.Mux.SendJSON(s.ID, PriBulk, FileAccept{OK: true}); err != nil {
 		return
 	}
@@ -171,7 +171,7 @@ func (r FileReceiver) Handle(s Stream) {
 		if !allowed() {
 			return
 		}
-		written, err := f.Write(fr.Payload)
+		written, err := storage.Write(fr.Payload)
 		if err != nil || written != len(fr.Payload) {
 			ack(false, "")
 			return
@@ -190,20 +190,15 @@ func (r FileReceiver) Handle(s Stream) {
 	if !allowed() {
 		return
 	}
-	if err = f.Sync(); err != nil {
+
+	if err = storage.Finalize(); err != nil {
 		ack(false, digest)
 		return
 	}
-	if err = f.Close(); err != nil {
-		ack(false, digest)
-		return
-	}
-	// Hard-link publication is atomic and fails if another transfer or a
-	// symlink already occupies the destination. No replace-on-rename race.
 	if !allowed() {
 		return
 	}
-	if err = os.Link(tmp, path); err != nil {
+	if err = storage.Publish(); err != nil {
 		ack(false, digest)
 		return
 	}
