@@ -20,7 +20,7 @@ struct MnetLayoutRender {
             Fixture(name: "busy-640", width: 640, expanded: false, connected: false, busy: true, status: "Connecting", type: .large)
         ] {
             let panel = MnetConnectionPanel(
-                server: .constant(fixture.expanded ? "https://control.example" : ""),
+                server: .constant(fixture.expanded && !fixture.required ? "https://control.example" : ""),
                 network: .constant(fixture.expanded ? "office-network" : ""),
                 authKey: .constant(""), nodeName: .constant("My iPhone"),
                 exitNode: .constant(""), showSettings: .constant(fixture.expanded),
