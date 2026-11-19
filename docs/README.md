@@ -1,5 +1,7 @@
 # Mnet documentation
 
+- [Shared Desk: independent Linux engine slice and remaining gates](shared-desk-engine.md)
+
 These documents describe a development project, not a production-readiness guarantee. Start with the status page before installing or relying on a feature.
 
 | Document | Owns |

@@ -139,6 +139,8 @@ func main() {
 			fatal("not up")
 		}
 		fmt.Println(st.IPv4)
+	case "desk":
+		runDesk(args[1:])
 	case "session":
 		runSession(args[1:])
 	case "ping":
@@ -173,6 +175,8 @@ func usage() {
   mnet status [--json]  (private local status; may include an approval link)
   mnet ip
   mnet ping <node>
+  mnet desk layout-check FILE [--edge DISPLAY EDGE PIXEL]  (offline geometry only)
+  mnet session view <peer>  (attended Linux X11, view-only)
   mnet session connect <peer> [--save-frames DIR] [--send-file PATH]
   mnet session send <peer> <file>
   mnet version

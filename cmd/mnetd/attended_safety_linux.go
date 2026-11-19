@@ -55,7 +55,9 @@ func (s *x11AttendedSafety) release() error {
 	return first
 }
 
-func newAttendedSafety() (attendedSafety, error) {
+func newAttendedSafety() (attendedSafety, error) { return newNativeInputSafety(nil) }
+
+func newNativeInputSafety(mappingStillExact func(*xgb.Conn) bool) (attendedSafety, error) {
 	if onWayland() {
 		return nil, errors.New("attended safety requires X11")
 	}
@@ -141,6 +143,9 @@ func newAttendedSafety() (attendedSafety, error) {
 			case xproto.SelectionClearEvent:
 				return // Losing the shared owner is terminal, never silently reclaimed.
 			case xproto.MappingNotifyEvent:
+				if mappingStillExact != nil && mappingStillExact(conn) {
+					continue
+				}
 				return // Keyboard mapping changed, so the reserved shortcut needs recheck.
 			}
 		}

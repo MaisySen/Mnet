@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"fintex.au/mnet/internal/desk"
 	"fintex.au/mnet/internal/session"
 	"github.com/jezek/xgb/xproto"
 )
@@ -25,9 +26,11 @@ const attendedProcessArg = "--mnet-private-attended-input-v1"
 const attendedProcessLease = 2 * time.Second
 
 type attendedProcessCommand struct {
-	Kind  string
-	ID    uint64
-	Event session.InputEvent
+	DeskInput *desk.Input `json:",omitempty"`
+	Keyboard  string      `json:",omitempty"`
+	Kind      string
+	ID        uint64
+	Event     session.InputEvent
 }
 type attendedProcessReply struct {
 	Kind          string
@@ -73,7 +76,7 @@ func runAttendedProcess(in io.Reader, out io.Writer, lease time.Duration) (resul
 				default:
 				}
 			case "input":
-				if c.ID == 0 {
+				if c.ID == 0 || c.DeskInput != nil || c.Keyboard != "" {
 					return
 				}
 				select {
@@ -162,7 +165,7 @@ func runAttendedProcess(in io.Reader, out io.Writer, lease time.Duration) (resul
 }
 
 func maybeRunAttendedProcess() bool {
-	if len(os.Args) != 2 || os.Args[1] != attendedProcessArg {
+	if len(os.Args) != 2 || (os.Args[1] != attendedProcessArg && os.Args[1] != deskProcessArg) {
 		return false
 	}
 	in := os.NewFile(3, "attended-input")
@@ -170,7 +173,12 @@ func maybeRunAttendedProcess() bool {
 	if in == nil || out == nil {
 		os.Exit(2)
 	}
-	err := runAttendedProcess(in, out, attendedProcessLease)
+	var err error
+	if os.Args[1] == deskProcessArg {
+		err = runDeskProcess(in, out, attendedProcessLease)
+	} else {
+		err = runAttendedProcess(in, out, attendedProcessLease)
+	}
 	_ = in.Close()
 	_ = out.Close()
 	if err != nil {
@@ -195,6 +203,9 @@ type attendedProcessInjector struct {
 }
 
 func newAttendedProcessInjector(command *exec.Cmd) (*attendedProcessInjector, error) {
+	return newInputProcessWithInit(command, nil)
+}
+func newInputProcessWithInit(command *exec.Cmd, initial *attendedProcessCommand) (*attendedProcessInjector, error) {
 	inRead, inWrite, err := os.Pipe()
 	if err != nil {
 		return nil, err
@@ -234,6 +245,12 @@ func newAttendedProcessInjector(command *exec.Cmd) (*attendedProcessInjector, er
 			}
 		}
 	}()
+	if initial != nil {
+		if err := p.send(*initial); err != nil {
+			p.Close()
+			return nil, errors.New("local input initialization failed")
+		}
+	}
 	select {
 	case r := <-p.replies:
 		p.width, p.height = r.Width, r.Height

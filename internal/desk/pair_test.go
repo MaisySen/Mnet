@@ -1,0 +1,147 @@
+package desk
+
+import (
+	"errors"
+	"strings"
+	"sync/atomic"
+	"testing"
+)
+
+func pairFixture(t *testing.T) (*Compiled, Binding) {
+	t.Helper()
+	c, err := Compile(Layout{Version: 1, Displays: []Display{{ID: "local", Device: "key-a", Width: 100, Height: 100, PixelWidth: 100, PixelHeight: 100}, {ID: "remote", Device: "key-b", X: 100, Width: 100, Height: 100, PixelWidth: 200, PixelHeight: 200}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c, Binding{Run: strings.Repeat("a", 64), Primary: "key-a", Recipient: "key-b", Layout: c.Fingerprint(), Keyboard: strings.Repeat("b", 64), Display: "remote"}
+}
+func TestPairCrossingHoldGuardAndLocalReturn(t *testing.T) {
+	layout, binding := pairFixture(t)
+	var disabled atomic.Int32
+	board, err := NewSwitchboard(layout, "key-a", "local", func() bool { return true }, func() { disabled.Add(1) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &ownedFixture{}
+	if err = board.Cross(Right, 50, binding, func(Binding) (NativeInput, error) { return backend, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if len(backend.events) != 1 || backend.events[0].X != 0 || backend.events[0].Y != 100 {
+		t.Fatal("entry position not mapped")
+	}
+	if err = board.Apply(Input{Sequence: 2, Kind: "key", Action: "down", Code: 38}); err != nil {
+		t.Fatal(err)
+	}
+	if err = board.Cross(Left, 100, Binding{}, nil); err == nil || backend.released != 0 {
+		t.Fatal("held key crossed")
+	}
+	if err = board.Apply(Input{Sequence: 3, Kind: "key", Action: "up", Code: 38}); err != nil {
+		t.Fatal(err)
+	}
+	if err = board.Cross(Left, 100, Binding{}, nil); err != nil || backend.released != 1 {
+		t.Fatal("local return did not join release", err)
+	}
+	if err = board.Apply(Input{Sequence: 4, Kind: "key", Action: "down", Code: 38}); err == nil {
+		t.Fatal("local input forwarded")
+	}
+	board.Stop()
+	if disabled.Load() != 1 {
+		t.Fatal("capture not disabled")
+	}
+	if err = board.Cross(Right, 50, binding, func(Binding) (NativeInput, error) { t.Fatal("stopped board restarted"); return nil, nil }); err == nil {
+		t.Fatal("stop not terminal")
+	}
+}
+func TestPairRejectsForeignBindingBeforeNative(t *testing.T) {
+	for _, change := range []func(*Binding){func(b *Binding) { b.Primary = "foreign" }, func(b *Binding) { b.Recipient = "foreign" }, func(b *Binding) { b.Run = "" }, func(b *Binding) { b.Layout = strings.Repeat("c", 64) }, func(b *Binding) { b.Keyboard = "" }, func(b *Binding) { b.Display = "local" }} {
+		layout, binding := pairFixture(t)
+		change(&binding)
+		board, _ := NewSwitchboard(layout, "key-a", "local", func() bool { return true }, func() {})
+		if err := board.Cross(Right, 20, binding, func(Binding) (NativeInput, error) { t.Fatal("invalid binding created native input"); return nil, nil }); err == nil {
+			t.Fatal("foreign binding accepted")
+		}
+	}
+}
+func TestPairReleaseFailureBlocksReactivation(t *testing.T) {
+	layout, binding := pairFixture(t)
+	board, _ := NewSwitchboard(layout, "key-a", "local", func() bool { return true }, func() {})
+	backend := &ownedFixture{releaseErr: errors.New("release not confirmed")}
+	if err := board.Cross(Right, 20, binding, func(Binding) (NativeInput, error) { return backend, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := board.Cross(Left, 20, Binding{}, nil); err == nil {
+		t.Fatal("cleanup failure ignored")
+	}
+	if err := board.Stop(); err == nil {
+		t.Fatal("cleanup outcome lost")
+	}
+	if err := board.Cross(Left, 20, Binding{}, nil); err == nil {
+		t.Fatal("failed cleanup generation restarted")
+	}
+}
+func TestPairStopDisablesCaptureBeforeBlockedRelease(t *testing.T) {
+	layout, binding := pairFixture(t)
+	disabled := make(chan struct{})
+	board, _ := NewSwitchboard(layout, "key-a", "local", func() bool { return true }, func() { close(disabled) })
+	blocked := &blockedRelease{entered: make(chan struct{}), allow: make(chan struct{})}
+	if err := board.Cross(Right, 20, binding, func(Binding) (NativeInput, error) { return blocked, nil }); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() { board.Stop(); close(done) }()
+	<-blocked.entered
+	select {
+	case <-disabled:
+	default:
+		t.Fatal("capture active while waiting remote cleanup")
+	}
+	close(blocked.allow)
+	<-done
+}
+
+type blockedRelease struct{ entered, allow chan struct{} }
+
+func (b *blockedRelease) Apply(Input) error { return nil }
+func (b *blockedRelease) Release() error    { close(b.entered); <-b.allow; return nil }
+
+func TestPairStopDuringFactoryCannotActivateLateBackend(t *testing.T) {
+	layout, binding := pairFixture(t)
+	disabled := make(chan struct{})
+	board, _ := NewSwitchboard(layout, "key-a", "local", func() bool { return true }, func() { close(disabled) })
+	entered := make(chan struct{})
+	allow := make(chan struct{})
+	crossed := make(chan error, 1)
+	backend := &ownedFixture{}
+	go func() {
+		crossed <- board.Cross(Right, 20, binding, func(Binding) (NativeInput, error) { close(entered); <-allow; return backend, nil })
+	}()
+	<-entered
+	stopped := make(chan error, 1)
+	go func() { stopped <- board.Stop() }()
+	<-disabled
+	close(allow)
+	if err := <-crossed; err == nil {
+		t.Fatal("late backend activated after local stop")
+	}
+	if err := <-stopped; err != nil {
+		t.Fatal(err)
+	}
+	if backend.released != 1 || len(backend.events) != 0 {
+		t.Fatal("late backend not retired before input")
+	}
+}
+
+func TestPairPartialFactoryFailureRetainsCleanupFailure(t *testing.T) {
+	layout, binding := pairFixture(t)
+	board, _ := NewSwitchboard(layout, "key-a", "local", func() bool { return true }, func() {})
+	backend := &ownedFixture{releaseErr: errors.New("native cleanup failed")}
+	if err := board.Cross(Right, 20, binding, func(Binding) (NativeInput, error) { return backend, errors.New("partial setup failed") }); err == nil {
+		t.Fatal("partial setup failure ignored")
+	}
+	if backend.released != 1 {
+		t.Fatal("partially created backend leaked")
+	}
+	if err := board.Stop(); err == nil {
+		t.Fatal("partial setup cleanup failure forgotten")
+	}
+}
