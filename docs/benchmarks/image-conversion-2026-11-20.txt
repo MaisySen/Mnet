@@ -1,0 +1,18 @@
+goos: linux
+goarch: amd64
+pkg: fintex.au/mnet/internal/session
+cpu: AMD EPYC 9655 96-Core Processor
+BenchmarkImageConversion/320x240/original         	      84	   2509682 ns/op	  925762 B/op	  153602 allocs/op
+BenchmarkImageConversion/320x240/original         	      93	   2544634 ns/op	  925762 B/op	  153602 allocs/op
+BenchmarkImageConversion/320x240/original         	      90	   2520952 ns/op	  925762 B/op	  153602 allocs/op
+BenchmarkImageConversion/320x240/bulk             	     337	    689097 ns/op	  311360 B/op	       2 allocs/op
+BenchmarkImageConversion/320x240/bulk             	     340	    697143 ns/op	  311360 B/op	       2 allocs/op
+BenchmarkImageConversion/320x240/bulk             	     346	    694496 ns/op	  311360 B/op	       2 allocs/op
+BenchmarkImageConversion/1280x720/original        	       7	  30844257 ns/op	11059282 B/op	 1843202 allocs/op
+BenchmarkImageConversion/1280x720/original        	       7	  31022916 ns/op	11059280 B/op	 1843202 allocs/op
+BenchmarkImageConversion/1280x720/original        	       7	  31230359 ns/op	11059282 B/op	 1843202 allocs/op
+BenchmarkImageConversion/1280x720/bulk            	      25	   8893445 ns/op	 3686464 B/op	       2 allocs/op
+BenchmarkImageConversion/1280x720/bulk            	      25	   8813160 ns/op	 3686464 B/op	       2 allocs/op
+BenchmarkImageConversion/1280x720/bulk            	      26	   8880184 ns/op	 3686464 B/op	       2 allocs/op
+PASS
+ok  	fintex.au/mnet/internal/session	3.061s

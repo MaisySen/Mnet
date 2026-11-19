@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"image"
+	"image/draw"
 	"image/jpeg"
 	"sync"
 	"time"
@@ -212,11 +213,9 @@ func imageToRGBA(src image.Image) *image.RGBA {
 	}
 	b := src.Bounds()
 	out := image.NewRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
-	for y := 0; y < b.Dy(); y++ {
-		for x := 0; x < b.Dx(); x++ {
-			out.Set(x, y, src.At(b.Min.X+x, b.Min.Y+y))
-		}
-	}
+	// Standard bulk conversion avoids allocating a boxed color at every
+	// decoded JPEG pixel. Src preserves alpha without compositing over a base.
+	draw.Draw(out, out.Bounds(), src, b.Min, draw.Src)
 	return out
 }
 
