@@ -27,6 +27,12 @@ const DefaultFileIdleTimeout = 60 * time.Second
 // Dir under their offered base name. An empty Dir disables reception; no
 // implicit process working-directory destination is allowed.
 type FileReceiver struct {
+	// RequireApproval selects per-offer local consent. Its zero value preserves
+	// legacy explicitly configured-directory reception. Consumer callers must opt
+	// in; neither viewing nor a control grant substitutes for this decision.
+	RequireApproval bool
+	Approval        *FileApprovalGate
+
 	Mux         *Mux
 	Dir         string
 	MaxBytes    int64         // <=0 uses DefaultMaxFileBytes
@@ -91,6 +97,20 @@ func (r FileReceiver) Handle(s Stream) {
 		return
 	}
 	dir := r.Dir
+	if r.RequireApproval {
+		var ok bool
+		dir, ok = r.approvedDirectory(s, offer, allowed)
+		if !ok {
+			// Retiring a local prompt must not wait for a peer to drain output.
+			if err := r.Mux.controlJSON(s.ID, FileAccept{OK: false, Reason: "file approval unavailable or declined"}); err != nil {
+				r.Mux.tryReset(s.ID)
+			}
+			return
+		}
+		if !allowed() {
+			return
+		}
+	}
 	if strings.TrimSpace(dir) == "" {
 		refuse("file reception is not configured")
 		return

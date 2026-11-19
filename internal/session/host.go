@@ -118,10 +118,14 @@ type HostOptions struct {
 	NegotiateControl bool
 	// Authorized optionally checks current known peer authorization.
 	Authorized func() bool
-	FileDir    string
-	OnChat     func(ChatMessage)
-	OnFile     func(string, int64)
-	Recorder   *Recorder
+	// FileApprovalRequired opts into a local per-offer decision gate.
+	// Default false retains legacy configured-directory policy.
+	FileApprovalRequired bool
+	FileApproval         *FileApprovalGate
+	FileDir              string
+	OnChat               func(ChatMessage)
+	OnFile               func(string, int64)
+	Recorder             *Recorder
 }
 
 func ServeHost(m *Mux, cap Capturer, inj Injector, fps int) *Host {
@@ -149,7 +153,7 @@ func ServeHostWithOptions(m *Mux, cap Capturer, inj Injector, fps int, opts Host
 	h.onChat = opts.OnChat
 	h.onFile = opts.OnFile
 	h.rec = opts.Recorder
-	h.Incoming = FileReceiver{Mux: m, Dir: opts.FileDir, Authorized: h.allowed, OnDone: func(name string, size int64) {
+	h.Incoming = FileReceiver{Mux: m, Dir: opts.FileDir, RequireApproval: opts.FileApprovalRequired, Approval: opts.FileApproval, Authorized: h.allowed, OnDone: func(name string, size int64) {
 		h.hmu.RLock()
 		f := h.onFile
 		h.hmu.RUnlock()

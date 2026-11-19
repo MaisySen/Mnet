@@ -1,5 +1,8 @@
 # Mnet project status
 
+Latest source addition: [per-offer file approval boundary](file-offer-approval.md) is wired into opt-in active receiver/host options, with bounded local decisions and real-mux lifecycle/storage tests. Existing headless reception defaults and disabled mobile/viewer entry points remain unchanged. Full local race/vet passes; current cross-platform CI pending. No native chooser or consumer consent acceptance is claimed.
+
+
 ## Current source and acceptance summary (2026-11-19 evening, Australia/Sydney)
 
 This summary supersedes current/pending phrasing in the dated entries below. Mnet remains an unfinished test-only engineering companion, not a working Multies-integrated consumer product. Multies code, configuration and deployment are unchanged. Engineering docs/synthetic previews were published with permission; no app release, new APK, production control deployment, signing or device test is implied.
