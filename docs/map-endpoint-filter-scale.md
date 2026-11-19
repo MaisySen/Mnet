@@ -30,3 +30,7 @@ go test ./internal/daemon -run '^$' -bench '^BenchmarkMapEndpointFiltering$' -be
 go test -race -count=1 -timeout=5m ./...
 go vet ./...
 ```
+
+## Hosted checkpoint outcome
+
+At `d6f9659`, the normal Go, kernel, session and macOS jobs passed and Pages deployed exact source bytes. The Windows job failed in the earlier forwarded-DNS fixture setup, before endpoint-filter selection. The original run is terminal failed, with four successful jobs and one failed job. No Windows endpoint-filter pass is inferred. The separate [test-fixture correction](dns-companion-port-fixture.md) preserves the failure evidence and requires fresh hosted verification.

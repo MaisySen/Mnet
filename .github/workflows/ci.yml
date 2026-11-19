@@ -166,7 +166,7 @@ jobs:
       - name: native exact local Up request and lifecycle admission
         run: go test -race -count=3 -timeout=3m ./internal/daemon -run '^TestLocalUp|^TestLocalAPI'
       - name: native forwarded DNS TCP fallback (loopback only)
-        run: go test -race -count=3 -timeout=3m ./internal/dns -run '^TestForwarded'
+        run: go test -race -count=3 -timeout=3m ./internal/dns -run '^TestForwarded|^TestEphemeralSetup'
       - name: native control-client credential redirect refusal
         run: go test -race -count=3 -timeout=5m ./internal/controlclient
       - name: native control-state private file and shape checks
