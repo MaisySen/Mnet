@@ -167,6 +167,7 @@ jobs:
             /tmp/mnet-desk-native.*/test.log
             /tmp/mnet-desk-native.*/*-held.png
             /tmp/mnet-desk-native.*/source-return.png
+            /tmp/mnet-desk-native.*/review-*.png
             /tmp/mnet-desk-native.*/*-xvfb.log
 
   native-platform:

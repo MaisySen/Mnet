@@ -20,7 +20,7 @@ import (
 )
 
 func TestDeskX11TwoDisplayCaptureAndReclaim(t *testing.T) {
-	for _, mode := range []string{"local-stop", "stop-chord", "idle-peer-loss", "idle-native-child-loss", "edge-return", "armed-edge-entry"} {
+	for _, mode := range []string{"local-stop", "stop-chord", "idle-peer-loss", "idle-native-child-loss", "edge-return", "armed-edge-entry", "reviewed-edge-entry"} {
 		t.Run(mode, func(t *testing.T) { deskTwoDisplayCaptureFixture(t, mode) })
 	}
 }
@@ -83,24 +83,39 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 	var channel *tls.Conn
 	var serverConn *tls.Conn
 	var nativeProcess *attendedProcessInjector
-	channel, serverConn = deskTLSPairFixture(t, sourceCert, targetCert)
-	approval, err := desk.NewApproval(binding, layout, live.Load, func(current func() bool) (desk.NativeInput, error) {
+
+	createNative := func(current func() bool) (desk.NativeInput, error) {
 		process, err := newInputProcessWithInit(command, &attendedProcessCommand{Kind: "desk-init", Keyboard: keyboard})
 		if err != nil {
 			return nil, err
 		}
 		nativeProcess = process
 		return &deskProcessInput{process, current}, nil
-	})
+	}
+	var approval *desk.Approval
+	if mode == "reviewed-edge-entry" {
+		ui, uiErr := newDeskReviewUI()
+		if uiErr != nil {
+			t.Fatal(uiErr)
+		}
+		recipientUI := ui.(deskZenityReview)
+		recipientUI.display = targetDisplay
+		approval, err = reviewedDeskApproval(context.Background(), binding, layout, live.Load, recipientUI, createNative)
+	} else {
+		approval, err = desk.NewApproval(binding, layout, live.Load, createNative)
+	}
+
 	if err != nil {
 		t.Fatal(err)
 	}
-	go func() { serverDone <- approval.ServePair(serverConn) }()
+
 	var c *deskPrimaryCapture
 	create := func(approved desk.Binding) (desk.NativeInput, error) {
+		channel, serverConn = deskTLSPairFixture(t, sourceCert, targetCert)
+		go func() { serverDone <- approval.ServePair(serverConn) }()
 		return desk.ConnectPair(channel, approved, layout, live.Load)
 	}
-	if mode == "armed-edge-entry" {
+	if mode == "armed-edge-entry" || mode == "reviewed-edge-entry" {
 		xproto.WarpPointerChecked(source, 0, sourceScreen.Root, 0, 0, 0, 0, int16(sourceScreen.WidthInPixels-1), 300).Check()
 		type result struct {
 			capture *deskPrimaryCapture
@@ -110,9 +125,33 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		go func() {
-			capture, err := waitDeskEdge(ctx, board, desk.Right, binding, keyboard, live.Load, create)
+			var capture *deskPrimaryCapture
+			var err error
+			if mode == "reviewed-edge-entry" {
+				ui, uiErr := newDeskReviewUI()
+				if uiErr != nil {
+					ready <- result{nil, uiErr}
+					return
+				}
+				capture, err = reviewedDeskEdge(ctx, board, desk.Right, binding, layout, keyboard, live.Load, ui, create)
+			} else {
+				capture, err = waitDeskEdge(ctx, board, desk.Right, binding, keyboard, live.Load, create)
+			}
 			ready <- result{capture, err}
 		}()
+		if mode == "reviewed-edge-entry" {
+			artifacts := os.Getenv("MNET_DESK_ARTIFACTS")
+			until := time.Now().Add(10 * time.Second)
+			for {
+				if _, err = os.Stat(filepath.Join(artifacts, "primary-review.allowed")); err == nil {
+					break
+				}
+				if time.Now().After(until) {
+					t.Fatal("source review was not answered")
+				}
+				time.Sleep(time.Millisecond)
+			}
+		}
 		// Already resting on edge must not enable capture. Visit the interior
 		// while holding a button, then return to the edge: still not allowed.
 		time.Sleep(30 * time.Millisecond)
