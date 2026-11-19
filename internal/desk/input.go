@@ -44,6 +44,11 @@ func NewRecipient(backend NativeInput, width, height int64, live func() bool) (*
 	if !nativePresent(backend) || live == nil || !live() || width < 1 || height < 1 || width > 65535 || height > 65535 {
 		return nil, errors.New("recipient prerequisites unavailable")
 	}
+	select {
+	case <-nativeTerminal(backend):
+		return nil, errors.New("recipient backend already retired")
+	default:
+	}
 	return &Recipient{backend: backend, live: live, width: width, height: height, keys: make(map[uint16]bool), buttons: make(map[uint16]bool)}, nil
 }
 func (r *Recipient) retireLocked() error {
@@ -139,4 +144,11 @@ func (r *Recipient) Held() bool {
 
 func nativePresent(backend NativeInput) bool {
 	return backend != nil && !(reflect.ValueOf(backend).Kind() == reflect.Pointer && reflect.ValueOf(backend).IsNil())
+}
+
+func nativeTerminal(backend NativeInput) <-chan struct{} {
+	if stopped, ok := backend.(interface{ Stopped() <-chan struct{} }); ok {
+		return stopped.Stopped()
+	}
+	return nil
 }

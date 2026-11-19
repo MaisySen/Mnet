@@ -248,3 +248,5 @@ func newDeskSafety(keyboard string) (attendedSafety, error) {
 		return err == nil && keyboard != "" && actual == keyboard
 	})
 }
+
+func (n *deskNativeInput) Stopped() <-chan struct{} { return n.done }

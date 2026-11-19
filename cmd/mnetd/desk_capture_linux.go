@@ -177,6 +177,9 @@ func newDeskPrimaryCapture(board *desk.Switchboard, keyboard string, live func()
 			select {
 			case <-c.done:
 				return
+			case <-board.Stopped():
+				c.disable()
+				return
 			case <-safety.Stopped():
 				c.disable()
 				return

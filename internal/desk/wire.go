@@ -318,3 +318,5 @@ func (c *PairClient) Release() error {
 	err := c.callLocked(wireMessage{Kind: "stop"})
 	return c.retireLocked(err)
 }
+
+func (c *PairClient) Stopped() <-chan struct{} { return c.done }

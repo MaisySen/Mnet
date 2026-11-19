@@ -59,6 +59,7 @@ type Switchboard struct {
 	recipient      *Recipient
 	stopped        atomic.Bool
 	cleanupErr     error
+	done           chan struct{}
 	disableCapture func()
 }
 
@@ -68,7 +69,7 @@ func NewSwitchboard(layout *Compiled, primary, localDisplay string, live func() 
 	}
 	for _, d := range layout.displays {
 		if d.ID == localDisplay && d.Device == primary {
-			return &Switchboard{layout: layout, primary: primary, current: localDisplay, live: live, disableCapture: disableCapture}, nil
+			return &Switchboard{layout: layout, primary: primary, current: localDisplay, live: live, disableCapture: disableCapture, done: make(chan struct{})}, nil
 		}
 	}
 	return nil, errors.New("local display absent from approved layout")
@@ -172,6 +173,17 @@ func (s *Switchboard) Cross(edge Edge, along int64, binding Binding, create func
 		return err
 	}
 	s.recipient = recipient
+	if terminal := nativeTerminal(backend); terminal != nil {
+		go func() {
+			select {
+			case <-s.done:
+				return
+			case <-terminal:
+				s.backendRetired(recipient)
+			}
+		}()
+	}
+
 	// Entry positioning belongs to the new destination and is never replayed
 	// from a previous generation. External capture sequences start after 1.
 	if err = recipient.Apply(Input{Sequence: 1, Kind: "pointer", Action: "move", X: candidate.X, Y: candidate.Y}); err != nil {
@@ -199,6 +211,18 @@ func (s *Switchboard) Position() (int64, int64) { s.mu.Lock(); defer s.mu.Unlock
 
 func (s *Switchboard) stopCapture() {
 	if s.stopped.CompareAndSwap(false, true) {
+		close(s.done)
 		s.disableCapture()
+	}
+}
+
+func (s *Switchboard) Stopped() <-chan struct{} { return s.done }
+
+func (s *Switchboard) backendRetired(recipient *Recipient) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.recipient == recipient {
+		s.stopCapture()
+		s.retireLocked()
 	}
 }

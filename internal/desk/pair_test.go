@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func pairFixture(t *testing.T) (*Compiled, Binding) {
@@ -144,4 +145,71 @@ func TestPairPartialFactoryFailureRetainsCleanupFailure(t *testing.T) {
 	if err := board.Stop(); err == nil {
 		t.Fatal("partial setup cleanup failure forgotten")
 	}
+}
+
+type terminalBackend struct {
+	ownedFixture
+	done chan struct{}
+}
+
+func (b *terminalBackend) Stopped() <-chan struct{} { return b.done }
+func TestPairExactBackendTerminalStopsWithoutAnotherInput(t *testing.T) {
+	layout, binding := pairFixture(t)
+	disabled := make(chan struct{})
+	board, _ := NewSwitchboard(layout, "key-a", "local", func() bool { return true }, func() { close(disabled) })
+	backend := &terminalBackend{done: make(chan struct{})}
+	if err := board.Cross(Right, 20, binding, func(Binding) (NativeInput, error) { return backend, nil }); err != nil {
+		t.Fatal(err)
+	}
+	close(backend.done)
+	select {
+	case <-disabled:
+	case <-time.After(time.Second):
+		t.Fatal("idle backend death left forwarding active")
+	}
+	if err := board.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	if backend.released != 1 {
+		t.Fatal("terminal backend cleanup not joined")
+	}
+}
+func TestPairOldBackendDeathCannotRetireSuccessor(t *testing.T) {
+	layout, binding := pairFixture(t)
+	var disabled atomic.Int32
+	board, _ := NewSwitchboard(layout, "key-a", "local", func() bool { return true }, func() { disabled.Add(1) })
+	old := &ownedFixture{}
+	if err := board.Cross(Right, 20, binding, func(Binding) (NativeInput, error) { return old, nil }); err != nil {
+		t.Fatal(err)
+	}
+	oldRecipient := board.recipient
+	if err := board.Cross(Left, 20, Binding{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	next := &ownedFixture{}
+	if err := board.Cross(Right, 20, binding, func(Binding) (NativeInput, error) { return next, nil }); err != nil {
+		t.Fatal(err)
+	}
+	board.backendRetired(oldRecipient)
+	if disabled.Load() != 0 || next.released != 0 {
+		t.Fatal("old backend retired successor")
+	}
+	if err := board.Apply(Input{Sequence: 2, Kind: "pointer", Action: "move", X: 20, Y: 20}); err != nil {
+		t.Fatal(err)
+	}
+	board.Stop()
+}
+
+func TestPairAlreadyTerminalBackendRefusedBeforeEntry(t *testing.T) {
+	layout, binding := pairFixture(t)
+	board, _ := NewSwitchboard(layout, "key-a", "local", func() bool { return true }, func() {})
+	backend := &terminalBackend{done: make(chan struct{})}
+	close(backend.done)
+	if err := board.Cross(Right, 20, binding, func(Binding) (NativeInput, error) { return backend, nil }); err == nil {
+		t.Fatal("terminal backend activated")
+	}
+	if backend.released != 1 || len(backend.events) != 0 {
+		t.Fatal("terminal backend entry touched native input")
+	}
+	board.Stop()
 }

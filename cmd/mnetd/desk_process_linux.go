@@ -198,3 +198,5 @@ func (p *deskProcessInput) Apply(ev desk.Input) error {
 		}
 	}
 }
+
+func (p *deskProcessInput) Stopped() <-chan struct{} { return p.process.terminal }

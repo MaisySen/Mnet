@@ -19,7 +19,7 @@ import (
 )
 
 func TestDeskX11TwoDisplayCaptureAndReclaim(t *testing.T) {
-	for _, mode := range []string{"local-stop", "stop-chord"} {
+	for _, mode := range []string{"local-stop", "stop-chord", "idle-peer-loss"} {
 		t.Run(mode, func(t *testing.T) { deskTwoDisplayCaptureFixture(t, mode) })
 	}
 }
@@ -146,7 +146,7 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 	until = time.Now().Add(time.Second)
 	for {
 		p, e := xproto.QueryPointer(target, targetScreen.Root).Reply()
-		if e == nil && int64(p.RootX) == startX+40 && int64(p.RootY) == startY+20 {
+		if e == nil && int64(p.RootX) == startX+40 && int64(p.RootY) == startY+20 && c.forwarded.Load() >= 3 {
 			break
 		}
 		if time.Now().After(until) {
@@ -174,6 +174,36 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 			}
 			time.Sleep(time.Millisecond)
 		}
+	}
+	if mode == "idle-peer-loss" {
+		press(xproto.KeyRelease, 38)
+		until := time.Now().Add(time.Second)
+		for c.forwarded.Load() < 4 {
+			if time.Now().After(until) {
+				t.Fatal("fixture key release not acknowledged")
+			}
+			time.Sleep(time.Millisecond)
+		}
+		serverConn.NetConn().Close()
+		until = time.Now().Add(time.Second)
+		for {
+			grabbed, err := xproto.GrabKeyboard(source, false, sourceScreen.Root, xproto.TimeCurrentTime, xproto.GrabModeAsync, xproto.GrabModeAsync).Reply()
+			if err == nil && grabbed.Status == xproto.GrabStatusSuccess {
+				xproto.UngrabKeyboardChecked(source, xproto.TimeCurrentTime).Check()
+				break
+			}
+			if time.Now().After(until) {
+				t.Fatal("idle peer loss left source capture grabbed")
+			}
+			time.Sleep(time.Millisecond)
+		}
+		if err = c.Close(); err == nil {
+			t.Fatal("lost peer cleanup incorrectly confirmed")
+		}
+		if err = <-serverDone; err == nil {
+			t.Fatal("lost peer reported clean stop")
+		}
+		return
 	}
 	// Explicit local stop releases capture before joined remote cleanup.
 	if mode == "stop-chord" {
