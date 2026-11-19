@@ -79,4 +79,25 @@ public class HostingActivityTest {
    service.get().onSessionEnd();assertTrue(service.get().acceptSession("next"));ServiceTest.requestControl(service.get());stale.getButton(AlertDialog.BUTTON_POSITIVE).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();assertFalse(HostSessionService.controlAllowed());
   }finally{service.destroy();MnetAccessibilityService.current=null;}
  }
+
+ @Test public void projectionResultRequiresAndConsumesPendingStart()throws Exception{
+  activity.onActivityResult(42,android.app.Activity.RESULT_OK,new Intent());
+  assertNull("unrequested result started hosting",Shadows.shadowOf(activity).getNextStartedService());
+  java.lang.reflect.Field pending=HostingActivity.class.getDeclaredField("capturePending");pending.setAccessible(true);pending.set(activity,true);
+  activity.onActivityResult(99,android.app.Activity.RESULT_OK,new Intent());
+  assertTrue(pending.getBoolean(activity));assertNull(Shadows.shadowOf(activity).getNextStartedService());
+  activity.onActivityResult(42,android.app.Activity.RESULT_OK,new Intent());
+  assertNotNull("pending result not forwarded",Shadows.shadowOf(activity).getNextStartedService());assertFalse(pending.getBoolean(activity));
+  activity.onActivityResult(42,android.app.Activity.RESULT_OK,new Intent());
+  assertNull("duplicate result reused projection",Shadows.shadowOf(activity).getNextStartedService());
+ }
+ @Test public void canceledOrEmptyProjectionResultConsumesPendingStart()throws Exception{
+  java.lang.reflect.Field pending=HostingActivity.class.getDeclaredField("capturePending");pending.setAccessible(true);
+  for(boolean empty:new boolean[]{false,true}){
+   pending.set(activity,true);
+   activity.onActivityResult(42,empty?android.app.Activity.RESULT_OK:android.app.Activity.RESULT_CANCELED,empty?null:new Intent());
+   assertFalse(pending.getBoolean(activity));assertNull(Shadows.shadowOf(activity).getNextStartedService());
+   activity.onActivityResult(42,android.app.Activity.RESULT_OK,new Intent());assertNull("late result after cancel started hosting",Shadows.shadowOf(activity).getNextStartedService());
+  }
+ }
 }

@@ -167,8 +167,10 @@ public class HostingActivity extends Activity {
 
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
-        if (req != 42) return;
-        boolean autoAcceptThisHost = capturePending && pendingAutoAccept;
+        // A result is owned by one explicit pending Start. A duplicate or late
+        // result after decline must not reuse a projection token or start anew.
+        if (req != 42 || !capturePending) return;
+        boolean autoAcceptThisHost = pendingAutoAccept;
         capturePending = false;
         pendingAutoAccept = false;
         autoAccept.setChecked(false);

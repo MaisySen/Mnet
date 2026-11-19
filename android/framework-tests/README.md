@@ -54,3 +54,7 @@ New revoke/destruction fixtures hold the real worker in fake Go preparation, can
 
 
 HostingActivity now uses actual production source instead of a fake in this harness. Button-click tests verify separate disclosure wording and agree/decline/cancel navigation on four simulated API levels. Reverting the button to direct Settings produces12failures. The first affirmative-click harness omitted main-loop draining and failed4cases; corrected fresh88normal+48VPN pass. A local, uncommitted native-graphics preview rendered the actual dialog for visual inspection; this is simulated layout, not physical Android settings/permission or phone-pixel proof. This source fix does not claim to remove Play Protect's installation block.
+
+## Projection-result ownership follow-up,19November
+
+The selected suite now passes200 cases locally. Eight added cases execute the actual hosting Activity callback on API24/25/26/33 and first failed against old source for unrequested/late projection service starts. Pending state is supplied explicitly, not obtained from real OS consent. The new guard consumes one pending result and ignores duplicate/late/unrequested success. See [bounded evidence](../../docs/android-projection-result-ownership.md); this does not clear installed native projection/lifecycle gates.
