@@ -7,6 +7,10 @@ import (
 	"fintex.au/mnet/internal/localapi"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -100,12 +104,35 @@ func TestDesktopViewCancellationDoesNotWaitForPolling(t *testing.T) {
 }
 
 func TestDesktopViewCancellationReachesLocalAuthorization(t *testing.T) {
-	dir := t.TempDir()
+	if runtime.GOOS == "windows" {
+		t.Skip("requires disposable Unix socket")
+	}
+	longRoot := filepath.Join(t.TempDir(), strings.Repeat("long-default-root-", 8))
+	if err := os.Mkdir(longRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", longRoot)
+	dir, err := os.MkdirTemp("/tmp", "mnet-view-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Error(err)
+		}
+	})
+	info, err := os.Stat(dir)
+	if err != nil || info.Mode().Perm() != 0700 {
+		t.Fatal("fixture directory must be private", err)
+	}
 	token, err := localapi.EnsureToken(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	network, addr := daemon.SocketPath(dir)
+	if len(addr) >= 100 {
+		t.Fatal("fixture socket path exceeds conservative Unix bound")
+	}
 	if network != "unix" {
 		t.Skip("requires disposable Unix socket")
 	}
