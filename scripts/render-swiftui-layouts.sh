@@ -1,5 +1,5 @@
 #!/bin/sh
-# Native macOS SwiftUI component pixels only. No iOS simulator, app install,
+# Native macOS hosted SwiftUI component pixels only. No iOS simulator, app install,
 # preferences, provider installation, tunnel launch, signing or account access.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)

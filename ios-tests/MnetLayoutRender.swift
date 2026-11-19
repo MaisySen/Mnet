@@ -29,14 +29,24 @@ struct MnetLayoutRender {
                 .environment(\.dynamicTypeSize, fixture.type)
                 .frame(width: fixture.width)
                 .fixedSize(horizontal: false, vertical: true)
-            let renderer = ImageRenderer(content: panel)
-            renderer.proposedSize = ProposedViewSize(width: fixture.width, height: nil)
-            renderer.scale = 2
-            guard let image = renderer.cgImage else { fatalError("SwiftUI render failed: \(fixture.name)") }
-            let bitmap = NSBitmapImageRep(cgImage: image)
+            // ImageRenderer cannot draw AppKit-backed TextField/SecureField.
+            // Host the SAME layout and cache its actual native view hierarchy.
+            let host = NSHostingView(rootView: panel)
+            host.frame = NSRect(x: 0, y: 0, width: fixture.width, height: 1)
+            host.layoutSubtreeIfNeeded()
+            let size = host.fittingSize
+            host.frame = NSRect(x: 0, y: 0, width: fixture.width, height: size.height)
+            let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            window.contentView = host
+            window.orderFrontRegardless()
+            host.layoutSubtreeIfNeeded()
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.15))
+            guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { fatalError("Native bitmap failed") }
+            host.cacheDisplay(in: host.bounds, to: bitmap)
             guard let png = bitmap.representation(using: .png, properties: [:]) else { fatalError("PNG encoding failed") }
             try png.write(to: directory.appendingPathComponent(fixture.name + ".png"))
-            print("Rendered \(fixture.name): \(image.width)x\(image.height) native macOS SwiftUI pixels, synthetic state")
+            print("Rendered \(fixture.name): \(bitmap.pixelsWide)x\(bitmap.pixelsHigh) native macOS hosted SwiftUI pixels, synthetic state")
+            window.orderOut(nil)
         }
     }
 

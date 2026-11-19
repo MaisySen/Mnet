@@ -18,7 +18,7 @@ The device-request and OIDC approval-success follow-up uses the same design and 
 
 ## iOS UI preparation (2026-11-19, visual acceptance pending)
 
-The real app now uses a shared pure SwiftUI connection/setup component, with masked auth input, persistent labels, expandable manual settings and readable OS-state labels. Existing preference, manager, event and explicit tunnel-action ownership remains in ContentView. A bounded native macOS SwiftUI ImageRenderer harness interprets only that production component plus synthetic state, without installing/signing an app or invoking simulator/preferences/provider/tunnel work. [Scope, reproduction and remaining visual gates](ios-ui-layouts.md). Source-only wiring checks pass locally. macOS renderer/SDK output and pixel inspection are still pending, not claimed successful.
+The real app now uses a shared pure SwiftUI connection/setup component, with masked auth input, persistent labels, expandable manual settings and readable OS-state labels. Existing preference, manager, event and explicit tunnel-action ownership remains in ContentView. A bounded native macOS SwiftUI host-view bitmap harness interprets only that production component plus synthetic state, without installing/signing an app or invoking simulator/preferences/provider/tunnel work. [Scope, reproduction and remaining visual gates](ios-ui-layouts.md). Source-only wiring checks pass locally. The initial iOS SDK typecheck passed, but ImageRenderer pixels failed visual review because native input controls rendered unsupported-view markers. Corrected NSHostingView capture and pixel inspection remain pending, not claimed successful.
 
 ## Source-safety evidence from overnight (2026-11-19, Australia/Sydney)
 
