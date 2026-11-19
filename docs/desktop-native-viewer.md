@@ -47,3 +47,7 @@ The actual native protocol fixture first failed when pressing1left the same fit-
 ![Actual received-frame pixels without extra client fit shrink](ui/desktop-viewer/received-pixels.png)
 
 ![1:1 protocol crop at bottom-right](ui/desktop-viewer/panned.png)
+
+## Separate pointer engineering entry
+
+The [explicit native pointer viewer](desktop-pointer-viewer.md) is a separate `session point` command. This `session view` entry stays view-only, does not request control and never forwards local input. Shared rendering/lifetime checks do not combine their authority.

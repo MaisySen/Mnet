@@ -40,6 +40,12 @@ func runSession(args []string) {
 			return
 		}
 		sessionView(args[1])
+	case "point":
+		if len(args) != 2 {
+			fatal("usage: mnet session point <peer> (attended pointer only)")
+			return
+		}
+		sessionPoint(args[1])
 	case "connect":
 		peer := args[1]
 		saveDir, sendFile, err := parseSessionConnectOptions(args[2:])

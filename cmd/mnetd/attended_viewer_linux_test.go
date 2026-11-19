@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -19,14 +20,22 @@ import (
 	"fintex.au/mnet/internal/daemon"
 	"fintex.au/mnet/internal/localapi"
 	"fintex.au/mnet/internal/session"
+	"github.com/jezek/xgb"
+	"github.com/jezek/xgb/xproto"
 )
 
 // Actual native host approval/capture and the built CLI viewer, on separate
 // owned X displays. Local API identity evidence is an explicit fixture, not
 // proof of a live workspace/Multies integration or physical computers.
-func TestAttendedX11BuiltViewOnlyClient(t *testing.T) {
+func TestAttendedX11BuiltViewOnlyClient(t *testing.T) { builtNativeViewerFixture(t, false) }
+func TestAttendedX11BuiltPointerClient(t *testing.T)  { builtNativeViewerFixture(t, true) }
+func builtNativeViewerFixture(t *testing.T, pointer bool) {
 	if os.Getenv("MNET_NATIVE_VIEWER_TEST") != "1" {
 		t.Skip("requires two disposable X displays and built viewer")
+	}
+	fixturePeer := "Fixture native view-only client"
+	if pointer {
+		fixturePeer = "Fixture native pointer client"
 	}
 	dir := os.Getenv("MNET_ATTENDED_ARTIFACTS")
 	viewerBin := os.Getenv("MNET_VIEWER_EXECUTABLE")
@@ -39,7 +48,7 @@ func TestAttendedX11BuiltViewOnlyClient(t *testing.T) {
 		mode = "local-end"
 	}
 	switch mode {
-	case "local-end", "pending-close", "decline", "host-end", "authority-loss", "display-loss":
+	case "local-end", "pending-close", "decline", "host-end", "authority-loss", "display-loss", "pointer":
 	default:
 		t.Fatal("unsupported fixture case")
 	}
@@ -88,7 +97,11 @@ func TestAttendedX11BuiltViewOnlyClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer log.Close()
-	cmd := exec.CommandContext(ctx, viewerBin, "--state", state, "session", "view", peer.Name)
+	entry := "view"
+	if pointer {
+		entry = "point"
+	}
+	cmd := exec.CommandContext(ctx, viewerBin, "--state", state, "session", entry, peer.Name)
 	cmd.Env = append([]string{}, os.Environ()...)
 	for i, v := range cmd.Env {
 		if strings.HasPrefix(v, "DISPLAY=") {
@@ -117,7 +130,7 @@ func TestAttendedX11BuiltViewOnlyClient(t *testing.T) {
 			return false, "wrong fixture peer"
 		}
 		// No host capture/input exists until the real local prompt accepts.
-		return approveAttendedConnection(ctx, ui, "Fixture native view-only client", conn, current), "local viewing decision"
+		return approveAttendedConnection(ctx, ui, fixturePeer, conn, current), "local viewing decision"
 	})
 	if mode == "pending-close" || mode == "decline" {
 		if err == nil {
@@ -138,6 +151,54 @@ func TestAttendedX11BuiltViewOnlyClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer host.Close()
+	var target *xgb.Conn
+	var targetWindow xproto.Window
+	var nativeClicks, nativeKeys, nativeScroll atomic.Int32
+	targetJoined := make(chan struct{})
+	if pointer {
+		target, err = xgb.NewConn()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer target.Close()
+		screen := xproto.Setup(target).DefaultScreen(target)
+		targetWindow, err = xproto.NewWindowId(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = xproto.CreateWindowChecked(target, screen.RootDepth, targetWindow, screen.Root, 0, 0, screen.WidthInPixels, screen.HeightInPixels, 0, xproto.WindowClassInputOutput, screen.RootVisual, xproto.CwBackPixel|xproto.CwEventMask, []uint32{0x416fa8, xproto.EventMaskButtonPress | xproto.EventMaskKeyPress}).Check(); err != nil {
+			t.Fatal(err)
+		}
+		defer xproto.DestroyWindow(target, targetWindow)
+		xproto.MapWindowChecked(target, targetWindow).Check()
+		target.Sync()
+		go func() {
+			defer close(targetJoined)
+			for {
+				ev, err := target.WaitForEvent()
+				if err != nil || ev == nil {
+					return
+				}
+				switch e := ev.(type) {
+				case xproto.ButtonPressEvent:
+					if e.Detail == 1 {
+						n := nativeClicks.Add(1)
+						os.WriteFile(filepath.Join(dir, "native-clicks"), []byte(fmt.Sprint(n)), 0600)
+					}
+					if e.Detail == 4 {
+						nativeScroll.Add(1)
+					}
+				case xproto.KeyPressEvent:
+					nativeKeys.Add(1)
+				case xproto.ClientMessageEvent:
+					if e.Type == xproto.AtomString && e.Data.Data32[0] == 0x4d4e4554 {
+						return
+					}
+				}
+			}
+		}()
+		defer func() { target.Close(); <-targetJoined }()
+	}
 	rawCapture, err := newCapturer(state)
 	if err != nil {
 		t.Fatal(err)
@@ -149,8 +210,11 @@ func TestAttendedX11BuiltViewOnlyClient(t *testing.T) {
 	defer safety.Close()
 	var injected atomic.Int32
 	capture := &observedViewCapture{Capturer: rawCapture}
-	_, sessionDone := serveAttendedSession(ctx, host, "Fixture native view-only client", false, ui, capture, func() (session.Injector, error) {
+	_, sessionDone := serveAttendedSession(ctx, host, fixturePeer, pointer, ui, capture, func() (session.Injector, error) {
 		injected.Add(1)
+		if pointer {
+			return testAttendedProcessInjector()
+		}
 		return nil, errors.New("view-only must not create input")
 	}, attendedSafetyAuthorized(safety, current))
 	done := bindAttendedSafety(ctx, host, safety, sessionDone, func(err error) { t.Errorf("native safety cleanup: %v", err) })
@@ -159,10 +223,10 @@ func TestAttendedX11BuiltViewOnlyClient(t *testing.T) {
 	go func() { exited <- cmd.Wait() }()
 	select {
 	case err = <-exited:
-		if mode == "local-end" && err != nil {
+		if (mode == "local-end" || mode == "pointer") && err != nil {
 			t.Fatal(err)
 		}
-		if mode != "local-end" && err == nil {
+		if mode != "local-end" && mode != "pointer" && err == nil {
 			t.Fatal("failure path did not report viewer termination")
 		}
 	case <-ctx.Done():
@@ -173,7 +237,31 @@ func TestAttendedX11BuiltViewOnlyClient(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("host owned capture/UI not joined")
 	}
-	if injected.Load() != 0 {
+	if pointer {
+		if injected.Load() != 3 {
+			t.Fatal("pointer grants should create exactly three native owners; declines/revoked view never create one", injected.Load())
+		}
+		// Joined native cleanup has completed. A same-connection event marker
+		// drains all preceding target events before asserting exact counts.
+		marker := xproto.ClientMessageEvent{Format: 32, Window: targetWindow, Type: xproto.AtomString, Data: xproto.ClientMessageDataUnionData32New([]uint32{0x4d4e4554, 0, 0, 0, 0})}
+		if err = xproto.SendEventChecked(target, false, targetWindow, 0, string(marker.Bytes())).Check(); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-targetJoined:
+		case <-ctx.Done():
+			t.Fatal("native event drain not joined")
+		}
+		presses, keys, scrolls := nativeClicks.Load(), nativeKeys.Load(), nativeScroll.Load()
+		if presses != 2 || keys != 0 || scrolls != 1 {
+			t.Fatal("actual target expected two allowed native clicks and no keyboard/declined/revoked input", presses, keys, scrolls)
+		}
+		screen := xproto.Setup(target).DefaultScreen(target)
+		point, err := xproto.QueryPointer(target, screen.Root).Reply()
+		if err != nil || point.Mask&xproto.ButtonMask1 != 0 {
+			t.Fatal("native button left held", point, err)
+		}
+	} else if injected.Load() != 0 {
 		t.Fatal("view-only created host injector")
 	}
 	if mode == "local-end" && capture.deltas.Load() == 0 {

@@ -30,6 +30,19 @@ type viewDialResult struct {
 // One attempt only. A closed window retires pending hello and current session;
 // this path never reconnects or carries approval to another transport.
 func runDesktopView(ctx context.Context, display desktopView, dial func(context.Context) (*session.Mux, error)) (runErr error) {
+	return runDesktopWindow(ctx, display, dial, false)
+}
+func runDesktopWindow(ctx context.Context, display desktopView, dial func(context.Context) (*session.Mux, error), pointer bool) (runErr error) {
+	var pointerView desktopPointerView
+	if pointer {
+		var ok bool
+		pointerView, ok = display.(desktopPointerView)
+		if !ok {
+			return errors.Join(errors.New("native pointer UI unavailable"), display.Close())
+		}
+	}
+	var control *session.ViewerControl
+	var viewer *session.Viewer
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer func() { runErr = errors.Join(runErr, display.Close()) }()
@@ -62,6 +75,11 @@ func runDesktopView(ctx context.Context, display desktopView, dial func(context.
 		} else if end {
 			return nil
 		}
+		if pointer {
+			if err := dispatchDesktopPointer(pointerView, control, viewer); err != nil {
+				return err
+			}
+		}
 		select {
 		case <-ctx.Done():
 			return nil
@@ -75,9 +93,9 @@ func runDesktopView(ctx context.Context, display desktopView, dial func(context.
 			}
 			mux = r.mux
 			closed = mux.Closed()
-			control := session.NewViewerControl(nil)
+			control = session.NewViewerControl(nil)
 			defer control.End()
-			session.ConnectViewerWithOptions(mux, session.ViewerOptions{Control: control, OnFrame: func(fr session.ScreenFrame) {
+			viewer = session.ConnectViewerWithOptions(mux, session.ViewerOptions{Control: control, OnFrame: func(fr session.ScreenFrame) {
 				if ctx.Err() != nil {
 					return
 				}
@@ -124,21 +142,29 @@ func runDesktopView(ctx context.Context, display desktopView, dial func(context.
 	}
 }
 
-func sessionView(peer string) {
-	display, err := newDesktopView(peer)
+func sessionView(peer string)  { sessionDesktop(peer, false) }
+func sessionPoint(peer string) { sessionDesktop(peer, true) }
+func sessionDesktop(peer string, pointer bool) {
+	var display desktopView
+	var err error
+	if pointer {
+		display, err = newDesktopPointer(peer)
+	} else {
+		display, err = newDesktopView(peer)
+	}
 	if err != nil {
 		fatal(err.Error())
 		return
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
-	err = runDesktopView(ctx, display, func(ctx context.Context) (*session.Mux, error) {
+	err = runDesktopWindow(ctx, display, func(ctx context.Context) (*session.Mux, error) {
 		access, name, err := prepareDesktopView(ctx, peer)
 		if err != nil {
 			return nil, err
 		}
 		return dialSessionTryAuthorizedContext(ctx, access, name)
-	})
+	}, pointer)
 	if err != nil {
 		fatal(err.Error())
 	}

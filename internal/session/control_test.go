@@ -286,3 +286,58 @@ func TestControlStreamFailureEndsBothGates(t *testing.T) {
 		t.Fatal("failed control stream did not terminate stale peer")
 	}
 }
+
+func TestExactNativeInputRevisionAndLocalWithdraw(t *testing.T) {
+	client, host := pipe(t)
+	defer client.Close()
+	defer host.Close()
+	requests := make(chan ControlStatus, 4)
+	hc := NewHostControl(func(s ControlStatus) { requests <- s })
+	vc := NewViewerControl(nil)
+	v := ConnectViewerWithOptions(client, ViewerOptions{Control: vc})
+	inj := &authorizationInjector{}
+	h := ServeHostWithOptions(host, &authorizationCapturer{}, inj, 8, HostOptions{Control: hc, NegotiateControl: true})
+	defer h.Stop()
+	waitControl(t, vc, "available")
+	if err := vc.Request(); err != nil {
+		t.Fatal(err)
+	}
+	request := <-requests
+	if err := hc.Decide(request.Session, request.Request, true); err != nil {
+		t.Fatal(err)
+	}
+	allowed := waitControl(t, vc, "allowed")
+	if err := hc.Pause(request.Session, request.Request); err != nil {
+		t.Fatal(err)
+	}
+	waitControl(t, vc, "paused")
+	if err := hc.Decide(request.Session, request.Request, true); err != nil {
+		t.Fatal(err)
+	}
+	latest := waitControl(t, vc, "allowed")
+	ev := InputEvent{Kind: "pointer", Action: "click"}
+	if latest.Revision == allowed.Revision || v.SendInputFor(allowed, ev) == nil {
+		t.Fatal("queued old revision rebound after resume")
+	}
+	if err := v.SendInputFor(latest, ev); err != nil {
+		t.Fatal(err)
+	}
+	if err := vc.Withdraw(); err != nil {
+		t.Fatal(err)
+	}
+	if v.SendInputFor(latest, ev) == nil {
+		t.Fatal("withdrawn input accepted")
+	}
+	for hc.Snapshot().State != "declined" {
+		select {
+		case <-time.After(time.Millisecond):
+		case <-client.Closed():
+			t.Fatal("withdraw closed viewing")
+		}
+	}
+	select {
+	case <-client.Closed():
+		t.Fatal("withdraw lost view")
+	default:
+	}
+}

@@ -353,3 +353,32 @@ func (c *ViewerControl) End() {
 	c.mu.Unlock()
 	c.notify()
 }
+
+// Withdraw is explicit local cancellation of this pending/allowed/paused
+// request. It is not a disconnect and never carries approval to a new request.
+func (c *ViewerControl) Withdraw() error {
+	c.mu.Lock()
+	if c.ended || (c.status.State != "pending" && c.status.State != "allowed" && c.status.State != "paused") {
+		c.mu.Unlock()
+		return errors.New("no active control request")
+	}
+	c.status.State = "declined"
+	err := c.mux.controlJSON(c.stream, controlMessage{Kind: controlKind, Session: c.status.Session, Request: c.status.Request, State: "cancel"})
+	c.mu.Unlock()
+	c.notify()
+	if err != nil {
+		c.End()
+		c.mux.Close()
+	}
+	return err
+}
+func (c *ViewerControl) bindInputFor(expected ControlStatus, ev *InputEvent) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.ended || c.status.State != "allowed" || c.status != expected {
+		return errors.New("exact control revision no longer granted")
+	}
+	ev.ControlSession = c.status.Session
+	ev.ControlRequest = c.status.Request
+	return nil
+}

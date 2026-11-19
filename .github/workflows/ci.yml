@@ -140,6 +140,10 @@ jobs:
         run: |
           python3 scripts/native-viewer-validation.py
           MNET_VIEWER_DISPLAY_SIZE=2048x1536x24 python3 scripts/native-viewer-validation.py
+      - name: explicit pointer viewer with separate host control approval (two disposable X11 displays)
+        run: |
+          python3 scripts/native-pointer-validation.py
+          MNET_VIEWER_DISPLAY_SIZE=2048x1536x24 python3 scripts/native-pointer-validation.py
       - name: independent Shared Desk TLS pair and native input (two disposable X11 displays)
         run: |
           python3 scripts/desk-native-validation.py
@@ -164,6 +168,8 @@ jobs:
             /tmp/mnet-recipient-guardian.*/*.stdout
             /tmp/mnet-recipient-guardian.*/*.stderr
             /tmp/mnet-attended-x11.*/*.png
+            /tmp/mnet-native-pointer.*/*.log
+            /tmp/mnet-native-pointer.*/*.png
             /tmp/mnet-native-viewer.*/test.log
             /tmp/mnet-native-viewer.*/*/test.log
             /tmp/mnet-native-viewer.*/*/viewer.log

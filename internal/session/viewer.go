@@ -3,6 +3,7 @@ package session
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/draw"
 	"image/jpeg"
@@ -236,4 +237,16 @@ func (v *Viewer) chatLoop(s Stream) {
 			cb(m)
 		}
 	}
+}
+
+// SendInputFor cannot rebind a queued native event to a newer grant revision.
+// Authority can still be withdrawn after dispatch; the host checks again.
+func (v *Viewer) SendInputFor(expected ControlStatus, ev InputEvent) error {
+	if v.control == nil {
+		return errors.New("exact control unavailable")
+	}
+	if err := v.control.bindInputFor(expected, &ev); err != nil {
+		return err
+	}
+	return v.Mux.SendJSON(StreamInput, PriInteractive, ev)
 }

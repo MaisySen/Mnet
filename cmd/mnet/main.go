@@ -177,6 +177,7 @@ func usage() {
   mnet ping <node>
   mnet desk layout-check FILE [--edge DISPLAY EDGE PIXEL]  (offline geometry only)
   mnet session view <peer>  (attended Linux X11, view-only)
+  mnet session point <peer> (attended Linux X11, explicit pointer request; no keyboard/dragging)
   mnet session connect <peer> [--save-frames DIR] [--send-file PATH]
   mnet session send <peer> <file>
   mnet version

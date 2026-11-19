@@ -19,18 +19,24 @@ import (
 )
 
 type xDesktopView struct {
-	viewport      viewerViewport
-	lastProbe     time.Time
-	conn          *xgb.Conn
-	window        xproto.Window
-	gc            xproto.Gcontext
-	deleteAtom    xproto.Atom
-	width, height int
-	maxRowsBytes  int
-	image         *image.RGBA
-	state         string
-	title         string
-	closed        bool
+	viewport                     viewerViewport
+	lastProbe                    time.Time
+	conn                         *xgb.Conn
+	window                       xproto.Window
+	gc                           xproto.Gcontext
+	deleteAtom                   xproto.Atom
+	width, height                int
+	maxRowsBytes                 int
+	image                        *image.RGBA
+	state                        string
+	title                        string
+	closed                       bool
+	pointer                      bool
+	pointerGrant                 session.ControlStatus
+	pointerActions               []desktopPointerAction
+	pointerPressed               byte
+	pointerPressGrant            session.ControlStatus
+	pointerPressX, pointerPressY int
 }
 
 func safeViewerLabel(s string) string {
@@ -48,7 +54,9 @@ func safeViewerLabel(s string) string {
 	return b.String()
 }
 
-func newDesktopView(peer string) (desktopView, error) {
+func newDesktopView(peer string) (desktopView, error)    { return newDesktopViewMode(peer, false) }
+func newDesktopPointer(peer string) (desktopView, error) { return newDesktopViewMode(peer, true) }
+func newDesktopViewMode(peer string, pointer bool) (desktopView, error) {
 	if os.Getenv("WAYLAND_DISPLAY") != "" || os.Getenv("XDG_SESSION_TYPE") == "wayland" || os.Getenv("DISPLAY") == "" {
 		return nil, errors.New("native desktop viewing requires a local X11 display; no fallback")
 	}
@@ -90,8 +98,12 @@ func newDesktopView(peer string) (desktopView, error) {
 	if err != nil {
 		return fail(err)
 	}
-	v := &xDesktopView{conn: c, window: window, width: w, height: h, maxRowsBytes: int(setup.MaximumRequestLength)*4 - 32, title: "Mnet view only: " + safeViewerLabel(peer)}
-	if err = xproto.CreateWindowChecked(c, 24, window, screen.Root, 20, 20, uint16(w), uint16(h), 0, xproto.WindowClassInputOutput, screen.RootVisual, xproto.CwBackPixel|xproto.CwEventMask, []uint32{0x151923, xproto.EventMaskExposure | xproto.EventMaskStructureNotify | xproto.EventMaskKeyPress}).Check(); err != nil {
+	v := &xDesktopView{conn: c, window: window, width: w, height: h, maxRowsBytes: int(setup.MaximumRequestLength)*4 - 32, title: "Mnet view only: " + safeViewerLabel(peer), pointer: pointer}
+	if pointer {
+		v.title = "Mnet pointer only: " + safeViewerLabel(peer)
+		v.pointerGrant.State = "unavailable"
+	}
+	if err = xproto.CreateWindowChecked(c, 24, window, screen.Root, 20, 20, uint16(w), uint16(h), 0, xproto.WindowClassInputOutput, screen.RootVisual, xproto.CwBackPixel|xproto.CwEventMask, []uint32{0x151923, xproto.EventMaskExposure | xproto.EventMaskStructureNotify | xproto.EventMaskKeyPress | xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskPointerMotion | xproto.EventMaskFocusChange}).Check(); err != nil {
 		return fail(err)
 	}
 	cleanup := func(e error) (desktopView, error) { v.Close(); return nil, e }
@@ -135,10 +147,16 @@ func (v *xDesktopView) State(state string) error {
 		mode = "1:1 received"
 	}
 	title := v.title + " | " + state + " [" + mode + "]"
-	if err := xproto.ChangePropertyChecked(v.conn, xproto.PropModeReplace, v.window, xproto.AtomWmName, xproto.AtomString, 8, uint32(len(title)), []byte(title)).Check(); err != nil {
+	if v.pointer {
+		title += " [pointer " + v.pointerGrant.State + "]"
+	}
+	// Publish matching pixels before advertising the corresponding title state.
+	// Native callers/assistive UI must not observe an allowed/revoked title while
+	// the visible header still shows the preceding state.
+	if err := v.draw(); err != nil {
 		return err
 	}
-	return v.draw()
+	return xproto.ChangePropertyChecked(v.conn, xproto.PropModeReplace, v.window, xproto.AtomWmName, xproto.AtomString, 8, uint32(len(title)), []byte(title)).Check()
 }
 
 func (v *xDesktopView) Frame(fr session.ScreenFrame) error {
@@ -158,8 +176,14 @@ func (v *xDesktopView) Frame(fr session.ScreenFrame) error {
 	}
 	rgba := image.NewRGBA(image.Rect(0, 0, cfg.Width, cfg.Height))
 	draw.Draw(rgba, rgba.Bounds(), img, img.Bounds().Min, draw.Src)
+	if v.image == nil || v.image.Bounds() != rgba.Bounds() {
+		v.pointerPressed = 0
+	}
 	v.image = rgba
 	v.state = "Viewing. Last screen " + time.Now().Format("15:04:05") + ". View only. Escape ends."
+	if v.pointer {
+		v.state = "Screen " + time.Now().Format("15:04:05") + ". Pointer: " + v.pointerGrant.State + ". No keyboard/dragging."
+	}
 	return v.State(v.state)
 }
 
@@ -203,6 +227,9 @@ func (v *xDesktopView) draw() error {
 	mode := "Fit. 1: received pixels 1:1; arrows/Home/End: pan; F: fit; Escape: end"
 	if v.viewport.one {
 		mode = "1:1 received pixels. Arrows/Home/End: pan; F: fit; Escape: end"
+	}
+	if v.pointer {
+		mode = "F8: ask pointer; F9: release; Escape: end. 1/F/arrows: local view."
 	}
 	for i, text := range []string{safeViewerLabel(v.title), safeViewerLabel(v.state), mode} {
 		if err = xproto.ImageText8Checked(v.conn, byte(len(text)), target, v.gc, 10, int16(18+i*20), text).Check(); err != nil {
@@ -273,6 +300,31 @@ func (v *xDesktopView) Poll() (bool, error) {
 			if e.Window == v.window {
 				return true, nil
 			}
+		case xproto.FocusOutEvent:
+			if v.pointer {
+				v.pointerPressed = 0
+				if err := v.queuePointer(desktopPointerAction{Kind: "release"}); err != nil {
+					return false, err
+				}
+			}
+		case xproto.ButtonPressEvent:
+			if v.pointer {
+				if err := v.pointerButton(byte(e.Detail), true, int(e.EventX), int(e.EventY)); err != nil {
+					return false, err
+				}
+			}
+		case xproto.ButtonReleaseEvent:
+			if v.pointer {
+				if err := v.pointerButton(byte(e.Detail), false, int(e.EventX), int(e.EventY)); err != nil {
+					return false, err
+				}
+			}
+		case xproto.MotionNotifyEvent:
+			if v.pointer {
+				if err := v.pointerMotion(int(e.EventX), int(e.EventY)); err != nil {
+					return false, err
+				}
+			}
 		case xproto.KeyPressEvent:
 			// Resolve Escape from the actual layout, never forward any local key.
 			mapping, err := xproto.GetKeyboardMapping(v.conn, e.Detail, 1).Reply()
@@ -281,10 +333,21 @@ func (v *xDesktopView) Poll() (bool, error) {
 			}
 			if len(mapping.Keysyms) > 0 {
 				sym := uint32(mapping.Keysyms[0])
+				if v.pointer && (sym == 0xffc5 || sym == 0xffc6) { // F8/F9 stay local.
+					kind := "request"
+					if sym == 0xffc6 {
+						kind = "release"
+					}
+					if err := v.queuePointer(desktopPointerAction{Kind: kind}); err != nil {
+						return false, err
+					}
+					continue
+				}
 				if sym == 0xff1b {
 					return true, nil
 				}
 				if v.image != nil && v.viewport.key(sym, v.image.Bounds().Dx(), v.image.Bounds().Dy(), v.width, v.height-viewerHeader) {
+					v.pointerPressed = 0
 					if err := v.State(v.state); err != nil {
 						return false, err
 					}
@@ -298,6 +361,9 @@ func (v *xDesktopView) Poll() (bool, error) {
 			}
 		case xproto.ConfigureNotifyEvent:
 			if e.Window == v.window {
+				if v.width != int(e.Width) || v.height != int(e.Height) {
+					v.pointerPressed = 0
+				}
 				v.width, v.height = int(e.Width), int(e.Height)
 				if err := v.draw(); err != nil {
 					return false, err
