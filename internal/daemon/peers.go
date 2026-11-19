@@ -90,8 +90,9 @@ func (d *Daemon) applyMapLocked(m *netmap.Map) {
 	}
 	d.peersMu.Unlock()
 	var probes []device.NoisePublicKey
+	endpointFilter := newEndpointRouteFilter(m.Peers)
 	for _, p := range m.Peers {
-		p.Endpoints = safePeerEndpoints(p.Endpoints, m.Peers)
+		p.Endpoints = endpointFilter.safe(p.Endpoints)
 		pub, err := base64.StdEncoding.DecodeString(p.PubKey)
 		if err != nil || len(pub) != 32 {
 			continue
@@ -169,28 +170,72 @@ func (d *Daemon) applyMapLocked(m *netmap.Map) {
 // Never choose an underlay endpoint that the current mesh routes back
 // into the TUN. This can include another peer's advertised subnet.
 func safePeerEndpoints(endpoints []string, peers []netmap.Node) []string {
-	blocked := []netip.Prefix{netip.MustParsePrefix("100.64.0.0/10")}
+	return newEndpointRouteFilter(peers).safe(endpoints)
+}
+
+// Build once per map, not once per peer. Membership requires at most 33 IPv4
+// or 129 IPv6 prefix-length probes, regardless of the number of routed peers.
+type endpointRouteFilter struct {
+	prefixes       map[netip.Prefix]struct{}
+	v4Bits, v6Bits []int
+}
+
+func newEndpointRouteFilter(peers []netmap.Node) endpointRouteFilter {
+	f := endpointRouteFilter{prefixes: make(map[netip.Prefix]struct{})}
+	var v4Seen [33]bool
+	var v6Seen [129]bool
+	add := func(p netip.Prefix) {
+		p = p.Masked()
+		f.prefixes[p] = struct{}{}
+		bits := p.Bits()
+		if p.Addr().Is4() {
+			if !v4Seen[bits] {
+				f.v4Bits = append(f.v4Bits, bits)
+				v4Seen[bits] = true
+			}
+		} else if !v6Seen[bits] {
+			f.v6Bits = append(f.v6Bits, bits)
+			v6Seen[bits] = true
+		}
+	}
+	add(netip.MustParsePrefix("100.64.0.0/10"))
 	for _, peer := range peers {
 		for _, raw := range peer.Routes {
-			if prefix, err := netip.ParsePrefix(raw); err == nil {
-				blocked = append(blocked, prefix.Masked())
+			if p, err := netip.ParsePrefix(raw); err == nil {
+				add(p)
 			}
 		}
 	}
+	return f
+}
+
+func (f endpointRouteFilter) contains(addr netip.Addr) bool {
+	// Preserve Prefix.Contains semantics: a zoned address never matches a
+	// prefix, and IPv4-mapped endpoints are checked as their IPv4 address.
+	addr = addr.Unmap()
+	if addr.Zone() != "" {
+		return false
+	}
+	bits := f.v6Bits
+	if addr.Is4() {
+		bits = f.v4Bits
+	}
+	for _, n := range bits {
+		if _, blocked := f.prefixes[netip.PrefixFrom(addr, n).Masked()]; blocked {
+			return true
+		}
+	}
+	return false
+}
+
+func (f endpointRouteFilter) safe(endpoints []string) []string {
 	var safe []string
 	for _, endpoint := range endpoints {
 		addr, err := netip.ParseAddrPort(endpoint)
 		if err != nil {
 			continue
 		}
-		recursive := false
-		for _, prefix := range blocked {
-			if prefix.Contains(addr.Addr().Unmap()) {
-				recursive = true
-				break
-			}
-		}
-		if !recursive {
+		if !f.contains(addr.Addr()) {
 			safe = append(safe, endpoint)
 		}
 	}

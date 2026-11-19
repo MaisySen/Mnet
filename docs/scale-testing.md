@@ -168,3 +168,7 @@ about 62-63ns/op and zero allocations in three one-second samples. Raw:
 I/O, packet copies, contention, index rebuilds, WireGuard crypto and ACLs
 with many rules. It is not relay throughput or capacity evidence. Its
 purpose is to verify the routine check does not scan the entire fleet.
+
+## Client endpoint filtering
+
+The separate [map endpoint-filter comparison](map-endpoint-filter-scale.md) measures the client filter portion of a map application. It is not part of the control-store capacity results above, nor a whole-client or traffic measurement.

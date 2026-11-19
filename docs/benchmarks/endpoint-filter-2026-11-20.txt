@@ -1,0 +1,24 @@
+goos: linux
+goarch: amd64
+pkg: fintex.au/mnet/internal/daemon
+cpu: Intel(R) Xeon(R) 6975P-C
+BenchmarkMapEndpointFiltering/original/100     	       1	    794685 ns/op	  929600 B/op	     800 allocs/op
+BenchmarkMapEndpointFiltering/original/100     	       1	    519178 ns/op	  929600 B/op	     800 allocs/op
+BenchmarkMapEndpointFiltering/original/100     	       1	    450103 ns/op	  929600 B/op	     800 allocs/op
+BenchmarkMapEndpointFiltering/original/1000    	       1	  52096629 ns/op	70224000 B/op	   11000 allocs/op
+BenchmarkMapEndpointFiltering/original/1000    	       1	  51206223 ns/op	70224000 B/op	   11000 allocs/op
+BenchmarkMapEndpointFiltering/original/1000    	       1	  51022399 ns/op	70224000 B/op	   11000 allocs/op
+BenchmarkMapEndpointFiltering/original/10000   	       1	8366990966 ns/op	14710560000 B/op	  190000 allocs/op
+BenchmarkMapEndpointFiltering/original/10000   	       1	8458675760 ns/op	14710560000 B/op	  190000 allocs/op
+BenchmarkMapEndpointFiltering/original/10000   	       1	8409208758 ns/op	14710560000 B/op	  190000 allocs/op
+BenchmarkMapEndpointFiltering/indexed/100      	       1	     38376 ns/op	   12344 B/op	     113 allocs/op
+BenchmarkMapEndpointFiltering/indexed/100      	       1	     24016 ns/op	   12344 B/op	     113 allocs/op
+BenchmarkMapEndpointFiltering/indexed/100      	       1	     22135 ns/op	   12344 B/op	     113 allocs/op
+BenchmarkMapEndpointFiltering/indexed/1000     	       1	    279200 ns/op	  207016 B/op	    1024 allocs/op
+BenchmarkMapEndpointFiltering/indexed/1000     	       1	    249942 ns/op	  207016 B/op	    1024 allocs/op
+BenchmarkMapEndpointFiltering/indexed/1000     	       1	    230429 ns/op	  207016 B/op	    1024 allocs/op
+BenchmarkMapEndpointFiltering/indexed/10000    	       1	   3505045 ns/op	 1728392 B/op	   10083 allocs/op
+BenchmarkMapEndpointFiltering/indexed/10000    	       1	   3307579 ns/op	 1728392 B/op	   10083 allocs/op
+BenchmarkMapEndpointFiltering/indexed/10000    	       1	   3257444 ns/op	 1728392 B/op	   10083 allocs/op
+PASS
+ok  	fintex.au/mnet/internal/daemon	25.423s
