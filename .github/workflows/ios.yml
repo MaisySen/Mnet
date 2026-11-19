@@ -1,87 +1,131 @@
 name: iOS TestFlight
 
-# Builds Mnet.xcframework with gomobile, archives the app + packet tunnel
-# extension with automatic signing via the App Store Connect Admin API
-# key, and uploads to TestFlight. Needs repo secrets:
-#   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_BASE64 (the .p8, base64)
-# Give each dispatch a fresh build number so Apple never sees a reuse.
 on:
   workflow_dispatch:
     inputs:
-      build_number:
-        description: Build number (must be higher than every previous upload)
-        required: true
+      upload_testflight:
+        description: Upload the verified signed build for internal TestFlight only
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mnet-ios-testflight
+  cancel-in-progress: false
 
 jobs:
   build:
-    runs-on: macos-14
+    if: github.repository == 'MaisySen/Mnet' && github.ref == 'refs/heads/release/mnet-testflight-20261119' && github.run_attempt == 1
+    runs-on: macos-26
+    timeout-minutes: 35
+    env:
+      MNET_SOURCE_SHA: '1cbc09b5616a8494e3a4370dec9eea66af95907d'
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      GOPROXY: https://proxy.golang.org
+      GOSUMDB: sum.golang.org
+      GOTOOLCHAIN: local
+      MNET_BUILD_NUMBER: '1'
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify exact product source and Apple SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$MNET_SOURCE_SHA"
+          diff -u <(printf '%s\n' .github/workflows/ios.yml scripts/mnet-testflight-metadata.py) <(git diff --name-only HEAD^ HEAD)
+          test "$(xcodebuild -version | head -1)" = 'Xcode 26.6'
+          xcrun --sdk iphoneos --show-sdk-version | grep -Eq '^26\.'
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
-
-      - name: gomobile
+          cache: false
+      - name: Prepare pinned Go bridge and verify native simulator linkage
+        shell: bash
         run: |
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          go install golang.org/x/mobile/cmd/gobind@latest
-          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+          set -euo pipefail
+          mobile=$(go list -m -mod=readonly -f '{{.Version}}' golang.org/x/mobile)
+          [[ "$mobile" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-[0-9]{14}-[a-f0-9]{12}$ ]]
+          grep -F "golang.org/x/mobile $mobile h1:" go.sum >/dev/null
+          export GOBIN="$RUNNER_TEMP/mnet-go-tools"; mkdir -p "$GOBIN"; export PATH="$GOBIN:$PATH"
+          go install "golang.org/x/mobile/cmd/gomobile@$mobile"
+          go install "golang.org/x/mobile/cmd/gobind@$mobile"
           gomobile init
-
-      - name: xcodegen
-        run: brew install xcodegen
-
-      - name: Build the Go xcframework
-        run: sh ios/build-go.sh
-
-      - name: Generate the Xcode project
-        run: xcodegen --spec ios/project.yml --project .
-
-      - name: Decode the App Store Connect key
-        run: |
-          mkdir -p ~/private_keys
-          echo "${{ secrets.ASC_KEY_BASE64 }}" | base64 --decode > ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
-          chmod 600 ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
-
-      - name: Archive
+          sh scripts/test-ios-source.sh
+          sh scripts/test-ios-linked-build.sh
+          printf '%s\n' "$GOBIN" >> "$GITHUB_PATH"
+          tools="$RUNNER_TEMP/mnet-xcodegen"
+          mkdir -p "$tools"
+          curl --fail --silent --show-error --location --max-time 45 \
+            'https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip' --output "$tools/source.zip"
+          actual=$(shasum -a 256 "$tools/source.zip" | awk '{print $1}')
+          test "$actual" = '4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806'
+          unzip -q "$tools/source.zip" -d "$tools"
+          chmod 0755 "$tools/xcodegen/bin/xcodegen"
+          printf '%s\n' "$tools/xcodegen/bin" >> "$GITHUB_PATH"
+      - name: Read the exact TestFlight build train and sign Mnet
+        if: inputs.upload_testflight
+        shell: bash
         env:
-          MNET_BUILD_NUMBER: ${{ inputs.build_number }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_BASE64: ${{ secrets.ASC_KEY_BASE64 }}
         run: |
-          xcodebuild -project Mnet.xcodeproj -scheme Mnet \
+          set -euo pipefail
+          umask 077
+          work="$RUNNER_TEMP/mnet-testflight"
+          mkdir -p "$work" "$HOME/private_keys"
+          sh ios/build-go.sh
+          xcodegen --spec ios/project.yml --project ios
+          python3 scripts/mnet-testflight-metadata.py reserve "$work"
+          unset ASC_KEY_BASE64
+          export MNET_BUILD_NUMBER=$(cat "$work/build-number")
+          [[ "$MNET_BUILD_NUMBER" =~ ^[1-9][0-9]{0,3}$ ]]
+          key="$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          test -s "$key"
+          xcodebuild -project ios/Mnet.xcodeproj -scheme Mnet \
             -destination 'generic/platform=iOS' \
-            -archivePath build/Mnet.xcarchive archive \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8 \
-            -authenticationKeyID ${{ secrets.ASC_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }} \
-            CURRENT_PROJECT_VERSION=${{ inputs.build_number }}
-
-      - name: Export IPA
-        env:
-          MNET_BUILD_NUMBER: ${{ inputs.build_number }}
-        run: |
-          cat > build/ExportOptions.plist <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0"><dict>
-            <key>method</key><string>app-store-connect</string>
-            <key>signingStyle</key><string>automatic</string>
-            <key>teamID</key><string>B85KQRQZW7</string>
-          </dict></plist>
-          EOF
+            -archivePath "$work/Mnet.xcarchive" archive \
+            -allowProvisioningUpdates -authenticationKeyPath "$key" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            CURRENT_PROJECT_VERSION="$MNET_BUILD_NUMBER"
+          python3 scripts/mnet-testflight-metadata.py export-options "$work"
           xcodebuild -exportArchive \
-            -archivePath build/Mnet.xcarchive \
-            -exportPath build/ipa \
-            -exportOptionsPlist build/ExportOptions.plist \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8 \
-            -authenticationKeyID ${{ secrets.ASC_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }}
-
-      - name: Upload to TestFlight
+            -archivePath "$work/Mnet.xcarchive" -exportPath "$work/ipa" \
+            -exportOptionsPlist "$work/export-options.plist" \
+            -allowProvisioningUpdates -authenticationKeyPath "$key" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          python3 scripts/mnet-testflight-metadata.py verify-ipa "$work"
+      - name: Upload once for internal TestFlight and confirm Apple intake
+        if: inputs.upload_testflight
+        shell: bash
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
-          xcrun altool --upload-app --type ios \
-            --file build/ipa/Mnet.ipa \
-            --apiKey ${{ secrets.ASC_KEY_ID }} \
-            --apiIssuer ${{ secrets.ASC_ISSUER_ID }}
+          set -euo pipefail
+          umask 077
+          work="$RUNNER_TEMP/mnet-testflight"
+          test -s "$work/verified.json"
+          test ! -e "$work/upload.attempt"
+          python3 scripts/mnet-testflight-metadata.py verify-ipa "$work"
+          xcrun altool --validate-app --type ios --file "$work/ipa/Mnet.ipa" \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+          touch "$work/upload.attempt"
+          xcrun altool --upload-app --type ios --file "$work/ipa/Mnet.ipa" \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+          python3 scripts/mnet-testflight-metadata.py observe "$work"
+      - name: Discard temporary signing material
+        if: always() && inputs.upload_testflight
+        shell: bash
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          set -euo pipefail
+          if [[ "$ASC_KEY_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+            rm -f -- "$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          fi
