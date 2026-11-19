@@ -129,6 +129,9 @@ func (d *Daemon) State() State {
 func (d *Daemon) SetRouting(advertiseExit bool, routes []string, useExit string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.closed {
+		return fmt.Errorf("node is closed")
+	}
 	if d.status != "down" {
 		return fmt.Errorf("routing changes apply while down; node is %s", d.status)
 	}
