@@ -752,3 +752,46 @@ func TestAttendedBackendDeathBelongsToExactGrant(t *testing.T) {
 		t.Fatal("backend-death teardown not joined exactly once")
 	}
 }
+
+// A withdrawn pending request must remove its local prompt without waiting for
+// a person to answer a request whose transport or authority no longer exists.
+func TestAttendedPendingViewRetiresOnPeerOrAuthorityLoss(t *testing.T) {
+	for _, why := range []string{"peer-close", "authority-loss", "early-data", "parent-cancel"} {
+		t.Run(why, func(t *testing.T) {
+			ui := &fixtureAttendedUI{make(chan localPromptCall, 1)}
+			a, b := net.Pipe()
+			defer a.Close()
+			defer b.Close()
+			var current atomic.Bool
+			current.Store(true)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			result := make(chan bool, 1)
+			go func() { result <- approveAttendedConnection(ctx, ui, "peer", a, current.Load) }()
+			prompt := takePrompt(t, ui, "view")
+			switch why {
+			case "peer-close":
+				b.Close()
+			case "authority-loss":
+				current.Store(false)
+			case "early-data":
+				go func() { _, _ = b.Write([]byte{1}) }()
+			case "parent-cancel":
+				cancel()
+			}
+			select {
+			case <-prompt.ctx.Done():
+			case <-time.After(time.Second):
+				t.Fatal("retired request left local approval prompt active")
+			}
+			select {
+			case allowed := <-result:
+				if allowed {
+					t.Fatal("retired request approved")
+				}
+			case <-time.After(time.Second):
+				t.Fatal("retired approval watcher not joined")
+			}
+		})
+	}
+}

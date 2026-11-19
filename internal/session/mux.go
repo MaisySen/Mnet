@@ -16,18 +16,20 @@ import (
 
 // Hello opens the control stream. The client sends it first.
 type Hello struct {
-	Version   int    `json:"version"`
-	NodeName  string `json:"nodeName"`
-	ControlV1 bool   `json:"control_v1,omitempty"`
-	Want      string `json:"want"` // "screen", "shell", ... informational in v1
+	RequireAttendedView bool   `json:"require_attended_view,omitempty"`
+	Version             int    `json:"version"`
+	NodeName            string `json:"nodeName"`
+	ControlV1           bool   `json:"control_v1,omitempty"`
+	Want                string `json:"want"` // "screen", "shell", ... informational in v1
 }
 
 // HelloReply is the host's answer.
 type HelloReply struct {
-	Version  int    `json:"version"`
-	NodeName string `json:"nodeName"`
-	Accepted bool   `json:"accepted"`
-	Reason   string `json:"reason,omitempty"`
+	AttendedView bool   `json:"attended_view,omitempty"`
+	Version      int    `json:"version"`
+	NodeName     string `json:"nodeName"`
+	Accepted     bool   `json:"accepted"`
+	Reason       string `json:"reason,omitempty"`
 }
 
 // Mux multiplexes typed streams over one net.Conn.
@@ -106,6 +108,15 @@ func DialWithPeerVerifier(conn net.Conn, nodeName string, verify func(HelloReply
 // DialWithControl explicitly opts into attended control negotiation. Legacy
 // callers do not advertise a capability they cannot enforce.
 func DialWithControl(conn net.Conn, nodeName string, verify func(HelloReply, net.Addr) error, control bool) (*Mux, error) {
+	return dialCapabilities(conn, nodeName, verify, control, false)
+}
+
+// DialAttendedView requires an explicit attended-view reply. Older/headless
+// listeners cannot silently substitute their legacy acceptance policy.
+func DialAttendedView(conn net.Conn, nodeName string, verify func(HelloReply, net.Addr) error) (*Mux, error) {
+	return dialCapabilities(conn, nodeName, verify, false, true)
+}
+func dialCapabilities(conn net.Conn, nodeName string, verify func(HelloReply, net.Addr) error, control, attended bool) (*Mux, error) {
 	success := false
 	defer func() {
 		if !success {
@@ -113,7 +124,7 @@ func DialWithControl(conn net.Conn, nodeName string, verify func(HelloReply, net
 		}
 	}()
 	m := newMux(conn, StreamFile) // client dynamic ids: 4, 6, 8, ...
-	h := Hello{Version: protoVersion, NodeName: nodeName, Want: "screen", ControlV1: control}
+	h := Hello{Version: protoVersion, NodeName: nodeName, Want: "screen", ControlV1: control, RequireAttendedView: attended}
 	if err := m.sendJSON(StreamControl, msgOpen, PriInteractive, h); err != nil {
 		return nil, err
 	}
@@ -134,6 +145,9 @@ func DialWithControl(conn net.Conn, nodeName string, verify func(HelloReply, net
 	if !rep.Accepted {
 		return nil, fmt.Errorf("session: refused: %s", rep.Reason)
 	}
+	if attended && !rep.AttendedView {
+		return nil, errors.New("session: host does not support required attended viewing")
+	}
 	if verify != nil {
 		if err := verify(rep, conn.RemoteAddr()); err != nil {
 			return nil, err
@@ -147,6 +161,15 @@ func DialWithControl(conn net.Conn, nodeName string, verify func(HelloReply, net
 // Listen waits for one session on ln, performs the handshake, and asks
 // accept whether to take it. accept may block (e.g. a user prompt).
 func Listen(ln net.Listener, nodeName string, accept func(Hello, net.Addr) (bool, string)) (*Mux, error) {
+	return listenCapabilities(ln, nodeName, accept, false)
+}
+
+// ListenAttended is only for a host whose callback performs local view
+// approval. The marker describes this path, not external human authority.
+func ListenAttended(ln net.Listener, nodeName string, accept func(Hello, net.Addr) (bool, string)) (*Mux, error) {
+	return listenCapabilities(ln, nodeName, accept, true)
+}
+func listenCapabilities(ln net.Listener, nodeName string, accept func(Hello, net.Addr) (bool, string), attended bool) (*Mux, error) {
 	conn, err := ln.Accept()
 	if err != nil {
 		return nil, err
@@ -170,8 +193,11 @@ func Listen(ln net.Listener, nodeName string, accept func(Hello, net.Addr) (bool
 		conn.Close()
 		return nil, fmt.Errorf("session: protocol version %d, want %d", h.Version, protoVersion)
 	}
-	ok, reason := accept(h, conn.RemoteAddr())
-	rep := HelloReply{Version: protoVersion, NodeName: nodeName, Accepted: ok, Reason: reason}
+	ok, reason := false, "attended viewing requires a local approval host"
+	if !h.RequireAttendedView || attended {
+		ok, reason = accept(h, conn.RemoteAddr())
+	}
+	rep := HelloReply{Version: protoVersion, NodeName: nodeName, Accepted: ok, Reason: reason, AttendedView: attended && ok}
 	if err := m.sendJSON(StreamControl, msgData, PriInteractive, rep); err != nil {
 		conn.Close()
 		return nil, err

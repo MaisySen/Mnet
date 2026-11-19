@@ -28,11 +28,18 @@ import (
 // chat and files; the interactive viewer lives in the app.
 func runSession(args []string) {
 	if len(args) < 1 || (args[0] != "log" && len(args) < 2) {
-		fatal("usage: mnet session connect <peer> [--save-frames DIR] [--send-file PATH]\n" +
+		fatal("usage: mnet session view <peer>\n" +
+			"       mnet session connect <peer> [--save-frames DIR] [--send-file PATH]\n" +
 			"       mnet session send <peer> <file>\n" +
 			"       mnet session log")
 	}
 	switch args[0] {
+	case "view":
+		if len(args) != 2 {
+			fatal("usage: mnet session view <peer>")
+			return
+		}
+		sessionView(args[1])
 	case "connect":
 		peer := args[1]
 		saveDir, sendFile, err := parseSessionConnectOptions(args[2:])
@@ -56,6 +63,9 @@ func runSession(args []string) {
 var errCLISessionIdentity = errors.New("session host identity unavailable or changed")
 
 func dialAuthorizedCLI(conn net.Conn, name string, budget time.Duration, peer daemon.SessionPeer, lookup func() ([]daemon.SessionPeer, error)) (*session.Mux, error) {
+	return dialAuthorizedCLIMode(conn, name, budget, peer, lookup, false)
+}
+func dialAuthorizedCLIMode(conn net.Conn, name string, budget time.Duration, peer daemon.SessionPeer, lookup func() ([]daemon.SessionPeer, error), attended bool) (*session.Mux, error) {
 	if lookup == nil {
 		conn.Close()
 		return nil, fmt.Errorf("session authorization unavailable")
@@ -78,7 +88,11 @@ func dialAuthorizedCLI(conn net.Conn, name string, budget time.Duration, peer da
 		conn.Close()
 		return nil, err
 	}
-	mux, err := session.DialWithPeerVerifier(conn, name, func(reply session.HelloReply, from net.Addr) error {
+	dial := session.DialWithPeerVerifier
+	if attended {
+		dial = session.DialAttendedView
+	}
+	mux, err := dial(conn, name, func(reply session.HelloReply, from net.Addr) error {
 		if !check(reply.NodeName, from) {
 			return errCLISessionIdentity
 		}
@@ -95,9 +109,10 @@ func dialAuthorizedCLI(conn net.Conn, name string, budget time.Duration, peer da
 }
 
 type cliSessionAuthorization struct {
-	peer   daemon.SessionPeer
-	lookup func() ([]daemon.SessionPeer, error)
-	denied atomic.Bool
+	peer            daemon.SessionPeer
+	lookup          func() ([]daemon.SessionPeer, error)
+	denied          atomic.Bool
+	requireAttended bool
 }
 
 func (a *cliSessionAuthorization) check() bool {
@@ -203,7 +218,7 @@ func dialSessionTryAuthorizedContext(ctx context.Context, a *cliSessionAuthoriza
 	if err != nil {
 		return nil, err
 	}
-	m, err := dialAuthorizedCLIContext(ctx, conn, name, 70*time.Second, a.peer, a.lookup)
+	m, err := dialAuthorizedCLIContextMode(ctx, conn, name, 70*time.Second, a.peer, a.lookup, a.requireAttended)
 	if err != nil {
 		if errors.Is(err, errCLISessionIdentity) {
 			a.denied.Store(true)
@@ -220,12 +235,15 @@ func dialSessionTryAuthorizedContext(ctx context.Context, a *cliSessionAuthoriza
 
 // The run owns its socket through pending hello and active mux lifetime.
 func dialAuthorizedCLIContext(ctx context.Context, conn net.Conn, name string, budget time.Duration, peer daemon.SessionPeer, lookup func() ([]daemon.SessionPeer, error)) (*session.Mux, error) {
+	return dialAuthorizedCLIContextMode(ctx, conn, name, budget, peer, lookup, false)
+}
+func dialAuthorizedCLIContextMode(ctx context.Context, conn net.Conn, name string, budget time.Duration, peer daemon.SessionPeer, lookup func() ([]daemon.SessionPeer, error), attended bool) (*session.Mux, error) {
 	if err := ctx.Err(); err != nil {
 		conn.Close()
 		return nil, err
 	}
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
-	mux, err := dialAuthorizedCLI(conn, name, budget, peer, lookup)
+	mux, err := dialAuthorizedCLIMode(conn, name, budget, peer, lookup, attended)
 	if err != nil {
 		stop()
 		conn.Close()

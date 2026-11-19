@@ -128,7 +128,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: install isolated X11 proof dependencies
-        run: sudo apt-get update && sudo apt-get install -y xvfb x11-xserver-utils x11-utils zenity xdotool imagemagick
+        run: sudo apt-get update && sudo apt-get install -y xvfb x11-xserver-utils x11-utils zenity xdotool imagemagick python3-pil
       - name: live session proof against a local control plane
         run: sh scripts/session-validation.sh
       - name: attended Linux local approval and reserved live-stop (disposable X11)
@@ -136,6 +136,10 @@ jobs:
           python3 scripts/attended-x11-validation.py
           MNET_ATTENDED_DISPLAY_SIZE=2048x1536x24 python3 scripts/attended-x11-validation.py
           python3 scripts/attended-process-validation.py
+      - name: native view-only client and attended host (two disposable X11 displays)
+        run: |
+          python3 scripts/native-viewer-validation.py
+          MNET_VIEWER_DISPLAY_SIZE=2048x1536x24 python3 scripts/native-viewer-validation.py
       - name: retain failed proof diagnostics (no credentials or node state)
         if: failure()
         uses: actions/upload-artifact@v4
@@ -152,6 +156,10 @@ jobs:
             /tmp/mnet-recipient-guardian.*/*.stdout
             /tmp/mnet-recipient-guardian.*/*.stderr
             /tmp/mnet-attended-x11.*/*.png
+            /tmp/mnet-native-viewer.*/test.log
+            /tmp/mnet-native-viewer.*/*/test.log
+            /tmp/mnet-native-viewer.*/*/viewer.log
+            /tmp/mnet-native-viewer.*/*/*.png
 
   native-platform:
     strategy:

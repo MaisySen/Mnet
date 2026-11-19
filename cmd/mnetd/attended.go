@@ -7,6 +7,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -340,5 +341,54 @@ func approveAttendedConnection(ctx context.Context, ui attendedUI, peer string, 
 	if conn.SetDeadline(time.Now().Add(50*time.Second)) != nil {
 		return false
 	}
-	return approveAttendedView(ctx, ui, peer) && ctx.Err() == nil && authorized()
+	// No valid next message exists before HelloReply. Observe only this
+	// pending phase: EOF, any pipelined byte or lost current authority retires
+	// the local prompt. Join the sole reader before the mux can start reading.
+	pending, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop, done := make(chan struct{}), make(chan struct{})
+	var retired atomic.Bool
+	go func() {
+		defer close(done)
+		var one [1]byte
+		for {
+			select {
+			case <-stop:
+				return
+			case <-pending.Done():
+				retired.Store(true)
+				return
+			default:
+			}
+			if !authorized() {
+				retired.Store(true)
+				cancel()
+				return
+			}
+			if err := conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond)); err != nil {
+				retired.Store(true)
+				cancel()
+				return
+			}
+			n, err := conn.Read(one[:])
+			if n > 0 || err == nil {
+				retired.Store(true)
+				cancel()
+				return
+			}
+			if timeout, ok := err.(net.Error); !ok || !timeout.Timeout() {
+				retired.Store(true)
+				cancel()
+				return
+			}
+		}
+	}()
+	allowed := approveAttendedView(pending, ui, peer)
+	close(stop)
+	_ = conn.SetReadDeadline(time.Now())
+	<-done
+	if err := conn.SetReadDeadline(time.Time{}); err != nil {
+		return false
+	}
+	return allowed && !retired.Load() && ctx.Err() == nil && authorized()
 }

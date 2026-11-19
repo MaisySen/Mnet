@@ -89,8 +89,18 @@ func listenHeadlessSession(listener net.Listener, name string, budget time.Durat
 	return listenSessionWithApproval(listener, name, budget, func(h session.Hello, from net.Addr, _ net.Conn) (bool, string) { return accept(h, from) })
 }
 func listenSessionWithApproval(listener net.Listener, name string, budget time.Duration, accept func(session.Hello, net.Addr, net.Conn) (bool, string)) (*session.Mux, error) {
+	return listenSessionMode(listener, name, budget, accept, false)
+}
+func listenAttendedSessionWithApproval(listener net.Listener, name string, budget time.Duration, accept func(session.Hello, net.Addr, net.Conn) (bool, string)) (*session.Mux, error) {
+	return listenSessionMode(listener, name, budget, accept, true)
+}
+func listenSessionMode(listener net.Listener, name string, budget time.Duration, accept func(session.Hello, net.Addr, net.Conn) (bool, string), attended bool) (*session.Mux, error) {
 	var conn net.Conn
-	mux, err := session.Listen(sessionHelloListener{listener, budget, &conn}, name, func(h session.Hello, from net.Addr) (bool, string) { return accept(h, from, conn) })
+	listen := session.Listen
+	if attended {
+		listen = session.ListenAttended
+	}
+	mux, err := listen(sessionHelloListener{listener, budget, &conn}, name, func(h session.Hello, from net.Addr) (bool, string) { return accept(h, from, conn) })
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +164,11 @@ func runSessionHostWithUI(owner *sessionHostOwner, d *daemon.Daemon, stateDir st
 		budget := 15 * time.Second
 		var admittedKey string
 		var admittedSource net.Addr
-		m, err := listenSessionWithApproval(ownedSessionListener{ln, owner}, nodeName, budget, func(h session.Hello, from net.Addr, conn net.Conn) (bool, string) {
+		listen := listenSessionWithApproval
+		if ui != nil {
+			listen = listenAttendedSessionWithApproval
+		}
+		m, err := listen(ownedSessionListener{ln, owner}, nodeName, budget, func(h session.Hello, from net.Addr, conn net.Conn) (bool, string) {
 			viewer = h.NodeName
 			refuseWhy = ""
 			if from != nil {
