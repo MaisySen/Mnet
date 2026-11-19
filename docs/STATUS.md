@@ -1,5 +1,8 @@
 # Mnet project status
 
+Latest internal preparation: [disabled export-capability seam](file-export-capability.md) carries one-use local approval into bounded private staging and verified export completion/failure ownership. Existing path backend/defaults and consumer/mobile entry points remain unchanged. Full local race/vet and20 focused repetitions pass; current normal CI pending. No provider, chooser, native descriptor ownership, durability or timeout-UX acceptance is implied.
+
+
 Latest preparation: [receiver-owned storage transaction](file-storage-transaction.md) extracts the unchanged private path backend behind write/finalize/publish/abort ownership and adds real-mux fault tests. Full local race/vet and20 focused race repetitions pass; current normal CI pending. No native URI adapter, chooser or consumer reception is enabled.
 
 

@@ -100,10 +100,10 @@ func (r FileReceiver) Handle(s Stream) {
 	if !allowed() {
 		return
 	}
-	dir := r.Dir
+	destination := fileReceiveDestination{dir: r.Dir}
 	if r.RequireApproval {
 		var ok bool
-		dir, ok = r.approvedDirectory(s, offer, allowed)
+		destination, ok = r.approvedDestination(s, offer, allowed)
 		if !ok {
 			// Retiring a local prompt must not wait for a peer to drain output.
 			if err := r.Mux.controlJSON(s.ID, FileAccept{OK: false, Reason: "file approval unavailable or declined"}); err != nil {
@@ -115,7 +115,7 @@ func (r FileReceiver) Handle(s Stream) {
 			return
 		}
 	}
-	if strings.TrimSpace(dir) == "" {
+	if strings.TrimSpace(destination.dir) == "" {
 		refuse("file reception is not configured")
 		return
 	}
@@ -124,7 +124,13 @@ func (r FileReceiver) Handle(s Stream) {
 	if begin == nil {
 		begin = beginPathReceive
 	}
-	storage, err := begin(dir, name)
+	var storage receiveTransaction
+	var err error
+	if destination.export != nil {
+		storage, err = beginExportReceive(destination, offer, r.Mux.Closed(), allowed)
+	} else {
+		storage, err = begin(destination.dir, name)
+	}
 	if err != nil {
 		if errors.Is(err, errReceiveDestination) {
 			refuse("destination already exists or is inaccessible")

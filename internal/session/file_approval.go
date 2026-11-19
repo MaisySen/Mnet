@@ -33,7 +33,7 @@ type fileApprovalPending struct {
 	request  FileApprovalRequest
 	deadline time.Time
 	done     chan struct{}
-	result   chan string // empty means decline
+	result   chan fileReceiveDestination // empty directory means decline
 }
 
 // FileApprovalGate binds once to one mux and bounds both pending decisions and
@@ -42,13 +42,14 @@ type fileApprovalPending struct {
 // The zero value is closed/unavailable. Retired queued notifications may remain
 // until drained; consumers must check Done before presenting them.
 type FileApprovalGate struct {
-	mu       sync.Mutex
-	session  string
-	bound    *Mux
-	timeout  time.Duration
-	requests chan FileApprovalRequest
-	pending  map[string]*fileApprovalPending
-	closed   bool
+	exportBudget fileExportBudget
+	mu           sync.Mutex
+	session      string
+	bound        *Mux
+	timeout      time.Duration
+	requests     chan FileApprovalRequest
+	pending      map[string]*fileApprovalPending
+	closed       bool
 }
 
 // NewFileApprovalGate limits waits to20seconds; nonpositive uses that maximum.
@@ -83,7 +84,7 @@ func (g *FileApprovalGate) begin(s Stream, offer FileOffer) (*fileApprovalPendin
 		return nil, false
 	}
 	done := make(chan struct{})
-	p := &fileApprovalPending{deadline: time.Now().Add(g.timeout), done: done, result: make(chan string, 1)}
+	p := &fileApprovalPending{deadline: time.Now().Add(g.timeout), done: done, result: make(chan fileReceiveDestination, 1)}
 	p.request = FileApprovalRequest{ID: id, Session: g.session, StreamID: s.ID, Deadline: p.deadline, Offer: offer, Done: done}
 	select {
 	case g.requests <- p.request:
@@ -107,6 +108,19 @@ func (g *FileApprovalGate) retire(p *fileApprovalPending) {
 // answer cannot consume another prompt. Approval requires an absolute local
 // directory, not a peer-selected path. No directory is created here.
 func (g *FileApprovalGate) Decide(request FileApprovalRequest, allow bool, dir string) error {
+	return g.decideDestination(request, allow, fileReceiveDestination{dir: dir})
+}
+
+// Internal-only opt-in for future native adapters. No consumer entry point or
+// external/native API can construct this capability yet.
+func (g *FileApprovalGate) decideExport(request FileApprovalRequest, staging string, selection *fileExportSelection) error {
+	if selection == nil {
+		return errors.New("export selection unavailable")
+	}
+	return g.decideDestination(request, true, fileReceiveDestination{dir: staging, export: selection})
+}
+func (g *FileApprovalGate) decideDestination(request FileApprovalRequest, allow bool, destination fileReceiveDestination) error {
+
 	if g == nil {
 		return errors.New("file approval unavailable")
 	}
@@ -128,14 +142,17 @@ func (g *FileApprovalGate) Decide(request FileApprovalRequest, allow bool, dir s
 		close(p.done)
 		return errors.New("expired file approval")
 	}
-	if allow && (strings.TrimSpace(dir) == "" || !filepath.IsAbs(dir)) {
+	if allow && (strings.TrimSpace(destination.dir) == "" || !filepath.IsAbs(destination.dir)) {
 		return errors.New("file approval needs an absolute local directory")
 	}
+	if allow && destination.export != nil && !destination.export.claim(request, &g.exportBudget) {
+		return errors.New("export selection already consumed or unavailable")
+	}
 	if !allow {
-		dir = ""
+		destination = fileReceiveDestination{}
 	}
 	delete(g.pending, request.ID)
-	p.result <- dir
+	p.result <- destination
 	close(p.done)
 	return nil
 }
@@ -160,13 +177,13 @@ func (g *FileApprovalGate) Close() {
 	}
 }
 
-// approvedDirectory waits on local state, not an arbitrary blocking UI callback.
+// approvedDestination waits on local state, not an arbitrary blocking UI callback.
 // Peer data/FIN/reset before acceptance is abandonment/protocol misuse. Never
 // consume or buffer speculative file bytes on behalf of a pending approval.
-func (r FileReceiver) approvedDirectory(s Stream, offer FileOffer, allowed func() bool) (string, bool) {
+func (r FileReceiver) approvedDestination(s Stream, offer FileOffer, allowed func() bool) (fileReceiveDestination, bool) {
 	p, ok := r.Approval.begin(s, offer)
 	if !ok {
-		return "", false
+		return fileReceiveDestination{}, false
 	}
 	defer r.Approval.retire(p)
 	timer := time.NewTimer(time.Until(p.deadline))
@@ -178,18 +195,18 @@ func (r FileReceiver) approvedDirectory(s Stream, offer FileOffer, allowed func(
 		released = s.state.done
 	}
 
-	finish := func(dir string) (string, bool) {
-		if dir == "" || !allowed() || !time.Now().Before(p.deadline) {
-			return "", false
+	finish := func(dir fileReceiveDestination) (fileReceiveDestination, bool) {
+		if dir.dir == "" || !allowed() || !time.Now().Before(p.deadline) {
+			return fileReceiveDestination{}, false
 		}
 		select {
 		case <-released:
-			return "", false
+			return fileReceiveDestination{}, false
 		case f, ok := <-s.in:
 			if ok {
 				s.Mux.releaseInbound(&f)
 			}
-			return "", false
+			return fileReceiveDestination{}, false
 		default:
 			return dir, true
 		}
@@ -202,22 +219,22 @@ func (r FileReceiver) approvedDirectory(s Stream, offer FileOffer, allowed func(
 			case dir := <-p.result:
 				return finish(dir)
 			default:
-				return "", false
+				return fileReceiveDestination{}, false
 			}
 		case f, ok := <-s.in:
 			if ok {
 				s.Mux.releaseInbound(&f)
 			}
-			return "", false
+			return fileReceiveDestination{}, false
 		case <-released:
-			return "", false
+			return fileReceiveDestination{}, false
 		case <-s.Mux.Closed():
-			return "", false
+			return fileReceiveDestination{}, false
 		case <-timer.C:
-			return "", false
+			return fileReceiveDestination{}, false
 		case <-poll.C:
 			if !allowed() {
-				return "", false
+				return fileReceiveDestination{}, false
 			}
 		}
 	}

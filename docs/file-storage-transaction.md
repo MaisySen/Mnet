@@ -22,8 +22,10 @@ The bounded future proposal is one-file local approval, no persistent tree grant
 - Real-mux injected transaction cases cover normal exact bytes, write failure, short write, invalid digest, finalization failure and publication failure. Expected transaction order is checked, Abort always runs and only success invokes completion.
 - Additional cases prove declined pending approval never begins storage, and session End during finalization prevents publication. They pass20 fresh race repetitions along with existing storage-boundary ownership cases.
 - The actual path transaction rejects Publish before Finalize, writes after Finalize, repeated Finalize/Publish, and a destination collision appearing after staging. Repeated Abort removes private staging while preserving existing/final output; completed mode remains0600.
-- Current normal cross-platform CI is pending. No emulator/native/device/provider execution or new pixels are claimed. A local fault adapter proves the receiver contract, not an Android chooser or content provider.
+- The path-transaction baseline passed all five normal CI jobs at1afceb0 in [run44504429692](https://github.com/MaisySen/Mnet/actions/runs/44504429692), after the separately documented source-guard and DNS fixture corrections. No emulator/native/device/provider execution or new pixels are claimed. A local fault adapter proves the receiver contract, not an Android chooser or content provider.
 
 ## Next bounded work
 
 Define and test an opaque export capability and explicit completion/cleanup contract before adding any document-provider adapter. Verify exact Android SDK descriptor/stream and cancellation semantics from source/reference, rather than rely on URI-to-path conversion or a guessed provider guarantee. Keep production mobile/viewer reception disabled throughout this preparation. Do not change legacy headless policy, Multies authority, device routes, signed distribution or release behavior.
+
+The next [internal export seam](file-export-capability.md) is now implemented behind a local-only selection, with real-mux fault tests. No production provider or consumer entry point is enabled.
