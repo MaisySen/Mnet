@@ -25,22 +25,32 @@ type Tile struct {
 	Image []byte `json:"image"`
 }
 
-// DiffTiles returns the tile rectangles whose pixels differ between
+// DiffTiles returns absolute canvas rectangles whose pixels differ between
 // prev and curr. A nil prev reports every tile (a full refresh).
+// A nil current image, empty canvas or nonpositive tile size has no tiles.
 func DiffTiles(prev, curr *image.RGBA, size int) []Rect {
+	if curr == nil || size <= 0 {
+		return nil
+	}
 	b := curr.Bounds()
 	if prev != nil && prev.Bounds() != b {
 		prev = nil
 	} // A changed canvas needs a full refresh.
-	w, h := b.Dx(), b.Dy()
 	var out []Rect
-	for ty := 0; ty*size < h; ty++ {
-		for tx := 0; tx*size < w; tx++ {
-			r := image.Rect(tx*size, ty*size, min((tx+1)*size, w), min((ty+1)*size, h))
+	// Absolute canvas coordinates match EncodeTiles, including nonzero-origin
+	// subimages. Subtraction clamps the step before adding, avoiding size*i
+	// overflow for an otherwise legal very large requested tile size.
+	for y := b.Min.Y; y < b.Max.Y; {
+		bottom := y + min(size, b.Max.Y-y)
+		for x := b.Min.X; x < b.Max.X; {
+			right := x + min(size, b.Max.X-x)
+			r := image.Rect(x, y, right, bottom)
 			if prev == nil || tileChanged(prev, curr, r) {
-				out = append(out, Rect{X: r.Min.X, Y: r.Min.Y, W: r.Dx(), H: r.Dy()})
+				out = append(out, Rect{X: x, Y: y, W: r.Dx(), H: r.Dy()})
 			}
+			x = right
 		}
+		y = bottom
 	}
 	return out
 }

@@ -351,3 +351,66 @@ func TestCompositeTilesPreservesStridedBasePixels(t *testing.T) {
 		t.Fatal("composite aliases base")
 	}
 }
+
+func TestDiffTilesUsesActualNonzeroCanvasOrigin(t *testing.T) {
+	for _, origin := range []image.Point{{X: 17, Y: 23}, {X: -19, Y: -11}} {
+		bounds := image.Rectangle{Min: origin, Max: origin.Add(image.Pt(70, 65))}
+		current := image.NewRGBA(bounds)
+		got := DiffTiles(nil, current, 64)
+		want := []Rect{{X: origin.X, Y: origin.Y, W: 64, H: 64}, {X: origin.X + 64, Y: origin.Y, W: 6, H: 64}, {X: origin.X, Y: origin.Y + 64, W: 64, H: 1}, {X: origin.X + 64, Y: origin.Y + 64, W: 6, H: 1}}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatal("tile coordinates escaped actual canvas", origin, got, want)
+		}
+		previous := image.NewRGBA(bounds)
+		if got := DiffTiles(previous, current, 64); len(got) != 0 {
+			t.Fatal("equal offset image changed", got)
+		}
+		current.SetRGBA(origin.X+69, origin.Y+64, color.RGBA{R: 255, A: 255})
+		if got := DiffTiles(previous, current, 64); !reflect.DeepEqual(got, want[3:]) {
+			t.Fatal("changed offset tile wrong", got)
+		}
+		if _, err := EncodeTiles(current, got, 80); err != nil {
+			t.Fatal("diff rectangles cannot be encoded", err)
+		}
+	}
+}
+
+func TestDiffTilesEmptyInvalidAndExtremeStep(t *testing.T) {
+	for _, size := range []int{-1, 0, 1, 64, int(^uint(0) >> 1)} {
+		if got := DiffTiles(nil, nil, size); len(got) != 0 {
+			t.Fatal("nil canvas tiles", got)
+		}
+		if got := DiffTiles(nil, image.NewRGBA(image.Rect(7, 9, 7, 9)), size); len(got) != 0 {
+			t.Fatal("empty canvas tiles", got)
+		}
+		if size <= 0 && len(DiffTiles(nil, solid(8, 8, color.RGBA{}), size)) != 0 {
+			t.Fatal("invalid step tiles")
+		}
+	}
+	img := image.NewRGBA(image.Rect(-7, 13, 63, 78))
+	got := DiffTiles(nil, img, int(^uint(0)>>1))
+	if !reflect.DeepEqual(got, []Rect{{X: -7, Y: 13, W: 70, H: 65}}) {
+		t.Fatal("large step did not clamp", got)
+	}
+}
+
+func TestDiffTilesOffsetSubimageUsesParentStride(t *testing.T) {
+	a := image.NewRGBA(image.Rect(-20, -20, 120, 120))
+	b := image.NewRGBA(a.Bounds())
+	rect := image.Rect(17, 23, 87, 88)
+	before := a.SubImage(rect).(*image.RGBA)
+	after := b.SubImage(rect).(*image.RGBA)
+	after.SetRGBA(86, 87, color.RGBA{G: 255, A: 255})
+	got := DiffTiles(before, after, 64)
+	if !reflect.DeepEqual(got, []Rect{{X: 81, Y: 87, W: 6, H: 1}}) {
+		t.Fatal("subimage stride/origin mismatch", got)
+	}
+	if _, err := EncodeTiles(after, got, 80); err != nil {
+		t.Fatal(err)
+	}
+	// A changed previous canvas must request all current tiles, not index a
+	// differently sized/origin previous image at current coordinates.
+	if got := DiffTiles(solid(1, 1, color.RGBA{}), after, 64); len(got) != 4 {
+		t.Fatal("changed canvas not refreshed", got)
+	}
+}

@@ -74,3 +74,9 @@ A separate LAN namespace (no mesh return route) and control-off LAN OS TCP verif
 ## Watchdog backpressure
 
 The separate [keepalive capacity-wait correction](session-keepalive-backpressure.md) covers a full outbound queue blocking dead-peer detection. Its scope and evidence do not close the broader loss, callback or physical-device recovery limits above.
+
+## Absolute dirty-tile canvas coordinates
+
+DiffTiles previously generated zero-origin rectangles even for a valid RGBA canvas or subimage with a nonzero origin. A failing-first offset-canvas test reproduced rectangles outside the actual source bounds. It now returns absolute canvas rectangles matching EncodeTiles, preserving positive/negative origins and parent strides. Empty/nil canvases and nonpositive tile sizes yield no tiles. A very large positive tile size clamps before addition, without multiplying a loop index by an unchecked step.
+
+New tests cover positive/negative origins, unchanged/changed offset images, parent-stride subimages, changed prior bounds and maximal step size. Thirty focused delta/encode/composition race repetitions and full uncached race/vet/build pass. Both-size actual attended native view/pointer entry journeys also pass, with current received delta pixels inspected. Those actual fixtures remain ordinary zero-origin capture; nonzero-origin correctness is Go image evidence, not a claim of new physical-monitor support. No input, recording, file, capture-size or release authority changes. Fresh hosted source verification remains separate.
