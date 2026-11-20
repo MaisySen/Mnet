@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Actual private-prefix installation, desktop launch and conservative removal."""
 import json
+import errno
 import os
 import pathlib
 import signal
@@ -139,6 +140,8 @@ try:
     devices = poll(lambda: find_window(r'^Mnet devices: read-only \[down\]'), 'actual installed daemon down snapshot')
     capture(devices, 'actual-daemon-down')
     window = close_child(devices)
+    invoke('uninstall', okay=False)
+    assert (prefix / 'bin/mnet').read_bytes() == before, 'running daemon removal changed CLI'
     daemon.terminate()
     assert daemon.wait(timeout=5) == 0
     daemon = None
@@ -154,6 +157,20 @@ try:
     assert state_before == {str(path.relative_to(state)): path.read_bytes() for path in state.rglob('*') if path.is_file() and not path.is_symlink()}, 'failure journey altered daemon state'
     os.environ.clear()
     os.environ.update(old_environment)
+    # The same held writable-open guard used by removal must prevent a later
+    # exec. No content is written and the installed inode is unchanged.
+    for binary in ('mnet', 'mnetd'):
+        fd = os.open(prefix / 'bin' / binary, os.O_WRONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            try:
+                subprocess.run([str(prefix / 'bin' / binary), 'version' if binary == 'mnet' else '-version'], check=True)
+            except OSError as error:
+                assert error.errno == errno.ETXTBSY, error
+            else:
+                raise AssertionError('new executable launch bypassed held removal guard')
+        finally:
+            os.close(fd)
+    assert (prefix / 'bin/mnet').read_bytes() == before
     # A separate same-user process may deliberately deny ptrace-style /proc/exe
     # inspection. It is unrelated to this prefix and must not block removal.
     uninspectable = subprocess.Popen([sys.executable, '-c', 'import ctypes,time;assert ctypes.CDLL(None).prctl(4,0,0,0,0)==0;print("ready",flush=True);time.sleep(30)'], stdout=subprocess.PIPE, text=True)
@@ -171,7 +188,7 @@ try:
     uninspectable = None
     assert not prefix.exists()
     assert state_before == {str(path.relative_to(state)): path.read_bytes() for path in state.rglob('*') if path.is_file() and not path.is_symlink()} and linked.is_symlink(), 'removal touched unrelated state'
-    print('PASS actual clean-prefix binary install, desktop-file parser and launched native home from special-character path; no initial Mnet state/service/enrollment; actual installed daemon down/missing/stopped recovery; preserved fixture state; exact close; changed/extra/link refusals; unchanged removal', flush=True)
+    print('PASS actual clean-prefix binary install, desktop-file parser and launched native home from special-character path; no initial Mnet state/service/enrollment; actual installed daemon down/missing/stopped recovery; preserved fixture state; exact close; changed/extra/link/running CLI and daemon refusals; held guard blocks new exec; unrelated uninspectable process preserved; unchanged removal', flush=True)
 finally:
     os.environ.clear()
     os.environ.update(old_environment)
