@@ -75,3 +75,6 @@ An immediate screenshot after Tab once retained the previous focused button, des
 ![Actual local keyboard focus on Ask Pointer](ui/desktop-keyboard/pointer-ask.png)
 
 ![Actual local keyboard End focus after host revoke, viewing intact](ui/desktop-keyboard/pointer-end.png)
+
+
+The separate [current-peer chooser](desktop-peer-chooser.md), `mnet session browse`, can explicitly select Pointer View. That opens this existing pointer client, not an input grant. Host-local view approval and later Ask Pointer/host approval remain separate.

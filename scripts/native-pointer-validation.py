@@ -39,6 +39,13 @@ try:
  env=os.environ|{'DISPLAY':displays[0],'NO_AT_BRIDGE':'1','DBUS_SESSION_BUS_ADDRESS':'unix:path=/nonexistent-mnet-fixture','MNET_NATIVE_VIEWER_TEST':'1','MNET_ATTENDED_X11_TEST':'1','MNET_ATTENDED_ARTIFACTS':str(out),'MNET_VIEWER_EXECUTABLE':str(out/'mnet'),'MNET_ATTENDED_TEST_EXECUTABLE':str(out/'mnetd'),'MNET_VIEWER_DISPLAY':displays[1],'MNET_VIEWER_CASE':'pointer'}
  env.pop('WAYLAND_DISPLAY',None);env.pop('XDG_SESSION_TYPE',None)
  with open(out/'test.log','w') as log:test=subprocess.Popen([str(out/'host.test'),'-test.run=^TestAttendedX11BuiltPointerClient$','-test.v','-test.timeout=30s'],env=env,stdout=log,stderr=log)
+ if os.environ.get('MNET_VIEWER_CHOOSER')=='1':
+  chooser=poll(lambda:window(displays[1],'^Mnet Remote Desktop: choose \[ready\]'),'current peer chooser')
+  subprocess.run(['import','-display',displays[1],'-window',chooser,str(out/'chooser-ready.png')],check=True)
+  assert not window(displays[0],'^Mnet: allow viewing'),'chooser implicitly requested view'
+  action(displays[1],'windowfocus',chooser,'mousemove','--window',chooser,'120','120','click','1')
+  subprocess.run(['import','-display',displays[1],'-window',chooser,str(out/'chooser-selected.png')],check=True)
+  action(displays[1],'mousemove','--window',chooser,'620','510','click','1')
  host=poll(lambda:window(displays[0],'^Mnet: allow viewing'),'host view approval');capture(displays[0],host,'view-approval')
  viewer=poll(lambda:window(displays[1],'^Mnet pointer only:'),'viewer waiting');capture(displays[1],viewer,'waiting')
  action(displays[0],'windowfocus',host,'key','Tab','Return')

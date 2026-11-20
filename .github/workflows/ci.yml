@@ -150,6 +150,13 @@ jobs:
         run: |
           python3 scripts/native-pointer-validation.py
           MNET_VIEWER_DISPLAY_SIZE=2048x1536x24 python3 scripts/native-pointer-validation.py
+      - name: current-peer chooser and explicit view/pointer entry (private local evidence)
+        run: |
+          python3 scripts/desktop-peer-chooser-validation.py
+          MNET_VIEWER_CHOOSER=1 python3 scripts/native-viewer-validation.py
+          MNET_VIEWER_CHOOSER=1 MNET_VIEWER_DISPLAY_SIZE=2048x1536x24 python3 scripts/native-viewer-validation.py
+          MNET_VIEWER_CHOOSER=1 python3 scripts/native-pointer-validation.py
+          MNET_VIEWER_CHOOSER=1 MNET_VIEWER_DISPLAY_SIZE=2048x1536x24 python3 scripts/native-pointer-validation.py
       - name: independent Shared Desk TLS pair and native input (two disposable X11 displays)
         run: |
           python3 scripts/desk-native-validation.py
@@ -167,6 +174,8 @@ jobs:
           name: session-failure-diagnostics
           retention-days: 7
           path: |
+            /tmp/mnet-peer-chooser.*/*.png
+            /tmp/mnet-peer-chooser.*/client.log
             /tmp/mnet-devices-window.*/*.png
             /tmp/mnet-devices-window.*/client.log
             /tmp/mnet-session.*/proof.log

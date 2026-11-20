@@ -214,3 +214,38 @@ func prepareDesktopView(ctx context.Context, peer string) (*cliSessionAuthorizat
 	lookup := func() ([]daemon.SessionPeer, error) { return readCLISessionPeers(hc) }
 	return &cliSessionAuthorization{peer: pinned, lookup: lookup, requireAttended: true}, st.NodeName, nil
 }
+
+// The chooser makes no transport. Closing it cancels and joins the read; an
+// explicit mode/peer choice then enters the existing one-attempt host journey.
+func sessionBrowse() {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+	choice, err := chooseDesktopPeer(ctx, client(stateDir), apiBase())
+	if err != nil {
+		fatal(err.Error())
+		return
+	}
+	if choice == nil {
+		return
+	}
+	var display desktopView
+	if choice.Pointer {
+		display, err = newDesktopPointer(choice.Peer.Name)
+	} else {
+		display, err = newDesktopView(choice.Peer.Name)
+	}
+	if err != nil {
+		fatal(err.Error())
+		return
+	}
+	err = runDesktopWindow(ctx, display, func(ctx context.Context) (*session.Mux, error) {
+		access, name, err := prepareDesktopChoice(ctx, *choice)
+		if err != nil {
+			return nil, err
+		}
+		return dialSessionTryAuthorizedContext(ctx, access, name)
+	}, choice.Pointer)
+	if err != nil {
+		fatal(err.Error())
+	}
+}

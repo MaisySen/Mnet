@@ -2,6 +2,7 @@
 
 - [Three distinct tools: implementation, authority and completion gates](three-tools.md)
 - [Mnet read-only native device window](device-window.md)
+- [Remote Desktop current-peer native chooser](desktop-peer-chooser.md)
 - [Remote Desktop native view-only viewer](desktop-native-viewer.md) and [separate pointer entry](desktop-pointer-viewer.md)
 - [Shared Desk: independent Linux engine slice and remaining gates](shared-desk-engine.md)
 

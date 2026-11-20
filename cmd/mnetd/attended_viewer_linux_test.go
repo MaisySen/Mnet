@@ -101,7 +101,11 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 	if pointer {
 		entry = "point"
 	}
-	cmd := exec.CommandContext(ctx, viewerBin, "--state", state, "session", entry, peer.Name)
+	args := []string{"--state", state, "session", entry, peer.Name}
+	if os.Getenv("MNET_VIEWER_CHOOSER") == "1" {
+		args = []string{"--state", state, "session", "browse"}
+	}
+	cmd := exec.CommandContext(ctx, viewerBin, args...)
 	cmd.Env = append([]string{}, os.Environ()...)
 	for i, v := range cmd.Env {
 		if strings.HasPrefix(v, "DISPLAY=") {

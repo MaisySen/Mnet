@@ -27,13 +27,20 @@ import (
 // written to disk, file push. Input injection from a terminal is
 // chat and files; the interactive viewer lives in the app.
 func runSession(args []string) {
-	if len(args) < 1 || (args[0] != "log" && len(args) < 2) {
-		fatal("usage: mnet session view <peer>\n" +
+	if len(args) < 1 || (args[0] != "log" && args[0] != "browse" && len(args) < 2) {
+		fatal("usage: mnet session browse\n" +
+			"       mnet session view <peer>\n" +
 			"       mnet session connect <peer> [--save-frames DIR] [--send-file PATH]\n" +
 			"       mnet session send <peer> <file>\n" +
 			"       mnet session log")
 	}
 	switch args[0] {
+	case "browse":
+		if len(args) != 1 {
+			fatal("usage: mnet session browse")
+			return
+		}
+		sessionBrowse()
 	case "view":
 		if len(args) != 2 {
 			fatal("usage: mnet session view <peer>")

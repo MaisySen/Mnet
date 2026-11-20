@@ -112,11 +112,21 @@ try:
  # Actual host app landmark, not a painted viewer-side mock.
  app=subprocess.Popen(['xmessage','-geometry','+100+200','-buttons','Fixture:0','Host desktop fixture\nView-only stream. No remote keyboard or pointer permission.'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
  try:
-  for mode in ['local-end','pending-close','decline','host-end','authority-loss','display-loss']:
+  for mode in (['local-end'] if os.environ.get('MNET_VIEWER_CHOOSER')=='1' else ['local-end','pending-close','decline','host-end','authority-loss','display-loss']):
    case=out/mode;case.mkdir()
    runenv=env|{'MNET_ATTENDED_ARTIFACTS':str(case),'MNET_VIEWER_CASE':mode}
    with open(case/'test.log','w') as log:
     test=subprocess.Popen([str(out/'host.test'),'-test.run','^TestAttendedX11BuiltViewOnlyClient$','-test.v','-test.timeout=25s'],env=runenv,stdout=log,stderr=log)
+    if os.environ.get('MNET_VIEWER_CHOOSER')=='1':
+     until=time.monotonic()+5;chooser=None
+     while time.monotonic()<until:
+      chooser=window(ve,'^Mnet Remote Desktop: choose \[ready\]')
+      if chooser:break
+      if test.poll() is not None:raise AssertionError((case/'test.log').read_text())
+      time.sleep(.02)
+     assert chooser,'current chooser unavailable'
+     subprocess.run(['import','-window',chooser,str(case/'chooser-ready.png')],env=ve,check=True)
+     subprocess.run(['xdotool','windowfocus',chooser,'key','Down','Tab','Tab','Return'],env=ve,check=True)
     deadline=time.monotonic()+18;approved=False;captured=False
     while test.poll() is None and time.monotonic()<deadline:
      stage=(case/'stage').read_text() if (case/'stage').exists() else ''

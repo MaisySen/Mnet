@@ -81,3 +81,6 @@ The old viewer fails the actual keyboard Ask regression. Actual equal/large poin
 An immediate screenshot after Tab once retained the previous focused button, despite a later successful keyboard action. The driver now waits for actual focus-ring pixels inside the existing bounded event wait before capture/activation. No timeout, input-count or cleanup assertion was relaxed. Final Ask/End/view-only ring pixels were inspected.
 
 ![Actual view-only End keyboard focus over a synthetic protocol image](ui/desktop-keyboard/view-end.png)
+
+
+The separate [current-peer chooser](desktop-peer-chooser.md), `mnet session browse`, can enter this existing view-only journey without typing an identifier. It grants no input and does not replace host-local view approval.
