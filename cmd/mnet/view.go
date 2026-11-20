@@ -86,6 +86,12 @@ func runDesktopWindow(ctx context.Context, display desktopView, dial func(contex
 			return nil
 		case r := <-result:
 			joined = true
+			// A canceled owner can close its transport before this select
+			// chooses between the simultaneously ready completion channels.
+			mux = r.mux
+			if ctx.Err() != nil {
+				return nil
+			}
 			if r.err != nil {
 				return r.err
 			}
@@ -117,6 +123,9 @@ func runDesktopWindow(ctx context.Context, display desktopView, dial func(contex
 				return err
 			}
 		case <-closed:
+			if ctx.Err() != nil {
+				return nil
+			}
 			return errors.New("desktop viewing ended: host or path closed")
 		case frame := <-frames:
 			// Cancellation wins over queued content; no retired run can reanimate pixels.
@@ -125,6 +134,9 @@ func runDesktopWindow(ctx context.Context, display desktopView, dial func(contex
 			}
 			select {
 			case <-closed:
+				if ctx.Err() != nil {
+					return nil
+				}
 				return errors.New("desktop viewing ended: host or path closed")
 			default:
 			}

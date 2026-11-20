@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fintex.au/mnet/internal/daemon"
 	"fintex.au/mnet/internal/localapi"
@@ -171,5 +173,56 @@ func TestDesktopViewCancellationReachesLocalAuthorization(t *testing.T) {
 	case <-exited:
 	case <-time.After(time.Second):
 		t.Fatal("local request retained after viewer cancellation")
+	}
+}
+
+type cancelConnectedDesktopView struct {
+	testDesktopView
+	cancel context.CancelFunc
+	mux    *session.Mux
+}
+
+func (v *cancelConnectedDesktopView) Poll() (bool, error) {
+	if strings.HasPrefix(v.state, "Connected.") {
+		v.cancel()
+		v.mux.Close()
+	}
+	return false, nil
+}
+func TestDesktopViewOwnerCancellationWinsSimultaneousTransportClose(t *testing.T) {
+	for _, ownerCanceled := range []bool{false, true} {
+		for range 50 {
+			ctx, cancel := context.WithCancel(context.Background())
+			a, b := net.Pipe()
+			go func() {
+				if consumeSessionHello(b) != nil {
+					return
+				}
+				payload, _ := json.Marshal(session.HelloReply{Version: 1, Accepted: true})
+				var header [12]byte
+				header[4] = 2
+				binary.BigEndian.PutUint32(header[8:], uint32(len(payload)))
+				b.Write(header[:])
+				b.Write(payload)
+			}()
+			mux, dialErr := session.Dial(a, "fixture")
+			if dialErr != nil {
+				t.Fatal(dialErr)
+			}
+			stop := func() {}
+			if ownerCanceled {
+				stop = cancel
+			}
+			v := &cancelConnectedDesktopView{cancel: stop, mux: mux}
+			err := runDesktopView(ctx, v, func(context.Context) (*session.Mux, error) { return mux, nil })
+			b.Close()
+			cancel()
+			if (err == nil) != ownerCanceled || !v.closed {
+				t.Fatal("closure/cancellation classification differs", ownerCanceled, err)
+			}
+			if err != nil && !strings.Contains(err.Error(), "host or path closed") {
+				t.Fatal(err)
+			}
+		}
 	}
 }
