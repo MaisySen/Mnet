@@ -20,7 +20,7 @@ import (
 )
 
 func TestDeskX11TwoDisplayCaptureAndReclaim(t *testing.T) {
-	for _, mode := range []string{"local-stop", "stop-chord", "idle-peer-loss", "idle-native-child-loss", "edge-return", "armed-edge-entry", "reviewed-edge-entry"} {
+	for _, mode := range []string{"local-stop", "stop-chord", "idle-peer-loss", "idle-native-child-loss", "source-map-loss", "edge-return", "armed-edge-entry", "reviewed-edge-entry"} {
 		t.Run(mode, func(t *testing.T) { deskTwoDisplayCaptureFixture(t, mode) })
 	}
 }
@@ -264,6 +264,70 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 			}
 			time.Sleep(time.Millisecond)
 		}
+	}
+	if mode == "source-map-loss" {
+		mapping, err := xproto.GetKeyboardMapping(source, 38, 1).Reply()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// An unchanged mapping notification is not an identity/layout change. A
+		// real native transition after the event must still reach the recipient.
+		if err = xproto.ChangeKeyboardMappingChecked(source, 1, 38, mapping.KeysymsPerKeycode, mapping.Keysyms).Check(); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(30 * time.Millisecond)
+		if err = xtest.FakeInputChecked(source, xproto.MotionNotify, 0, 0, sourceScreen.Root, int16(sourceScreen.WidthInPixels/2+1), int16(sourceScreen.HeightInPixels/2), 0).Check(); err != nil {
+			t.Fatal(err)
+		}
+		until = time.Now().Add(time.Second)
+		for {
+			pointer, err := xproto.QueryPointer(target, targetScreen.Root).Reply()
+			if err == nil && int64(pointer.RootX) == startX+41 && int64(pointer.RootY) == startY+20 && c.forwarded.Load() >= 4 {
+				break
+			}
+			select {
+			case <-c.done:
+				t.Fatal("unchanged source map notification retired capture", c.Close())
+			default:
+			}
+			if time.Now().After(until) {
+				t.Fatal("unchanged map did not preserve native routing")
+			}
+			time.Sleep(time.Millisecond)
+		}
+		restore := deskFixtureChangeSourceMap(t, source)
+		defer restore()
+		select {
+		case <-c.done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("source map change left capture active")
+		}
+		// Cleanup may race the safety watcher and event loop. Either path is terminal;
+		// the surviving recipient must release the exact held key/button ledger.
+		closeErr := c.Close()
+		select {
+		case err := <-serverDone:
+			if err != nil {
+				t.Fatal("source map loss did not join remote cleanup", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("source map loss left pair server live")
+		}
+		keys, ke := xproto.QueryKeymap(target).Reply()
+		pointer, pe := xproto.QueryPointer(target, targetScreen.Root).Reply()
+		if ke != nil || pe != nil || keys.Keys[38/8]&(1<<(38%8)) != 0 || pointer.Mask&xproto.ButtonMask1 != 0 {
+			t.Fatal("source map loss left recipient held", ke, pe)
+		}
+		grabbed, err := xproto.GrabKeyboard(source, false, sourceScreen.Root, xproto.TimeCurrentTime, xproto.GrabModeAsync, xproto.GrabModeAsync).Reply()
+		if err != nil || grabbed.Status != xproto.GrabStatusSuccess {
+			t.Fatal("source map loss left capture grabbed", err)
+		}
+		xproto.UngrabKeyboardChecked(source, xproto.TimeCurrentTime).Check()
+		if err = board.Apply(desk.Input{Sequence: 100, Kind: "key", Action: "down", Code: 38}); err == nil {
+			t.Fatal("changed-map board reused")
+		}
+		t.Log("source map change retired capture and joined native held-input cleanup; local close result:", closeErr)
+		return
 	}
 	if mode == "edge-return" {
 		// Cross left while key/button held: native routing must remain remote.

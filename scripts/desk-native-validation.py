@@ -73,7 +73,7 @@ try:
   if handled!={'primary','recipient','denial-decline','denial-withdraw'}:raise AssertionError('both actual local review dialogs were not exercised')
   if test.returncode:raise AssertionError((out/'test.log').read_text())
  print((out/'test.log').read_text(),flush=True)
- print('PASS: pinned TLS 1.3 Desk pair, native source capture, independent recipient key/button/pointer, joined stop, source reclaim, surviving-child coordinator-loss cleanup. Virtual displays only.',flush=True)
+ print('PASS: pinned TLS 1.3 Desk pair, native source capture, independent recipient key/button/pointer, joined stop, source reclaim, source-map retirement/unchanged-map routing, armed-map no-create, surviving-child coordinator-loss cleanup. Virtual displays only.',flush=True)
 finally:
  if test is not None and test.poll() is None:test.kill();test.wait()
  for process in xs:process.terminate();process.wait()
