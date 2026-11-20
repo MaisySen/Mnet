@@ -23,6 +23,7 @@ type deskRunStatus struct {
 	gc                     xproto.Gcontext
 	deleteAtom             xproto.Atom
 	escapeKey              xproto.Keycode
+	stopPressed            bool
 	mu                     sync.Mutex
 	role, run, peer, state string
 	err                    error
@@ -89,7 +90,7 @@ func startDeskRunStatus(parent context.Context, spec desk.RunSpec, state string)
 		return nil, err
 	}
 	mask := uint32(xproto.CwBackPixel | xproto.CwEventMask)
-	if err = xproto.CreateWindowChecked(c, screen.RootDepth, w, screen.Root, 20, 20, 720, 300, 0, xproto.WindowClassInputOutput, screen.RootVisual, mask, []uint32{0x17202e, xproto.EventMaskExposure | xproto.EventMaskButtonRelease | xproto.EventMaskKeyPress | xproto.EventMaskStructureNotify}).Check(); err != nil {
+	if err = xproto.CreateWindowChecked(c, screen.RootDepth, w, screen.Root, 20, 20, 720, 300, 0, xproto.WindowClassInputOutput, screen.RootVisual, mask, []uint32{0x17202e, xproto.EventMaskExposure | xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskFocusChange | xproto.EventMaskKeyPress | xproto.EventMaskStructureNotify}).Check(); err != nil {
 		return nil, err
 	}
 	font, err := xproto.NewFontId(c)
@@ -170,14 +171,14 @@ func (u *deskRunStatus) drawLocked() error {
 	if err = xproto.ChangeGCChecked(u.conn, u.gc, xproto.GcForeground, []uint32{0x9b343e}).Check(); err != nil {
 		return err
 	}
-	if err = xproto.PolyFillRectangleChecked(u.conn, xproto.Drawable(u.window), u.gc, []xproto.Rectangle{{X: 18, Y: 250, Width: 684, Height: 34}}).Check(); err != nil {
+	if err = xproto.PolyFillRectangleChecked(u.conn, xproto.Drawable(u.window), u.gc, []xproto.Rectangle{{X: 18, Y: 240, Width: 684, Height: 44}}).Check(); err != nil {
 		return err
 	}
 	if err = xproto.ChangeGCChecked(u.conn, u.gc, xproto.GcForeground|xproto.GcBackground, []uint32{0xffffff, 0x9b343e}).Check(); err != nil {
 		return err
 	}
 	label := "STOP THIS RUN  (or Escape when this window has focus)"
-	if err = xproto.ImageText8Checked(u.conn, byte(len(label)), xproto.Drawable(u.window), u.gc, 205, 272, label).Check(); err != nil {
+	if err = xproto.ImageText8Checked(u.conn, byte(len(label)), xproto.Drawable(u.window), u.gc, 205, 267, label).Check(); err != nil {
 		return err
 	}
 	if err = xproto.ChangeGCChecked(u.conn, u.gc, xproto.GcBackground, []uint32{0x17202e}).Check(); err != nil {
@@ -233,8 +234,14 @@ func (u *deskRunStatus) events() {
 				}
 			}
 			u.mu.Unlock()
+		case xproto.FocusOutEvent:
+			u.stopPressed = false
+		case xproto.ButtonPressEvent:
+			u.stopPressed = deskStopHit(byte(e.Detail), int(e.EventX), int(e.EventY))
 		case xproto.ButtonReleaseEvent:
-			if e.Detail == 1 && e.EventX >= 18 && e.EventX < 702 && e.EventY >= 250 && e.EventY < 284 {
+			pressed := u.stopPressed
+			u.stopPressed = false
+			if pressed && deskStopHit(byte(e.Detail), int(e.EventX), int(e.EventY)) {
 				return
 			}
 		case xproto.KeyPressEvent:

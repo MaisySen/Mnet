@@ -180,3 +180,9 @@ A failing-first regression shows that the former hash-only dialog omitted this e
 ![Actual mixed-size recipient review presents the same exact geometry before approval](ui/shared-desk/arrangement/recipient-mixed.png)
 
 This closes a finite engineering review-evidence gap. It does not edit arrangement, generate identity/configuration, enroll, save pairing trust, verify Multies membership or change input scope. Persistent pairing, production authorization, lock/sleep integration, other native platforms and physical two-computer acceptance remain open. Local race/vet/build/cross-build checks and disposable native processes do not close those gates. Hosted results remain per exact commit.
+
+## Exact local Stop gesture
+
+The finite run-status Stop target is now44pixels high. It needs a left press and release inside the same local target. A press above Stop followed by release over it, a release outside after pressing Stop, or local focus loss cancels that pending gesture. Escape and the existing local live-stop chord remain separate stop paths; this does not promise they bypass another X11 grab or an unresponsive server. The source forwarding-grab caveat remains visible.
+
+The old published status handler fails the actual outside-press/inside-release regression by ending the waiting run. Current equal/mixed actual launcher journeys reject both mismatched directions and focus-loss activation, then cancel from the newly included top edge of the44pixel band. Existing recipient Stop with held key/right button, joined release and source reclaim still pass. Thirty focused status/hit-test races, full uncached race/vet/build and Darwin/Windows daemon builds pass locally. Final actual role-specific status pixels inspected. This cannot approve, reconnect or save trust.

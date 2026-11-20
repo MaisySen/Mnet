@@ -158,7 +158,16 @@ try:
  waiting=launch('recipient');approve('recipient',displays[1],name='-window-stop')
  poll(lambda:'waiting for one exact-key' in (out/'recipient.log').read_text(),'window stop waiting listen')
  stop_window=live_capture('recipient',displays[1],'waiting','-before-stop')
- command(displays[1],'mousemove','--window',stop_window,'360','267','click','1');waiting.wait(timeout=5)
+ # An unrelated press cannot become Stop merely by releasing over its band.
+ command(displays[1],'windowfocus',stop_window,'mousemove','--window',stop_window,'360','220','mousedown','1','mousemove','--window',stop_window,'360','260','mouseup','1')
+ time.sleep(.05);assert waiting.poll() is None,'outside press became Stop on inside release'
+ command(displays[1],'mousemove','--window',stop_window,'360','260','mousedown','1','mousemove','--window',stop_window,'360','220','mouseup','1')
+ time.sleep(.05);assert waiting.poll() is None,'inside press stopped after outside release'
+ # Losing keyboard focus retires a pending pointer activation too.
+ command(displays[1],'mousemove','--window',stop_window,'360','260','mousedown','1','windowfocus',str(x.XDefaultRootWindow(display_handles[1])),'mouseup','1','windowfocus',stop_window)
+ time.sleep(.05);assert waiting.poll() is None,'focus loss retained pending Stop'
+ # Exercise the newly supported top of the full44px target, not only its center.
+ command(displays[1],'mousemove','--window',stop_window,'360','242','click','1');waiting.wait(timeout=5)
  with socket.socket() as probe:
   probe.settimeout(.2)
   if probe.connect_ex((address[0],int(address[1])))==0:raise AssertionError('status Stop left listener open')
