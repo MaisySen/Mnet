@@ -397,3 +397,9 @@ The stateful recipient fuzz model now also requires every refused Apply with fai
 Seven added disposable TLS tests refuse a TLS1.2-only connection, matched but wrong ALPN, missing ALPN, absent client certificate, multi-certificate client chain, multi-certificate server chain and foreign server key. Both endpoint calls must end with errors and the recipient native factory must remain unused. Successful negotiation or a matching public key alone cannot become a Desk run.
 
 Thirty focused race repetitions and fresh whole-repository uncached race/vet/build pass. These tests create local TCP/TLS connections but no review, native input owner or consumer identity enrollment. No version, pinning, certificate or approval policy changed.
+
+## Terminal input refusal cannot emit a success acknowledgement
+
+Each actual malformed/stalled/input recipient case now drains and validates both exact successful input acknowledgements before sending its invalid command. After native release, process/listener retirement and consumed-run checks, the still-open client socket must contain no successor acknowledgement. A hidden buffered ACK from setup cannot be mistaken for refusal evidence, and an invalid command cannot be reported as accepted input or successful stop.
+
+Complete equal/mixed launcher journeys pass all nineteen cases and existing native/status checks. No product behavior changed. The local TLS client is an independent disposable fixture; this is native refusal/transport evidence, not production identity or a remote-release guarantee for an unresponsive process.

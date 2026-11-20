@@ -615,8 +615,11 @@ try:
    send_frame(dict(kind='hello',binding=bad_spec['binding']))
    count=int.from_bytes(receive_exact(4),'big');assert 0<count<=4096
    assert json.loads(receive_exact(count))==dict(kind='ready',ok=True),'no exact ready'
-   send_frame(dict(kind='input',input=dict(sequence=1,kind='key',action='down',code=38)))
-   send_frame(dict(kind='input',input=dict(sequence=2,kind='button',action='down',code=3)))
+   def input_ack():
+    count=int.from_bytes(receive_exact(4),'big');assert 0<count<=4096
+    assert json.loads(receive_exact(count))==dict(kind='input',ok=True),'missing exact admitted native input ACK'
+   send_frame(dict(kind='input',input=dict(sequence=1,kind='key',action='down',code=38)));input_ack()
+   send_frame(dict(kind='input',input=dict(sequence=2,kind='button',action='down',code=3)));input_ack()
    poll(lambda:keysbuttons(display_handles[1],1024)==(True,True),'native ledger before '+malformed)
    live_capture('recipient',displays[1],'receiving','-invalid-'+malformed)
    if malformed in invalid_inputs:message=dict(kind='input',input=dict(sequence=3,**invalid_inputs[malformed][0]))
@@ -642,6 +645,11 @@ try:
     probe.settimeout(.2)
     assert probe.connect_ex((address[0],int(address[1])))!=0,'invalid input kept listener'
    assert (out/'recipient'/'runs'/(token*32)).exists(),'invalid input lost consumed token'
+   # Both valid input ACKs were drained before the invalid command. No
+   # success/stop ACK may now reclassify its terminal refusal as acceptance.
+   try:remaining=raw.recv(1)
+   except (ssl.SSLError,ConnectionResetError):remaining=b''
+   assert remaining==b'','invalid input emitted a successor acknowledgement'
   finally:raw.close()
   replay=subprocess.run([str(out/'mnetd'),'-desk-run',str(recipient_path)],env=env|{'DISPLAY':displays[1]},capture_output=True,text=True,timeout=3)
   assert replay.returncode!=0 and 'already consumed' in replay.stderr,'invalid-input run replay was not refused'
