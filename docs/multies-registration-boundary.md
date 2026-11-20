@@ -40,3 +40,36 @@ A separate generated signing key with a challenge signature is another option, b
 `internal/control/multies_separation_test.go` runs actual current handlers and documents current separation: a List-shaped bearer is not accepted as operator, account or existing-node authority; legacy new join stays pending, has no verified principal and cannot read a network map. There is no registrar alias. These tests are not enrollment implementation or proof of cross-service revocation.
 
 Before enabling registration, require tests for valid key proof, wrong key, low-order server and client keys, nonce/transcript alteration, domain separation, request replay, concurrent redemption, membership and mapping races, approval logout, transaction rollback, interrupted credential save, device revoke/rejoin, relay withdrawal and stale connected peers. Then run an exact installed native journey against the real local registrar and Multies service. Existing List-only browser/native acceptance does not satisfy these gates.
+
+## Inactive key-possession experiment
+
+`internal/keypossession` explores the proposed X25519/HKDF/HMAC challenge using
+standard-library primitives. No HTTP route, Multies capability, daemon caller,
+node-store adapter or production import exists. This is protocol code for
+security review, not a reviewed or enabled registrar.
+
+The experiment checks a full exact binding supplied independently by its caller,
+uses a fresh ephemeral server key and nonce, and authenticates a fixed-order
+transcript tuple containing domain/version, registrar origin, issuer/subject,
+workspace/network, person-authorization identifier, device public key and expiry.
+The client verifies its derived public key matches the independently expected
+device key. Both sides reject low-order agreement keys. Verification compares
+MACs in constant time and consumes an in-memory challenge once. Cancellation
+and observed expiry retire that challenge; a later clock rewind cannot revive
+it. Formatting the private pending object is redacted. Dropping key references
+is not a secure memory-erasure guarantee.
+
+Tests exercise every binding field, wrong device private key, changed server
+key, altered nonce/identifier/expiry, low-order keys, expired/future challenges,
+wrong MAC, independent challenges, cancellation, replay and20simultaneous
+redemptions with exactly one winner. Invalid binding/proof attempts do not
+consume a still-valid original challenge.
+
+Limitations are deliberate and load-bearing: a caller still has to authenticate
+the registrar channel, establish the operator mapping and fresh enrollment
+permission, integrate durable atomic redemption with node creation, and design
+lost-response recovery and revocation. This in-memory experiment cannot be
+placed before legacy Join plus ApproveNode and called atomic registration. It
+is not an authentication service, network membership or permission to send
+input. Review, durable registrar implementation and real multi-service acceptance
+remain required before any product path may use it.
