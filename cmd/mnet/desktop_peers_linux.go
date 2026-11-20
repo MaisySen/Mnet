@@ -238,8 +238,10 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 		case 6:
 			refresh()
 		case 7:
+			focus = -1
 			page--
 		case 8:
+			focus = -1
 			page++
 		case 9, 10:
 			choice, er := selection.choice(index == 10, time.Now())

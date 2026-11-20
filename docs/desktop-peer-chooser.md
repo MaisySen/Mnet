@@ -85,3 +85,11 @@ Page Up/Page Down now inspect previous/next local pages, clamped at the first/la
 Thirty focused model race repetitions cover empty/one/full/partial and4096peer lists, invalid-age evidence, boundaries and unchanged selection/timestamp. The actual chooser checks PageDown during a pending Pointer activation, dropped focus pixels, unchanged local request count, PageUp return and both page boundaries. The complete actual journey, both-size attended view/pointer chooser entry, full uncached race/vet/build and CLI Darwin/Windows cross-builds pass. Updated page/selection/focus/expiry pixels inspected. One combined validation shell exceeded its outer time limit after actual chooser/full race output; vet/build/cross-builds were rerun separately, then the final complete source gates passed. No product timeout or assertion was relaxed.
 
 ![Actual keyboard page change drops mode focus and retains the explicit selected peer](ui/desktop-peers/keyboard-page-two.png)
+
+## Mouse pagination also drops old mode focus
+
+A failing-first actual pixel check found that clicking Next after keyboard Pointer focus left that old mode focused. Previous/Next now drop mode focus as Page Up/Page Down do. The retained selected peer stays explicit; another deliberate mode focus/activation is required rather than Enter using the mode from a different page. This changes no peer admission or host approval.
+
+The actual fixture now inspects the unfocused Pointer pixels after mouse paging, presses Enter and requires no exit, connection or extra local read, then restores keyboard focus explicitly for the existing pending-page-key case. Before/fixed actual page pixels were inspected. Complete actual chooser, thirty focused model race repetitions, both-size actual attended view/pointer entry and full uncached race/vet/build plus CLI cross-builds pass.
+
+![Actual mouse page change leaves no old connection-mode focus](ui/desktop-peers/mouse-page-two.png)

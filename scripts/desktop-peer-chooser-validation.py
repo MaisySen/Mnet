@@ -78,6 +78,18 @@ try:
  time.sleep(.05);assert client.poll() is None and len(server.calls)==2,'Tab moved pending View key to Pointer choice'
  poll(lambda:capture('keyboard-pointer-focus').getpixel((563,493))==(255,255,255),'actual Pointer focus pixels')
  action('keyup','space');time.sleep(.05);assert client.poll() is None and len(server.calls)==2,'unpressed mode release connected'
+ # Mouse pagination must also drop an earlier connection-mode focus. An
+ # otherwise unpressed Enter after paging cannot activate that old mode.
+ action('mousemove','--window',wid,'330','510','click','1')
+ poll(lambda:title().endswith('page2'),'mouse page drops mode focus')
+ im=capture('mouse-page-two')
+ assert im.getpixel((563,493))!=(255,255,255),'mouse page retained Pointer focus'
+ action('key','Return');time.sleep(.05)
+ assert client.poll() is None and len(server.calls)==2,'mouse page retained executable mode focus'
+ action('key','Page_Up');poll(lambda:title().endswith('page1'),'restore first page')
+ # Restore Pointer focus for the held-key page cancellation case.
+ for _ in range(10):action('key','Tab')
+ poll(lambda:capture('keyboard-pointer-focus').getpixel((563,493))==(255,255,255),'restored Pointer focus')
  # A page key cancels the pending mode gesture and drops mode focus, while
  # keeping the same explicit peer identity. Releasing Enter cannot connect.
  action('keydown','Return','key','Page_Down','keyup','Return')
