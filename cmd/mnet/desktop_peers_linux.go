@@ -38,6 +38,9 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 	}
 	defer c.Close()
 	screen := xproto.Setup(c).DefaultScreen(c)
+	if !nativeControlsRGB(screen) {
+		return nil, errors.New("native controls require supported 24-bit TrueColor X11")
+	}
 	if screen.WidthInPixels < 940 || screen.HeightInPixels < 600 {
 		return nil, errors.New("peer chooser requires at least 940x600 pixels")
 	}

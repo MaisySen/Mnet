@@ -33,6 +33,9 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 	}
 	defer c.Close()
 	screen := xproto.Setup(c).DefaultScreen(c)
+	if !nativeControlsRGB(screen) {
+		return errors.New("native controls require supported 24-bit TrueColor X11")
+	}
 	if screen.WidthInPixels < 940 || screen.HeightInPixels < 540 {
 		return errors.New("device window requires at least940x540 local pixels")
 	}

@@ -28,6 +28,9 @@ func showDeskLayoutPreview(ctx context.Context, p *deskLayoutPreview) error {
 	}
 	defer c.Close()
 	screen := xproto.Setup(c).DefaultScreen(c)
+	if !nativeControlsRGB(screen) {
+		return errors.New("native controls require supported 24-bit TrueColor X11")
+	}
 	if screen.WidthInPixels < 940 || screen.HeightInPixels < 690 {
 		return errors.New("layout preview requires at least 940x690 pixels")
 	}
