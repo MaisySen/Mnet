@@ -40,7 +40,7 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 	if err != nil {
 		return err
 	}
-	if err = xproto.CreateWindowChecked(c, screen.RootDepth, w, screen.Root, 20, 20, 900, 500, 0, xproto.WindowClassInputOutput, screen.RootVisual, xproto.CwBackPixel|xproto.CwEventMask, []uint32{0xf5f5f7, xproto.EventMaskExposure | xproto.EventMaskButtonRelease | xproto.EventMaskKeyPress | xproto.EventMaskStructureNotify}).Check(); err != nil {
+	if err = xproto.CreateWindowChecked(c, screen.RootDepth, w, screen.Root, 20, 20, 900, 500, 0, xproto.WindowClassInputOutput, screen.RootVisual, xproto.CwBackPixel|xproto.CwEventMask, []uint32{0xf5f5f7, xproto.EventMaskExposure | xproto.EventMaskButtonRelease | xproto.EventMaskKeyPress | xproto.EventMaskKeyRelease | xproto.EventMaskFocusChange | xproto.EventMaskStructureNotify}).Check(); err != nil {
 		return err
 	}
 	font, err := xproto.NewFontId(c)
@@ -111,6 +111,29 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 	page := 0
 	generation := 0
 	loading := false
+	controls := newDeviceControls()
+	enabledControls := func() [4]bool {
+		state, peers := "", 0
+		if st != nil {
+			state, peers = st.Status, len(st.Peers)
+		}
+		return deviceControlEnabled(loading, state, page, peers)
+	}
+	activate := func(index int) bool {
+		controls.cancel()
+		if !enabledControls()[index] {
+			return false
+		}
+		switch index {
+		case 1:
+			page--
+		case 2:
+			page++
+		case 3:
+			return true
+		}
+		return false
+	}
 	refresh := func() {
 		if loading {
 			return
@@ -129,6 +152,7 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 		message = "Reading the local daemon. Previous rows cleared."
 		loading = true
 		generation++
+		controls.update(enabledControls(), uint64(generation))
 		go func() {
 			defer close(done)
 			defer stop()
@@ -156,18 +180,20 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 				return er
 			}
 		}
-		for n, line := range []string{message, "Refresh or R reads a new snapshot. Rows expire after30s. There is no automatic polling.", "No server URL, approval link, key, remote endpoint or raw daemon error is displayed."} {
+		for n, line := range []string{message, "Tab / Shift+Tab: focus. Enter / Space: action. R: refresh. Rows expire after30s; no polling.", "No server URL, approval link, key, remote endpoint or raw daemon error is displayed."} {
 			if er := xproto.ImageText8Checked(c, byte(len(line)), xproto.Drawable(w), gc, 20, int16(402+n*18), line).Check(); er != nil {
 				return er
 			}
 		}
+		enabled := enabledControls()
+		controls.update(enabled, uint64(generation))
 		for index, button := range []struct {
 			x     int16
 			label string
 		}{{20, "REFRESH (R)"}, {240, "PREVIOUS"}, {460, "NEXT"}, {680, "CLOSE (Escape)"}} {
-			enabled := index == 3 || index == 0 && !loading || index == 1 && st != nil && page > 0 || index == 2 && st != nil && st.Status == "up" && (page+1)*devicePageSize < len(st.Peers)
+			available := enabled[index]
 			background, foreground := uint32(0x0066cc), uint32(0xffffff)
-			if !enabled {
+			if !available {
 				background, foreground = 0xe8e8ed, 0x65656b
 			}
 			if er := xproto.ChangeGCChecked(c, gc, xproto.GcForeground, []uint32{background}).Check(); er != nil {
@@ -178,6 +204,11 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 			}
 			if er := xproto.ChangeGCChecked(c, gc, xproto.GcForeground|xproto.GcBackground, []uint32{foreground, background}).Check(); er != nil {
 				return er
+			}
+			if controls.focus == index && available {
+				if er := xproto.PolyRectangleChecked(c, xproto.Drawable(w), gc, []xproto.Rectangle{{X: button.x + 3, Y: 451, Width: 193, Height: 37}, {X: button.x + 5, Y: 453, Width: 189, Height: 33}}).Check(); er != nil {
+					return er
+				}
 			}
 			if er := xproto.ImageText8Checked(c, byte(len(button.label)), xproto.Drawable(w), gc, button.x+16, 476, button.label).Check(); er != nil {
 				return er
@@ -198,6 +229,7 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 		case <-ctx.Done():
 			return nil
 		case result := <-results:
+			controls.cancel()
 			loading = false
 			if result.err != nil {
 				st = nil
@@ -220,6 +252,7 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 			} else {
 				st = nil
 				page = 0
+				controls.cancel()
 				phase = "expired"
 				message = "Snapshot expired. Old peer and readiness rows removed; refresh to check again."
 			}
@@ -229,6 +262,9 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 			}
 			switch e := event.event.(type) {
 			case xproto.ExposeEvent:
+			case xproto.FocusOutEvent:
+				controls.cancel()
+				controls.focus = -1
 			case xproto.DestroyNotifyEvent:
 				return nil
 			case xproto.ClientMessageEvent:
@@ -246,6 +282,7 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 					changed = false
 					break
 				}
+				controls.cancel()
 				switch {
 				case e.EventX >= 20 && e.EventX < 220:
 					refresh()
@@ -257,6 +294,19 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 					return nil
 				default:
 					changed = false
+				}
+			case xproto.KeyReleaseEvent:
+				mapping, er := xproto.GetKeyboardMapping(c, e.Detail, 1).Reply()
+				if er != nil {
+					return errors.New("device window keyboard unavailable")
+				}
+				if len(mapping.Keysyms) > 0 {
+					index := controls.releaseKey(uint32(mapping.Keysyms[0]), enabledControls())
+					if index == 0 {
+						refresh()
+					} else if index > 0 && activate(index) {
+						return nil
+					}
 				}
 			case xproto.KeyPressEvent:
 				mapping, er := xproto.GetKeyboardMapping(c, e.Detail, 1).Reply()
@@ -270,11 +320,17 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 				switch mapping.Keysyms[0] {
 				case 0xff1b:
 					return nil
+				case 0xff09:
+					controls.advance(e.State&xproto.ModMaskShift != 0, enabledControls())
+				case 0xff0d, 0x20:
+					controls.pressKey(uint32(mapping.Keysyms[0]), enabledControls())
 				case 'r', 'R':
 					refresh()
 				case 0xff51:
+					controls.cancel()
 					page--
 				case 0xff53:
+					controls.cancel()
 					page++
 				default:
 					changed = false

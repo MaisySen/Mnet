@@ -3,7 +3,7 @@
 import http.server,json,os,pathlib,secrets,shutil,socketserver,subprocess,tempfile,threading,time
 from PIL import Image
 os.chdir(pathlib.Path(__file__).resolve().parent.parent)
-for dependency in ('go','Xvfb','xdotool','import'):
+for dependency in ('go','Xvfb','xdotool','import','xmessage'):
  if not shutil.which(dependency):raise SystemExit('missing dependency: '+dependency)
 out=pathlib.Path(tempfile.mkdtemp(prefix='mnet-devices-window.'));print(out,flush=True)
 subprocess.run(['go','build','-race','-o',str(out/'mnet'),'./cmd/mnet'],check=True)
@@ -33,7 +33,7 @@ for i in range(19):
 up=dict(status='up',node_name='Synthetic local device',network='Private fixture only',ipv4='100.64.0.1',peers=peers,approval_url='PRIVATE_APPROVAL_URL',server='PRIVATE_SERVER_URL',public_key='PRIVATE_KEY',last_error='PRIVATE_ERROR')
 server.payload=up
 thread=threading.Thread(target=server.serve_forever);thread.start()
-x=None;client=None;env=os.environ.copy()
+x=None;client=None;focus_fixture=None;env=os.environ.copy()
 def poll(fn,label,seconds=6):
  until=time.monotonic()+seconds
  while time.monotonic()<until:
@@ -70,7 +70,30 @@ try:
  action('windowfocus',wid,'mousemove','--window',wid,'520','465','click','1');poll(lambda:title().endswith('page2'),'page two');capture('up-page-two')
  action('click','1');poll(lambda:title().endswith('page3'),'page three');capture('up-page-three')
  assert len(server.requests)==1,'pagination fetched daemon or polled'
- server.payload=dict(up,status='down');refresh('down',2);capture('down-no-old-peers')
+ # Actual keyboard-only focus/activation. Tab skips unavailable controls;
+ # Enter/Space paginate locally, never select a peer or fetch status.
+ action('key','shift+Tab');time.sleep(.05)
+ subprocess.run(['import','-display',env['DISPLAY'],'-window',wid,str(out/'keyboard-close-focus.png')],check=True)
+ action('key','Tab','Tab','Return');poll(lambda:title().endswith('page2'),'keyboard previous Enter')
+ action('key','space');poll(lambda:title().endswith('page1'),'keyboard previous Space')
+ action('key','Tab','Tab','space');poll(lambda:title().endswith('page2'),'keyboard next Space')
+ assert len(server.requests)==1,'keyboard pagination fetched daemon'
+ # A pending activation must not migrate from Next to Close through Tab.
+ action('keydown','Return','key','Tab','keyup','Return');time.sleep(.05)
+ assert client.poll() is None and title().endswith('page2'),'Tab rebound a pending key to Close'
+ focus_fixture=subprocess.Popen(['xmessage','-title','Mnet local focus fixture','-buttons','OK','-geometry','200x80+0+0','Local fixture only'],env=env,stdout=(out/'focus-fixture.log').open('w'),stderr=subprocess.STDOUT)
+ def focus_window():
+  result=subprocess.run(['xdotool','search','--onlyvisible','--name','^Mnet local focus fixture$'],env=env,capture_output=True,text=True)
+  return result.stdout.strip().splitlines()[-1] if result.returncode==0 and result.stdout.strip() else None
+ other=poll(focus_window,'independent focus window')
+ action('windowfocus',wid,'keydown','space','windowfocus',other,'keyup','space','windowfocus',wid)
+ time.sleep(.05);assert client.poll() is None and title().endswith('page2'),'focus loss kept pending Close'
+ focus_fixture.terminate();focus_fixture.wait(timeout=2);focus_fixture=None
+
+ # Unpressed releases do not activate Close, even with focus on its button.
+ action('keyup','space');time.sleep(.05);assert client.poll() is None,'unpressed Space closed window'
+
+ server.payload=dict(up,status='down');action('key','Tab','Return');phase('down',2);capture('down-no-old-peers')
  server.payload=dict(up,status='waiting-approval');refresh('waiting-approval',3);capture('approval-no-link')
  server.code=500;refresh('unavailable',4);capture('unavailable-no-old-peers')
  server.code=200;server.payload=b'{"status":"up"}{}';refresh('unavailable',5);capture('malformed-no-old-peers')
@@ -86,12 +109,14 @@ try:
  action('windowsize',wid,'880','480');assert client.wait(timeout=2)!=0;client=None
  token_file.write_text(token);token_file.chmod(0o600);server.payload=up
  launch();wid=poll(window,'close-button window');phase('up');action('windowfocus',wid,'mousemove','--window',wid,'760','465','click','1');assert client.wait(timeout=2)==0;client=None
+ launch();wid=poll(window,'keyboard close window');phase('up');action('windowfocus',wid,'key','shift+Tab','space');assert client.wait(timeout=2)==0;client=None
  server.delay=1;server.entered.clear();launch();wid=poll(window,'termination window');phase('loading');assert server.entered.wait(2);client.terminate();assert client.wait(timeout=2)==0;client=None
  count=len(server.requests)
  unavailable=subprocess.run([str(out/'mnet'),'--state',str(state),'devices'],env=env|{'DISPLAY':'not-a-display'},capture_output=True,timeout=5)
  assert unavailable.returncode!=0 and len(server.requests)==count,'missing X11 display contacted daemon or silently fell back'
- print('PASS actual built native Mnet device window: authenticated GET-only snapshots,19 peers/three pages, no pagination fetch/polling, Down/approval/error/malformed/loading/expiry erase old peers, repeated Refresh coalesced, Escape/Close/SIGTERM cancel or end cleanly, missing capability/display sends no request, unsupported resize ends; private synthetic fixture only',flush=True)
+ print('PASS actual built native Mnet device window: authenticated GET-only snapshots, Tab/Shift+Tab enabled focus and exact Enter/Space release, focus-loss/Tab cancel pending action, keyboard/mouse local pagination,19 peers/three pages, no pagination fetch/polling, Down/approval/error/malformed/loading/expiry erase old peers, repeated Refresh coalesced, Escape/Close/SIGTERM cancel or end cleanly, missing capability/display sends no request, unsupported resize ends; private synthetic fixture only',flush=True)
 finally:
+ if focus_fixture is not None and focus_fixture.poll() is None:focus_fixture.terminate();focus_fixture.wait(timeout=2)
  if client is not None and client.poll() is None:client.terminate();client.wait(timeout=4)
  server.shutdown();server.server_close();thread.join(timeout=3)
  token_file.unlink(missing_ok=True)

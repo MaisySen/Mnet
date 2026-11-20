@@ -24,6 +24,14 @@ Refresh immediately clears old readiness and peer rows while its bounded request
 
 ![Actual Refresh loading state, with previous readiness and peer rows cleared](ui/devices/window-loading.png)
 
+## Keyboard focus and activation
+
+Tab and Shift+Tab now move a visible double-line focus ring among enabled Refresh, Previous, Next and Close controls. Enter or Space acts only when that same key is released on the same still-enabled focused control. Moving focus through Tab, losing local window focus, receiving a snapshot, expiry, or starting a new Refresh cancels a pending activation. A disabled control is skipped, not silently activated later. Existing R, arrow keys, Escape and mouse controls remain available. This adds no peer selection or network/input authority.
+
+![Actual keyboard focus ring on Close, with Next unavailable on the last page](ui/devices/keyboard-focus.png)
+
+The actual built-window acceptance drives Tab/Shift+Tab, Enter/Space pagination and keyboard Refresh/Close. It verifies that pagination sends no API request, an unmatched release cannot close the window, and a held activation cannot transfer through Tab or an independent focused X11 window. The old UI fails the keyboard pagination regression. Thirty model/device race repetitions, the full uncached race/vet/build suite and Darwin/Windows CLI builds pass locally. Final focus, populated and loading pixels were inspected. This is keyboard usability on the supported X11 window, not native accessibility, DPI or screen-reader acceptance.
+
 ## Local lifecycle and limits
 
 Close, Escape, normal window-manager close and process termination end this read-only window. Its outstanding request is canceled and joined; it does not stop the daemon or alter its network state. Display/drawing failure or unsupported resize ends the window rather than hiding live controls. A missing local capability fails without contacting the daemon. Status responses are bounded to1MiB and4096 peers; malformed, trailing, missing-state or oversized responses are rejected with fixed local diagnostics. Unknown nonempty daemon states are displayed as unknown, with no peer rows.
