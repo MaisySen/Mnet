@@ -162,3 +162,19 @@ The extended actual-command acceptance runs equal1024 and mixed1024-to1280 displ
 ![Actual recipient waiting for the one approved connection](ui/shared-desk/live-recipient-waiting.png)
 
 ![Actual recipient after native input, before its local Stop releases held state](ui/shared-desk/live-recipient-receiving.png)
+
+## Exact arrangement inside local review
+
+Both finite launcher review dialogs now show the exact primary/recipient display IDs, layout origin and width/height, native pixel dimensions, shared source edge and half-open shared layout span. This is the compiled arrangement associated with the displayed layout hash, not discovered device metadata, an editable preview or an independent identity proof. Layout units are explicitly distinguished from native pixels; gaps and corner-only adjacency do not switch input. The selected run edge, both independent key pins, one-use run and keyboard/layout hashes remain visible with default Decline.
+
+The native review supports the launcher's one-source/one-recipient pair only. Extra displays or another role/device are refused rather than silently truncating the arrangement into a misleading two-device approval. The broader offline layout checker remains broader and creates no approval. The compiled arrangement accessor returns a copy, so rendering review evidence cannot mutate the approved geometry or its hash. Display IDs are validated bounded identifiers, not markup or claimed people.
+
+A failing-first regression shows that the former hash-only dialog omitted this evidence. Tests cover all four edges, unequal native pixel sizes, offsets and partial shared spans, both roles, wrong/extra device refusal and immutable compiled state. The actual built launcher runs both equal1024 and1024-to1280 native journeys with the new real dialogs, edge activation, exact-key TLS, held input, SIGTERM/recipient Stop release, replay refusal, default decline, waiting/armed close, unsupported status resize and deadline cleanup. The driver now waits for actual painted review pixels before answering: an earlier captured mixed-size dialog was still black immediately after window discovery, so title presence alone was not accepted as visual evidence. Final primary/recipient pixels were inspected with all lines and action buttons visible.
+
+![Actual equal-size primary review with compiled arrangement](ui/shared-desk/arrangement/primary-equal.png)
+
+![Actual mixed-size primary review distinguishes layout units and native sizes](ui/shared-desk/arrangement/primary-mixed.png)
+
+![Actual mixed-size recipient review presents the same exact geometry before approval](ui/shared-desk/arrangement/recipient-mixed.png)
+
+This closes a finite engineering review-evidence gap. It does not edit arrangement, generate identity/configuration, enroll, save pairing trust, verify Multies membership or change input scope. Persistent pairing, production authorization, lock/sleep integration, other native platforms and physical two-computer acceptance remain open. Local race/vet/build/cross-build checks and disposable native processes do not close those gates. Hosted results remain per exact commit.

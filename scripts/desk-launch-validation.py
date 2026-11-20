@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Actual one-run engineering CLI processes on two disposable X servers."""
 import ctypes,ctypes.util,json,os,pathlib,shutil,signal,socket,subprocess,tempfile,time
+from PIL import Image
 os.chdir(pathlib.Path(__file__).resolve().parent.parent)
 for dep in ('go','Xvfb','xdotool','import','zenity'):
  if not shutil.which(dep):raise SystemExit('missing dependency: '+dep)
@@ -37,7 +38,11 @@ def approve(role,display,action='alt+a',name=''):
   result=subprocess.run(['xdotool','search','--onlyvisible','--name',title],env=env|{'DISPLAY':display},capture_output=True,text=True)
   return result.stdout.strip().splitlines()[-1] if result.returncode==0 and result.stdout.strip() else None
  wid=poll(find,role+' review visible')
- subprocess.run(['import','-display',display,'-window',wid,str(out/('launch-review-'+role+name+'.png'))],check=True)
+ def rendered():
+  subprocess.run(['import','-display',display,'-window',wid,str(out/('launch-review-'+role+name+'.png'))],check=True)
+  image=Image.open(out/('launch-review-'+role+name+'.png')).convert('RGB')
+  return len(image.getcolors(image.width*image.height) or [])>16
+ poll(rendered,role+' actual review pixels painted')
  command(display,'windowfocus',wid,'key',action)
  poll(lambda:not find(),role+' review closed')
 def live_window(role,display,state=None):

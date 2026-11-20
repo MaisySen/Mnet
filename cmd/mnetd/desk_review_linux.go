@@ -44,13 +44,17 @@ func deskReviewText(role string, binding desk.Binding, layout *desk.Compiled) (s
 			return "", "", errors.New("desk review requires exact TLS public-key pins")
 		}
 	}
+	arrangement, err := deskArrangementReview(binding, layout)
+	if err != nil {
+		return "", "", err
+	}
 	action := "Allow this computer to receive raw keyboard and mouse input?"
 	if role == "primary" {
 		action = "Arm one edge to send this computer's keyboard and mouse?"
 	} else if role != "recipient" {
 		return "", "", errors.New("unknown desk review role")
 	}
-	text := fmt.Sprintf("%s\n\nCompare both exact device keys using an independent trusted source.\nThis dialog does not verify workspace membership or a person's identity.\n\nPrimary key:\n%s\nRecipient key:\n%s\n\nOne-use run:\n%s\nApproved layout:\n%s\nKeyboard map:\n%s\nRecipient display: %s\n\nRaw keys and pointer only. No video, clipboard, files or recording.\nCtrl+Alt+Shift+F12 stops this live X11 process.\nAn unrelated active keyboard grab may block the shortcut.\nKilling the injector can leave recipient keys/buttons held.\n\nLocal engineering mode, not Multies sign-in.\nDecline if the keys or arrangement are not independently known.", action, binding.Primary, binding.Recipient, binding.Run, binding.Layout, binding.Keyboard, binding.Display)
+	text := fmt.Sprintf("%s\n\nCompare both exact device keys using an independent trusted source.\nThis dialog does not verify workspace membership or a person's identity.\n\nPrimary key:\n%s\nRecipient key:\n%s\n\nOne-use run:\n%s\nApproved layout:\n%s\nKeyboard map:\n%s\nRecipient display: %s\n%s\n\nRaw keys and pointer only. No video, clipboard, files or recording.\nCtrl+Alt+Shift+F12 stops this live X11 process.\nAn unrelated active keyboard grab may block the shortcut.\nKilling the injector can leave recipient keys/buttons held.\n\nLocal engineering mode, not Multies sign-in.\nDecline if the keys or arrangement are not independently known.", action, binding.Primary, binding.Recipient, binding.Run, binding.Layout, binding.Keyboard, binding.Display, arrangement)
 	return "Mnet Shared Desk: review " + role, text, nil
 }
 func (z deskZenityReview) Review(ctx context.Context, title, text string) error {
