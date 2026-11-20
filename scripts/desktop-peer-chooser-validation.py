@@ -89,18 +89,29 @@ try:
  server.malformed=False;server.peers=peers;action('key','r');phase('ready',5);action('key','Down');capture('keyboard-selected')
  calls=len(server.calls);time.sleep(31);phase('expired');capture('expired');assert len(server.calls)==calls,'chooser automatically polled'
  action('mousemove','--window',wid,'620','510','click','1');time.sleep(.05);assert client.poll() is None and len(server.calls)==calls,'expired chooser connected'
- # Exact selected-key replacement must fail before the TCP session listener.
- action('key','r');phase('ready',6);action('key','Down')
- server.peers=[dict(p,PublicKey=base64.b64encode(b'z'*32).decode()) for p in peers]
- with socket.socket() as listener:
-  listener.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);listener.bind(('127.0.0.1',5909));listener.listen();listener.settimeout(.2)
-  action('mousemove','--window',wid,'470','510','click','1');assert client.wait(timeout=6)!=0;client=None
-  try:conn,_=listener.accept();conn.close();raise AssertionError('replaced peer reached TCP')
-  except TimeoutError:pass
- assert 'selected peer changed' in (out/'client.log').read_text(),'missing exact-key refusal'
+ # A selected row cannot silently become a replacement, missing, duplicate,
+ # renamed, moved or non-Up peer while its mode gesture opens the session.
+ # Each case starts from a fresh real chooser and owns a passive TCP sentinel.
+ action('key','Escape');assert client.wait(timeout=3)==0;client=None
+ for change in ('key','missing','name','address','duplicate','down'):
+  server.peers=peers;server.status='up';launch();phase('ready',1);action('key','Down')
+  if change=='key':server.peers=[dict(p,PublicKey=base64.b64encode(b'z'*32).decode()) for p in peers]
+  elif change=='missing':server.peers=peers[1:]
+  elif change=='name':server.peers=[dict(p,name='renamed-'+p['name']) for p in peers]
+  elif change=='address':server.peers=[dict(p,ipv4='127.0.1.'+str(i+1)) for i,p in enumerate(peers)]
+  elif change=='duplicate':server.peers=[peers[0],*peers]
+  else:server.status='down'
+  with socket.socket() as listener:
+   listener.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);listener.bind(('127.0.0.1',5909));listener.listen();listener.settimeout(.2)
+   action('mousemove','--window',wid,'470','510','click','1');assert client.wait(timeout=6)!=0;client=None
+   try:conn,_=listener.accept();conn.close();raise AssertionError(change+' peer reached TCP')
+   except TimeoutError:pass
+  if change in ('key','name'):assert 'selected peer changed' in (out/'client.log').read_text(),'missing exact-selection refusal'
+  print('PASS actual selected peer '+change+' change refused before TCP',flush=True)
+ server.status='up'
  server.peers=peers;server.delay=2;launch();phase('loading');action('key','Escape');assert client.wait(timeout=2)==0;client=None
  assert not server.bad
- print('PASS actual chooser:13 exact peers/three local pages, Home/End endpoints without reads/connections, explicit row+mode, mismatched gestures refused, refresh/empty/error/expiry clears selection, no polling, replaced key refused before TCP, close cancels local read; synthetic local evidence only',flush=True)
+ print('PASS actual chooser:13 exact peers/three local pages, Home/End endpoints without reads/connections, explicit row+mode, mismatched gestures refused, refresh/empty/error/expiry clears selection, no polling, replaced/missing/renamed/moved/duplicate/non-Up peer refused before TCP, close cancels local read; synthetic local evidence only',flush=True)
 finally:
  if client is not None and client.poll() is None:client.terminate();client.wait(timeout=3)
  server.shutdown();server.server_close();thread.join(timeout=3);(state/'local-api-token').unlink(missing_ok=True)
