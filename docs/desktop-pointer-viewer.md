@@ -98,3 +98,9 @@ A bounded offline geometry target independently derives fit and received-pixel s
 ## Local desktop geometry is part of the viewer owner
 
 The shared native viewer now ends on any local root geometry change, including shrink-then-restore, before a clipped local End control can silently persist. Reopening is a fresh explicit invocation with normal current-peer and host checks, never reconnect or grant carryover. Ordinary supported viewer-window resizing remains separate. Actual pointer cases after the third approved grant pass exact input counts, all three owners joined, no held button and no host UI after shrink/transient change. See [the native viewer evidence and limits](desktop-native-viewer.md#a-changed-local-desktop-retires-the-viewer). No broader input capability or physical/SIGKILL safety claim is added.
+
+## Bounded local action queue model
+
+A new stateful offline queue test compares ordered actions against an independent copied list across motion coalescing, completed clicks, exact-grant requests, grant revisions, withdrawal and drains. Motion may replace only the immediately preceding same-grant motion. Withdrawal removes queued input without granting access. The64entry bound refuses overflow, including when no room remains for a new control action; draining returns each accepted action once. Explicit seeds cover full click/request queues, withdrawal after saturation and repeated motion.
+
+The10second bounded fuzz run passed8677executions and30focused race repetitions passed. Fresh whole-repository uncached race/vet/build also pass. No display, session, native backend or control grant is created, so this is local ordering/error-model evidence, not new native-input acceptance. No product behavior changed.
