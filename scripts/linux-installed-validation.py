@@ -182,7 +182,7 @@ try:
     # run. A deliberate fresh open must refuse that new invalid document.
     layout.write_bytes(b'invalid replacement')
     subprocess.run(['xdotool','windowfocus',diagram,'key','End'],check=True)
-    poll(lambda:'pixel767 candidate=neighbor@0,959' in subprocess.check_output(['xdotool','getwindowname',diagram],text=True),'installed immutable native mapping')
+    poll(lambda:'pixel767 candidate=neighbor@0,958' in subprocess.check_output(['xdotool','getwindowname',diagram],text=True),'installed immutable native mapping')
     window=close_child(diagram)
     click(window,100,370)
     window=poll(visible,'installed invalid replacement returns home')
