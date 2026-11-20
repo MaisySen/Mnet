@@ -273,3 +273,19 @@ func TestBridgeRejectsAmbiguousDuplicateResponseFields(t *testing.T) {
 		server.Close()
 	}
 }
+
+func TestBridgeDeviceCredentialMustRemainLiveThroughResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(80 * time.Millisecond)
+		fmt.Fprint(w, `{"workspaceId":"workspace","devices":[],"ownDevicesOnly":true,"inputAuthorized":false,"truncated":false}`)
+	}))
+	defer srv.Close()
+	b, err := NewBridgeClient(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := DeviceCredential{issuer: b, value: thumb("credential"), WorkspaceID: "workspace", DeviceKey: thumb("key"), ExpiresAt: time.Now().Add(40 * time.Millisecond)}
+	if _, err = b.Devices(context.Background(), c); err == nil {
+		t.Fatal("device rows published after the credential expired")
+	}
+}

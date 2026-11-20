@@ -286,7 +286,7 @@ func (b *BridgeClient) Devices(ctx context.Context, c DeviceCredential) (Approve
 		}
 		seen[d.ID] = true
 	}
-	if ctx.Err() != nil {
+	if ctx.Err() != nil || !c.ExpiresAt.After(time.Now()) {
 		return ApprovedDeviceList{}, ErrDenied
 	}
 	out.ReadStartedAt = started
