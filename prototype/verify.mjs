@@ -1,7 +1,8 @@
 // Local-only browser verification. Requires Node22+ and Chrome; no user profile is loaded.
 import { createServer } from 'node:http';
 import { spawn, execFileSync } from 'node:child_process';
-import {readFileSync} from 'node:fs';
+import {readFileSync,openSync,readSync,closeSync} from 'node:fs';
+import {chromeWaitSnapshot} from '../scripts/chrome-wait-diagnostics.mjs';
 import { mkdtemp, readFile, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -32,7 +33,8 @@ function startupContext(){
  const nodeVersion=/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(process.version)?process.version:'unavailable';
  const platform=['linux','darwin','win32'].includes(process.platform)?process.platform:'other';
  const architecture=['x64','arm64'].includes(process.arch)?process.arch:'other';
- return `browserVersion=${browserVersion} nodeVersion=${nodeVersion} platform=${platform} architecture=${architecture} childState=${childState} ${pipeDiagnostics.summary()}`;
+ let waits=chromeWaitSnapshot(chrome.pid,(path,limit)=>{const fd=openSync(path,'r');try{const b=Buffer.alloc(limit+1);return b.subarray(0,readSync(fd,b,0,limit+1,null)).toString('utf8');}finally{closeSync(fd);}});
+ return `browserVersion=${browserVersion} nodeVersion=${nodeVersion} platform=${platform} architecture=${architecture} childState=${childState} ${pipeDiagnostics.summary()} ${waits}`;
 }
 // Drain Chrome diagnostics so a full stderr pipe cannot freeze the process.
 // Never dump environment/browser output into public logs on transport failure.

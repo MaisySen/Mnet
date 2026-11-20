@@ -119,7 +119,7 @@ jobs:
           node prototype/verify.mjs
       - name: isolated real Chrome admin login and logout
         run: |
-          node --test scripts/fixture-process.test.mjs scripts/chrome-startup-diagnostics.test.mjs
+          node --test scripts/fixture-process.test.mjs scripts/chrome-startup-diagnostics.test.mjs scripts/chrome-wait-diagnostics.test.mjs
           node scripts/dashboard-validation.mjs
       - name: isolated real Chrome member account login and logout
         run: MNET_ACCOUNT_BROWSER=1 go test -race -count=1 -timeout=2m ./internal/control -run '^TestAccountRealChrome$'
