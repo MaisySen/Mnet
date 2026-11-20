@@ -20,6 +20,7 @@ import (
 )
 
 type xDesktopView struct {
+	root                         *xproto.ScreenInfo
 	toolFocus, toolKeyTarget     string
 	toolKey                      uint32
 	toolKeyGrant                 session.ControlStatus
@@ -95,6 +96,11 @@ func newDesktopViewMode(peer string, pointer bool) (desktopView, error) {
 	if !supported || !format || setup.ImageByteOrder != xproto.ImageOrderLSBFirst {
 		return fail(errors.New("viewer requires supported 24-bit TrueColor X11 format"))
 	}
+	// Keep local End controls inside the same desktop geometry observed at
+	// creation. Root changes retire this owner, even if immediately restored.
+	if err = nativeControlsWatchRoot(c, screen); err != nil {
+		return fail(fmt.Errorf("viewer local display watch: %w", err))
+	}
 	w, h := int(screen.WidthInPixels)-64, int(screen.HeightInPixels)-96
 	if w > 1024 {
 		w = 1024
@@ -109,7 +115,7 @@ func newDesktopViewMode(peer string, pointer bool) (desktopView, error) {
 	if err != nil {
 		return fail(err)
 	}
-	v := &xDesktopView{conn: c, window: window, width: w, height: h, maxRowsBytes: int(setup.MaximumRequestLength)*4 - 32, title: "Mnet view only: " + safeViewerLabel(peer), pointer: pointer}
+	v := &xDesktopView{root: screen, conn: c, window: window, width: w, height: h, maxRowsBytes: int(setup.MaximumRequestLength)*4 - 32, title: "Mnet view only: " + safeViewerLabel(peer), pointer: pointer}
 	if pointer {
 		v.title = "Mnet pointer only: " + safeViewerLabel(peer)
 		v.pointerGrant.State = "unavailable"
@@ -478,6 +484,9 @@ func (v *xDesktopView) Poll() (bool, error) {
 				dirty = true
 			}
 		case xproto.ConfigureNotifyEvent:
+			if v.root != nil && nativeControlsRootChanged(v.root, e) {
+				return false, errors.New("viewer local display geometry changed")
+			}
 			if e.Window == v.window {
 				if v.width != int(e.Width) || v.height != int(e.Height) {
 					v.pointerPressed = 0

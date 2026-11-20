@@ -152,6 +152,8 @@ jobs:
           MNET_VIEWER_DISPLAY_SIZE=2048x1536x24 python3 scripts/native-pointer-validation.py
           MNET_POINTER_TERMINATE=1 python3 scripts/native-pointer-validation.py
           MNET_POINTER_TERMINATE=1 MNET_VIEWER_DISPLAY_SIZE=2048x1536x24 python3 scripts/native-pointer-validation.py
+          MNET_POINTER_ROOT_CHANGE=shrink python3 scripts/native-pointer-validation.py
+          MNET_POINTER_ROOT_CHANGE=transient MNET_VIEWER_DISPLAY_SIZE=2048x1536x24 python3 scripts/native-pointer-validation.py
       - name: current-peer chooser and explicit view/pointer entry (private local evidence)
         run: |
           python3 scripts/desktop-peer-chooser-validation.py

@@ -3,13 +3,15 @@
 import os,pathlib,shutil,subprocess,tempfile,time,signal
 from PIL import Image
 os.chdir(pathlib.Path(__file__).resolve().parent.parent)
-for dep in ('go','Xvfb','xdotool','import','zenity'):
+for dep in ('go','Xvfb','xdotool','import','zenity','xrandr'):
  if not shutil.which(dep):raise SystemExit('missing dependency: '+dep)
 out=pathlib.Path(tempfile.mkdtemp(prefix='mnet-native-pointer.'));print(out,flush=True)
 for name,pkg,tests in [('mnet','./cmd/mnet',False),('mnetd','./cmd/mnetd',False),('host.test','./cmd/mnetd',True)]:
  subprocess.run(['go',*(['test','-race','-c'] if tests else ['build','-race']),'-o',str(out/name),pkg],check=True)
 terminate=os.environ.get('MNET_POINTER_TERMINATE','0')
 if terminate not in ('0','1'):raise SystemExit('unsupported pointer termination fixture')
+root_change=os.environ.get('MNET_POINTER_ROOT_CHANGE','')
+if root_change not in ('','shrink','transient'):raise SystemExit('unsupported pointer root fixture')
 xs=[];test=None;focus_app=None
 size=os.environ.get('MNET_VIEWER_DISPLAY_SIZE','1024x768x24')
 if size not in ('1024x768x24','2048x1536x24'):raise SystemExit('unsupported disposable size')
@@ -38,7 +40,7 @@ try:
   with open(out/(role+'-display'),'w') as fd,open(out/(role+'-x.log'),'w') as log:
    xs.append(subprocess.Popen(['Xvfb','-noreset','-nolisten','tcp','-displayfd',str(fd.fileno()),'-screen','0',size if role=='host' else '1024x768x24'],pass_fds=(fd.fileno(),),stdout=log,stderr=log))
   number=poll(lambda:(out/(role+'-display')).read_text().strip(),role+' display');displays.append(':'+number)
- env=os.environ|{'DISPLAY':displays[0],'NO_AT_BRIDGE':'1','DBUS_SESSION_BUS_ADDRESS':'unix:path=/nonexistent-mnet-fixture','MNET_NATIVE_VIEWER_TEST':'1','MNET_ATTENDED_X11_TEST':'1','MNET_ATTENDED_ARTIFACTS':str(out),'MNET_VIEWER_EXECUTABLE':str(out/'mnet'),'MNET_ATTENDED_TEST_EXECUTABLE':str(out/'mnetd'),'MNET_VIEWER_DISPLAY':displays[1],'MNET_VIEWER_CASE':'pointer'}
+ env=os.environ|{'DISPLAY':displays[0],'NO_AT_BRIDGE':'1','DBUS_SESSION_BUS_ADDRESS':'unix:path=/nonexistent-mnet-fixture','MNET_NATIVE_VIEWER_TEST':'1','MNET_ATTENDED_X11_TEST':'1','MNET_ATTENDED_ARTIFACTS':str(out),'MNET_VIEWER_EXECUTABLE':str(out/'mnet'),'MNET_ATTENDED_TEST_EXECUTABLE':str(out/'mnetd'),'MNET_VIEWER_DISPLAY':displays[1],'MNET_VIEWER_CASE':('pointer-root-'+root_change if root_change else 'pointer')}
  env.pop('WAYLAND_DISPLAY',None);env.pop('XDG_SESSION_TYPE',None)
  with open(out/'test.log','w') as log:test=subprocess.Popen([str(out/'host.test'),'-test.run=^TestAttendedX11BuiltPointerClient$','-test.v','-test.timeout=30s'],env=env,stdout=log,stderr=log)
  if os.environ.get('MNET_VIEWER_CHOOSER')=='1':
@@ -93,7 +95,16 @@ try:
  focus_app.terminate();focus_app.wait();focus_app=None
  action(displays[1],'windowfocus',viewer,'key','F8');host=poll(lambda:window(displays[0],'^Mnet: allow pointer only'),'third allow');action(displays[0],'windowfocus',host,'key','Tab','Return')
  poll(lambda:'[pointer allowed]' in title(),'third grant')
- if terminate=='1':
+ if root_change:
+  capture(displays[1],viewer,'allowed-before-root-change')
+  subprocess.run(['xrandr','--output','screen','--off','--fb','800x600'],env=env|{'DISPLAY':displays[1]},check=True)
+  if root_change=='transient':subprocess.run(['xrandr','--fb','1024x768','--output','screen','--mode','1024x768'],env=env|{'DISPLAY':displays[1]},check=True)
+  assert test.wait(timeout=3)==0,(out/'test.log').read_text()
+  assert 'viewer local display geometry changed' in (out/'viewer.log').read_text(),'root failure diagnostic lost'
+  assert not window(displays[0],'^Mnet: allow pointer only') and not window(displays[0],'^Mnet: desktop sharing'),'host UI survived local root change'
+  print((out/'test.log').read_text(),flush=True)
+  print('PASS actual pointer local root '+root_change+': all3owners joined, exact2clicks/1scroll/zero keys, no held button or surviving host UI',flush=True)
+ elif terminate=='1':
   # Kill only the built viewer owned by this exact fixture after its third
   # explicit grant. Host fixture requires all3owners joined, exact2clicks /
   # 1scroll / zero keys and no held native button before it passes.

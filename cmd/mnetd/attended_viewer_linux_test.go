@@ -48,7 +48,7 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 		mode = "local-end"
 	}
 	switch mode {
-	case "local-end", "pending-close", "decline", "host-end", "authority-loss", "display-loss", "pointer", "pending-terminate", "live-terminate":
+	case "local-end", "pending-close", "decline", "host-end", "authority-loss", "display-loss", "pointer", "pending-terminate", "live-terminate", "pending-root-shrink", "live-root-shrink", "live-root-transient", "pointer-root-shrink", "pointer-root-transient":
 	default:
 		t.Fatal("unsupported fixture case")
 	}
@@ -139,7 +139,7 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 		// No host capture/input exists until the real local prompt accepts.
 		return approveAttendedConnection(ctx, ui, fixturePeer, conn, current), "local viewing decision"
 	})
-	if mode == "pending-close" || mode == "pending-terminate" || mode == "decline" {
+	if mode == "pending-close" || mode == "pending-terminate" || mode == "decline" || mode == "pending-root-shrink" {
 		if err == nil {
 			host.Close()
 			t.Fatal("retired/declined view reached capture")
@@ -147,6 +147,9 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 		err = cmd.Wait()
 		if (mode == "pending-close" || mode == "pending-terminate") && err != nil {
 			t.Fatal(err)
+		}
+		if mode == "pending-root-shrink" && err == nil {
+			t.Fatal("changed local root did not report failure")
 		}
 		if mode == "decline" && err == nil {
 			t.Fatal("decline did not report refusal")

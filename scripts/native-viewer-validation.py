@@ -4,7 +4,7 @@ import subprocess,os,tempfile,pathlib,time,shutil,signal
 from PIL import Image,ImageChops
 size=os.environ.get('MNET_VIEWER_DISPLAY_SIZE','1024x768x24')
 if size not in ('1024x768x24','2048x1536x24'):raise SystemExit('unsupported owned display size')
-for program in ['go','Xvfb','xdotool','import','xsetroot','xmessage']:
+for program in ['go','Xvfb','xdotool','import','xsetroot','xmessage','xrandr']:
  if not shutil.which(program):raise SystemExit('missing native fixture dependency: '+program)
 os.chdir(pathlib.Path(__file__).resolve().parent.parent);out=pathlib.Path(tempfile.mkdtemp(prefix='mnet-native-viewer.'));print(out,flush=True)
 subprocess.run(['go','build','-o',str(out/'mnet'),'./cmd/mnet'],check=True)
@@ -112,7 +112,7 @@ try:
  # Actual host app landmark, not a painted viewer-side mock.
  app=subprocess.Popen(['xmessage','-geometry','+100+200','-buttons','Fixture:0','Host desktop fixture\nView-only stream. No remote keyboard or pointer permission.'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
  try:
-  for mode in (['local-end'] if os.environ.get('MNET_VIEWER_CHOOSER')=='1' else ['local-end','pending-close','pending-terminate','live-terminate','decline','host-end','authority-loss','display-loss']):
+  for mode in (['local-end'] if os.environ.get('MNET_VIEWER_CHOOSER')=='1' else ['local-end','pending-close','pending-terminate','live-terminate','decline','host-end','authority-loss','pending-root-shrink','live-root-shrink','live-root-transient','display-loss']):
    case=out/mode;case.mkdir()
    runenv=env|{'MNET_ATTENDED_ARTIFACTS':str(case),'MNET_VIEWER_CASE':mode}
    with open(case/'test.log','w') as log:
@@ -127,8 +127,9 @@ try:
      assert chooser,'current chooser unavailable'
      subprocess.run(['import','-window',chooser,str(case/'chooser-ready.png')],env=ve,check=True)
      subprocess.run(['xdotool','windowfocus',chooser,'key','Down','Tab','Tab','Return'],env=ve,check=True)
-    deadline=time.monotonic()+18;approved=False;captured=False
+    deadline=time.monotonic()+18;approved=False;captured=False;root_changed_at=None
     while test.poll() is None and time.monotonic()<deadline:
+     if root_changed_at is not None:assert time.monotonic()-root_changed_at<3,'changed root did not join within3seconds'
      stage=(case/'stage').read_text() if (case/'stage').exists() else ''
      if stage=='view' and not approved:
       host=window(env,'^Mnet: allow viewing');viewer=window(ve,'^Mnet view only:')
@@ -138,7 +139,9 @@ try:
        waiting_image=Image.open(case/'waiting.png').convert('RGB')
        assert waiting_image.getpixel((waiting_image.width-80,15))==(155,52,62),'local End pixels absent before approval'
        assert len(waiting_image.getcolors(1024*768) or [])<10,'preapproval image not blank'
-       if mode=='pending-terminate':
+       if mode=='pending-root-shrink':
+        subprocess.run(['xrandr','--output','screen','--off','--fb','800x600'],env=ve,check=True);root_changed_at=time.monotonic();captured=True
+       elif mode=='pending-terminate':
         os.kill(int((case/'viewer.pid').read_text()),signal.SIGTERM);captured=True
        elif mode=='pending-close':
         subprocess.run(['xdotool','windowfocus',viewer,'mousemove','--window',viewer,'896' if size=='1024x768x24' else '960','30','click','1'],env=ve,check=True);captured=True
@@ -178,10 +181,17 @@ try:
         elif mode=='live-terminate':os.kill(int((case/'viewer.pid').read_text()),signal.SIGTERM)
         elif mode=='host-end':subprocess.run(['xdotool','windowfocus',active,'key','Return'],env=env,check=True)
         elif mode=='authority-loss':(case/'withdraw-authority').write_text('withdraw')
+        elif mode in ('live-root-shrink','live-root-transient'):
+         subprocess.run(['xrandr','--output','screen','--off','--fb','800x600'],env=ve,check=True)
+         root_changed_at=time.monotonic()
+         if mode=='live-root-transient':subprocess.run(['xrandr','--fb',size.split('x24')[0],'--output','screen','--mode',size.split('x24')[0]],env=ve,check=True)
         elif mode=='display-loss':xs[1].terminate();xs[1].wait()
         captured=True
      time.sleep(.04)
     result=test.wait(timeout=3);print(mode,case,flush=True);print((case/'test.log').read_text());print((case/'viewer.log').read_text());assert result==0 and approved and captured
+    if mode in ('pending-root-shrink','live-root-shrink','live-root-transient'):
+     assert 'viewer local display geometry changed' in (case/'viewer.log').read_text(),'missing local-root refusal diagnostic'
+     subprocess.run(['xrandr','--fb',size.split('x24')[0],'--output','screen','--mode',size.split('x24')[0]],env=ve,check=True)
     assert not window(env,'^Mnet: allow viewing') and not window(env,'^Mnet: desktop sharing'),'host prompt survived retired session'
  finally:
   app.terminate();app.communicate(timeout=3)
