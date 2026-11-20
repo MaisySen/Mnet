@@ -353,3 +353,9 @@ The local status event loop now treats its own X11 UnmapNotify as a terminal sta
 A failing-first actual launcher case reproduced the old waiting recipient remaining alive after its status window was unmapped. With the fix, complete equal/mixed launcher journeys require waiting-recipient listener closure and specific hidden-status failure. Two further active cases unmap either the source or recipient status while the recipient owns a raw key/right-button. Both release that native ledger before source keyup, reclaim both source grabs, close both statuses/listener and refuse exact consumed-run replay on both sides. Actual receiving/Stop pixels before unmap were inspected. Fresh whole-repository uncached race, vet/build and Python syntax pass.
 
 This intentionally ends an engineering run when a window manager minimizes/unmaps its status too. It is not an occlusion detector or a guarantee that every desktop keeps the window unobscured. Normal physical-input, unresponsive-X11 and injector-SIGKILL limits remain unchanged. No protocol, approval or automatic reconnect behavior was widened.
+
+## Exact-key acknowledgement corruption remains terminal
+
+New disposable TLS tests give the primary an exact pinned peer that returns a malformed ready, input or stop acknowledgement. Eight cases per phase cover a negative result, wrong kind, unexpected input, unexpected binding, zero/oversized framing, duplicate JSON key and unknown field. Each must refuse rather than accepting transport authentication as acknowledgement validity. Active clients must close immediately without sending successor bytes, refuse further input and retain the same uncertain cleanup result through repeated Release calls.
+
+All24cases pass30focused race repetitions and a fresh full uncached race/vet/build. The fake peer creates no native backend, so these tests do not prove remote release and intentionally never report it. No protocol or product code changed.
