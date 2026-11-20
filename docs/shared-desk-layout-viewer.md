@@ -103,3 +103,20 @@ checked for errors before any completed image is displayed. No event, geometry
 query or admission check is dropped, and the test deadline is unchanged. Both
 native sizes then pass. This is a local responsiveness fix, not a hardware
 latency guarantee. Primary, detailed and maximum-label pixels were inspected.
+
+## Installed offline route acceptance
+
+The installed acceptance now launches the real installed home with an explicit
+synthetic layout at a special-character path, opens its actual offline diagram
+and details, replaces the file path after opening, and checks the current query
+still uses the opened immutable layout. Closing then deliberately reopening the
+invalid replacement must return to a fresh failure home, not reuse old geometry.
+Restoring the file and choosing it again must recover. Closing joins both home
+and child; saved daemon fixture state is unchanged and guarded uninstall passes.
+
+The first installed extension mistakenly expected the last source pixel to map
+to the last destination pixel for unequal dimensions. Exact half-open rational
+mapping gives source767 of768 to destination958 of960, not959. The independent
+CLI and source formula confirmed that result, and only the fixture expectation
+was corrected. No geometry or input behavior changed. Exact installed
+`68d5594` passes this route; the prior `1a43556` fixture failure is not a pass.

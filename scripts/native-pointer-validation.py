@@ -1,13 +1,29 @@
 #!/usr/bin/env python3
 """Built native pointer viewer and actual attended host on disposable X11."""
-import os,pathlib,shutil,subprocess,tempfile,time,signal
+import os,pathlib,shutil,subprocess,tempfile,time,signal,json,hashlib
 from PIL import Image
 os.chdir(pathlib.Path(__file__).resolve().parent.parent)
 for dep in ('go','Xvfb','xdotool','import','zenity','xrandr'):
  if not shutil.which(dep):raise SystemExit('missing dependency: '+dep)
 out=pathlib.Path(tempfile.mkdtemp(prefix='mnet-native-pointer.'));print(out,flush=True)
-for name,pkg,tests in [('mnet','./cmd/mnet',False),('mnetd','./cmd/mnetd',False),('host.test','./cmd/mnetd',True)]:
- subprocess.run(['go',*(['test','-race','-c'] if tests else ['build','-race']),'-o',str(out/name),pkg],check=True)
+installed=os.environ.get('MNET_NATIVE_INSTALLED_PREFIX')
+executables={name:out/name for name in ('mnet','mnetd')}
+if installed:
+ prefix=pathlib.Path(installed)
+ manifest=json.loads((prefix/'INSTALLATION.json').read_text())
+ revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+ assert manifest['engineering_only'] is True and manifest['source_commit']==revision,'installed native fixture needs exact source commit'
+ assert not subprocess.check_output(['git','status','--porcelain'],text=True),'installed native fixture requires clean source'
+ for name in executables:
+  binary=prefix/'bin'/name
+  assert binary.is_file() and not binary.is_symlink(),'installed fixture binary must be regular'
+  entry=manifest['files']['bin/'+name]
+  assert hashlib.sha256(binary.read_bytes()).hexdigest()==entry['sha256'],'installed binary changed'
+  executables[name]=binary
+else:
+ for name,pkg in [('mnet','./cmd/mnet'),('mnetd','./cmd/mnetd')]:
+  subprocess.run(['go','build','-race','-o',str(executables[name]),pkg],check=True)
+subprocess.run(['go','test','-race','-c','-o',str(out/'host.test'),'./cmd/mnetd'],check=True)
 terminate=os.environ.get('MNET_POINTER_TERMINATE','0')
 if terminate not in ('0','1'):raise SystemExit('unsupported pointer termination fixture')
 root_change=os.environ.get('MNET_POINTER_ROOT_CHANGE','')
@@ -40,8 +56,9 @@ try:
   with open(out/(role+'-display'),'w') as fd,open(out/(role+'-x.log'),'w') as log:
    xs.append(subprocess.Popen(['Xvfb','-noreset','-nolisten','tcp','-displayfd',str(fd.fileno()),'-screen','0',size if role=='host' else '1024x768x24'],pass_fds=(fd.fileno(),),stdout=log,stderr=log))
   number=poll(lambda:(out/(role+'-display')).read_text().strip(),role+' display');displays.append(':'+number)
- env=os.environ|{'DISPLAY':displays[0],'NO_AT_BRIDGE':'1','DBUS_SESSION_BUS_ADDRESS':'unix:path=/nonexistent-mnet-fixture','MNET_NATIVE_VIEWER_TEST':'1','MNET_ATTENDED_X11_TEST':'1','MNET_ATTENDED_ARTIFACTS':str(out),'MNET_VIEWER_EXECUTABLE':str(out/'mnet'),'MNET_ATTENDED_TEST_EXECUTABLE':str(out/'mnetd'),'MNET_VIEWER_DISPLAY':displays[1],'MNET_VIEWER_CASE':('pointer-root-'+root_change if root_change else 'pointer')}
+ env=os.environ|{'DISPLAY':displays[0],'NO_AT_BRIDGE':'1','DBUS_SESSION_BUS_ADDRESS':'unix:path=/nonexistent-mnet-fixture','MNET_NATIVE_VIEWER_TEST':'1','MNET_ATTENDED_X11_TEST':'1','MNET_ATTENDED_ARTIFACTS':str(out),'MNET_VIEWER_EXECUTABLE':str(executables['mnet']),'MNET_ATTENDED_TEST_EXECUTABLE':str(executables['mnetd']),'MNET_VIEWER_DISPLAY':displays[1],'MNET_VIEWER_CASE':('pointer-root-'+root_change if root_change else 'pointer')}
  env.pop('WAYLAND_DISPLAY',None);env.pop('XDG_SESSION_TYPE',None)
+ if installed: print('Using verified exact installed mnet and mnetd; test harness remains race-enabled',flush=True)
  with open(out/'test.log','w') as log:test=subprocess.Popen([str(out/'host.test'),'-test.run=^TestAttendedX11BuiltPointerClient$','-test.v','-test.timeout=30s'],env=env,stdout=log,stderr=log)
  if os.environ.get('MNET_VIEWER_HOME')=='1':
   home=poll(lambda:window(displays[1],'^Mnet: three tools'),'engineering home')
