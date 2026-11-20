@@ -1173,3 +1173,11 @@ discovery confirmed live.
 
 Tag v0.1.0. First working mesh: control plane, daemon, CLI, relay,
 Magic DNS, end-to-end tests green.
+
+## b34fddb original hosted accounting, 21 November 2026
+
+Exact source b34fddba5f0fce980c9a5c464cf61e337fe7749f passed all five original general CI jobs: https://github.com/MaisySen/Mnet/actions/runs/44737305223 . Original Pages build/status/deploy passed: https://github.com/MaisySen/Mnet/actions/runs/44737303121 . Sixteen changed served documentation/image resources matched this exact source byte-for-byte at the bounded hourly check. No rerun or later source is substituted.
+
+Actual session logs include delayed chooser expiry at30.80seconds from request start versus28.78seconds since receipt, all six changed-peer refusals before TCP, both-size offline diagram selection with zero daemon calls, and equal/mixed Shared Desk launch journeys. The macOS job linked the unsigned arm64 simulator app and embedded extension under the MH_EXECUTE and nonassert checker. The newer exact-text-symbol checker remains pending its own published macOS run. No simulator launch, signing, entitlement or physical-device acceptance follows from linking.
+
+Original Go frame/STUN ten-second fuzz runs completed456843/785918executions. Chrome157.0.8103.50 with Node22.23.4 completed84screen/width checks with its first response under15seconds. These successful original runs do not explain or repair the preserved0838frame-fuzz deadline or older browser startup failures. No release, account, Multies or service change.
