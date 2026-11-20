@@ -44,3 +44,11 @@ Only categories and saturated sample counts are printed. Raw kernel symbols, PID
 ## Originalc2c0788 bounded-wait success evidence
 
 Original [Go job136039447823](https://github.com/MaisySen/Mnet/actions/runs/44661155984/job/136039447823) passed all84checks with Chrome157.0.8103.78/Node22.23.5 and first response in the5-to15second bucket. The completed-result snapshot reports mainWait=poll, four direct-child samples, two poll and two other, no unavailable/I/O/futex/pipe/sleep/hidden sample and no truncation. It records no raw wait symbols or process identifiers. All five original CI jobs and exact-SHA Pages succeeded; three served resources matched and actual Go/session/macOS logs were inspected. This is one success observation only. It neither diagnoses the zero-response failures nor establishes reliable startup; original88b/40c/7da remain failed and unretried.
+
+## System-pressure context is diagnostic, not a cause
+
+The original c988 Go job again stopped at the unchanged first Chrome protocol response timeout: https://github.com/MaisySen/Mnet/actions/runs/44767381965 . It recorded an uninterruptible main browser and I/O-wait sample but no received protocol bytes. This does not identify what blocked Chrome or establish resource pressure as the cause.
+
+New local diagnostic output adds fixed CPU/I/O/memory pressure categories from three bounded Linux pressure files. Each is unavailable, no-recent-pressure, some-pressure or full-pressure, based only on the ten-second pressure average. Malformed, duplicated, out-of-range, oversized or inaccessible content becomes unavailable. Raw pressure text, totals, paths and arbitrary strings never enter the summary. System-wide pressure is context shared by unrelated processes, not proof of this browser's delay.
+
+Seventeen startup/pipe/wait tests pass, including real local pressure reads and hostile/malformed fixtures. Actual local Chrome156.0.8078.47/Node22.23.4 passes all84screen/width checks with first response under5seconds. That successful run itself recorded I/O full-pressure, demonstrating why this category must not be treated as a failure diagnosis. Browser arguments, transport, timeout and assertions are unchanged. No hosted rerun or repair claim is made; this diagnostic slice still needs its own hosted checkpoint.

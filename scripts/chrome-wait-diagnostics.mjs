@@ -24,3 +24,31 @@ export function chromeWaitSnapshot(pid,read){
  }
  return `mainWait=${main} childWaitSamples=${Math.min(ids.length,32)} childWaitUnavailable=${unavailable} childWaitIO=${counts['io-wait']} childWaitFutex=${counts.futex} childWaitPoll=${counts.poll} childWaitPipe=${counts.pipe} childWaitSleep=${counts.sleep} childWaitHidden=${counts['not-blocked-or-hidden']} childWaitOther=${counts['other-or-unavailable']} childWaitTruncated=${ids.length>32}`;
 }
+
+// Bounded fixed pressure categories only. Never log raw /proc text, kernel
+// symbols, machine paths, process identifiers or resource-specific counters.
+function pressureCategory(raw){
+ if(typeof raw!=='string'||raw.length>2048)return 'unavailable';
+ const lines=raw.trim().split('\n');
+ if(lines.length<1||lines.length>2)return 'unavailable';
+ const seen=new Set();let full=false,some=false;
+ for(const line of lines){
+  const match=/^(some|full) avg10=([0-9]+\.[0-9]{2}) avg60=([0-9]+\.[0-9]{2}) avg300=([0-9]+\.[0-9]{2}) total=([0-9]+)$/.exec(line);
+  if(!match||seen.has(match[1]))return 'unavailable';
+  seen.add(match[1]);
+  const values=match.slice(2,5).map(Number);
+  if(values.some(v=>!Number.isFinite(v)||v<0||v>100))return 'unavailable';
+  if(match[1]==='full')full=values[0]>0;
+  else some=values[0]>0;
+ }
+ if(!seen.has('some'))return 'unavailable';
+ return full?'full-pressure':some?'some-pressure':'no-recent-pressure';
+}
+export function chromePressureSnapshot(read){
+ const output=[];
+ for(const kind of ['cpu','io','memory']){
+  let raw;try{raw=typeof read==='function'?read(`/proc/pressure/${kind}`,2048):undefined;}catch{}
+  output.push(`${kind}Pressure=${pressureCategory(raw)}`);
+ }
+ return output.join(' ');
+}
