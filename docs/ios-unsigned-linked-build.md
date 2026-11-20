@@ -26,3 +26,8 @@ Mach-O platform and command definitions: https://github.com/apple-oss-distributi
 A following local checker pass requires MH_EXECUTE, refusing an arm64 object, dynamic library or bundle even when its platform metadata resembles the simulator. Bundle identity/package/executable, extension point/principal, signature-directory and linked Go bridge/runtime checks now use explicit refusal rather than Python assertions. They remain enforced when Python runs with optimization.
 
 Twelve synthetic parser/package tests pass normally and optimized. Package fixtures exercise both app and extension mismatches, missing executables, unexpected signature directories, wrong provider roles and missing Go bridge/runtime symbols. Host inspection commands are mocked for these tests, so they do not establish actual linkage or signing. The full macOS linked-product check remains the separate required evidence. No app entitlement, signing team, provisioning, account or release setting changes in this slice.
+
+
+## Exact platform gate hosted evidence
+
+The original e454 macOS job built and inspected the actual unsigned app/embedded extension successfully with the exact arm64 iOS Simulator platform7 gate: https://github.com/MaisySen/Mnet/actions/runs/44728731888/job/136262703837 . The six synthetic parser tests also passed normally and optimized. This supersedes the exact-platform section's pending status for e454 only. The following MH_EXECUTE/nonassert package-check slice remains newer and still needs its own actual linked-product run. No signing, launch, entitlement or physical-device acceptance is implied. Local Linux inspection can run the twelve Python parser/package fixtures but cannot run xcrun Swift/SDK/link checks; no local Apple build success is claimed.

@@ -1,5 +1,12 @@
 # Releases
 
+
+## e454 original hosted checkpoint accounted
+
+Original e45475b2b98963b6584aca1c9d99d38080513bc6 general CI passed all five jobs: https://github.com/MaisySen/Mnet/actions/runs/44728731888 . Original Pages passed: https://github.com/MaisySen/Mnet/actions/runs/44728733550 . All eight changed markdown/PNG resources were fetched and exactly matched that source revision. Both-size actual offline diagram selection passed with zero daemon calls, alongside existing native attended, Shared Desk, chooser and device suites. The actual unsigned arm64 simulator app and embedded extension passed the exact platform7 checker; this is linkage, not launch/signing/device/entitlement readiness. The following MH_EXECUTE/nonassert package checker remains a newer revision needing its own hosted run.
+
+Unchanged frame/STUN fuzz gates passed508,798/992,601executions. Browser checks passed Chrome157.0.8103.78/Node22.23.4 with84screen/width checks and first response under15seconds. Original0838 frame-fuzz deadline and c96d fixture-race failures stay failed, not repaired by this independent checkpoint. Newer local slices still require their own hosted accounting. No release, signing, Multies or account change.
+
 Latest local Remote Desktop correction: [absolute dirty-tile canvas coordinates](session-reliability.md#absolute-dirty-tile-canvas-coordinates). Failing-first Go image test reproduced zero-origin tile rectangles for offset canvases. Positive/negative origins and parent-stride subimages now retain exact absolute bounds; nil/empty/invalid step refuses tiles and maximal step clamps. Thirty focused races/full gates and both-size actual view/pointer journeys pass; current delta pixels inspected. Offset correctness is Go image evidence, not new physical monitor acceptance; hosted accounting pending.
 
 Latest local Mnet device freshness correction: [read-start age and late-response cancellation](device-window.md#read-start-age-and-late-response-cancellation). Delayed responses cannot add another30seconds to telemetry age, and canceled late success cannot publish. Actual two-second response delay expires by31.2seconds from request start with zero extra reads. Thirty model races, actual full device window, full uncached race/vet/build and CLI cross-builds pass; current populated/last/focus/expired pixels inspected. No daemon mutation or new authority; hosted source accounting pending.
