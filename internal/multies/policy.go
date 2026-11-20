@@ -1,6 +1,7 @@
 // Package multies defines Mnet's fail-closed authorization boundary.
-// It has no network transport, HTTP route, production verifier or credentials.
-// A future Multies-owned bridge must authenticate the person, resolve current
+// Its experimental BridgeClient speaks only to an explicitly configured origin;
+// no shipped default, VPN enrollment or view/input/file authority is installed.
+// The Multies-owned bridge must authenticate the person, resolve current
 // membership and bind the exact device/capability before returning an Evidence.
 // An identity-provider subject or caller-supplied Evidence is never sufficient.
 package multies
@@ -61,7 +62,7 @@ type Evidence struct {
 // Verifier is the future bridge's trust boundary. Implementations must perform
 // cryptographic/transport verification and current membership/capability checks.
 // A JSON decoder or identity-provider token verifier is not an implementation.
-// No production implementation exists in this package.
+// The gated BridgeClient performs a fresh HTTP check; it is not enabled by default.
 type Verifier interface {
 	Verify(context.Context, Request) (Evidence, error)
 }

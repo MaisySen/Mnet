@@ -157,6 +157,7 @@ func (d *Daemon) localAPIHandler(token string) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(d.Status())
 	})
+	mux.HandleFunc("/localapi/identity", d.servePrepareIdentity)
 	mux.HandleFunc("/localapi/session-peers", d.serveSessionPeers)
 	mux.HandleFunc("/localapi/up", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

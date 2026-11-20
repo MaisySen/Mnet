@@ -69,6 +69,20 @@ func main() {
 	switch args[0] {
 	case "version":
 		fmt.Printf("mnet %s\n", version.Version)
+	case "multies-signin":
+		origin, err := multiesSignInOrigin(args[1:])
+		must(err)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		list, err := runMultiesSignIn(ctx, hc, apiBase(), origin, openMultiesBrowser)
+		must(err)
+		fmt.Printf("Multies approved-device snapshot: %d device(s). This is not VPN connectivity.\n", len(list.Devices))
+		for _, d := range list.Devices {
+			fmt.Printf("%s %s\n", d.Platform, d.DeviceKey)
+		}
+		if list.Truncated {
+			fmt.Println("More approved devices exist; this snapshot is incomplete.")
+		}
 	case "up":
 		upFlags := map[string]any{}
 		for i := 1; i < len(args); i++ {
@@ -180,6 +194,7 @@ func usage() {
   mnet down
   mnet wait [--timeout 60s]  (observe current Up state; timeout does not stop startup)
   mnet status [--json]  (private local status; may include an approval link)
+  mnet multies-signin --server TRUSTED_MULTIES_ORIGIN (experimental; own approvals only, no VPN enrollment)
   mnet open [--layout FILE] (local engineering home; no sign-in or automatic connection)
   mnet devices  (read-only Linux X11 snapshot, manual refresh; no network/session changes)
   mnet ip
