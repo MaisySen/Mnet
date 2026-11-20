@@ -161,6 +161,12 @@ try:
  server.delay=1;before=len(server.calls);launch();phase('loading')
  poll(lambda:len(server.calls)>before,'SIGTERM pending local request');client.terminate()
  assert client.wait(timeout=2)==0,'SIGTERM did not join chooser cancellation';client=None
+ # Cancellation must also reach the second sequential authorization request,
+ # after a successful status body, not only the first status request.
+ before=len(server.calls);server.delay=1;launch();phase('loading')
+ poll(lambda:len(server.calls)>=before+2 and server.calls[before+1]=='/localapi/session-peers','pending second authorization request')
+ client.terminate();assert client.wait(timeout=2)==0,'SIGTERM did not join second request';client=None
+ print('PASS actual chooser SIGTERM cancels and joins first status and second authorization request separately',flush=True)
  assert not server.bad
  print('PASS actual chooser:13 exact peers/three local pages, Home/End endpoints without reads/connections, explicit row+mode, mismatched gestures refused, refresh/empty/error/expiry clears selection, no polling, replaced/missing/renamed/moved/duplicate/non-Up peer refused before TCP, close cancels local read; synthetic local evidence only',flush=True)
 finally:
