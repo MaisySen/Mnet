@@ -1,5 +1,13 @@
 # Releases
 
+## New local Shared Desk source, hosted verification pending
+
+The next separated source adds terminal retirement when the local status is hidden, including immediate unmap/remap, and retains failed-release evidence in later refused recipient calls. Failing-first regressions reproduced both omissions. Complete equal/mixed actual native/TLS and launcher journeys pass, including nineteen malformed/stalled/input cases, eight hidden-status cases and foreign native-state ownership. Fragmented frame, malformed ACK and special-file/replay-object tests add bounded model/filesystem evidence. Details and limits are in [the Shared Desk engineering record](shared-desk-engine.md#hidden-status-is-terminal-not-background-permission).
+
+Fresh uncached race/vet/build, CLI cross-builds, source scans and bounded recipient-ownership fuzz pass. Unchanged10second frame/STUN gates pass303671/662595executions. The combined mixed native-plus-launcher shell exceeded its outer limit after native completion; the full mixed launcher was rerun separately and passed. No interrupted journey is counted as completion. These are disposable X11/TLS fixtures, not physical-device or production identity evidence. Hidden/minimized status intentionally ends a Desk run; ordinary Remote Desktop view-only repaint behavior is unchanged.
+
+The daemon path-selection change remains excluded and unpublished. No workflow trigger, Multies write, release, signing, TestFlight, account or live infrastructure change is included. Existing original hosted failures and injector-SIGKILL limitations remain separate. These followups still need their own exact hosted checkpoint.
+
 ## 5afa original hosted checkpoint accounted
 
 Original5afa0d82a90127d0760cfdfeb780bf1cb049150a passed all five original general CI jobs: https://github.com/MaisySen/Mnet/actions/runs/44756690699 . The actual session log passes live view-only SIGTERM at both display sizes, completed-click pointer SIGTERM and the existing native Desk/device/chooser journeys. This is the cancellation-ordering correction's own checkpoint; original447c remains failed and no original run was rerun.
