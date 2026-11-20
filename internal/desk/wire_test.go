@@ -344,3 +344,78 @@ func TestWirePairRefusedInputAfterAuthorityLossStillStops(t *testing.T) {
 		t.Fatal("revoked call forwarded input or failed cleanup")
 	}
 }
+
+func TestWireAuthorityRetirementKeepsCleanupFailureInInputResult(t *testing.T) {
+	for _, late := range []bool{false, true} {
+		for _, failed := range []bool{false, true} {
+			name := "before-ack"
+			if late {
+				name = "after-ack"
+			}
+			if failed {
+				name += "-release-fails"
+			} else {
+				name += "-released"
+			}
+			t.Run(name, func(t *testing.T) {
+				layout, binding, primary, recipient := pairTransportFixture(t)
+				a, b := tlsFixturePair(t, primary, recipient)
+				defer a.NetConn().Close()
+				defer b.NetConn().Close()
+				backend := &ownedFixture{}
+				if failed {
+					backend.releaseErr = errors.New("fixture native release failure")
+				}
+				var live atomic.Bool
+				live.Store(true)
+				if late {
+					backend.after = func() { live.Store(false) }
+				}
+				approval, _ := NewApproval(binding, layout, func() bool { return true }, func(func() bool) (NativeInput, error) { return backend, nil })
+				done := make(chan error, 1)
+				go func() { done <- approval.ServePair(b) }()
+				client, err := ConnectPair(a, binding, layout, live.Load)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer client.Release()
+				if !late {
+					live.Store(false)
+				}
+				err = client.Apply(Input{Sequence: 1, Kind: "key", Action: "down", Code: 38})
+				if !errors.Is(err, ErrAuthorityRetired) {
+					t.Fatal("lost input refusal", err)
+				}
+				releaseErr := client.Release()
+				if (releaseErr != nil) != failed {
+					t.Fatal("cleanup result differs", releaseErr)
+				}
+				if failed && !errors.Is(err, releaseErr) {
+					t.Fatal("input result hid unconfirmed native cleanup", err, releaseErr)
+				}
+				serverErr := <-done
+				if failed && !errors.Is(serverErr, backend.releaseErr) || !failed && serverErr != nil {
+					t.Fatal("server cleanup result lost", serverErr)
+				}
+				wantCalls := 0
+				if late {
+					wantCalls = 1
+				}
+				if len(backend.events) != wantCalls || backend.released != 1 {
+					t.Fatal("wrong native ownership", len(backend.events), backend.released)
+				}
+				select {
+				case <-client.Stopped():
+				default:
+					t.Fatal("authority retirement kept transport active")
+				}
+				if retryErr := client.Apply(Input{Sequence: 2, Kind: "key", Action: "down", Code: 39}); retryErr == nil || failed && !errors.Is(retryErr, releaseErr) {
+					t.Fatal("retired retry forgot failure", retryErr)
+				}
+				if backend.released != 1 {
+					t.Fatal("cleanup repeated")
+				}
+			})
+		}
+	}
+}

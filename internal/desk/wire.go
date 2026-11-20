@@ -15,7 +15,8 @@ import (
 	"time"
 )
 
-// ErrAuthorityRetired reports input refusal, not a native-release failure.
+// ErrAuthorityRetired reports input refusal. The returned error also joins any
+// stop-acknowledgement failure; refusal alone never proves native release.
 var ErrAuthorityRetired = errors.New("desk primary input authority retired")
 
 const wireVersion = "mnet-desk-1"
@@ -308,8 +309,7 @@ func (c *PairClient) callLocked(message wireMessage) error {
 		return errors.Join(errors.New("desk channel retired"), c.err)
 	}
 	if !c.live() {
-		c.stopLocked()
-		return c.retireLocked(ErrAuthorityRetired)
+		return c.retireLocked(errors.Join(ErrAuthorityRetired, c.stopLocked()))
 	}
 	if err := c.conn.SetDeadline(time.Now().Add(wireDeadline)); err != nil {
 		return c.retireLocked(err)
@@ -322,8 +322,7 @@ func (c *PairClient) callLocked(message wireMessage) error {
 		return c.retireLocked(errors.New("desk acknowledgement unavailable"))
 	}
 	if !c.live() {
-		c.stopLocked()
-		return c.retireLocked(ErrAuthorityRetired)
+		return c.retireLocked(errors.Join(ErrAuthorityRetired, c.stopLocked()))
 	}
 	return nil
 }

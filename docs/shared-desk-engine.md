@@ -315,3 +315,9 @@ A fresh whole-repository uncached race suite, vet/build, Windows/Darwin cross-bu
 ## Failure classification and replay are checked after invalid input
 
 Each actual invalid-input/stalled-peer case now requires its specific product diagnostic: duplicate press, stale sequence, unsupported message or channel interruption. An unrelated crash cannot satisfy its nonzero-exit check. After TLS is closed only following observed native release, replaying the exact consumed configuration must refuse before another review/status. Complete equal/mixed native launch journeys pass all five reason/replay checks. No product admission, replay or timeout behavior changed.
+
+## Refused input retains an unconfirmed cleanup result
+
+The primary TLS client now returns the stop-acknowledgement failure alongside input-authority retirement, both before sending input and after an input acknowledgement. Previously its immediate input result reported only retired authority, although a subsequent Release still retained the cleanup error. The change preserves that uncertainty in the immediate result and in later refused calls; it does not assert remote release from a closed socket or copy private remote errors across the protocol.
+
+Failing-first local TLS tests reproduced both missing error chains with failed recipient cleanup. They also require successful cleanup to remain separately successful, no pre-retirement native call, exactly one admitted call for late retirement, one release and terminal transport. Thirty focused race repetitions, fresh full uncached race/vet/build and complete equal/mixed actual launcher journeys pass. Current receiving/Stop pixels were inspected. The initial combined shell reached its outer time limit partway through the native journey; that journey and the mixed journey then completed separately. No interrupted partial journey is counted as completion. Native/physical/SIGKILL limits are unchanged.
