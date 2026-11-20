@@ -155,6 +155,49 @@ try:
     assert os.waitpid(pid, 0)[1] == 0
     assert not visible(), 'installed home survived closing'
     assert state_before == {str(path.relative_to(state)): path.read_bytes() for path in state.rglob('*') if path.is_file() and not path.is_symlink()}, 'failure journey altered daemon state'
+    # Complete installed offline Shared Desk route. Use public synthetic file
+    # geometry only, with the real installed program and no daemon running.
+    layout = out / 'Saved layout dollar$ quote" tick` slash\\.json'
+    original_layout = json.dumps({'version': 1, 'displays': [
+        {'id':'local','device':'synthetic-local','x':0,'y':0,'width':100,'height':100,'pixel_width':1024,'pixel_height':768},
+        {'id':'neighbor','device':'synthetic-neighbor','x':100,'y':0,'width':100,'height':100,'pixel_width':1280,'pixel_height':960}
+    ]}).encode()
+    layout.write_bytes(original_layout)
+    with (out / 'installed-layout.log').open('w') as log:
+        offline = subprocess.Popen([str(prefix / 'bin/mnet'),'--state',str(state),'open','--layout',str(layout)],stdout=log,stderr=log)
+    pids.append(offline.pid)
+    window = poll(visible,'installed layout home')
+    assert (pathlib.Path('/proc')/str(offline.pid)/'exe').resolve() == (prefix/'bin/mnet').resolve()
+    click(window,100,370)
+    diagram = poll(lambda:find_window('^Mnet Shared Desk: offline layout'),'installed actual diagram')
+    assert not visible(),'home retained behind offline child'
+    capture(diagram,'installed-offline-arrangement')
+    pic=Image.open(out/'installed-offline-arrangement.png').convert('RGB')
+    assert pic.size==(900,650) and pic.getpixel((20,12))==(16,62,137),'installed offline pixels missing'
+    click(diagram,800,77)
+    poll(lambda:'detailstrue' in subprocess.check_output(['xdotool','getwindowname',diagram],text=True),'installed secondary details')
+    capture(diagram,'installed-offline-details')
+    assert layout.read_bytes()==original_layout,'details changed layout file'
+    # Replacing the path cannot change already opened geometry or authorize a
+    # run. A deliberate fresh open must refuse that new invalid document.
+    layout.write_bytes(b'invalid replacement')
+    subprocess.run(['xdotool','windowfocus',diagram,'key','End'],check=True)
+    poll(lambda:'pixel767 candidate=neighbor@0,959' in subprocess.check_output(['xdotool','getwindowname',diagram],text=True),'installed immutable native mapping')
+    window=close_child(diagram)
+    click(window,100,370)
+    window=poll(visible,'installed invalid replacement returns home')
+    assert not find_window('^Mnet Shared Desk: offline layout'),'invalid replacement created diagram'
+    capture(window,'installed-offline-file-failure')
+    layout.write_bytes(original_layout)
+    click(window,100,370)
+    diagram=poll(lambda:find_window('^Mnet Shared Desk: offline layout'),'installed deliberate file recovery')
+    window=close_child(diagram)
+    subprocess.run(['xdotool','windowfocus',window,'key','Escape'],check=True)
+    assert offline.wait(timeout=3)==0
+    pids.remove(offline.pid)
+    assert not visible() and not find_window('^Mnet Shared Desk: offline layout')
+    assert layout.read_bytes()==original_layout
+    assert state_before == {str(path.relative_to(state)):path.read_bytes() for path in state.rglob('*') if path.is_file() and not path.is_symlink()},'offline route altered daemon state'
     os.environ.clear()
     os.environ.update(old_environment)
     # The same held writable-open guard used by removal must prevent a later
@@ -188,7 +231,7 @@ try:
     uninspectable = None
     assert not prefix.exists()
     assert state_before == {str(path.relative_to(state)): path.read_bytes() for path in state.rglob('*') if path.is_file() and not path.is_symlink()} and linked.is_symlink(), 'removal touched unrelated state'
-    print('PASS actual clean-prefix binary install, desktop-file parser and launched native home from special-character path; no initial Mnet state/service/enrollment; actual installed daemon down/missing/stopped recovery; preserved fixture state; exact close; changed/extra/link/running CLI and daemon refusals; held guard blocks new exec; unrelated uninspectable process preserved; unchanged removal', flush=True)
+    print('PASS actual clean-prefix binary install, desktop-file parser and launched native home from special-character path; no initial Mnet state/service/enrollment; actual installed daemon down/missing/stopped recovery; installed offline arrangement/details/immutable mapping/file failure and fresh recovery; preserved fixture state; exact close; changed/extra/link/running CLI and daemon refusals; held guard blocks new exec; unrelated uninspectable process preserved; unchanged removal', flush=True)
 finally:
     os.environ.clear()
     os.environ.update(old_environment)
