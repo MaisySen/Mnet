@@ -104,6 +104,9 @@ func FuzzDeskRecipientOwnership(f *testing.F) {
 			if (err != nil) != wantError {
 				t.Fatal("unexpected result", action, err, wantError)
 			}
+			if wantError && failRelease && !errors.Is(err, sentinel) {
+				t.Fatal("refused input lost unconfirmed cleanup", action, err)
+			}
 			calls := len(backend.events) - before
 			if (calls == 1) != expectedCall || calls > 1 {
 				t.Fatal("invalid or retired transition reached backend", action, calls, expectedCall)
