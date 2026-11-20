@@ -63,7 +63,8 @@ func writeWire(w io.Writer, m wireMessage) error {
 	}
 	var length [4]byte
 	binary.BigEndian.PutUint32(length[:], uint32(len(data)))
-	// io.Copy handles legal short writes rather than assuming one TLS Write.
+	// io.Copy preserves write errors and refuses a short write without an
+	// error. Such a write violates io.Writer; never retry ambiguous bytes.
 	_, err = io.Copy(w, bytes.NewReader(append(length[:], data...)))
 	return err
 }
