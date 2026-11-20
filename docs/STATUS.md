@@ -20,6 +20,8 @@ listener at initial, pre-browser and waiting phases. Embedded-font rendering
 fits every state and page, including worst-case key width. Current pixels are
 inspected, not inferred from exported files.
 
+Latest local73cd91d binds credentials to their issuing client and validates exact response fields. Its exact installed real-browser journey and native List/expiry pixels pass. The intermediatea06ed3f native journey failed on Evidence field-name compatibility, despite a false-positive fixture exit; it was rejected after pixel inspection. Exact field tags and native-state assertions correct that path. See [the detailed accounting](multies-device-list-bridge.md#credential-destination-and-exact-response-contract) and [the still-unimplemented registrar contract](multies-registration-boundary.md).
+
 This is **list only**, not completed setup. Native PKCE possession does not prove
 possession of the supplied WireGuard private key. No network registrar,
 enrollment, persistent sign-in, cross-device trust or remote input grant is

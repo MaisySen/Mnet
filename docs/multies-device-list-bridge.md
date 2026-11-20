@@ -74,3 +74,36 @@ the native window before capture/actions and owning the session bus corrected
 the fixture; the later full check passes without a source or deadline change.
 This is local Linux association evidence, not physical desktop, other OS or
 production bridge readiness.
+
+## Credential destination and exact response contract
+
+Local2efd762 binds each memory-only credential to the exact exchanging bridge
+client. A recreated client or different origin cannot use or transmit it.
+Failing-first real two-server tests originally observed two wrong-server
+requests; the corrected path makes none. The actual normal command still uses
+its original client throughout. No external disclosure was observed.
+
+Locala06ed3f added recursive exact JSON schema validation, rejecting duplicate
+fields, escaped duplicate names, unknown fields and case aliases before Go's
+permissive decoder can choose a value. That checkpoint's installed native
+journey **failed**: the original Evidence struct had relied on case-insensitive
+camelCase decoding. The browser fixture incorrectly exited zero because it
+checked approval and saved screenshots without confirming native success. The
+actual pixels showed the error, so that run was not accepted.
+
+Local73cd91d declares the actual Multies camelCase evidence fields and adds a
+raw wire-schema regression. A corrected fixture also asserts native success
+and expiry screen text. Exact installed73cd91d completes real system-browser
+signed-out login, matching-key approval, native List, timed clearing and browser
+revoke; the inspected native images show the correct states. Install and
+unchanged-prefix uninstall pass. No UI redesign or capability change occurred.
+Full uncached race, vet and Windows/Darwin CLI source builds pass. The separate
+10-second JSON-schema fuzz check passes73,665executions. Other original failed
+checkpoints are not repaired or replaced by these results.
+
+The [registration design](multies-registration-boundary.md) documents the
+independent operator mapping, person authority, key-possession, atomic
+registration and mesh-revocation work still missing. Its real legacy-handler
+checks confirm a List credential cannot become operator, account or saved-node
+authority. The public legacy pending-join route still exists; a pending record
+is not Multies enrollment or an approved network peer.
