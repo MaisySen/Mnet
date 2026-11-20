@@ -1,5 +1,13 @@
 # Releases
 
+## 69cc original hosted checkpoint accounted, installed removal refused
+
+Original69cc5605a454af23d9d645b06183556c336ee224 CI failed only session-validation: https://github.com/MaisySen/Mnet/actions/runs/44801276238 . Its final installed-prefix removal encountered a same-user process whose executable could not be inspected and refused before deleting anything. The exact hosted process/cause is unknown. Diagnostics: https://github.com/MaisySen/Mnet/actions/runs/44801276238/artifacts/14661578012 . The final device-window step was skipped. No rerun or relaxed safety check counts as repair of that original attempt.
+
+The actual original session logs passed the font prerequisite correction, native home routes, both-size complete home-pointer journeys, silent15second first-screen terminal cleanup, and equal/mixed generated Shared Desk run/native cleanup. Other four original jobs passed. Go Chrome157.0.8103.78/Node22.23.5 passed84screen checks; unchanged10second frame/STUN fuzz gates passed331481/622694executions. macOS passed14checker fixtures normal/optimized and unsigned arm64 simulator app/extension linking, not launch/sign/device/entitlement acceptance. Pages all3jobs passed https://github.com/MaisySen/Mnet/actions/runs/44801274472 and all13intended markdown/PNG resources exactly matched69cc before newer publication. No automatic native workflow dispatched.
+
+An independent failing-first local uninspectable process reproduces the removal refusal. The corrected source uses Linux kernel text-busy guards on the two exact installed executable inodes instead of scanning unrelated processes. Actual acceptance checks running CLI/daemon refusal, guards preventing later exec, unchanged bytes, unrelated uninspectable-process survival and final unchanged removal. This correction needs its own original hosted checkpoint. Earlier4b3/c988/9a62/blank-canvas/447c/0838/c96dfailures and held daemon/release/Multies boundaries remain separate.
+
 ## 4b3 original hosted checkpoint accounted, home font prerequisite failed
 
 Original4b3c6e5cae6463a72c38d8b15eb63d5ee104e5a7 general CI failed session-validation at the first new home launch: https://github.com/MaisySen/Mnet/actions/runs/44790918679 . The app explicitly refused because its readable core fonts were unavailable. Home routing, pointer-from-home and silent first-screen steps therefore did not complete in this original run; later Desk steps were skipped. Failed diagnostics were retained: https://github.com/MaisySen/Mnet/actions/runs/44790918679/artifacts/14656712754 . This is a concrete prerequisite failure, separate from the unknown earlier blank canvases and Chrome startup failures. No rerun or relaxed UI requirement is counted as repair of that original attempt.

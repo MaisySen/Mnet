@@ -23,7 +23,7 @@ To remove an unchanged prefix:
 python3 scripts/linux-local-install.py uninstall /absolute/private/parent/mnet-engineering
 ```
 
-Removal checks its fixed manifest, file hashes/modes, regular-file ownership, directory ownership, exact tree contents and whether either installed executable is running. Changed files, extra files, a linked prefix or a running installed executable cause refusal before deleting anything. It never kills a process, recursively removes a supplied path or deletes daemon/user state. These checks do not defend against a malicious process running as the same user or a filesystem administrator. Close programs and avoid concurrent changes during removal.
+Removal checks its fixed manifest, file hashes/modes, regular-file ownership, directory ownership, exact tree contents and obtains kernel text-busy guards on both exact installed executables. Changed files, extra files, a linked prefix or a running installed executable cause refusal before deleting anything. It never kills a process, recursively removes a supplied path or deletes daemon/user state. These checks do not defend against a malicious process running as the same user or a filesystem administrator. Close programs and avoid concurrent changes during removal.
 
 ## Actual installed journey
 
@@ -52,3 +52,11 @@ A failing-first regression found that the old CLI accepted a publicly readable l
 Windows has a separately bounded reader that verifies regular-file identity before reading; Unix modes are not treated as a Windows DACL. Existing dedicated-state ACL protection remains separate. Windows and Darwin cross-builds passed, but no new live Windows ACL or reparse-point acceptance is claimed.
 
 Thirty local race repetitions pass. The actual installed acceptance starts its isolated daemon, makes its test-only local capability publicly readable, observes that the installed CLI refuses without disclosing the token, restores private mode and verifies actual authenticated down status recovers. It does not modify a user's daemon or credential. The current full uncached race/vet/build and Windows/Darwin cross-build gates pass independently.
+
+## Original hosted removal refusal and kernel guard correction
+
+Original69cc560 general CI failed its final installed removal at https://github.com/MaisySen/Mnet/actions/runs/44801276238 . A same-user process denied executable inspection, so the old whole-host `/proc` scan refused removal before deleting anything. The exact process/cause in that original host was not established. An independent local process with dumpability disabled reproduced the same refusal failing-first; it does not establish that the hosted process used the same setting.
+
+The corrected Linux installer no longer enumerates unrelated processes. It opens each exact installed executable inode writable without truncation, writing or mode changes. The kernel returns ETXTBSY if that image is executing. Both descriptors stay open through removal, so a later exec of those same inodes is refused while the guard is held. Open failure or changed inode still refuses before deletion. Same-user malicious mutation/filesystem administrator interference remain outside this engineering guard's promise.
+
+Actual installed acceptance verifies both running home and running daemon prevent removal, both held guards prevent subsequent launches, bytes remain unchanged, and final unchanged removal succeeds while an unrelated same-user process actually refuses `/proc/exe` inspection and remains alive/untouched. These local passes are independent correction evidence, not a rerun or repair of the original failed checkpoint.
