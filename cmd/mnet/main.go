@@ -11,9 +11,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"text/tabwriter"
 	"time"
 
@@ -133,6 +135,13 @@ func main() {
 		} else {
 			printStatus(st)
 		}
+	case "devices":
+		if len(args) != 1 {
+			fatal("usage: mnet devices (read-only Linux X11 snapshot)")
+		}
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		must(runDeviceWindow(ctx, hc, apiBase()))
 	case "ip":
 		st := status(hc)
 		if st.Status != "up" || st.IPv4 == "" {
@@ -165,6 +174,7 @@ func usage() {
   mnet down
   mnet wait [--timeout 60s]  (observe current Up state; timeout does not stop startup)
   mnet status [--json]  (private local status; may include an approval link)
+  mnet devices  (read-only Linux X11 snapshot, manual refresh; no network/session changes)
   mnet ip
   mnet ping <node>
   mnet desk layout-check FILE [--edge DISPLAY EDGE PIXEL]  (offline geometry only)
