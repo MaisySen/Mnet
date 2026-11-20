@@ -156,11 +156,11 @@ func main() {
 			printStatus(st)
 		}
 	case "open":
-		layout, err := homeArgs(args[1:])
+		config, err := homeArgs(args[1:])
 		must(err)
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
-		must(runHome(ctx, hc, apiBase(), layout))
+		must(runHome(ctx, hc, apiBase(), config))
 	case "devices":
 		if len(args) != 1 {
 			fatal("usage: mnet devices (read-only Linux X11 snapshot)")
@@ -202,7 +202,7 @@ func usage() {
   mnet status [--json]  (private local status; may include an approval link)
   mnet multies-open --server TRUSTED_MULTIES_ORIGIN (experimental Linux X11 review; own approvals only)
   mnet multies-signin --server TRUSTED_MULTIES_ORIGIN (experimental; own approvals only, no VPN enrollment)
-  mnet open [--layout FILE] (local engineering home; no sign-in or automatic connection)
+  mnet open [--layout FILE] [--multies-server TRUSTED_ORIGIN] (local preview; approvals only, no automatic connection)
   mnet devices  (read-only Linux X11 snapshot, manual refresh; no network/session changes)
   mnet ip
   mnet ping <node>

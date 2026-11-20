@@ -10,9 +10,10 @@ type deviceControls struct {
 	generation uint64
 }
 
-func newDeviceControls() deviceControls { return deviceControls{focus: -1, pressed: -1} }
-func (c *deviceControls) cancel()       { c.pressed = -1; c.key = 0; c.mouse = false }
-func (c *deviceControls) advance(reverse bool, enabled [4]bool) {
+func newDeviceControls() deviceControls                         { return deviceControls{focus: -1, pressed: -1} }
+func (c *deviceControls) cancel()                               { c.pressed = -1; c.key = 0; c.mouse = false }
+func (c *deviceControls) advance(reverse bool, enabled [4]bool) { c.advanceAmong(reverse, enabled[:]) }
+func (c *deviceControls) advanceAmong(reverse bool, enabled []bool) {
 	c.cancel()
 	step := 1
 	if reverse {
@@ -21,8 +22,8 @@ func (c *deviceControls) advance(reverse bool, enabled [4]bool) {
 			c.focus = 0
 		}
 	}
-	for n := 0; n < 4; n++ {
-		c.focus = (c.focus + step + 4) % 4
+	for n := 0; n < len(enabled); n++ {
+		c.focus = (c.focus + step + len(enabled)) % len(enabled)
 		if enabled[c.focus] {
 			return
 		}
@@ -38,17 +39,21 @@ func (c *deviceControls) update(enabled [4]bool, generation uint64) {
 		c.focus = -1
 	}
 }
-func (c *deviceControls) pressKey(key uint32, enabled [4]bool) {
+func (c *deviceControls) pressKey(key uint32, enabled [4]bool) { c.pressKeyAmong(key, enabled[:]) }
+func (c *deviceControls) pressKeyAmong(key uint32, enabled []bool) {
 	c.cancel()
-	if (key == 0xff0d || key == 0x20) && c.focus >= 0 && enabled[c.focus] {
+	if (key == 0xff0d || key == 0x20) && c.focus >= 0 && c.focus < len(enabled) && enabled[c.focus] {
 		c.pressed = c.focus
 		c.key = key
 	}
 }
 func (c *deviceControls) releaseKey(key uint32, enabled [4]bool) int {
+	return c.releaseKeyAmong(key, enabled[:])
+}
+func (c *deviceControls) releaseKeyAmong(key uint32, enabled []bool) int {
 	pressed, held := c.pressed, c.key
 	c.cancel()
-	if held != key || pressed < 0 || pressed != c.focus || !enabled[pressed] {
+	if held == 0 || held != key || pressed < 0 || pressed >= len(enabled) || pressed != c.focus || !enabled[pressed] {
 		return -1
 	}
 	return pressed

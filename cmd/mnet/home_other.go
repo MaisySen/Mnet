@@ -7,6 +7,6 @@ import (
 	"errors"
 )
 
-func chooseHome(context.Context, string, bool) (homeChoice, error) {
+func chooseHome(context.Context, string, bool, bool) (homeChoice, error) {
 	return homeClose, errors.New("local engineering home currently requires Linux X11")
 }

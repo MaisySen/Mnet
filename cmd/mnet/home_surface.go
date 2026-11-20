@@ -15,7 +15,7 @@ import (
 
 // renderHomeSurface is presentation only. Existing route selection, local
 // capability checks and child ownership do not enter this pixel renderer.
-func renderHomeSurface(notice string, hasLayout bool, focus int) (*image.RGBA, error) {
+func renderHomeSurface(notice string, hasLayout, hasMulties bool, focus int) (*image.RGBA, error) {
 	regular, err := opentype.Parse(goregular.TTF)
 	if err != nil {
 		return nil, err
@@ -70,7 +70,11 @@ func renderHomeSurface(notice string, hasLayout bool, focus int) (*image.RGBA, e
 	text(31, 46, 27, 28, true, 0xffffff, "M")
 	text(74, 43, 300, 24, true, 0x172b4d, "Your devices, together")
 	text(742, 41, 136, 12, true, 0x63758c, "LOCAL PREVIEW")
-	text(24, 94, 850, 14, false, 0x63758c, "Three separate tools. Multies setup isn't connected to this home yet.")
+	intro := "Three separate tools. Multies setup isn't configured for this home."
+	if hasMulties {
+		intro = "Three separate tools. You can review Multies approvals. Network setup is not connected."
+	}
+	text(24, 94, 850, 14, false, 0x63758c, intro)
 	cards := [][3]string{
 		{"Mnet networking", "Your private network", "See a read-only snapshot of local network devices."},
 		{"Remote Desktop", "A screen when you need it", "Choose a device. The host approves viewing and any pointer control separately."},
@@ -102,6 +106,18 @@ func renderHomeSurface(notice string, hasLayout bool, focus int) (*image.RGBA, e
 		}
 	}
 	text(24, 468, 850, 14, false, 0x526780, notice)
+	setupLabel := "Multies not configured"
+	setupBG, setupFG := uint32(0xecf0f6), uint32(0x758299)
+	if hasMulties {
+		setupLabel = "Review Multies approvals"
+		setupBG = 0xffffff
+		setupFG = 0x214f90
+	}
+	rect(20, 486, 640, 44, setupBG)
+	text(38, 514, 600, 16, true, setupFG, setupLabel)
+	if focus == 4 && hasMulties {
+		rect(20, 527, 640, 3, 0x2563c7)
+	}
 	rect(680, 486, 200, 44, 0xffffff)
 	text(710, 514, 150, 16, true, 0x526780, "Close")
 	if focus == 3 {

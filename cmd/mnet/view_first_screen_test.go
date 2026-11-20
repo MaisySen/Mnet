@@ -83,13 +83,13 @@ func TestHomeArgumentsDoNotInferLayoutOrAcceptExtraModes(t *testing.T) {
 			t.Fatal("invalid home option accepted", args)
 		}
 	}
-	if path, err := homeArgs(nil); err != nil || path != "" {
+	if path, err := homeArgs(nil); err != nil || path != (homeConfig{}) {
 		t.Fatal(path, err)
 	}
-	if path, err := homeArgs([]string{"--layout", "chosen.json"}); err != nil || path != "chosen.json" {
+	if path, err := homeArgs([]string{"--layout", "chosen.json"}); err != nil || path.LayoutPath != "chosen.json" {
 		t.Fatal(path, err)
 	}
-	if err := runHome(nil, nil, "", ""); err == nil {
+	if err := runHome(nil, nil, "", homeConfig{}); err == nil {
 		t.Fatal("missing home owner accepted")
 	}
 }

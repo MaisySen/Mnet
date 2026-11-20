@@ -13,7 +13,7 @@ import (
 
 // No API client or file reader enters this window. A closed choice joins the
 // event reader before the owner opens one selected child journey.
-func chooseHome(parent context.Context, notice string, hasLayout bool) (homeChoice, error) {
+func chooseHome(parent context.Context, notice string, hasLayout, hasMulties bool) (homeChoice, error) {
 	if parent == nil || parent.Err() != nil {
 		return homeClose, nil
 	}
@@ -92,11 +92,11 @@ func chooseHome(parent context.Context, notice string, hasLayout bool) (homeChoi
 		}
 	}()
 	defer func() { cancel(); c.Close(); <-done }()
-	enabled := [4]bool{true, true, hasLayout, true}
+	enabled := [5]bool{true, true, hasLayout, true, hasMulties}
 	controls := newDeviceControls()
 
 	draw := func() error {
-		picture, er := renderHomeSurface(notice, hasLayout, controls.focus)
+		picture, er := renderHomeSurface(notice, hasLayout, hasMulties, controls.focus)
 		if er != nil {
 			return er
 		}
@@ -133,6 +133,9 @@ func chooseHome(parent context.Context, notice string, hasLayout bool) (homeChoi
 		if x >= 680 && x < 880 && y >= 486 && y < 530 {
 			return 3
 		}
+		if x >= 20 && x < 660 && y >= 486 && y < 530 {
+			return 4
+		}
 		return -1
 	}
 	route := func(index int) (homeChoice, bool) {
@@ -147,6 +150,10 @@ func chooseHome(parent context.Context, notice string, hasLayout bool) (homeChoi
 			}
 		case 3:
 			return homeClose, true
+		case 4:
+			if hasMulties {
+				return homeMulties, true
+			}
 		}
 		return homeClose, false
 	}
@@ -208,9 +215,9 @@ func chooseHome(parent context.Context, notice string, hasLayout bool) (homeChoi
 				case 0xff1b:
 					return homeClose, nil
 				case 0xff09:
-					controls.advance(e.State&xproto.ModMaskShift != 0, enabled)
+					controls.advanceAmong(e.State&xproto.ModMaskShift != 0, enabled[:])
 				default:
-					controls.pressKey(key, enabled)
+					controls.pressKeyAmong(key, enabled[:])
 				}
 			case xproto.KeyReleaseEvent:
 				mapping, er := xproto.GetKeyboardMapping(c, e.Detail, 1).Reply()
@@ -218,7 +225,7 @@ func chooseHome(parent context.Context, notice string, hasLayout bool) (homeChoi
 					return homeClose, errors.New("home keyboard unavailable")
 				}
 				if len(mapping.Keysyms) > 0 {
-					selected = controls.releaseKey(uint32(mapping.Keysyms[0]), enabled)
+					selected = controls.releaseKeyAmong(uint32(mapping.Keysyms[0]), enabled[:])
 				} else {
 					controls.cancel()
 				}

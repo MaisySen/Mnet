@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+
+	"fintex.au/mnet/internal/multies"
 )
 
 // The home window routes local journeys only. It never enrolls, discovers trust,
@@ -15,15 +17,18 @@ const (
 	homeNetwork
 	homeDesktop
 	homeLayout
+	homeMulties
 )
 
-func runHome(ctx context.Context, hc *http.Client, base, layoutPath string) error {
+type homeConfig struct{ LayoutPath, MultiesOrigin string }
+
+func runHome(ctx context.Context, hc *http.Client, base string, config homeConfig) error {
 	if ctx == nil {
 		return errors.New("home owner unavailable")
 	}
 	notice := "Choose a tool to begin."
 	for ctx.Err() == nil {
-		choice, err := chooseHome(ctx, notice, layoutPath != "")
+		choice, err := chooseHome(ctx, notice, config.LayoutPath != "", config.MultiesOrigin != "")
 		if err != nil {
 			return err
 		}
@@ -35,12 +40,17 @@ func runHome(ctx context.Context, hc *http.Client, base, layoutPath string) erro
 			err = runDeviceWindow(ctx, hc, base)
 		case homeDesktop:
 			err = browseDesktopOnce(ctx, hc, base)
+		case homeMulties:
+			if config.MultiesOrigin == "" {
+				return errors.New("Multies origin not configured")
+			}
+			err = runMultiesWindow(ctx, hc, base, config.MultiesOrigin)
 		case homeLayout:
-			if layoutPath == "" {
+			if config.LayoutPath == "" {
 				return errors.New("home layout route unavailable")
 			}
 			var preview *deskLayoutPreview
-			preview, err = readDeskLayoutPreviewFile(layoutPath)
+			preview, err = readDeskLayoutPreviewFile(config.LayoutPath)
 			if err == nil {
 				err = showDeskLayoutPreview(ctx, preview)
 			}
@@ -52,6 +62,11 @@ func runHome(ctx context.Context, hc *http.Client, base, layoutPath string) erro
 		}
 		if errors.Is(err, errDesktopFirstScreen) {
 			notice = "No screen arrived. The session ended. Choose Remote Desktop to try again."
+		} else if choice == homeMulties {
+			notice = "Approval review closed. Network setup is still not connected."
+			if err != nil {
+				notice = "Approval review was unavailable. Network setup is still not connected."
+			}
 		} else if err != nil {
 			notice = "The tool could not finish. Choose it again to try a fresh attempt."
 		} else {
@@ -60,12 +75,39 @@ func runHome(ctx context.Context, hc *http.Client, base, layoutPath string) erro
 	}
 	return nil
 }
-func homeArgs(args []string) (string, error) {
-	if len(args) == 0 {
-		return "", nil
+
+// Configuration comes only from the explicit local invocation. Never read an
+// origin from a peer, browser return, device label or prior sign-in result.
+func homeArgs(args []string) (homeConfig, error) {
+	var c homeConfig
+	bad := errors.New("usage: mnet open [--layout FILE] [--multies-server TRUSTED_ORIGIN] (approvals only, no enrollment)")
+	for len(args) > 0 {
+		if len(args) < 2 || args[1] == "" {
+			return homeConfig{}, bad
+		}
+		switch args[0] {
+		case "--layout":
+			if c.LayoutPath != "" {
+				return homeConfig{}, bad
+			}
+			c.LayoutPath = args[1]
+		case "--multies-server":
+			if c.MultiesOrigin != "" || len(args[1]) > 75 {
+				return homeConfig{}, bad
+			}
+			for _, r := range args[1] {
+				if r < 33 || r > 126 {
+					return homeConfig{}, bad
+				}
+			}
+			if _, err := multies.NewBridgeClient(args[1]); err != nil {
+				return homeConfig{}, bad
+			}
+			c.MultiesOrigin = args[1]
+		default:
+			return homeConfig{}, bad
+		}
+		args = args[2:]
 	}
-	if len(args) == 2 && args[0] == "--layout" && args[1] != "" {
-		return args[1], nil
-	}
-	return "", errors.New("usage: mnet open [--layout FILE] (local engineering entry; no sign-in)")
+	return c, nil
 }

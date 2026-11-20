@@ -1,6 +1,6 @@
 # Desktop entry and complete journey plan
 
-This is a local Linux X11 engineering entry, not the installed consumer app. Multies sign-in, workspace eligibility, enrollment and Shared Desk pairing are not connected here. No successful prototype, current network peer or layout file substitutes for those decisions.
+This is a local Linux X11 engineering entry, not the installed consumer app. Production Multies setup, enrollment and Shared Desk pairing are not connected here. Explicitly configured List-only approval review is described at the end. No successful prototype, current network peer or layout file substitutes for those decisions.
 
 ## Current working entry
 
@@ -93,3 +93,39 @@ on both built-ins-only and normal-font X11 servers. This is a later embedded-fon
 implementation, not a repair claim for original4b3 or a change to its historical
 missing-font result. Other native child windows still use their existing core
 fonts, so their installer/CI prerequisites have not been removed.
+
+## Explicit configured approval review from home
+
+The later isolated branch adds this opt-in entry:
+
+```
+mnet open --multies-server https://operator-selected.example
+```
+
+The origin is explicit local launch configuration, strictly checked with the
+same client-origin rules. There is no production default, remote-provided origin,
+URL redirect, saved bridge credential or inferred enrollment. Repeated selectors,
+unknown flags, mixed-purpose URLs and non-readable/oversized origins refuse
+before opening the home. An offline layout can still be supplied separately.
+
+With that origin configured, Review Multies approvals opens the existing actual
+native key/browser/List-only review. The home itself still makes zero API reads,
+creates no local identity and opens no browser. Starting in the child prepares
+identity deliberately; opening the browser remains a second explicit action.
+Close joins the worker and returns to a fresh home stating that network setup is
+still not connected. No list is carried into the networking/desktop/Desk routes
+as authority. Without configuration the review control remains disabled.
+
+The source home fixture checks actual configured keyboard and mouse routing,
+empty initial/returned API activity, no stale held-key activation, unavailable
+configuration and child cancellation on SIGTERM. A failing-first control test
+also found that an X11 NoSymbol keyboard release could complete a pending mouse
+press because both used the zero key sentinel. The shared control now requires
+a nonzero held keyboard key. Actual home acceptance injects a native NoSymbol
+release during a held review-button press and requires no activation, then
+retires the mouse press outside the target. Existing four-control consumers
+retain their original fixed enabled-state wrappers.
+
+This is useful List-review wiring, not completion of the first-run plan above.
+Production configuration, enrollment consent and registration, persistent
+lifecycle, trusted pairing and physical mixed-platform acceptance remain open.
