@@ -226,3 +226,41 @@ func TestDesktopViewOwnerCancellationWinsSimultaneousTransportClose(t *testing.T
 		}
 	}
 }
+
+// A late dial completion can race owner cancellation before any connected UI.
+// Cancellation must join it and retain local resource-close failures.
+type desktopCloseFailure struct {
+	testDesktopView
+	closeErr error
+}
+
+func (v *desktopCloseFailure) Close() error { v.closed = true; return v.closeErr }
+func TestDesktopViewCanceledDialStillJoinsAndPreservesCloseFailure(t *testing.T) {
+	sentinel := errors.New("fixture display close failure")
+	for _, lateFailure := range []bool{false, true} {
+		for _, closeFailure := range []bool{false, true} {
+			ctx, cancel := context.WithCancel(context.Background())
+			v := &desktopCloseFailure{}
+			if closeFailure {
+				v.closeErr = sentinel
+			}
+			joined := make(chan struct{})
+			err := runDesktopView(ctx, v, func(context.Context) (*session.Mux, error) {
+				defer close(joined)
+				cancel()
+				if lateFailure {
+					return nil, errors.New("late canceled dial failure")
+				}
+				return nil, nil
+			})
+			if errors.Is(err, sentinel) != closeFailure || (err != nil) != closeFailure || !v.closed {
+				t.Fatal(lateFailure, closeFailure, err)
+			}
+			select {
+			case <-joined:
+			default:
+				t.Fatal("canceled dial not joined")
+			}
+		}
+	}
+}
