@@ -76,3 +76,13 @@ The actual window fixture holds a successful response for two seconds, then veri
 ## Local keyboard page navigation
 
 PageUp/PageDown and Home/End now navigate only the current snapshot's peer pages. Boundaries clamp, missing/non-Up snapshots have no pages, and page gestures cancel pending button activation. They cannot fetch status, select a peer, enable networking or open a session. The actual19peer journey visits/clamps first/middle/last pages with exactly one status request before an explicit refresh. Thirty device/chooser model races, complete actual window and full uncached race/vet/build plus CLI cross-builds pass. Updated populated/last/loading/focus pixels inspected. This is fixed-layout local keyboard usability, not screen-reader or physical-platform acceptance.
+
+## Service failure is not a capability diagnosis
+
+Only an actual401/403 local status response suggests checking this daemon's local capability. Other non-success responses now say that local daemon status is unavailable and offer manual Refresh, without blaming credentials for a service failure. All failures still clear old rows and expose no response body or private endpoint. No automatic retry or wider read is added.
+
+A failing-first response-copy test caught the earlier capability suggestion on301. The final matrix covers301/302/400/401/403/404/429/500/503, confirms response bodies are closed and keeps private body text out. Thirty focused model races, the complete actual device window and chooser, full uncached race/vet/build and Darwin/Windows CLI cross-builds pass. Actual503 service failure,403 capability refusal and manual200 recovery pixels inspected. This is local fixture evidence, not live daemon repair or consumer setup.
+
+![Actual service failure offers refresh, without blaming local capability](ui/devices/service-unavailable.png)
+
+![Actual capability refusal retains its separate local guidance](ui/devices/capability-refused.png)

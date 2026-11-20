@@ -29,8 +29,11 @@ func readDeviceSnapshot(ctx context.Context, hc *http.Client, base string) (*dae
 		return nil, errors.New("local daemon unavailable or status timed out")
 	}
 	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
+	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
 		return nil, errors.New("local status refused; check this daemon's local capability")
+	}
+	if response.StatusCode != http.StatusOK {
+		return nil, errors.New("local daemon status unavailable; refresh to try again")
 	}
 	b, err := io.ReadAll(io.LimitReader(response.Body, (1<<20)+1))
 	if err != nil || len(b) > 1<<20 {

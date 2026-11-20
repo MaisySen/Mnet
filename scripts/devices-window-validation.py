@@ -133,6 +133,12 @@ try:
  phase('up');server.entered.clear();action('key','r');phase('loading');assert server.entered.wait(2)
  before=time.monotonic();action('key','Escape');assert client.wait(timeout=2)==0;client=None;assert time.monotonic()-before<2,'close failed to cancel status'
  assert not server.bad and all(path=='/localapi/status' and credential==token for path,credential in server.requests)
+ # Real HTTP service failure and capability refusal have distinct fixed copy.
+ # Neither response body nor old rows can appear; a manual recovery stays local.
+ server.delay=0;server.code=503;launch();wid=poll(window,'service failure window');phase('unavailable',1);capture('service-unavailable')
+ server.code=403;action('windowfocus',wid);refresh('unavailable',2);capture('capability-refused')
+ server.code=200;server.payload=up;refresh('up',3);capture('up-page-error-recovery')
+ action('key','Escape');assert client.wait(timeout=2)==0;client=None
  # Removing the capability cannot display a cached successful snapshot.
  server.delay=0;token_file.unlink();count=len(server.requests);launch();wid=poll(window,'missing capability window');phase('unavailable');capture('missing-capability');assert len(server.requests)==count
  action('windowsize',wid,'880','480');assert client.wait(timeout=2)!=0;client=None

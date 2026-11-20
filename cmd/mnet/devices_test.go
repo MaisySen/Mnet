@@ -183,3 +183,24 @@ func TestDevicePageNavigationBoundedAndLocal(t *testing.T) {
 		}
 	}
 }
+
+func TestDeviceStatusFailureCopyDoesNotBlameCapabilityForServerFailure(t *testing.T) {
+	for _, code := range []int{301, 302, 400, 401, 403, 404, 429, 500, 503} {
+		closed := false
+		hc := &http.Client{Transport: desktopSnapshotTransport(func(r *http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: code, Body: &deviceFailureBody{Reader: strings.NewReader("PRIVATE_FAILURE_BODY"), closed: &closed}, Header: make(http.Header)}, nil
+		})}
+		got, err := readDeviceSnapshot(context.Background(), hc, "http://device.invalid")
+		capability := code == 401 || code == 403
+		if got != nil || err == nil || !closed || strings.Contains(err.Error(), "PRIVATE") || strings.Contains(err.Error(), "capability") != capability {
+			t.Fatal(code, got, err, closed)
+		}
+	}
+}
+
+type deviceFailureBody struct {
+	*strings.Reader
+	closed *bool
+}
+
+func (b *deviceFailureBody) Close() error { *b.closed = true; return nil }
