@@ -263,10 +263,12 @@ type ApprovedDeviceList struct {
 	OwnDevicesOnly  bool             `json:"ownDevicesOnly"`
 	InputAuthorized *bool            `json:"inputAuthorized"`
 	Truncated       bool             `json:"truncated"`
+	ReadStartedAt   time.Time        `json:"-"`
 }
 
 func (b *BridgeClient) Devices(ctx context.Context, c DeviceCredential) (ApprovedDeviceList, error) {
 	var out ApprovedDeviceList
+	started := time.Now()
 	if !c.ExpiresAt.After(time.Now()) || !idPattern.MatchString(c.WorkspaceID) || !validDeviceKey(c.DeviceKey) || b.call(ctx, http.MethodGet, "/api/mnet/devices", c.value, nil, &out) != nil {
 		return ApprovedDeviceList{}, ErrDenied
 	}
@@ -283,6 +285,7 @@ func (b *BridgeClient) Devices(ctx context.Context, c DeviceCredential) (Approve
 	if ctx.Err() != nil {
 		return ApprovedDeviceList{}, ErrDenied
 	}
+	out.ReadStartedAt = started
 	return out, nil
 }
 

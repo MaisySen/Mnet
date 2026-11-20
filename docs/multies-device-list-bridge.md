@@ -8,6 +8,7 @@ The experimental command is:
 
 ```
 mnet multies-signin --server TRUSTED_MULTIES_ORIGIN
+mnet multies-open --server TRUSTED_MULTIES_ORIGIN
 ```
 
 Use only a bridge origin you control and explicitly trust. The separate Multies
@@ -30,6 +31,12 @@ state and one-use code. Wrong/duplicate callbacks do not consume the intended
 attempt. Cancellation closes the listener. The native client follows no HTTP
 redirects and rejects browser cookies and oversized or scope-changing responses.
 
+The opt-in Linux X11 window offers a local Start, exact origin/key review,
+explicit Open browser and a short-lived own-device snapshot. Closing any phase
+joins its sign-in worker and closes its callback listener. Rows expire 30 seconds
+from read start. This is still an engineering presentation, not finished consumer
+first-run design. The ordinary home is unchanged.
+
 ## Current acceptance evidence
 
 - Race tests cover transport, callback ownership/cancellation, fresh policy
@@ -39,5 +46,5 @@ redirects and rejects browser cookies and oversized or scope-changing responses.
   and browser request refusal, invalid state and a closed daemon.
 - A real local Go client plus the real separately gated Multies app and Chrome
   exercises exact-key approval, callback, exchange, list and browser revocation.
-- This is not installed GUI acceptance, production deployment, mobile callback
+- This is not production deployment, mobile callback
   acceptance, VPN enrollment, cross-machine connectivity, or input authority.

@@ -69,6 +69,12 @@ func main() {
 	switch args[0] {
 	case "version":
 		fmt.Printf("mnet %s\n", version.Version)
+	case "multies-open":
+		origin, err := multiesSignInOrigin(args[1:])
+		must(err)
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		must(runMultiesWindow(ctx, hc, apiBase(), origin))
 	case "multies-signin":
 		origin, err := multiesSignInOrigin(args[1:])
 		must(err)
@@ -194,6 +200,7 @@ func usage() {
   mnet down
   mnet wait [--timeout 60s]  (observe current Up state; timeout does not stop startup)
   mnet status [--json]  (private local status; may include an approval link)
+  mnet multies-open --server TRUSTED_MULTIES_ORIGIN (experimental Linux X11 review; own approvals only)
   mnet multies-signin --server TRUSTED_MULTIES_ORIGIN (experimental; own approvals only, no VPN enrollment)
   mnet open [--layout FILE] (local engineering home; no sign-in or automatic connection)
   mnet devices  (read-only Linux X11 snapshot, manual refresh; no network/session changes)
