@@ -20,3 +20,9 @@ The linked-product checker now requires one arm64 Mach-O LC_BUILD_VERSION for iO
 Six synthetic parser tests cover every truncation of the minimal valid binary, wrong architecture/magic, device and other platform confusion, duplicate/missing platform declarations, signature/legacy commands and malformed counts/sizes/tool lists. They run normally and with Python optimization to ensure these parser checks do not disappear with assertions disabled. These are fixture tests only. The updated parser still needs a new exact-revision actual macOS linked-product run; no signed, launched or physical-device acceptance is implied. This does not close the containing-app entitlement/signing alignment gap or select a developer team.
 
 Mach-O platform and command definitions: https://github.com/apple-oss-distributions/cctools/blob/7a5450708479bbff61527d5e0c32a3f7b7e4c1d0/include/mach-o/loader.h .
+
+## Non-optional package identity checks
+
+A following local checker pass requires MH_EXECUTE, refusing an arm64 object, dynamic library or bundle even when its platform metadata resembles the simulator. Bundle identity/package/executable, extension point/principal, signature-directory and linked Go bridge/runtime checks now use explicit refusal rather than Python assertions. They remain enforced when Python runs with optimization.
+
+Twelve synthetic parser/package tests pass normally and optimized. Package fixtures exercise both app and extension mismatches, missing executables, unexpected signature directories, wrong provider roles and missing Go bridge/runtime symbols. Host inspection commands are mocked for these tests, so they do not establish actual linkage or signing. The full macOS linked-product check remains the separate required evidence. No app entitlement, signing team, provisioning, account or release setting changes in this slice.

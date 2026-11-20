@@ -6,16 +6,20 @@ import subprocess
 import struct
 import sys
 
+def require(condition, message):
+    if not condition:
+        raise ValueError(message)
+
+
 def validate_unsigned_simulator_macho(data):
     """Bounded thin arm64 simulator validation; no host tools or signing access."""
-    def require(condition, message):
-        if not condition:
-            raise ValueError(message)
 
     require(len(data) >= 32, 'truncated Mach-O64 header')
     require(data[:4] == b'\xcf\xfa\xed\xfe', 'expected thin little-endian Mach-O64')
     cpu, = struct.unpack_from('<I', data, 4)
     require(cpu == 0x100000c, 'expected arm64 CPU')
+    filetype, = struct.unpack_from('<I', data, 12)
+    require(filetype == 2, 'expected MH_EXECUTE product, not an object or library')
     ncmds, sizeofcmds = struct.unpack_from('<II', data, 16)
     end = 32 + sizeofcmds
     require(end <= len(data), 'invalid Mach-O command region')
@@ -49,26 +53,26 @@ def main(app):
     ]:
         with (bundle / 'Info.plist').open('rb') as stream:
             info = plistlib.load(stream)
-        assert info['CFBundleIdentifier'] == identifier
-        assert info['CFBundlePackageType'] == kind
-        assert info['CFBundleExecutable'] == executable
+        require(info['CFBundleIdentifier'] == identifier, 'bundle identifier mismatch')
+        require(info['CFBundlePackageType'] == kind, 'bundle package type mismatch')
+        require(info['CFBundleExecutable'] == executable, 'bundle executable mismatch')
         binary = bundle / executable
-        assert binary.is_file(), 'linked executable missing'
+        require(binary.is_file(), 'linked executable missing')
         file_result = subprocess.check_output(['file', str(binary)], text=True)
-        assert 'Mach-O' in file_result and 'arm64' in file_result, file_result
-        assert not (bundle / '_CodeSignature').exists(), 'unexpected signature directory'
+        require('Mach-O' in file_result and 'arm64' in file_result, 'file did not identify arm64 Mach-O')
+        require(not (bundle / '_CodeSignature').exists(), 'unexpected signature directory')
         # Inspect the actual executable load commands. codesign's failure text is
         # not a stable unsigned predicate (bundle validation may fail for other reasons).
         validate_unsigned_simulator_macho(binary.read_bytes())
         subprocess.run(['otool', '-L', str(binary)], check=True)
     with (extension / 'Info.plist').open('rb') as stream:
         ext_info = plistlib.load(stream)['NSExtension']
-    assert ext_info['NSExtensionPointIdentifier'] == 'com.apple.networkextension.packet-tunnel'
-    assert ext_info['NSExtensionPrincipalClass'] == 'MnetTunnel.PacketTunnelProvider'
+    require(ext_info['NSExtensionPointIdentifier'] == 'com.apple.networkextension.packet-tunnel', 'extension point mismatch')
+    require(ext_info['NSExtensionPrincipalClass'] == 'MnetTunnel.PacketTunnelProvider', 'extension principal mismatch')
     # Native Go core must be linked into the extension, not merely a Swift API stub.
     symbols = subprocess.check_output(['nm', str(extension / 'MnetTunnel')], text=True)
-    assert 'MobileNewNode' in symbols, 'Go Objective-C entry point not linked'
-    assert 'crosscall2' in symbols, 'Go runtime bridge not linked'
+    require('MobileNewNode' in symbols, 'Go Objective-C entry point not linked')
+    require('crosscall2' in symbols, 'Go runtime bridge not linked')
     print('PASS unsigned arm64 simulator app and embedded packet-tunnel executable linked with current Go core; no launch/signing/device/entitlement acceptance')
 
 
