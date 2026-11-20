@@ -6,6 +6,7 @@ import pathlib
 import signal
 import subprocess
 import tempfile
+import sys
 import time
 from gi.repository import Gio, GLib
 from PIL import Image
@@ -36,6 +37,7 @@ def poll(check, label):
 
 xserver = None
 daemon = None
+uninspectable = None
 pids = []
 old_environment = dict(os.environ)
 try:
@@ -152,7 +154,21 @@ try:
     assert state_before == {str(path.relative_to(state)): path.read_bytes() for path in state.rglob('*') if path.is_file() and not path.is_symlink()}, 'failure journey altered daemon state'
     os.environ.clear()
     os.environ.update(old_environment)
+    # A separate same-user process may deliberately deny ptrace-style /proc/exe
+    # inspection. It is unrelated to this prefix and must not block removal.
+    uninspectable = subprocess.Popen([sys.executable, '-c', 'import ctypes,time;assert ctypes.CDLL(None).prctl(4,0,0,0,0)==0;print("ready",flush=True);time.sleep(30)'], stdout=subprocess.PIPE, text=True)
+    assert uninspectable.stdout.readline().strip() == 'ready'
+    try:
+        (pathlib.Path('/proc') / str(uninspectable.pid) / 'exe').stat()
+    except PermissionError:
+        pass
+    else:
+        raise AssertionError('fixture process must actually refuse executable inspection')
     invoke('uninstall')
+    assert uninspectable.poll() is None, 'removal touched unrelated process'
+    uninspectable.terminate()
+    uninspectable.wait(timeout=3)
+    uninspectable = None
     assert not prefix.exists()
     assert state_before == {str(path.relative_to(state)): path.read_bytes() for path in state.rglob('*') if path.is_file() and not path.is_symlink()} and linked.is_symlink(), 'removal touched unrelated state'
     print('PASS actual clean-prefix binary install, desktop-file parser and launched native home from special-character path; no initial Mnet state/service/enrollment; actual installed daemon down/missing/stopped recovery; preserved fixture state; exact close; changed/extra/link refusals; unchanged removal', flush=True)
@@ -165,6 +181,9 @@ finally:
             os.waitpid(pid, 0)
         except ProcessLookupError:
             pass
+    if uninspectable is not None:
+        uninspectable.terminate()
+        uninspectable.wait(timeout=3)
     if daemon is not None:
         daemon.terminate()
         daemon.wait(timeout=5)
