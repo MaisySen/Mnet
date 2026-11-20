@@ -84,3 +84,11 @@ An immediate screenshot after Tab once retained the previous focused button, des
 
 
 The separate [current-peer chooser](desktop-peer-chooser.md), `mnet session browse`, can enter this existing view-only journey without typing an identifier. It grants no input and does not replace host-local view approval.
+
+## SIGTERM uses the owned shutdown path
+
+Both direct attended viewer entry and the current-peer chooser now treat SIGTERM as local owner cancellation, alongside Interrupt. This lets their existing shutdown path cancel/join pending local evidence or handshake work, close the native window and retire the exact viewing transport instead of immediate default process termination. Legacy engineering terminal commands are unchanged.
+
+A failing-first real chooser test terminated the process during a pending local request and observed a signal exit rather than joined cancellation. The fixed actual chooser waits for a request to enter, sends SIGTERM and requires clean bounded exit. Both-size actual direct view journeys now also terminate while host approval is pending and while streaming: no pending capture starts, no view-only injector is created, and the host's owned capture/UI joins with no surviving approval/session prompt. Preapproval blank and actual live pixels were inspected on both sizes. These are same-host disposable X11 fixtures, not physical device or SIGKILL cleanup guarantees.
+
+Thirty focused model race repetitions, complete chooser, both-size full actual view and ordinary pointer journeys, full uncached race/vet/build and CLI Darwin/Windows cross-builds pass. Active pointer-grant SIGTERM is not a newly tested case here; existing pointer release/revoke/End evidence remains separate. No admission, input scope, auto-reconnect, files or recording behavior changed.

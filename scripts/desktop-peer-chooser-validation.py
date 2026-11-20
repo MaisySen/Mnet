@@ -143,6 +143,11 @@ try:
   print('PASS actual selected peer '+change+' change refused before TCP',flush=True)
  server.status='up'
  server.peers=peers;server.delay=2;launch();phase('loading');action('key','Escape');assert client.wait(timeout=2)==0;client=None
+ # The actual process must handle SIGTERM as owner cancellation, joining
+ # the pending local evidence read rather than the OS killing it immediately.
+ server.delay=1;before=len(server.calls);launch();phase('loading')
+ poll(lambda:len(server.calls)>before,'SIGTERM pending local request');client.terminate()
+ assert client.wait(timeout=2)==0,'SIGTERM did not join chooser cancellation';client=None
  assert not server.bad
  print('PASS actual chooser:13 exact peers/three local pages, Home/End endpoints without reads/connections, explicit row+mode, mismatched gestures refused, refresh/empty/error/expiry clears selection, no polling, replaced/missing/renamed/moved/duplicate/non-Up peer refused before TCP, close cancels local read; synthetic local evidence only',flush=True)
 finally:

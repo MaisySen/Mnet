@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 
 	"fintex.au/mnet/internal/daemon"
@@ -156,7 +157,7 @@ func sessionDesktop(peer string, pointer bool) {
 		fatal(err.Error())
 		return
 	}
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	err = runDesktopWindow(ctx, display, func(ctx context.Context) (*session.Mux, error) {
 		access, name, err := prepareDesktopView(ctx, peer)
@@ -218,7 +219,7 @@ func prepareDesktopView(ctx context.Context, peer string) (*cliSessionAuthorizat
 // The chooser makes no transport. Closing it cancels and joins the read; an
 // explicit mode/peer choice then enters the existing one-attempt host journey.
 func sessionBrowse() {
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	choice, err := chooseDesktopPeer(ctx, client(stateDir), apiBase())
 	if err != nil {

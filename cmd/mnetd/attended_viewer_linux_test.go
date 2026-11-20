@@ -48,7 +48,7 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 		mode = "local-end"
 	}
 	switch mode {
-	case "local-end", "pending-close", "decline", "host-end", "authority-loss", "display-loss", "pointer":
+	case "local-end", "pending-close", "decline", "host-end", "authority-loss", "display-loss", "pointer", "pending-terminate", "live-terminate":
 	default:
 		t.Fatal("unsupported fixture case")
 	}
@@ -128,6 +128,9 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 			t.Fatal(err)
 		}
 	}
+	if err := os.WriteFile(filepath.Join(dir, "viewer.pid"), []byte(fmt.Sprint(cmd.Process.Pid)), 0600); err != nil {
+		t.Fatal(err)
+	}
 	stage("view")
 	host, err := listenAttendedSessionWithApproval(ln, peer.Name, 15*time.Second, func(h session.Hello, from net.Addr, conn net.Conn) (bool, string) {
 		if h.NodeName != "fixture-viewer" {
@@ -136,13 +139,13 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 		// No host capture/input exists until the real local prompt accepts.
 		return approveAttendedConnection(ctx, ui, fixturePeer, conn, current), "local viewing decision"
 	})
-	if mode == "pending-close" || mode == "decline" {
+	if mode == "pending-close" || mode == "pending-terminate" || mode == "decline" {
 		if err == nil {
 			host.Close()
 			t.Fatal("retired/declined view reached capture")
 		}
 		err = cmd.Wait()
-		if mode == "pending-close" && err != nil {
+		if (mode == "pending-close" || mode == "pending-terminate") && err != nil {
 			t.Fatal(err)
 		}
 		if mode == "decline" && err == nil {
@@ -232,10 +235,10 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 	go func() { exited <- cmd.Wait() }()
 	select {
 	case err = <-exited:
-		if (mode == "local-end" || mode == "pointer") && err != nil {
+		if (mode == "local-end" || mode == "pointer" || mode == "live-terminate") && err != nil {
 			t.Fatal(err)
 		}
-		if mode != "local-end" && mode != "pointer" && err == nil {
+		if mode != "local-end" && mode != "pointer" && mode != "live-terminate" && err == nil {
 			t.Fatal("failure path did not report viewer termination")
 		}
 	case <-ctx.Done():

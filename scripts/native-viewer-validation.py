@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """View-only desktop acceptance on two owned disposable X displays."""
-import subprocess,os,tempfile,pathlib,time,shutil
+import subprocess,os,tempfile,pathlib,time,shutil,signal
 from PIL import Image,ImageChops
 size=os.environ.get('MNET_VIEWER_DISPLAY_SIZE','1024x768x24')
 if size not in ('1024x768x24','2048x1536x24'):raise SystemExit('unsupported owned display size')
@@ -112,7 +112,7 @@ try:
  # Actual host app landmark, not a painted viewer-side mock.
  app=subprocess.Popen(['xmessage','-geometry','+100+200','-buttons','Fixture:0','Host desktop fixture\nView-only stream. No remote keyboard or pointer permission.'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
  try:
-  for mode in (['local-end'] if os.environ.get('MNET_VIEWER_CHOOSER')=='1' else ['local-end','pending-close','decline','host-end','authority-loss','display-loss']):
+  for mode in (['local-end'] if os.environ.get('MNET_VIEWER_CHOOSER')=='1' else ['local-end','pending-close','pending-terminate','live-terminate','decline','host-end','authority-loss','display-loss']):
    case=out/mode;case.mkdir()
    runenv=env|{'MNET_ATTENDED_ARTIFACTS':str(case),'MNET_VIEWER_CASE':mode}
    with open(case/'test.log','w') as log:
@@ -138,7 +138,9 @@ try:
        waiting_image=Image.open(case/'waiting.png').convert('RGB')
        assert waiting_image.getpixel((waiting_image.width-80,15))==(155,52,62),'local End pixels absent before approval'
        assert len(waiting_image.getcolors(1024*768) or [])<10,'preapproval image not blank'
-       if mode=='pending-close':
+       if mode=='pending-terminate':
+        os.kill(int((case/'viewer.pid').read_text()),signal.SIGTERM);captured=True
+       elif mode=='pending-close':
         subprocess.run(['xdotool','windowfocus',viewer,'mousemove','--window',viewer,'896' if size=='1024x768x24' else '960','30','click','1'],env=ve,check=True);captured=True
        elif mode=='decline':
         subprocess.run(['xdotool','windowfocus',host,'key','Return'],env=env,check=True);captured=True
@@ -173,6 +175,7 @@ try:
           time.sleep(.02)
          assert native_one,'native one-to-one window unavailable'
          subprocess.run(['xdotool','key','f','a','mousemove','--window',viewer,'896' if size=='1024x768x24' else '960','30','click','1'],env=ve,check=True)
+        elif mode=='live-terminate':os.kill(int((case/'viewer.pid').read_text()),signal.SIGTERM)
         elif mode=='host-end':subprocess.run(['xdotool','windowfocus',active,'key','Return'],env=env,check=True)
         elif mode=='authority-loss':(case/'withdraw-authority').write_text('withdraw')
         elif mode=='display-loss':xs[1].terminate();xs[1].wait()
