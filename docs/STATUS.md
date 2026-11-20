@@ -1,5 +1,27 @@
 # Mnet project status
 
+## Branded ordinary local entry, isolated branch only
+
+Local5e0f9da upgrades the actual installed home to embedded proportional Go
+fonts and the branded local-preview style. The three existing tool routes and
+separate permission boundaries are unchanged. The home makes no API reads,
+creates no identity and does not claim Multies setup is connected. No default
+origin or network registrar is installed. Actual route/return, disabled-layout,
+keyboard-cancellation and signal-join checks pass. Both built-ins-only and
+normal-font X11 servers render the readable home without state. Exact installed
+Gio desktop-entry, missing/down/stopped-daemon and unchanged-removal checks pass;
+actual installed/home/return/layout pixels were inspected. Full uncached Go
+race/vet and Windows/Darwin CLI source builds pass. No hosted or release claim.
+
+The exact installed5e0f9da plus Multies9f7245c pair also passes real system-browser
+signed-out login, matching-key approval, native List, timed clear, browser revoke
+and unchanged-prefix removal. Native List/expired pixels were inspected. This
+source contains the later mid-read credential-expiry refusal and inactive
+key-possession experiment. That experiment has no production import/caller;
+its tests also check the actual durable daemon key without network enrollment.
+It is not a reviewed registrar. See [home details](desktop-home.md#branded-local-home-later-isolated-branch)
+and [registration boundary](multies-registration-boundary.md).
+
 ## Isolated Multies list bridge and branded first-run preview, local only
 
 The separate Multies branch implements an off-by-default browser approval,
