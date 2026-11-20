@@ -1,5 +1,11 @@
 # Mnet project status
 
+## 5afa original hosted checkpoint accounted
+
+Original5afa0d82a90127d0760cfdfeb780bf1cb049150a passed all five original general CI jobs: https://github.com/MaisySen/Mnet/actions/runs/44756690699 . The actual session log passes live view-only SIGTERM at both display sizes, completed-click pointer SIGTERM and the existing native Desk/device/chooser journeys. This is the cancellation-ordering correction's own checkpoint; original447c remains failed and no original run was rerun.
+
+Original Pages passed all three jobs: https://github.com/MaisySen/Mnet/actions/runs/44756687871 . All seven intended served markdown resources exactly matched5afa. Actual macOS logs passed14checker fixtures normal/optimized and unsigned arm64 simulator app/extension linking. No launch, signing, physical-device or entitlement readiness is inferred. Go frame/STUN10second fuzz gates passed379536/631901executions. Chrome157.0.8103.78/Node22.23.5 passed84screen/width checks, first response under5seconds. The newer separated local source below still needs its own hosted accounting.
+
 ## Current local source checkpoint, hosted verification pending
 
 The current source adds a [viewer local-desktop geometry guard](desktop-native-viewer.md#a-changed-local-desktop-retires-the-viewer), [all-direction native Shared Desk entry and mapped return checks](shared-desk-engine.md#native-armed-entry-from-every-layout-direction), and [retained cleanup uncertainty after input-authority loss](shared-desk-engine.md#refused-input-retains-an-unconfirmed-cleanup-result). Independent received-pixel strip and pointer mapping oracles add bounded offline coverage. Exact refusal diagnostics and actual consumed-run replay checks remain required after invalid or stalled Desk input.
