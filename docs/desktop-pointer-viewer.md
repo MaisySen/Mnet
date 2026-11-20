@@ -116,3 +116,9 @@ Direct and chooser-launched journeys pass at both1024and2048host sizes. Current 
 The built attended-viewer fixture now binds the unchanged session port on a randomly selected127/8loopback address before publishing that address in its private local-API snapshot. It owns that listener for the full attempt and fails if binding is unavailable. This removes the shared127.0.0.1:5909fixture collision without changing any product port, CLI argument, discovery or authority rule. Randomness selects a disposable local address, not a peer identity.
 
 Actual direct and chooser pointer journeys now pass concurrently at each host size, retaining exact native click/scroll/key/owner checks. The complete view-only journey also passes using the same host helper. Fresh full uncached race/vet/build pass. This corrects the independently observed local fixture collision; the earlier collision remains a failed partial attempt, and this does not explain or repair any hosted Chrome startup failure.
+
+## Restored viewer dimensions cannot restore a pending click
+
+An additional actual pointer case holds a press, resizes the local viewer, restores its original dimensions and releases at the original pixel. The native click count must remain zero before a fresh press. The full journey still ends with exactly two intentional clicks, one scroll, zero keys and joined native owners. Direct and chooser journeys pass at both host sizes, with the two chooser sizes running concurrently using separate owned loopback hosts. No product geometry or permission behavior changed.
+
+The loopback-host change also passes concurrent complete large view-only and chooser view-only journeys. These successful fixture runs do not replace an original hosted checkpoint or physical input acceptance.

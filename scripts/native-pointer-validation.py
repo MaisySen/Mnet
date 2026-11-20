@@ -89,6 +89,16 @@ try:
  assert not (out/'native-clicks').exists() or (out/'native-clicks').read_text()=='0','Tab retained a pending native click'
  capture(displays[1],viewer,'canceled-clicks-before-fresh-input')
  print('PASS actual drag-out-and-back and local Tab cancel pending remote click without native input',flush=True)
+ # Even a transient local viewer resize invalidates the old image gesture.
+ # Restore dimensions before release so exact-pixel equality cannot hide it.
+ action(displays[1],'mousemove','--window',viewer,'120','580','mousedown','1','windowsize','--sync',viewer,'900','650')
+ time.sleep(.1)
+ action(displays[1],'windowsize','--sync',viewer,'960','672')
+ time.sleep(.1)
+ action(displays[1],'mousemove','--window',viewer,'120','580','mouseup','1')
+ time.sleep(.15)
+ assert not (out/'native-clicks').exists() or (out/'native-clicks').read_text()=='0','restored viewer dimensions reused an old native click'
+ print('PASS actual local viewer resize/restore cancels pending image click without native input',flush=True)
  click();poll(lambda:(out/'native-clicks').exists() and (out/'native-clicks').read_text()=='1','first actual native click')
  action(displays[1],'key','a','click','4');poll(lambda:(out/'native-scroll').exists() and (out/'native-scroll').read_text()=='1','actual scroll before local release')
  action(displays[1],'key','Tab','Tab','space');poll(lambda:'[pointer declined]' in title(),'keyboard local release');capture(displays[1],viewer,'released');click();time.sleep(.1)
