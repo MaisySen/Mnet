@@ -235,6 +235,12 @@ func serveDeskRun(ctx context.Context, spec desk.RunSpec, layout *desk.Compiled,
 	if err := reviewDeskRun(ctx, "recipient", spec.Binding, layout, live, ui); err != nil {
 		return err
 	}
+	geometry, err := newDeskRunGeometryGuard(ctx, spec)
+	if err != nil {
+		return err
+	}
+	defer func() { result = errors.Join(result, geometry.Close()) }()
+	ctx = geometry.ctx
 	window, err := startDeskRunStatus(ctx, spec, "waiting")
 	if err != nil {
 		return err

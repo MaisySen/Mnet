@@ -392,6 +392,39 @@ try:
   command(displays[0],'keyup','a','mouseup','3','mousemove','500','300','mousemove','1023','300');time.sleep(.05)
   if primary.poll() is None or recipient.poll() is None:raise AssertionError('restored keyboard map reactivated retired run')
   print('PASS actual '+changed_role+' keyboard-map change retires both launchers, releases recipient key/right-button before map restoration/source keyup, reclaims source and closes status/listener; no reactivation',flush=True)
+ # Approved waiting recipient must retire even before any peer/injector.
+ for waiting_mode,run_id in [('resize','cd'*32),('transient','ef'*32)]:
+  path=out/'recipient'/'run.json';fresh=json.loads(path.read_text());fresh['binding']['run']=run_id;path.write_text(json.dumps(fresh))
+  waiting=launch('recipient');approve('recipient',displays[1],name='-waiting-root-'+waiting_mode)
+  poll(lambda:'waiting for one exact-key' in (out/'recipient.log').read_text(),'waiting geometry recipient listener')
+  live_capture('recipient',displays[1],'waiting','-before-root-'+waiting_mode)
+  child_pids=set()
+  for children_file in (pathlib.Path('/proc')/str(waiting.pid)/'task').glob('*/children'):
+   try:child_pids.update(children_file.read_text().split())
+   except FileNotFoundError:pass
+  for pid in child_pids:
+   try:
+    if b'--mnet-private-desk-input-v1' in (pathlib.Path('/proc')/pid/'cmdline').read_bytes().split(b'\0'):raise AssertionError('waiting run already created native input child')
+   except FileNotFoundError:pass
+  original=size.rsplit('x',1)[0]
+  try:
+   subprocess.run(['xrandr','--output','screen','--off','--fb','800x600'],env=env|{'DISPLAY':displays[1]},check=True)
+   if waiting_mode=='transient':subprocess.run(['xrandr','--fb',original,'--output','screen','--mode',original],env=env|{'DISPLAY':displays[1]},check=True)
+   waiting.wait(timeout=3)
+   if waiting.returncode==0 or 'reviewed recipient geometry changed' not in (out/'recipient.log').read_text():raise AssertionError('waiting root loss did not preserve geometry error')
+   if live_window('recipient',displays[1]):raise AssertionError('waiting root change retained local status')
+   address=fresh['address'].rsplit(':',1)
+   with socket.socket() as probe:
+    probe.settimeout(.2)
+    if probe.connect_ex((address[0],int(address[1])))==0:raise AssertionError('waiting root change retained approved listener')
+   if waiting_mode=='resize':
+    subprocess.run(['import','-display',displays[1],'-window','root',str(out/'waiting-recipient-geometry-retired.png')],check=True)
+    assert Image.open(out/'waiting-recipient-geometry-retired.png').size==(800,600)
+  finally:subprocess.run(['xrandr','--fb',original,'--output','screen','--mode',original],env=env|{'DISPLAY':displays[1]},check=True)
+  if waiting.poll() is None:raise AssertionError('restored geometry reactivated waiting run')
+  replay=subprocess.run([str(out/'mnetd'),'-desk-run',str(path)],env=env|{'DISPLAY':displays[1]},capture_output=True,text=True,timeout=3)
+  if replay.returncode==0 or 'already consumed' not in replay.stderr:raise AssertionError('geometry-loss run replay allowed')
+  print('PASS actual approved waiting-recipient root '+waiting_mode+' retires status/listener before any peer/native input, preserves geometry error and consumed run; restoration cannot resume',flush=True)
  # Abruptly losing either actual launcher must retire its counterpart and
  # release recipient-owned transitions. This does not kill the native child;
  # that surviving child's own lease/EOF cleanup is exactly what is checked.
