@@ -183,7 +183,7 @@ func TestBridgeRefusesRedirectAndOversizedResponse(t *testing.T) {
 			}))
 			defer srv.Close()
 			b, _ := NewBridgeClient(srv.URL)
-			c := DeviceCredential{thumb("credential"), "workspace", thumb("key"), time.Now().Add(time.Minute)}
+			c := DeviceCredential{issuer: b, value: thumb("credential"), WorkspaceID: "workspace", DeviceKey: thumb("key"), ExpiresAt: time.Now().Add(time.Minute)}
 			if _, err := b.Devices(context.Background(), c); err == nil {
 				t.Fatal("unsafe response accepted")
 			}
@@ -191,5 +191,65 @@ func TestBridgeRefusesRedirectAndOversizedResponse(t *testing.T) {
 	}
 	if redirected.Load() != 0 {
 		t.Fatal("followed redirect with authority")
+	}
+}
+
+func TestBridgeCredentialStaysWithItsIssuingClient(t *testing.T) {
+	issuer, server, _ := bridgeFixture(t)
+	defer server.Close()
+	c, err := issuer.SignIn(context.Background(), thumb("key"), "linux", func(s string) error { return finishCallback(t, s, false) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	var received atomic.Int32
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { received.Add(1); http.Error(w, "not the issuer", 403) }))
+	defer other.Close()
+	wrong, err := NewBridgeClient(other.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = wrong.Authorize(context.Background(), c, List); err == nil {
+		t.Fatal("credential switched issuer")
+	}
+	if _, err = wrong.Devices(context.Background(), c); err == nil {
+		t.Fatal("device read switched issuer")
+	}
+	if received.Load() != 0 {
+		t.Fatalf("credential sent to another issuer %d times", received.Load())
+	}
+}
+
+func TestBridgeCredentialRejectsUnboundAndRecreatedClients(t *testing.T) {
+	issuer, server, checks := bridgeFixture(t)
+	defer server.Close()
+	c, err := issuer.SignIn(context.Background(), thumb("key"), "linux", func(s string) error { return finishCallback(t, s, false) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	recreated, err := NewBridgeClient(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, client := range []*BridgeClient{nil, recreated} {
+		if _, err = client.Authorize(context.Background(), c, List); err == nil {
+			t.Fatal("non-issuing client accepted credential")
+		}
+		if _, err = client.Devices(context.Background(), c); err == nil {
+			t.Fatal("non-issuing client read devices")
+		}
+	}
+	unbound := c
+	unbound.issuer = nil
+	if _, err = issuer.Authorize(context.Background(), unbound, List); err == nil {
+		t.Fatal("unbound credential accepted")
+	}
+	if _, err = issuer.Devices(context.Background(), unbound); err == nil {
+		t.Fatal("unbound credential read devices")
+	}
+	if checks.Load() != 0 {
+		t.Fatal("refused credential reached authorization server")
+	}
+	if _, err = issuer.Authorize(context.Background(), c, List); err != nil {
+		t.Fatal("original bound credential refused", err)
 	}
 }

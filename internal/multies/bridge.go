@@ -48,7 +48,11 @@ func NewBridgeClient(origin string) (*BridgeClient, error) {
 	return &BridgeClient{origin: strings.TrimSuffix(u.String(), "/"), http: &http.Client{Transport: tr, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
 
+// DeviceCredential is memory-only and bound to the exact client that exchanged
+// it. Constructing another client, even for the same origin, does not transfer
+// authority or allow a credential to be sent to a different server.
 type DeviceCredential struct {
+	issuer                 *BridgeClient
 	value                  string
 	WorkspaceID, DeviceKey string
 	ExpiresAt              time.Time
@@ -197,7 +201,7 @@ func (b *BridgeClient) SignIn(ctx context.Context, deviceKey, platform string, o
 	if ctx.Err() != nil || !validDeviceKey(response.Credential) || response.TokenType != "Bearer" || response.ExpiresIn < 1 || response.ExpiresIn > 600 || response.Audience != "mnet" || response.DeviceKey != deviceKey || response.WorkspaceID != result.workspace || response.InputAuthorized == nil || *response.InputAuthorized || len(response.Capabilities) != 1 || response.Capabilities[0] != List {
 		return deny()
 	}
-	return DeviceCredential{response.Credential, response.WorkspaceID, deviceKey, started.Add(time.Duration(response.ExpiresIn) * time.Second)}, nil
+	return DeviceCredential{issuer: b, value: response.Credential, WorkspaceID: response.WorkspaceID, DeviceKey: deviceKey, ExpiresAt: started.Add(time.Duration(response.ExpiresIn) * time.Second)}, nil
 }
 
 func (b *BridgeClient) call(ctx context.Context, method, path, token string, body any, out any) error {
@@ -269,7 +273,7 @@ type ApprovedDeviceList struct {
 func (b *BridgeClient) Devices(ctx context.Context, c DeviceCredential) (ApprovedDeviceList, error) {
 	var out ApprovedDeviceList
 	started := time.Now()
-	if !c.ExpiresAt.After(time.Now()) || !idPattern.MatchString(c.WorkspaceID) || !validDeviceKey(c.DeviceKey) || b.call(ctx, http.MethodGet, "/api/mnet/devices", c.value, nil, &out) != nil {
+	if b == nil || c.issuer != b || !c.ExpiresAt.After(time.Now()) || !idPattern.MatchString(c.WorkspaceID) || !validDeviceKey(c.DeviceKey) || b.call(ctx, http.MethodGet, "/api/mnet/devices", c.value, nil, &out) != nil {
 		return ApprovedDeviceList{}, ErrDenied
 	}
 	if out.WorkspaceID != c.WorkspaceID || !out.OwnDevicesOnly || out.InputAuthorized == nil || *out.InputAuthorized || len(out.Devices) > 100 {
@@ -309,7 +313,7 @@ func (b *BridgeClient) Verify(ctx context.Context, request Request) (Evidence, e
 // Authorize keeps the bearer value inside this transport; callers get only the
 // exact short-lived policy grant. This does not execute network enrollment.
 func (b *BridgeClient) Authorize(ctx context.Context, c DeviceCredential, capability Capability) (Grant, error) {
-	if !c.ExpiresAt.After(time.Now()) {
+	if b == nil || c.issuer != b || !c.ExpiresAt.After(time.Now()) {
 		return Grant{}, ErrDenied
 	}
 	key := c.DeviceKey
