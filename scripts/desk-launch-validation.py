@@ -523,7 +523,7 @@ try:
  # An authenticated exact-key peer with the exact approved hello can still
  # send invalid input. Refusal must release the already-held native ledger
  # before this fixture closes TLS, not merely on socket EOF or source keyup.
- for malformed,token in [('duplicate-key','e5'),('stale-sequence','e6'),('unknown-kind','e7')]:
+ for malformed,token in [('duplicate-key','e5'),('stale-sequence','e6'),('unknown-kind','e7'),('missing-heartbeat','e8'),('partial-frame','e9')]:
   recipient_path=out/'recipient'/'run.json';bad_spec=json.loads(recipient_path.read_text());bad_spec['binding']['run']=token*32;bad_spec['lifetime_seconds']=30;recipient_path.write_text(json.dumps(bad_spec))
   recipient=launch('recipient');approve('recipient',displays[1],name='-invalid-'+malformed)
   poll(lambda:'waiting for one exact-key' in (out/'recipient.log').read_text(),'invalid input recipient listening')
@@ -551,7 +551,9 @@ try:
    if malformed=='duplicate-key':message=dict(kind='input',input=dict(sequence=3,kind='key',action='down',code=38))
    elif malformed=='stale-sequence':message=dict(kind='input',input=dict(sequence=2,kind='pointer',action='move',x=10,y=10))
    else:message=dict(kind='clipboard')
-   send_frame(message);recipient.wait(timeout=4)
+   if malformed=='partial-frame':raw.sendall((4096).to_bytes(4,'big')+b'{')
+   elif malformed!='missing-heartbeat':send_frame(message)
+   recipient.wait(timeout=4)
    assert recipient.returncode!=0,'invalid authenticated input reported success'
    poll(lambda:keysbuttons(display_handles[1],1024)==(False,False),'native release before TLS close after '+malformed)
    assert not live_window('recipient',displays[1]),'invalid input retained status'
