@@ -161,3 +161,25 @@ func TestDeviceSnapshotAgeIncludesReadAndRejectsFutureOrExactExpiry(t *testing.T
 		t.Fatal("timestamp without status current")
 	}
 }
+
+func TestDevicePageNavigationBoundedAndLocal(t *testing.T) {
+	for _, tc := range []struct {
+		state       string
+		page, peers int
+		key         uint32
+		want        int
+		known       bool
+	}{
+		{"up", 0, 19, 0xff57, 2, true}, {"up", 2, 19, 0xff50, 0, true},
+		{"up", 0, 19, 0xff55, 0, true}, {"up", 2, 19, 0xff56, 2, true},
+		{"up", 1, 19, 0xff55, 0, true}, {"up", 1, 19, 0xff56, 2, true},
+		{"up", 0, 0, 0xff57, 0, true}, {"up", 0, 1, 0xff57, 0, true},
+		{"down", 1, 19, 0xff57, 0, true}, {"", 1, 19, 0xff56, 0, true},
+		{"up", 1, 19, 123, 1, false},
+	} {
+		got, known := devicePageForKey(tc.key, tc.state, tc.page, tc.peers)
+		if got != tc.want || known != tc.known {
+			t.Fatal(tc, got, known)
+		}
+	}
+}

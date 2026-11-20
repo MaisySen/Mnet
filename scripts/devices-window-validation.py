@@ -77,6 +77,14 @@ try:
  action('windowfocus',wid,'mousemove','--window',wid,'520','465','click','1');poll(lambda:title().endswith('page2'),'page two');capture('up-page-two')
  action('click','1');poll(lambda:title().endswith('page3'),'page three');capture('up-page-three')
  assert len(server.requests)==1,'pagination fetched daemon or polled'
+ # Snapshot-only page keys visit endpoints and clamp without an API read.
+ action('key','Home');poll(lambda:title().endswith('page1'),'Home first page')
+ action('key','Page_Down');poll(lambda:title().endswith('page2'),'PageDown next page')
+ action('key','End');poll(lambda:title().endswith('page3'),'End last page');capture('up-page-key-end')
+ action('key','Page_Down');assert title().endswith('page3'),'PageDown exceeded last page'
+ action('key','Page_Up');poll(lambda:title().endswith('page2'),'PageUp previous page')
+ action('key','End');poll(lambda:title().endswith('page3'),'End restores last page')
+ assert len(server.requests)==1,'page key fetched daemon'
  # Actual keyboard-only focus/activation. Tab skips unavailable controls;
  # Enter/Space paginate locally, never select a peer or fetch status.
  action('key','shift+Tab');time.sleep(.05)
@@ -135,7 +143,7 @@ try:
  count=len(server.requests)
  unavailable=subprocess.run([str(out/'mnet'),'--state',str(state),'devices'],env=env|{'DISPLAY':'not-a-display'},capture_output=True,timeout=5)
  assert unavailable.returncode!=0 and len(server.requests)==count,'missing X11 display contacted daemon or silently fell back'
- print('PASS actual built native Mnet device window: authenticated GET-only snapshots, Tab/Shift+Tab enabled focus and exact Enter/Space release, focus-loss/Tab cancel pending action, exact matched mouse targets with focus/expiry/snapshot cancellation, keyboard/mouse local pagination,19 peers/three pages, no pagination fetch/polling, Down/approval/error/malformed/loading/expiry erase old peers, repeated Refresh coalesced, Escape/Close/SIGTERM cancel or end cleanly, missing capability/display sends no request, unsupported resize ends; private synthetic fixture only',flush=True)
+ print('PASS actual built native Mnet device window: authenticated GET-only snapshots, Tab/Shift+Tab enabled focus and exact Enter/Space release, focus-loss/Tab cancel pending action, exact matched mouse targets with focus/expiry/snapshot cancellation, keyboard/mouse local pagination including Home/End/PageUp/PageDown,19 peers/three pages, no pagination fetch/polling, Down/approval/error/malformed/loading/expiry erase old peers, repeated Refresh coalesced, Escape/Close/SIGTERM cancel or end cleanly, missing capability/display sends no request, unsupported resize ends; private synthetic fixture only',flush=True)
 finally:
  if focus_fixture is not None and focus_fixture.poll() is None:focus_fixture.terminate();focus_fixture.wait(timeout=2)
  if client is not None and client.poll() is None:client.terminate();client.wait(timeout=4)

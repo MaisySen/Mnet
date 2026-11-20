@@ -183,7 +183,7 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 				return er
 			}
 		}
-		for n, line := range []string{message, "Tab / Shift+Tab: focus. Enter / Space: action. R: refresh. Rows expire after30s; no polling.", "No server URL, approval link, key, remote endpoint or raw daemon error is displayed."} {
+		for n, line := range []string{message, "Tab: focus. Enter/Space: action. PageUp/Down,Home/End: page. R: refresh. Expiry30s; no polling.", "No server URL, approval link, key, remote endpoint or raw daemon error is displayed."} {
 			if er := xproto.ImageText8Checked(c, byte(len(line)), xproto.Drawable(w), gc, 20, int16(402+n*18), line).Check(); er != nil {
 				return er
 			}
@@ -321,12 +321,13 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 					controls.pressKey(uint32(mapping.Keysyms[0]), enabledControls())
 				case 'r', 'R':
 					refresh()
-				case 0xff51:
+				case 0xff51, 0xff53, 0xff55, 0xff56, 0xff50, 0xff57:
 					controls.cancel()
-					page--
-				case 0xff53:
-					controls.cancel()
-					page++
+					state, peers := "", 0
+					if st != nil {
+						state, peers = st.Status, len(st.Peers)
+					}
+					page, _ = devicePageForKey(uint32(mapping.Keysyms[0]), state, page, peers)
 				default:
 					changed = false
 				}

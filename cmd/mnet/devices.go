@@ -89,6 +89,29 @@ func deviceText(s string, limit int) string {
 	}
 	return b.String()
 }
+
+// Page movement is local snapshot inspection. It cannot select a peer or read
+// the daemon, and an unavailable/non-Up snapshot has no peer pages.
+func devicePageForKey(key uint32, state string, page, peers int) (int, bool) {
+	end := 0
+	if state == "up" && peers > 0 {
+		end = (peers - 1) / devicePageSize
+	}
+	switch key {
+	case 0xff51, 0xff55:
+		page-- // Left/PageUp
+	case 0xff53, 0xff56:
+		page++ // Right/PageDown
+	case 0xff50:
+		page = 0 // Home
+	case 0xff57:
+		page = end // End
+	default:
+		return page, false
+	}
+	return min(max(page, 0), end), true
+}
+
 func devicePeerState(p daemon.PeerStatus) string {
 	switch p.HandshakeState {
 	case "unavailable", "clock-skew":
