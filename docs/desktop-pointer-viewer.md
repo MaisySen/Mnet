@@ -110,3 +110,9 @@ The10second bounded fuzz run passed8677executions and30focused race repetitions 
 The full actual pointer journey now travels away from a held left press and back to its exact starting pixel before release. That must not become a remote click. A separate held image press followed by local Tab and release must also leave the native click count at zero. A subsequent fresh click still works; the unchanged final host checks require exactly two completed clicks, one scroll, zero keys and all native owners joined.
 
 Direct and chooser-launched journeys pass at both1024and2048host sizes. Current large-host chooser pixels after the canceled gestures were inspected. One initial concurrent direct/chooser invocation correctly failed because the existing disposable fixture uses the fixed loopback session port5909; both chooser sizes were rerun sequentially and passed. No failed partial journey is counted as completion. No product behavior, permission or physical-input guarantee changed.
+
+## Concurrent native fixtures own separate loopback hosts
+
+The built attended-viewer fixture now binds the unchanged session port on a randomly selected127/8loopback address before publishing that address in its private local-API snapshot. It owns that listener for the full attempt and fails if binding is unavailable. This removes the shared127.0.0.1:5909fixture collision without changing any product port, CLI argument, discovery or authority rule. Randomness selects a disposable local address, not a peer identity.
+
+Actual direct and chooser pointer journeys now pass concurrently at each host size, retaining exact native click/scroll/key/owner checks. The complete view-only journey also passes using the same host helper. Fresh full uncached race/vet/build pass. This corrects the independently observed local fixture collision; the earlier collision remains a failed partial attempt, and this does not explain or repair any hosted Chrome startup failure.

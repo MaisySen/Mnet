@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -66,7 +67,19 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 		t.Fatal(err)
 	}
 	defer api.Close()
-	peer := daemon.SessionPeer{Name: "fixture-host", IPv4: "127.0.0.1", PublicKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}
+	// Keep the product session port, but own a separate loopback address for
+	// this disposable fixture. Concurrent viewers must not borrow its host.
+	var suffix [3]byte
+	if _, err = rand.Read(suffix[:]); err != nil {
+		t.Fatal(err)
+	}
+	address := fmt.Sprintf("127.%d.%d.%d", suffix[0], suffix[1], int(suffix[2])%254+1)
+	ln, err := net.Listen("tcp", net.JoinHostPort(address, "5909"))
+	if err != nil {
+		t.Fatal("owned fixture loopback session unavailable", err)
+	}
+	defer ln.Close()
+	peer := daemon.SessionPeer{Name: "fixture-host", IPv4: address, PublicKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}
 	server := &http.Server{Handler: localapi.RequireToken(token, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/localapi/status":
@@ -83,11 +96,6 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 	}))}
 	go server.Serve(api)
 	defer server.Close()
-	ln, err := net.Listen("tcp", "127.0.0.1:5909")
-	if err != nil {
-		t.Fatal("owned fixture session port unavailable", err)
-	}
-	defer ln.Close()
 	ui, err := newAttendedUI()
 	if err != nil {
 		t.Fatal(err)
