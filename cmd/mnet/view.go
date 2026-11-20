@@ -33,7 +33,23 @@ type viewDialResult struct {
 func runDesktopView(ctx context.Context, display desktopView, dial func(context.Context) (*session.Mux, error)) (runErr error) {
 	return runDesktopWindow(ctx, display, dial, false)
 }
-func runDesktopWindow(ctx context.Context, display desktopView, dial func(context.Context) (*session.Mux, error), pointer bool) (runErr error) {
+
+var errDesktopFirstScreen = errors.New("no usable screen arrived within 15 seconds; session ended")
+
+func runDesktopWindow(ctx context.Context, display desktopView, dial func(context.Context) (*session.Mux, error), pointer bool) error {
+	return runDesktopWindowWithFirstScreenWait(ctx, display, dial, pointer, 15*time.Second)
+}
+
+// The first-screen bound starts after host admission, not while the person is
+// deciding whether to allow viewing. It never retries a transport or approval.
+func runDesktopWindowWithFirstScreenWait(ctx context.Context, display desktopView, dial func(context.Context) (*session.Mux, error), pointer bool, firstScreenWait time.Duration) (runErr error) {
+	var firstScreenTimer *time.Timer
+	var firstScreenDeadline <-chan time.Time
+	defer func() {
+		if firstScreenTimer != nil {
+			firstScreenTimer.Stop()
+		}
+	}()
 	var pointerView desktopPointerView
 	if pointer {
 		var ok bool
@@ -84,6 +100,11 @@ func runDesktopWindow(ctx context.Context, display desktopView, dial func(contex
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-firstScreenDeadline:
+			if ctx.Err() != nil {
+				return nil
+			}
+			return errDesktopFirstScreen
 		case r := <-result:
 			joined = true
 			// A canceled owner can close its transport before this select
@@ -100,6 +121,8 @@ func runDesktopWindow(ctx context.Context, display desktopView, dial func(contex
 			}
 			mux = r.mux
 			closed = mux.Closed()
+			firstScreenTimer = time.NewTimer(firstScreenWait)
+			firstScreenDeadline = firstScreenTimer.C
 			control = session.NewViewerControl(nil)
 			defer control.End()
 			viewer = session.ConnectViewerWithOptions(mux, session.ViewerOptions{Control: control, OnFrame: func(fr session.ScreenFrame) {
@@ -142,6 +165,10 @@ func runDesktopWindow(ctx context.Context, display desktopView, dial func(contex
 			}
 			if err := display.Frame(frame); err != nil {
 				return err
+			}
+			if firstScreenTimer != nil {
+				firstScreenTimer.Stop()
+				firstScreenDeadline = nil
 			}
 		case <-tick.C:
 			end, err := display.Poll()
@@ -233,13 +260,18 @@ func prepareDesktopView(ctx context.Context, peer string) (*cliSessionAuthorizat
 func sessionBrowse() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	choice, err := chooseDesktopPeer(ctx, client(stateDir), apiBase())
-	if err != nil {
+	if err := browseDesktopOnce(ctx, client(stateDir), apiBase()); err != nil {
 		fatal(err.Error())
-		return
+	}
+}
+
+func browseDesktopOnce(ctx context.Context, hc *http.Client, base string) error {
+	choice, err := chooseDesktopPeer(ctx, hc, base)
+	if err != nil {
+		return err
 	}
 	if choice == nil {
-		return
+		return nil
 	}
 	var display desktopView
 	if choice.Pointer {
@@ -248,17 +280,13 @@ func sessionBrowse() {
 		display, err = newDesktopView(choice.Peer.Name)
 	}
 	if err != nil {
-		fatal(err.Error())
-		return
+		return err
 	}
-	err = runDesktopWindow(ctx, display, func(ctx context.Context) (*session.Mux, error) {
+	return runDesktopWindow(ctx, display, func(ctx context.Context) (*session.Mux, error) {
 		access, name, err := prepareDesktopChoice(ctx, *choice)
 		if err != nil {
 			return nil, err
 		}
 		return dialSessionTryAuthorizedContext(ctx, access, name)
 	}, choice.Pointer)
-	if err != nil {
-		fatal(err.Error())
-	}
 }

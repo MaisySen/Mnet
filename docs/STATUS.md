@@ -1,5 +1,19 @@
 # Mnet project status
 
+## Native entry and first-screen recovery, hosted verification pending
+
+The new [local engineering home](desktop-home.md) opens the actual device snapshot, attended peer chooser or supplied offline arrangement inspector, and returns after the selected child closes. It makes no daemon calls itself and carries no prior peer/mode/approval into a new journey. The screen explicitly states that Multies setup is not connected. This is useful engineering entry, not installed consumer setup or integrated Shared Desk pairing.
+
+The viewer now ends an admitted session if no usable first screen arrives within15seconds. This starts after host approval, not while the host is deciding, and disarms after a complete frame. Actual silent-capture acceptance shows the old viewer/host close and a fresh home failure message. Full actual home/chooser/view/pointer/decline/revoke/End passes with exact native counts and joined owners. Fresh full uncached race/vet/build passes. The two earlier concurrent blank canvases did not reproduce with the bounded capture diagnostics; their cause remains unknown. This timeout bounds indefinite waiting, it does not explain or repair those failures or the Chrome startup failures. Physical/platform/identity gates remain open.
+
+## 9a62 original hosted checkpoint accounted, Chrome startup failed
+
+Original9a62b863a468b87be70373bdc1793ee8a30b078a general CI failed in the Go job's first Chrome Target.getTargets request: https://github.com/MaisySen/Mnet/actions/runs/44777852403 . The unchanged15second bound expired with zero response bytes, completed write callback, Chrome157.0.8103.78/Node22.23.5 alive, uninterruptible/I/O-wait samples and no known sandbox/profile-lock/crash/debug-pipe signature. Cause unknown, no browser screen checks completed, no rerun or later-pass repair claim.
+
+The four other original jobs succeeded. Actual session logs pass both-size native viewer/chooser and the equal/mixed Shared Desk status-unmap/transient cleanup journeys. Actual macOS logs pass14checker fixtures normal/optimized and unsigned arm64 simulator app/extension linking, not launch/signing/device/entitlement acceptance. Unchanged10second frame/STUN fuzz gates passed516860/1000393executions before Chrome failed.
+
+Original Pages passed all three jobs: https://github.com/MaisySen/Mnet/actions/runs/44777850324 . All3intended served markdown resources exactly matched9a62: RELEASES, STATUS and shared-desk-engine. No automatic native workflow dispatched. The newer local source above remains independent and needs its own hosted accounting. Originalc988/447c/0838/c96dfailures, held daemon publication and all release/Multies/account boundaries remain unchanged.
+
 ## New local image and fixture checkpoint, hosted verification pending
 
 A failing-first downscale test reproduced a nonzero-origin RGBA panic. The source now includes the rectangle origin when averaging blocks; independent deterministic/fuzz oracles cover signed origins and padded strides. Current native capture creates zero-origin images, so this is not a cause established for blank canvases. Actual large-host view-only/pointer journeys pass. More [native pointer gesture checks](desktop-pointer-viewer.md#actual-canceled-mouse-gestures-stay-local), isolated loopback fixture hosts, bounded first-capture evidence, [transport admission checks](shared-desk-engine.md#transport-admission-needs-more-than-a-familiar-key) and no-successor-ACK checks add separate engineering coverage.

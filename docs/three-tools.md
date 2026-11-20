@@ -12,6 +12,8 @@ Updated 2026-11-20, Australia/Sydney. This is the engineering product map, not a
 
 Shared transport or helpers must not erase these boundaries. New consumer adapters must preserve each tool's own admission, local consent, lifetime, visible state, withdrawal and actual resource teardown. No permission is obtained merely because a different tool is already running.
 
+A new [local engineering home](desktop-home.md) gives these existing windows an explicit return path. It is not first-run sign-in or a consumer eligibility gate.
+
 ## Implemented engineering journeys
 
 These paths are not the intended consumer setup. They require the prerequisites and limits in their owning guides.

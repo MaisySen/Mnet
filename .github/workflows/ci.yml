@@ -161,6 +161,12 @@ jobs:
           MNET_VIEWER_CHOOSER=1 MNET_VIEWER_DISPLAY_SIZE=2048x1536x24 python3 scripts/native-viewer-validation.py
           MNET_VIEWER_CHOOSER=1 python3 scripts/native-pointer-validation.py
           MNET_VIEWER_CHOOSER=1 MNET_VIEWER_DISPLAY_SIZE=2048x1536x24 python3 scripts/native-pointer-validation.py
+      - name: complete local entry and bounded first-screen failure (disposable X11)
+        run: |
+          python3 scripts/home-validation.py
+          MNET_VIEWER_HOME=1 python3 scripts/native-pointer-validation.py
+          MNET_VIEWER_HOME=1 MNET_VIEWER_DISPLAY_SIZE=2048x1536x24 python3 scripts/native-pointer-validation.py
+          python3 scripts/first-screen-validation.py
       - name: native control visual admission (unsupported depth, no daemon reads)
         run: python3 scripts/native-controls-visual-validation.py
       - name: offline Shared Desk arrangement inspector (file only, zero daemon calls)
@@ -184,6 +190,11 @@ jobs:
           name: session-failure-diagnostics
           retention-days: 7
           path: |
+            /tmp/mnet-home.*/*.png
+            /tmp/mnet-home.*/client.log
+            /tmp/mnet-first-screen.*/*.png
+            /tmp/mnet-first-screen.*/test.log
+            /tmp/mnet-first-screen.*/viewer.log
             /tmp/mnet-controls-visual.*/*.png
             /tmp/mnet-controls-visual.*/*.log
             /tmp/mnet-desk-preview.*/*.png

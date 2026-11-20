@@ -49,7 +49,7 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 		mode = "local-end"
 	}
 	switch mode {
-	case "local-end", "pending-close", "decline", "host-end", "authority-loss", "display-loss", "pointer", "pending-terminate", "live-terminate", "pending-root-shrink", "live-root-shrink", "live-root-transient", "pointer-root-shrink", "pointer-root-transient":
+	case "local-end", "pending-close", "decline", "host-end", "authority-loss", "display-loss", "pointer", "pending-terminate", "live-terminate", "pending-root-shrink", "live-root-shrink", "live-root-transient", "pointer-root-shrink", "pointer-root-transient", "first-screen-stall":
 	default:
 		t.Fatal("unsupported fixture case")
 	}
@@ -112,6 +112,9 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 	args := []string{"--state", state, "session", entry, peer.Name}
 	if os.Getenv("MNET_VIEWER_CHOOSER") == "1" {
 		args = []string{"--state", state, "session", "browse"}
+	}
+	if os.Getenv("MNET_VIEWER_HOME") == "1" {
+		args = []string{"--state", state, "open"}
 	}
 	cmd := exec.CommandContext(ctx, viewerBin, args...)
 	cmd.Env = append([]string{}, os.Environ()...)
@@ -228,7 +231,7 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 	}
 	defer safety.Close()
 	var injected atomic.Int32
-	capture := &observedViewCapture{Capturer: rawCapture, t: t}
+	capture := &observedViewCapture{Capturer: rawCapture, t: t, suppress: mode == "first-screen-stall"}
 	_, sessionDone := serveAttendedSession(ctx, host, fixturePeer, pointer, ui, capture, func() (session.Injector, error) {
 		injected.Add(1)
 		if pointer {
@@ -246,10 +249,11 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 	go func() { exited <- cmd.Wait() }()
 	select {
 	case err = <-exited:
-		if (mode == "local-end" || mode == "pointer" || mode == "live-terminate") && err != nil {
+		cleanExit := mode == "local-end" || mode == "pointer" || mode == "live-terminate" || mode == "first-screen-stall" && os.Getenv("MNET_VIEWER_HOME") == "1"
+		if cleanExit && err != nil {
 			t.Fatal(err)
 		}
-		if mode != "local-end" && mode != "pointer" && mode != "live-terminate" && err == nil {
+		if !cleanExit && err == nil {
 			t.Fatal("failure path did not report viewer termination")
 		}
 	case <-ctx.Done():
@@ -295,9 +299,10 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 
 type observedViewCapture struct {
 	session.Capturer
-	deltas atomic.Int32
-	calls  atomic.Int32
-	t      *testing.T
+	deltas   atomic.Int32
+	calls    atomic.Int32
+	t        *testing.T
+	suppress bool
 }
 
 func (c *observedViewCapture) CaptureDelta() ([]byte, []session.Tile, error) {
@@ -310,6 +315,9 @@ func (c *observedViewCapture) CaptureDelta() ([]byte, []session.Tile, error) {
 		c.t.Log("capture diagnostic: first call started")
 	}
 	started := time.Now()
+	if c.suppress {
+		return nil, nil, nil
+	}
 	full, tiles, err := source.CaptureDelta()
 	if c.t != nil && (call == 1 || err != nil) {
 		// Fixed aggregate evidence only. Never log desktop content, image

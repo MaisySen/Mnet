@@ -43,7 +43,12 @@ try:
  env=os.environ|{'DISPLAY':displays[0],'NO_AT_BRIDGE':'1','DBUS_SESSION_BUS_ADDRESS':'unix:path=/nonexistent-mnet-fixture','MNET_NATIVE_VIEWER_TEST':'1','MNET_ATTENDED_X11_TEST':'1','MNET_ATTENDED_ARTIFACTS':str(out),'MNET_VIEWER_EXECUTABLE':str(out/'mnet'),'MNET_ATTENDED_TEST_EXECUTABLE':str(out/'mnetd'),'MNET_VIEWER_DISPLAY':displays[1],'MNET_VIEWER_CASE':('pointer-root-'+root_change if root_change else 'pointer')}
  env.pop('WAYLAND_DISPLAY',None);env.pop('XDG_SESSION_TYPE',None)
  with open(out/'test.log','w') as log:test=subprocess.Popen([str(out/'host.test'),'-test.run=^TestAttendedX11BuiltPointerClient$','-test.v','-test.timeout=30s'],env=env,stdout=log,stderr=log)
- if os.environ.get('MNET_VIEWER_CHOOSER')=='1':
+ if os.environ.get('MNET_VIEWER_HOME')=='1':
+  home=poll(lambda:window(displays[1],'^Mnet: three tools'),'engineering home')
+  subprocess.run(['import','-display',displays[1],'-window',home,str(out/'home-before-session.png')],check=True)
+  assert not window(displays[0],'^Mnet: allow viewing'),'home implicitly requested view'
+  action(displays[1],'windowfocus',home,'key','Tab','Tab','Return')
+ if os.environ.get('MNET_VIEWER_CHOOSER')=='1' or os.environ.get('MNET_VIEWER_HOME')=='1':
   chooser=poll(lambda:window(displays[1],'^Mnet Remote Desktop: choose \[ready\]'),'current peer chooser')
   subprocess.run(['import','-display',displays[1],'-window',chooser,str(out/'chooser-ready.png')],check=True)
   assert not window(displays[0],'^Mnet: allow viewing'),'chooser implicitly requested view'
@@ -147,7 +152,15 @@ try:
   poll(lambda:'[pointer revoked]' in title(),'host revoke');capture(displays[1],viewer,'revoked');click();time.sleep(.1)
   action(displays[1],'key','Tab')
   poll(lambda:focused_pixels(viewer,'keyboard-end-focus',843),'actual End focus ring pixels')
-  action(displays[1],'key','space');assert test.wait(timeout=5)==0,(out/'test.log').read_text()
+  action(displays[1],'key','space')
+  if os.environ.get('MNET_VIEWER_HOME')=='1':
+   home=poll(lambda:window(displays[1],'^Mnet: three tools'),'home after joined session')
+   assert not window(displays[1],'^Mnet pointer only:'),'old viewer survived home return'
+   assert not window(displays[0],'^Mnet: desktop sharing'),'host session survived home return'
+   subprocess.run(['import','-display',displays[1],'-window',home,str(out/'home-after-session.png')],check=True)
+   action(displays[1],'windowfocus',home,'key','Escape')
+   print('PASS full home-to-chooser-to-host-approved pointer journey and fresh home return; no surviving host/view window',flush=True)
+  assert test.wait(timeout=5)==0,(out/'test.log').read_text()
   print((out/'test.log').read_text(),flush=True)
   print('PASS built pointer viewer: host-enforced pointer-only approval, two actual native clicks and scroll, keyboard Ask/Release/End, local release/focus loss, host decline/revoke, no keyboard/held buttons, joined End',flush=True)
 finally:
