@@ -555,6 +555,9 @@ try:
    elif malformed!='missing-heartbeat':send_frame(message)
    recipient.wait(timeout=4)
    assert recipient.returncode!=0,'invalid authenticated input reported success'
+   reason={'duplicate-key':'duplicate press','stale-sequence':'stale input sequence','unknown-kind':'unsupported desk message','missing-heartbeat':'desk channel interrupted','partial-frame':'desk channel interrupted'}[malformed]
+   assert reason in (out/'recipient.log').read_text(),'invalid input ended for an unrelated reason'
+
    poll(lambda:keysbuttons(display_handles[1],1024)==(False,False),'native release before TLS close after '+malformed)
    assert not live_window('recipient',displays[1]),'invalid input retained status'
    with socket.socket() as probe:
@@ -562,6 +565,9 @@ try:
     assert probe.connect_ex((address[0],int(address[1])))!=0,'invalid input kept listener'
    assert (out/'recipient'/'runs'/(token*32)).exists(),'invalid input lost consumed token'
   finally:raw.close()
+  replay=subprocess.run([str(out/'mnetd'),'-desk-run',str(recipient_path)],env=env|{'DISPLAY':displays[1]},capture_output=True,text=True,timeout=3)
+  assert replay.returncode!=0 and 'already consumed' in replay.stderr,'invalid-input run replay was not refused'
+  assert not live_window('recipient',displays[1]),'invalid-input replay retained status'
   print('PASS actual exact-key/exact-run '+malformed+' retires native held key/right-button before client TLS close, closes status/listener and retains consumed run',flush=True)
  # First-connection failures consume approval, not an invitation to retry.
  # All certificates/keys are generated only for these disposable processes.
