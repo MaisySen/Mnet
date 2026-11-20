@@ -1,5 +1,13 @@
 # Mnet project status
 
+## c988 original hosted checkpoint accounted, Chrome check failed
+
+Originalc988a37e28e632e0614d4d19fbc4e66b866ee491 general CI failed in the Go job's actual Chrome prototype verification: https://github.com/MaisySen/Mnet/actions/runs/44767381965 . The first Target.getTargets request timed out after the unchanged15second bound with no response bytes. Chrome157.0.8103.78/Node22.23.5 remained alive; diagnostics recorded an uninterruptible child and I/O-wait sample, a completed request-write callback and no known sandbox/profile-lock/crash/debug-pipe signature. The cause remains unresolved. No browser screen checks completed, no hosted rerun was used and no later local pass repairs this original failure.
+
+The other four original jobs passed, including full actual session validation and macOS. The session log includes both-size viewer geometry retirement, exact completed-click pointer cancellation and native Desk/launcher journeys. Actual macOS logs pass14checker fixtures normal/optimized and unsigned arm64 simulator app/extension linking, not launch/signing/device/entitlement acceptance. Unchanged10second frame/STUN gates passed509635/1007187executions before the Chrome failure.
+
+Original Pages passed all three jobs: https://github.com/MaisySen/Mnet/actions/runs/44767380581 . Five intended served markdown resources exactly matchedc988: RELEASES, STATUS, desktop-native-viewer, desktop-pointer-viewer and shared-desk-engine. The independent local Desk followups below still need their own hosted checkpoint. No automatic native workflow dispatched. Original447c/0838/c96dfailures and held daemon publication remain separate; no release, Multies or account change.
+
 ## New local Shared Desk source, hosted verification pending
 
 The next separated source adds terminal retirement when the local status is hidden, including immediate unmap/remap, and retains failed-release evidence in later refused recipient calls. Failing-first regressions reproduced both omissions. Complete equal/mixed actual native/TLS and launcher journeys pass, including nineteen malformed/stalled/input cases, eight hidden-status cases and foreign native-state ownership. Fragmented frame, malformed ACK and special-file/replay-object tests add bounded model/filesystem evidence. Details and limits are in [the Shared Desk engineering record](shared-desk-engine.md#hidden-status-is-terminal-not-background-permission).
