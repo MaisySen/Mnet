@@ -1,5 +1,36 @@
 # Mnet project status
 
+## Isolated Multies list bridge and branded first-run preview, local only
+
+The separate Multies branch implements an off-by-default browser approval,
+PKCE/loopback exchange, live own-device list check and revocation. The separate
+Mnet branch has an opt-in branded first-run/device window and private local
+identity preparation. The ordinary desktop-menu home and production defaults
+have not been switched to this bridge. Nothing from these branches is deployed.
+
+Exact installed local binaries pass fresh daemon -> explicit key preparation ->
+native key review -> signed-out real local Multies login -> original approval ->
+native device snapshot -> expiry -> browser revoke. System-browser opening is
+captured as argv and opened in controlled Chrome; a real installed OS browser
+launch is not claimed. Native close checks join the worker and retire the
+listener at initial, pre-browser and waiting phases. Embedded-font rendering
+fits every state and page, including worst-case key width. Current pixels are
+inspected, not inferred from exported files.
+
+This is **list only**, not completed setup. Native PKCE possession does not prove
+possession of the supplied WireGuard private key. No network registrar,
+enrollment, persistent sign-in, cross-device trust or remote input grant is
+installed. A production origin, live migrations/deployment, mobile callbacks,
+physical cross-platform acceptance and signing/release remain unresolved or out
+of scope. See [the exact boundary](multies-device-list-bridge.md).
+
+Local uncached Go race, vet and Windows/macOS source builds pass. Multies bridge,
+login-return, invite, MCP, mobile-handoff and session regressions pass 79 tests;
+separate strict frontend/server checks pass. Full repository/test-graph typecheck
+exceeds the local memory ceiling and is not passed. Prior original hosted
+failures remain unchanged; there is no new hosted or release claim.
+
+
 ## 0877037 original hosted checkpoint accounted, frame-fuzz deadline failed
 
 Original08770379f6bdbdd19160c2a66adeb5bf26e8be51 session-validation passed, including the actual installed source-prefix/Gio/missing-down-stopped/token-mode journey, both running executables refusing removal, held guards blocking later exec, unrelated uninspectable-process survival and final unchanged removal. Complete home routing, both-size pointer-from-home, silent15second first-screen recovery, equal/mixed generated Desk input/cleanup and final device-window acceptance passed. This is the removal correction's own hosted evidence, not repair of original69cc.
