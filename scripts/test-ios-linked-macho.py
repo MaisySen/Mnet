@@ -86,7 +86,7 @@ class LinkedProduct(unittest.TestCase):
                     NSExtensionPrincipalClass='MnetTunnel.PacketTunnelProvider')
             (bundle / 'Info.plist').write_bytes(plistlib.dumps(info))
             (bundle / executable).write_bytes(binary())
-        self.symbols = 'MobileNewNode crosscall2'
+        self.symbols = '0000000100001000 T _MobileNewNode\n0000000100002000 T _crosscall2\n'
 
     def output(self, args, **kwargs):
         if args[0] == 'file':
@@ -143,6 +143,27 @@ class LinkedProduct(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.check()
             (bundle / executable).write_bytes(binary())
+
+    def test_undefined_or_similar_native_symbols_refuse(self):
+        for symbols in (
+                '                 U _MobileNewNode\n0000000100002000 T _crosscall2',
+                '0000000100001000 T _MobileNewNodeSuffix\n0000000100002000 T _crosscall2',
+                '0000000100001000 T _MobileNewNode\n0000000100002000 T _prefix_crosscall2',
+                '0000000100001000 D _MobileNewNode\n0000000100002000 T _crosscall2',
+                '0000000100001000 T _MobileNewNode\n                 U _crosscall2'):
+            self.symbols = symbols
+            with self.subTest(symbols=symbols), self.assertRaises(ValueError):
+                self.check()
+
+    def test_native_symbols_require_hex_text_definitions(self):
+        valid = self.symbols
+        self.symbols = valid + '                 U _unrelated\n'
+        self.check()
+        self.symbols = valid.replace(' T ', ' t ')
+        self.check()
+        self.symbols = valid.replace('0000000100001000', 'not-an-address')
+        with self.assertRaises(ValueError):
+            self.check()
 
     def test_missing_native_bridge_refuses(self):
         for symbols in ('', 'MobileNewNode', 'crosscall2'):

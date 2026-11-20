@@ -45,6 +45,22 @@ def validate_unsigned_simulator_macho(data):
     require(platforms == [7], 'expected exactly one iOS simulator build platform')
 
 
+def require_native_text_symbols(output):
+    # Exact nm text definitions, never an undefined reference, data export or
+    # another symbol whose spelling merely contains the expected bridge name.
+    required = {'_MobileNewNode', '_crosscall2'}
+    defined = set()
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) == 3 and fields[1] in ('T', 't'):
+            try:
+                int(fields[0], 16)
+            except ValueError:
+                continue
+            defined.add(fields[2])
+    require(required <= defined, 'exact Go native bridge text definitions not linked')
+
+
 def main(app):
     extension = app / 'PlugIns/MnetTunnel.appex'
     for bundle, identifier, kind, executable in [
@@ -71,8 +87,7 @@ def main(app):
     require(ext_info['NSExtensionPrincipalClass'] == 'MnetTunnel.PacketTunnelProvider', 'extension principal mismatch')
     # Native Go core must be linked into the extension, not merely a Swift API stub.
     symbols = subprocess.check_output(['nm', str(extension / 'MnetTunnel')], text=True)
-    require('MobileNewNode' in symbols, 'Go Objective-C entry point not linked')
-    require('crosscall2' in symbols, 'Go runtime bridge not linked')
+    require_native_text_symbols(symbols)
     print('PASS unsigned arm64 simulator app and embedded packet-tunnel executable linked with current Go core; no launch/signing/device/entitlement acceptance')
 
 

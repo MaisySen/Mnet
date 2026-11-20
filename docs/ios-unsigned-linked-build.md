@@ -31,3 +31,9 @@ Twelve synthetic parser/package tests pass normally and optimized. Package fixtu
 ## Exact platform gate hosted evidence
 
 The original e454 macOS job built and inspected the actual unsigned app/embedded extension successfully with the exact arm64 iOS Simulator platform7 gate: https://github.com/MaisySen/Mnet/actions/runs/44728731888/job/136262703837 . The six synthetic parser tests also passed normally and optimized. This supersedes the exact-platform section's pending status for e454 only. The following MH_EXECUTE/nonassert package-check slice remains newer and still needs its own actual linked-product run. No signing, launch, entitlement or physical-device acceptance is implied. Local Linux inspection can run the twelve Python parser/package fixtures but cannot run xcrun Swift/SDK/link checks; no local Apple build success is claimed.
+
+## Defined native symbols, not substring presence
+
+A following checker slice requires exact `_MobileNewNode` and `_crosscall2` text definitions in the extension's nm output. Mere undefined references, data symbols and similarly named prefix/suffix symbols no longer count as linked Go bridge/runtime evidence. The checker accepts an addressed text definition, not a matching word somewhere in the output.
+
+A failing-first package test accepted five invalid synthetic symbol listings under the earlier substring check. Fourteen parser/package tests now pass normally and with Python optimization, alongside the unsigned-build safety contract and full uncached race/vet/build. Host commands remain mocked in package fixtures. This stricter defined-symbol checker still requires a fresh exact-revision actual macOS linked product; prior actual e454 linkage success does not validate the newer checker. No native build was claimed from local Linux, and no signature/team/entitlement/account/release setting changed.
