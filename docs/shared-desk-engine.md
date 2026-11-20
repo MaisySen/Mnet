@@ -281,3 +281,9 @@ The target uses only an in-memory fixture, never TLS, native capture/injection o
 A separate structured offline geometry target now compares the integer mapper with an independent arbitrary-precision rational oracle, without using compiled links or production mapping helpers. Generated unequal dimensions/pixel densities, near-limit sizes and partial-edge offsets cover all four orientations, both directions, first/middle/last and another source-native pixel. Candidate presence, exact target identity and native coordinates must all match. The oracle tests original geometry, never projected paint or an active edge arrival.
 
 Six seeds and thirty focused race repetitions pass, alongside a10second local mutation run with no failing input and full uncached race/vet/build. No production geometry, admission or hosted gate changed. This is bounded offline arithmetic evidence, not native DPI/monitor alignment or physical Shared Desk acceptance.
+
+## Recipient-directed SIGTERM acceptance
+
+The actual two-launcher fixture now separately terminates the recipient while it owns a remotely held raw key and right button. Before any source keyup or mouseup, it observes both recipient transitions released, both live status windows closed, the recipient listener closed and the source keyboard/pointer available to an independent grab. Equal and mixed disposable-display journeys pass. Both processes return1 in this recipient-canceled journey; cleanup is observed, not relabeled clean session completion. The existing source-directed SIGTERM case remains separate and passes. No product shutdown behavior or error handling changed.
+
+This covers cooperative SIGTERM of the recipient coordinator with its native child available to release its ledger. It does not change the preserved negative result that SIGKILL of the injector itself can leave XTEST state held. These are same-host synthetic X11 fixtures, not physical or mixed-platform acceptance.

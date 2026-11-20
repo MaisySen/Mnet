@@ -130,6 +130,32 @@ try:
   result=subprocess.run([str(out/'mnetd'),'-desk-run',str(out/role/'run.json')],env=env|{'DISPLAY':display},capture_output=True,text=True,timeout=5)
   if result.returncode==0 or 'already consumed' not in result.stderr:raise AssertionError('replayed config not refused')
  print('PASS persistent same-config run reuse refused on both actual commands',flush=True)
+ # Recipient SIGTERM is distinct from source shutdown or a status-window
+ # Stop. Observe release before any source keyup, then inspect source grabs.
+ for role in ('primary','recipient'):
+  fresh_path=out/role/'run.json';fresh=json.loads(fresh_path.read_text());fresh['binding']['run']='04'*32;fresh_path.write_text(json.dumps(fresh))
+ recipient=launch('recipient');approve('recipient',displays[1],name='-recipient-term')
+ poll(lambda:'waiting for one exact-key' in (out/'recipient.log').read_text(),'recipient SIGTERM listening')
+ primary=launch('primary');approve('primary',displays[0],name='-recipient-term')
+ command(displays[0],'mousemove','500','300');time.sleep(.05);command(displays[0],'mousemove','1023','300')
+ poll(lambda:'sending raw input' in (out/'primary.log').read_text(),'recipient SIGTERM active')
+ command(displays[0],'keydown','a','mousedown','3')
+ poll(lambda:keysbuttons(display_handles[1],1024)==(True,True),'recipient held key/right button before SIGTERM')
+ recipient.send_signal(signal.SIGTERM);recipient.wait(timeout=5);primary.wait(timeout=5)
+ poll(lambda:keysbuttons(display_handles[1],1024)==(False,False),'recipient SIGTERM released before source keyup')
+ if recipient.returncode<0:raise AssertionError('recipient SIGTERM bypassed joined shutdown')
+ d=display_handles[0];root=x.XDefaultRootWindow(d)
+ if x.XGrabKeyboard(d,root,0,1,1,0)!=0:raise AssertionError('recipient SIGTERM retained source keyboard')
+ x.XUngrabKeyboard(d,0)
+ if x.XGrabPointer(d,root,0,0,1,1,0,0,0)!=0:raise AssertionError('recipient SIGTERM retained source pointer')
+ x.XUngrabPointer(d,0);x.XSync(d,0)
+ if live_window('primary',displays[0]) or live_window('recipient',displays[1]):raise AssertionError('recipient SIGTERM retained live window')
+ address=json.loads((out/'recipient'/'run.json').read_text())['address'].rsplit(':',1)
+ with socket.socket() as probe:
+  probe.settimeout(.2)
+  if probe.connect_ex((address[0],int(address[1])))==0:raise AssertionError('recipient SIGTERM retained listener')
+ command(displays[0],'keyup','a','mouseup','3')
+ print('PASS actual recipient SIGTERM joins held native key/right-button release before source keyup, reclaims source and closes status/listener; exit codes primary=%d recipient=%d'%(primary.returncode,recipient.returncode),flush=True)
  # A new independently reviewed attempt uses the recipient's real local Stop
  # button while raw key38 and RIGHT button are held remotely. The local left
  # click therefore cannot itself release either held transition under test.
