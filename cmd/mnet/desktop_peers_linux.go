@@ -231,7 +231,9 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 			return nil, false, nil
 		}
 		if index < 6 {
-			selection.choose(page*6+index, time.Now())
+			if selection.choose(page*6+index, time.Now()) {
+				focus = index
+			}
 			return nil, false, nil
 		}
 		switch index {

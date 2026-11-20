@@ -93,3 +93,11 @@ A failing-first actual pixel check found that clicking Next after keyboard Point
 The actual fixture now inspects the unfocused Pointer pixels after mouse paging, presses Enter and requires no exit, connection or extra local read, then restores keyboard focus explicitly for the existing pending-page-key case. Before/fixed actual page pixels were inspected. Complete actual chooser, thirty focused model race repetitions, both-size actual attended view/pointer entry and full uncached race/vet/build plus CLI cross-builds pass.
 
 ![Actual mouse page change leaves no old connection-mode focus](ui/desktop-peers/mouse-page-two.png)
+
+## Selecting another row cannot inherit an old mode
+
+Clicking a peer row now places keyboard focus on that selected row, matching Up/Down and Home/End. It cannot leave View Only or Pointer View focused from a previously reviewed peer. Enter on the new row reviews that row only; a connection mode needs its own deliberate focus/activation. Existing exact peer revalidation and host view/pointer approvals remain unchanged.
+
+A failing-first actual image showed selected peer4/13 with Pointer mode still focused. Fixed pixels show the focus ring on peer4/13 and no Pointer ring; actual Enter does not connect, exit or read local evidence. Complete actual chooser, thirty focused model races, both-size attended view/pointer chooser entries and full uncached race/vet/build plus CLI cross-builds pass. Before/fixed pixels inspected. This is private synthetic local identity evidence, not a Multies person or physical-device claim.
+
+![New mouse-selected row owns focus, not a previous connection mode](ui/desktop-peers/mouse-row-focus.png)

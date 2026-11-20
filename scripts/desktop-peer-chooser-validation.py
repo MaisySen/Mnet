@@ -78,6 +78,19 @@ try:
  time.sleep(.05);assert client.poll() is None and len(server.calls)==2,'Tab moved pending View key to Pointer choice'
  poll(lambda:capture('keyboard-pointer-focus').getpixel((563,493))==(255,255,255),'actual Pointer focus pixels')
  action('keyup','space');time.sleep(.05);assert client.poll() is None and len(server.calls)==2,'unpressed mode release connected'
+ # Clicking another peer cannot keep an earlier Pointer mode focused. The
+ # next Enter is row review, not implicit mode approval for a different peer.
+ action('mousemove','--window',wid,'120','260','click','1')
+ im=capture('mouse-row-after-pointer-focus')
+ assert im.getpixel((563,493))!=(255,255,255),'new row retained Pointer focus'
+ assert im.getpixel((25,243))==(0,102,204),'new row did not remain selected'
+ action('key','Return');time.sleep(.05)
+ assert client.poll() is None and len(server.calls)==2,'new peer inherited previous mode activation'
+ # Restore the second peer and Pointer focus for page cancellation checks.
+ action('key','Home','Down')
+ for _ in range(7):action('key','Tab')
+ action('key','Tab')
+ poll(lambda:capture('keyboard-pointer-focus').getpixel((563,493))==(255,255,255),'Pointer focus restored after row test')
  # Mouse pagination must also drop an earlier connection-mode focus. An
  # otherwise unpressed Enter after paging cannot activate that old mode.
  action('mousemove','--window',wid,'330','510','click','1')
