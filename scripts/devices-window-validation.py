@@ -22,9 +22,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
   self.server.entered.set();time.sleep(delay)
   data=json.dumps(payload).encode() if not isinstance(payload,bytes) else payload
   try:
-   self.send_response(code);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
+   self.send_response(code);self.send_header('Content-Length',str(len(data)));self.end_headers()
+   if self.server.partial:
+    self.wfile.write(data[:1]);self.wfile.flush();self.server.body_started.set();time.sleep(5);self.wfile.write(data[1:])
+   else:self.wfile.write(data)
   except (BrokenPipeError,ConnectionResetError):pass
 server=Server(str(state/'mnetd.sock'),Handler);os.chmod(state/'mnetd.sock',0o600)
+server.partial=False;server.body_started=threading.Event()
 server.bad=[];server.requests=[];server.delay=0;server.code=200;server.entered=threading.Event()
 peers=[]
 for i in range(19):
@@ -146,6 +150,10 @@ try:
  launch();wid=poll(window,'close-button window');phase('up');action('windowfocus',wid,'mousemove','--window',wid,'760','465','click','1');assert client.wait(timeout=2)==0;client=None
  launch();wid=poll(window,'keyboard close window');phase('up');action('windowfocus',wid,'key','shift+Tab','space');assert client.wait(timeout=2)==0;client=None
  server.delay=1;server.entered.clear();launch();wid=poll(window,'termination window');phase('loading');assert server.entered.wait(2);client.terminate();assert client.wait(timeout=2)==0;client=None
+ server.delay=0;server.partial=True;server.body_started.clear();launch();wid=poll(window,'partial-body window');phase('loading')
+ assert server.body_started.wait(2),'status body did not start'
+ client.terminate();assert client.wait(timeout=2)==0,'SIGTERM did not join stalled status body';client=None;server.partial=False
+ print('PASS actual device SIGTERM cancels5s stalled partial response body after successful headers',flush=True)
  for mode in ('ready','pending','transient'):
   server.delay=1 if mode=='pending' else 0;server.entered.clear();launch();wid=poll(window,'root '+mode+' window');phase('loading' if mode=='pending' else 'up')
   assert server.entered.wait(2),'no request before root resize'

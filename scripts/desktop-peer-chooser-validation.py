@@ -18,9 +18,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
   time.sleep(self.server.delay)
   data=(dict(status=self.server.status,node_name='fixture-viewer',peers=[dict(name=p['name'],ipv4=p['ipv4']) for p in self.server.peers]) if self.path=='/localapi/status' else self.server.peers)
   raw=b'invalid-private-response' if self.server.malformed else json.dumps(data).encode()
-  try:self.send_response(200);self.end_headers();self.wfile.write(raw)
-  except BrokenPipeError:pass
+  try:
+   self.send_response(200);self.send_header('Content-Length',str(len(raw)));self.end_headers()
+   if self.server.partial==self.path:
+    self.wfile.write(raw[:1]);self.wfile.flush();self.server.body_started.set();time.sleep(5);self.wfile.write(raw[1:])
+   else:self.wfile.write(raw)
+  except (BrokenPipeError,ConnectionResetError):pass
 server=Server(str(state/'mnetd.sock'),Handler);server.calls=[];server.call_times=[];server.bad=[];server.delay=0;server.peers=peers;server.status='up';server.malformed=False
+server.partial=None;server.body_started=threading.Event()
 thread=threading.Thread(target=server.serve_forever);thread.start();x=None;client=None;env=os.environ.copy();log=None
 def poll(fn,label,seconds=5):
  end=time.monotonic()+seconds
@@ -167,6 +172,14 @@ try:
  poll(lambda:len(server.calls)>=before+2 and server.calls[before+1]=='/localapi/session-peers','pending second authorization request')
  client.terminate();assert client.wait(timeout=2)==0,'SIGTERM did not join second request';client=None
  print('PASS actual chooser SIGTERM cancels and joins first status and second authorization request separately',flush=True)
+ # Cancellation after successful headers and one body byte is distinct from
+ # waiting for response headers. The server stalls5s, beyond the2s join bound.
+ for request_path in ('/localapi/status','/localapi/session-peers'):
+  server.delay=0;server.partial=request_path;server.body_started.clear();launch();phase('loading')
+  assert server.body_started.wait(2),'partial body did not start'
+  client.terminate();assert client.wait(timeout=2)==0,'SIGTERM did not cancel stalled response body';client=None
+  server.partial=None
+  print('PASS actual chooser SIGTERM cancels5s stalled partial body at '+request_path,flush=True)
  # A root resize is separate from child-window resize. Even a quick
  # restoration must retire the old chooser rather than preserve its choice.
  for mode in ('ready','pending','transient'):
