@@ -523,7 +523,7 @@ try:
  # An authenticated exact-key peer with the exact approved hello can still
  # send invalid input. Refusal must release the already-held native ledger
  # before this fixture closes TLS, not merely on socket EOF or source keyup.
- for malformed,token in [('duplicate-key','e5'),('stale-sequence','e6'),('unknown-kind','e7'),('missing-heartbeat','e8'),('partial-frame','e9')]:
+ for malformed,token in [('duplicate-key','e5'),('stale-sequence','e6'),('unknown-kind','e7'),('missing-heartbeat','e8'),('partial-frame','e9'),('zero-frame','ea'),('oversize-frame','eb'),('duplicate-json-key','ec'),('unknown-json-field','ed'),('stop-with-input','f2'),('pulse-with-binding','f1')]:
   recipient_path=out/'recipient'/'run.json';bad_spec=json.loads(recipient_path.read_text());bad_spec['binding']['run']=token*32;bad_spec['lifetime_seconds']=30;recipient_path.write_text(json.dumps(bad_spec))
   recipient=launch('recipient');approve('recipient',displays[1],name='-invalid-'+malformed)
   poll(lambda:'waiting for one exact-key' in (out/'recipient.log').read_text(),'invalid input recipient listening')
@@ -552,10 +552,16 @@ try:
    elif malformed=='stale-sequence':message=dict(kind='input',input=dict(sequence=2,kind='pointer',action='move',x=10,y=10))
    else:message=dict(kind='clipboard')
    if malformed=='partial-frame':raw.sendall((4096).to_bytes(4,'big')+b'{')
+   elif malformed in ('zero-frame','oversize-frame'):raw.sendall((0 if malformed=='zero-frame' else 4097).to_bytes(4,'big'))
+   elif malformed in ('duplicate-json-key','unknown-json-field'):
+    body=b'{"kind":"pulse","kind":"pulse"}' if malformed=='duplicate-json-key' else b'{"kind":"pulse","extra":true}'
+    raw.sendall(len(body).to_bytes(4,'big')+body)
+   elif malformed=='stop-with-input':send_frame(dict(kind='stop',input=dict(sequence=3,kind='key',action='up',code=38)))
+   elif malformed=='pulse-with-binding':send_frame(dict(kind='pulse',binding=bad_spec['binding']))
    elif malformed!='missing-heartbeat':send_frame(message)
    recipient.wait(timeout=4)
    assert recipient.returncode!=0,'invalid authenticated input reported success'
-   reason={'duplicate-key':'duplicate press','stale-sequence':'stale input sequence','unknown-kind':'unsupported desk message','missing-heartbeat':'desk channel interrupted','partial-frame':'desk channel interrupted'}[malformed]
+   reason={'duplicate-key':'duplicate press','stale-sequence':'stale input sequence','unknown-kind':'unsupported desk message','missing-heartbeat':'desk channel interrupted','partial-frame':'desk channel interrupted','zero-frame':'desk channel interrupted','oversize-frame':'desk channel interrupted','duplicate-json-key':'desk channel interrupted','unknown-json-field':'desk channel interrupted','stop-with-input':'invalid desk stop','pulse-with-binding':'desk message outside active run'}[malformed]
    assert reason in (out/'recipient.log').read_text(),'invalid input ended for an unrelated reason'
 
    poll(lambda:keysbuttons(display_handles[1],1024)==(False,False),'native release before TLS close after '+malformed)
