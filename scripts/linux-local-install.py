@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Install or remove a private, opt-in Linux engineering prefix. No service/enrollment."""
 import hashlib
+import errno
 import io
 import json
 import os
@@ -141,23 +142,22 @@ def uninstall(parent, leaf):
             data, current_mode = read_file(root, name)
             if manifest['files'][name] != {'sha256': digest(data), 'mode': current_mode}:
                 raise ValueError('installed file changed; nothing removed')
-        installed_executables = set()
+        # Linux rejects writable opens of an executing image (ETXTBSY), and
+        # while the writer stays open a new exec of that inode is refused.
+        # Check the two actual installed inodes, not every process on the host.
+        # Never truncate/write the files; hold both descriptors through removal.
         for name in ('bin/mnet', 'bin/mnetd'):
-            info = os.stat(name, dir_fd=root, follow_symlinks=False)
-            installed_executables.add((info.st_dev, info.st_ino))
-        for process in pathlib.Path('/proc').iterdir():
-            if not process.name.isdecimal():
-                continue
+            expected = os.stat(name, dir_fd=root, follow_symlinks=False)
             try:
-                if process.stat().st_uid != os.geteuid():
-                    continue
-                executable = (process / 'exe').stat()
-            except (FileNotFoundError, ProcessLookupError):
-                continue
-            except PermissionError:
-                raise ValueError('a local process cannot be checked; nothing removed')
-            if (executable.st_dev, executable.st_ino) in installed_executables:
-                raise ValueError('installed executable is still running; close it first; nothing removed')
+                fd = os.open(name, os.O_WRONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=root)
+            except OSError as error:
+                if error.errno == errno.ETXTBSY:
+                    raise ValueError('installed executable is still running; close it first; nothing removed') from None
+                raise ValueError('installed executable removal guard unavailable; nothing removed') from None
+            descriptors.append(fd)
+            opened = os.fstat(fd)
+            if not stat.S_ISREG(opened.st_mode) or (expected.st_dev, expected.st_ino) != (opened.st_dev, opened.st_ino):
+                raise ValueError('installed executable changed while acquiring removal guard; nothing removed')
         # All checks complete before deleting anything. Removal is limited to
         # the fixed manifest paths; never recursively remove a supplied path.
         for name in FILES + (MANIFEST,):
