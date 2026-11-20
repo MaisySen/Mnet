@@ -54,7 +54,7 @@ def capture(name):
  path=out/(name+'.png');subprocess.run(['import','-display',env['DISPLAY'],'-window',wid,str(path)],check=True)
  image=Image.open(path).convert('RGB');assert image.size==(900,500)
  assert len(image.getcolors(900*500) or [])>3,'empty native drawing'
- row_pixels=sum(n for n,color in image.crop((18,190,880,390)).getcolors(862*200) if color!=(245,245,247))
+ row_pixels=sum(n for n,color in image.crop((32,200,868,376)).getcolors(836*176) if color==(244,247,252))
  if name.startswith('up-page-'):assert row_pixels>100,'no actual peer rows drawn'
  else:assert row_pixels==0,'stale peer pixels remained in '+name
  return path

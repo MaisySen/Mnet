@@ -96,3 +96,18 @@ A failing-first actual offline-inspector case remained open after the root shran
 ## Cancellation during a stalled response body
 
 Actual process acceptance now separately reaches successful HTTP headers and one response-body byte, then stalls the disposable local server for5seconds. SIGTERM must cancel and join within2seconds rather than wait for that body. The device status path and both sequential chooser paths pass separately. These cases distinguish body-read cancellation from the existing waits before response headers. They add no product timeout, retry or network behavior. Complete actual device/chooser fixtures and thirty focused snapshot model race repetitions pass. Evidence remains private synthetic local API/X11, not a live fleet or Multies identity claim.
+
+## Branded read-only snapshot, later local branch
+
+The ordinary device window uses embedded proportional Go fonts and the same
+visual style as the home. Its private local GET-only read, eight-row pagination,
+expiry clock, error clearing, focus/press ownership and cancellation are
+unchanged. The table shows sanitized shortened device labels, private IP,
+reported availability/path and reported handshake age. Labels may be shortened;
+no row is selectable, trusted identity or a session grant. A bounded display
+for extremely large handshake ages avoids a long integer breaking the layout.
+
+Loading, unavailable, non-Up, error and expired states contain no old peer
+rows. The local name and daemon phase are not a Multies identity or proof that
+traffic works. No raw approval link, control origin, endpoint, credential or
+upstream error is rendered. Page controls inspect the current snapshot only.

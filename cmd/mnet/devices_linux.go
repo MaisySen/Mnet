@@ -32,7 +32,17 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 		return errors.New("device window requires a local Linux X11 display")
 	}
 	defer c.Close()
-	screen := xproto.Setup(c).DefaultScreen(c)
+	setup := xproto.Setup(c)
+	format := false
+	for _, f := range setup.PixmapFormats {
+		if f.Depth == 24 && f.BitsPerPixel == 32 && f.ScanlinePad == 32 {
+			format = true
+		}
+	}
+	if !format || setup.ImageByteOrder != xproto.ImageOrderLSBFirst {
+		return errors.New("device window pixel format unsupported")
+	}
+	screen := setup.DefaultScreen(c)
 	if !nativeControlsRGB(screen) {
 		return errors.New("native controls require supported 24-bit TrueColor X11")
 	}
@@ -49,18 +59,11 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 	if err = xproto.CreateWindowChecked(c, screen.RootDepth, w, screen.Root, 20, 20, 900, 500, 0, xproto.WindowClassInputOutput, screen.RootVisual, xproto.CwBackPixel|xproto.CwEventMask, []uint32{0xf5f5f7, xproto.EventMaskExposure | xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskKeyPress | xproto.EventMaskKeyRelease | xproto.EventMaskFocusChange | xproto.EventMaskStructureNotify}).Check(); err != nil {
 		return err
 	}
-	font, err := xproto.NewFontId(c)
-	if err != nil {
-		return err
-	}
-	if err = xproto.OpenFontChecked(c, font, 5, "fixed").Check(); err != nil {
-		return err
-	}
 	gc, err := xproto.NewGcontextId(c)
 	if err != nil {
 		return err
 	}
-	if err = xproto.CreateGCChecked(c, gc, xproto.Drawable(w), xproto.GcForeground|xproto.GcBackground|xproto.GcFont, []uint32{0x1d1d1f, 0xf5f5f7, uint32(font)}).Check(); err != nil {
+	if err = xproto.CreateGCChecked(c, gc, xproto.Drawable(w), 0, nil).Check(); err != nil {
 		return err
 	}
 	atom, err := xproto.InternAtom(c, false, 16, "WM_DELETE_WINDOW").Reply()
@@ -170,55 +173,33 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 		}()
 	}
 	draw := func() error {
-		if er := xproto.ChangeGCChecked(c, gc, xproto.GcForeground, []uint32{0xf5f5f7}).Check(); er != nil {
+
+		controls.update(enabledControls(), uint64(generation))
+		picture, p, er := renderDevicesSurface(st, page, sampled, message, enabledControls(), controls.focus)
+		if er != nil {
 			return er
 		}
-		if er := xproto.PolyFillRectangleChecked(c, xproto.Drawable(w), gc, []xproto.Rectangle{{Width: 900, Height: 500}}).Check(); er != nil {
-			return er
-		}
-		if er := xproto.ChangeGCChecked(c, gc, xproto.GcForeground|xproto.GcBackground, []uint32{0x1d1d1f, 0xf5f5f7}).Check(); er != nil {
-			return er
-		}
-		lines, p := deviceSnapshotLines(st, page, sampled)
 		page = p
-		for n, line := range lines {
-			if er := xproto.ImageText8Checked(c, byte(len(line)), xproto.Drawable(w), gc, 20, int16(28+n*24), line).Check(); er != nil {
+		pix, er := xproto.NewPixmapId(c)
+		if er != nil {
+			return er
+		}
+		if er = xproto.CreatePixmapChecked(c, 24, pix, xproto.Drawable(w), 900, 500).Check(); er != nil {
+			return er
+		}
+		defer xproto.FreePixmap(c, pix)
+		sampler := newViewerPixelSource(picture, picture.Bounds(), 900, 500)
+		for y := 0; y < 500; y += 16 {
+			n := min(16, 500-y)
+			if er = xproto.PutImageChecked(c, xproto.ImageFormatZPixmap, xproto.Drawable(pix), gc, 900, uint16(n), 0, int16(y), 0, 24, sampler.strip(y, n)).Check(); er != nil {
 				return er
 			}
 		}
-		for n, line := range []string{message, "Tab: focus. Enter/Space: action. PageUp/Down,Home/End: page. R: refresh. Expiry30s; no polling.", "No server URL, approval link, key, remote endpoint or raw daemon error is displayed."} {
-			if er := xproto.ImageText8Checked(c, byte(len(line)), xproto.Drawable(w), gc, 20, int16(402+n*18), line).Check(); er != nil {
-				return er
-			}
+		if er = xproto.ChangeWindowAttributesChecked(c, w, xproto.CwBackPixmap, []uint32{uint32(pix)}).Check(); er != nil {
+			return er
 		}
-		enabled := enabledControls()
-		controls.update(enabled, uint64(generation))
-		for index, button := range []struct {
-			x     int16
-			label string
-		}{{20, "REFRESH (R)"}, {240, "PREVIOUS"}, {460, "NEXT"}, {680, "CLOSE (Escape)"}} {
-			available := enabled[index]
-			background, foreground := uint32(0x0066cc), uint32(0xffffff)
-			if !available {
-				background, foreground = 0xe8e8ed, 0x65656b
-			}
-			if er := xproto.ChangeGCChecked(c, gc, xproto.GcForeground, []uint32{background}).Check(); er != nil {
-				return er
-			}
-			if er := xproto.PolyFillRectangleChecked(c, xproto.Drawable(w), gc, []xproto.Rectangle{{X: button.x, Y: 448, Width: 200, Height: 44}}).Check(); er != nil {
-				return er
-			}
-			if er := xproto.ChangeGCChecked(c, gc, xproto.GcForeground|xproto.GcBackground, []uint32{foreground, background}).Check(); er != nil {
-				return er
-			}
-			if controls.focus == index && available {
-				if er := xproto.PolyRectangleChecked(c, xproto.Drawable(w), gc, []xproto.Rectangle{{X: button.x + 3, Y: 451, Width: 193, Height: 37}, {X: button.x + 5, Y: 453, Width: 189, Height: 33}}).Check(); er != nil {
-					return er
-				}
-			}
-			if er := xproto.ImageText8Checked(c, byte(len(button.label)), xproto.Drawable(w), gc, button.x+16, 476, button.label).Check(); er != nil {
-				return er
-			}
+		if er = xproto.CopyAreaChecked(c, xproto.Drawable(pix), xproto.Drawable(w), gc, 0, 0, 0, 0, 900, 500).Check(); er != nil {
+			return er
 		}
 		title := fmt.Sprintf("Mnet devices: read-only [%s] read%d page%d", phase, generation, page+1)
 		return xproto.ChangePropertyChecked(c, xproto.PropModeReplace, w, xproto.AtomWmName, xproto.AtomString, 8, uint32(len(title)), []byte(title)).Check()
