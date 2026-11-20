@@ -47,6 +47,11 @@ try:
   (out/'return.captured').write_text('actual local return pixels captured')
   handled=set();until=time.monotonic()+30
   while test.poll() is None:
+   for edge in ('left','top','bottom'):
+    mode='armed-'+edge+'-entry'
+    if (out/(mode+'.stage')).exists() and not (out/(mode+'.captured')).exists():
+     subprocess.run(['import','-display',displays[1],'-window','root',str(out/(mode+'.png'))],check=True)
+     (out/(mode+'.captured')).write_text('actual directional recipient held pixels captured')
    for role,display in zip(('source','target'),displays):
     for denial in ('decline','withdraw'):
      marker='denial-'+denial

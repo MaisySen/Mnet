@@ -20,7 +20,7 @@ import (
 )
 
 func TestDeskX11TwoDisplayCaptureAndReclaim(t *testing.T) {
-	for _, mode := range []string{"local-stop", "stop-chord", "idle-peer-loss", "idle-native-child-loss", "source-map-loss", "source-geometry-loss", "source-geometry-transient", "edge-return", "armed-edge-entry", "reviewed-edge-entry"} {
+	for _, mode := range []string{"local-stop", "stop-chord", "idle-peer-loss", "idle-native-child-loss", "source-map-loss", "source-geometry-loss", "source-geometry-transient", "edge-return", "armed-edge-entry", "armed-left-entry", "armed-top-entry", "armed-bottom-entry", "reviewed-edge-entry"} {
 		t.Run(mode, func(t *testing.T) { deskTwoDisplayCaptureFixture(t, mode) })
 	}
 }
@@ -58,9 +58,30 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 	defer xproto.DestroyWindow(target, targetWindow)
 	sourceScreen := xproto.Setup(source).DefaultScreen(source)
 	targetScreen := xproto.Setup(target).DefaultScreen(target)
+	entryEdge := desk.Right
+	targetX, targetY := int64(1000), int64(0)
+	edgeX, edgeY := int16(sourceScreen.WidthInPixels-1), int16(300)
+	moveX, moveY := int16(40), int16(20)
+	switch mode {
+	case "armed-left-entry":
+		entryEdge = desk.Left
+		targetX = -1000
+		edgeX = 0
+		moveX = -40
+	case "armed-top-entry":
+		entryEdge = desk.Top
+		targetX, targetY = 0, -1000
+		edgeX, edgeY = 500, 0
+		moveY = -20
+	case "armed-bottom-entry":
+		entryEdge = desk.Bottom
+		targetX, targetY = 0, 1000
+		edgeX, edgeY = 500, int16(sourceScreen.HeightInPixels-1)
+	}
+	armed := strings.HasPrefix(mode, "armed-") || mode == "reviewed-edge-entry"
 	layout, err := desk.Compile(desk.Layout{Version: 1, Displays: []desk.Display{
 		{ID: "source", Device: sourceKey, Width: 1000, Height: 1000, PixelWidth: int64(sourceScreen.WidthInPixels), PixelHeight: int64(sourceScreen.HeightInPixels)},
-		{ID: "target", Device: targetKey, X: 1000, Width: 1000, Height: 1000, PixelWidth: int64(targetScreen.WidthInPixels), PixelHeight: int64(targetScreen.HeightInPixels)},
+		{ID: "target", Device: targetKey, X: targetX, Y: targetY, Width: 1000, Height: 1000, PixelWidth: int64(targetScreen.WidthInPixels), PixelHeight: int64(targetScreen.HeightInPixels)},
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -115,8 +136,8 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 		go func() { serverDone <- approval.ServePair(serverConn) }()
 		return desk.ConnectPair(channel, approved, layout, live.Load)
 	}
-	if mode == "armed-edge-entry" || mode == "reviewed-edge-entry" {
-		xproto.WarpPointerChecked(source, 0, sourceScreen.Root, 0, 0, 0, 0, int16(sourceScreen.WidthInPixels-1), 300).Check()
+	if armed {
+		xproto.WarpPointerChecked(source, 0, sourceScreen.Root, 0, 0, 0, 0, edgeX, edgeY).Check()
 		type result struct {
 			capture *deskPrimaryCapture
 			err     error
@@ -133,9 +154,9 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 					ready <- result{nil, uiErr}
 					return
 				}
-				capture, err = reviewedDeskEdge(ctx, board, desk.Right, binding, layout, keyboard, live.Load, ui, create)
+				capture, err = reviewedDeskEdge(ctx, board, entryEdge, binding, layout, keyboard, live.Load, ui, create)
 			} else {
-				capture, err = waitDeskEdge(ctx, board, desk.Right, binding, keyboard, live.Load, create)
+				capture, err = waitDeskEdge(ctx, board, entryEdge, binding, keyboard, live.Load, create)
 			}
 			ready <- result{capture, err}
 		}()
@@ -166,7 +187,7 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 		defer func() { xtest.FakeInputChecked(source, xproto.ButtonRelease, 1, 0, sourceScreen.Root, 0, 0, 0).Check() }()
 		xproto.WarpPointerChecked(source, 0, sourceScreen.Root, 0, 0, 0, 0, 500, 300).Check()
 		time.Sleep(30 * time.Millisecond)
-		xproto.WarpPointerChecked(source, 0, sourceScreen.Root, 0, 0, 0, 0, int16(sourceScreen.WidthInPixels-1), 300).Check()
+		xproto.WarpPointerChecked(source, 0, sourceScreen.Root, 0, 0, 0, 0, edgeX, edgeY).Check()
 		time.Sleep(30 * time.Millisecond)
 		select {
 		case <-ready:
@@ -178,7 +199,7 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 		}
 		xproto.WarpPointerChecked(source, 0, sourceScreen.Root, 0, 0, 0, 0, 500, 300).Check()
 		time.Sleep(30 * time.Millisecond)
-		xproto.WarpPointerChecked(source, 0, sourceScreen.Root, 0, 0, 0, 0, int16(sourceScreen.WidthInPixels-1), 300).Check()
+		xproto.WarpPointerChecked(source, 0, sourceScreen.Root, 0, 0, 0, 0, edgeX, edgeY).Check()
 		select {
 		case answer := <-ready:
 			c, err = answer.capture, answer.err
@@ -196,6 +217,24 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 	}
 	capture.Store(c)
 	defer c.Close()
+	// Independent same-axis rational mapping, not a call to MapEdge. The actual
+	// recipient must already be at this pixel before any source key/button input.
+	expectedX, expectedY := int64(0), int64(300)*int64(targetScreen.HeightInPixels)/int64(sourceScreen.HeightInPixels)
+	switch entryEdge {
+	case desk.Left:
+		expectedX = int64(targetScreen.WidthInPixels) - 1
+	case desk.Top:
+		expectedX = int64(500) * int64(targetScreen.WidthInPixels) / int64(sourceScreen.WidthInPixels)
+		expectedY = int64(targetScreen.HeightInPixels) - 1
+	case desk.Bottom:
+		expectedX = int64(500) * int64(targetScreen.WidthInPixels) / int64(sourceScreen.WidthInPixels)
+		expectedY = 0
+	}
+	positionX, positionY := board.Position()
+	initial, initialErr := xproto.QueryPointer(target, targetScreen.Root).Reply()
+	if initialErr != nil || positionX != expectedX || positionY != expectedY || int64(initial.RootX) != expectedX || int64(initial.RootY) != expectedY {
+		t.Fatal("entry differs from independent native pixel oracle", entryEdge, positionX, positionY, initial, initialErr)
+	}
 	press := func(kind, code byte) {
 		t.Helper()
 		if err := xtest.FakeInputChecked(source, kind, code, 0, sourceScreen.Root, 0, 0, 0).Check(); err != nil {
@@ -230,13 +269,13 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 
 	// Test source motion as actual capture, not a direct backend command.
 	startX, startY := board.Position()
-	if err = xtest.FakeInputChecked(source, xproto.MotionNotify, 0, 0, sourceScreen.Root, int16(sourceScreen.WidthInPixels/2+40), int16(sourceScreen.HeightInPixels/2+20), 0).Check(); err != nil {
+	if err = xtest.FakeInputChecked(source, xproto.MotionNotify, 0, 0, sourceScreen.Root, int16(sourceScreen.WidthInPixels/2)+moveX, int16(sourceScreen.HeightInPixels/2)+moveY, 0).Check(); err != nil {
 		t.Fatal(err)
 	}
 	until = time.Now().Add(time.Second)
 	for {
 		p, e := xproto.QueryPointer(target, targetScreen.Root).Reply()
-		if e == nil && int64(p.RootX) == startX+40 && int64(p.RootY) == startY+20 && c.forwarded.Load() >= 3 {
+		if e == nil && int64(p.RootX) == startX+int64(moveX) && int64(p.RootY) == startY+int64(moveY) && c.forwarded.Load() >= 3 {
 			break
 		}
 		if time.Now().After(until) {
@@ -250,6 +289,21 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 	}
 	deskFixtureObserved(t, target, targetWindow, fmt.Sprintf("OBSERVED: key 38 DOWN; button 1 DOWN; native pointer (%d, %d)", nativePointer.RootX, nativePointer.RootY))
 	deskFixtureObserved(t, source, sourceWindow, fmt.Sprintf("OBSERVED: %d acknowledged Desk input transitions", c.forwarded.Load()))
+	if artifacts := os.Getenv("MNET_DESK_ARTIFACTS"); artifacts != "" && (mode == "armed-left-entry" || mode == "armed-top-entry" || mode == "armed-bottom-entry") {
+		if err = os.WriteFile(filepath.Join(artifacts, mode+".stage"), []byte("native entry, source motion and held ledger checked"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		until = time.Now().Add(5 * time.Second)
+		for {
+			if _, err = os.Stat(filepath.Join(artifacts, mode+".captured")); err == nil {
+				break
+			}
+			if time.Now().After(until) {
+				t.Fatal("directional entry screenshot acknowledgement missing", mode)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
 	if artifacts := os.Getenv("MNET_DESK_ARTIFACTS"); artifacts != "" && mode == "local-stop" {
 		if err = os.WriteFile(filepath.Join(artifacts, "held.stage"), []byte("native states and pointer checked"), 0600); err != nil {
 			t.Fatal(err)
