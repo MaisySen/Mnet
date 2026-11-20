@@ -228,7 +228,7 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 	}
 	defer safety.Close()
 	var injected atomic.Int32
-	capture := &observedViewCapture{Capturer: rawCapture}
+	capture := &observedViewCapture{Capturer: rawCapture, t: t}
 	_, sessionDone := serveAttendedSession(ctx, host, fixturePeer, pointer, ui, capture, func() (session.Injector, error) {
 		injected.Add(1)
 		if pointer {
@@ -296,6 +296,8 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 type observedViewCapture struct {
 	session.Capturer
 	deltas atomic.Int32
+	calls  atomic.Int32
+	t      *testing.T
 }
 
 func (c *observedViewCapture) CaptureDelta() ([]byte, []session.Tile, error) {
@@ -303,7 +305,23 @@ func (c *observedViewCapture) CaptureDelta() ([]byte, []session.Tile, error) {
 	if !ok {
 		return nil, nil, errors.New("fixture requires actual delta capturer")
 	}
+	call := c.calls.Add(1)
+	if c.t != nil && call == 1 {
+		c.t.Log("capture diagnostic: first call started")
+	}
+	started := time.Now()
 	full, tiles, err := source.CaptureDelta()
+	if c.t != nil && (call == 1 || err != nil) {
+		// Fixed aggregate evidence only. Never log desktop content, image
+		// hashes, exact sizes, private paths or a backend's arbitrary error.
+		elapsed := "under100ms"
+		if time.Since(started) >= time.Second {
+			elapsed = "atleast1s"
+		} else if time.Since(started) >= 100*time.Millisecond {
+			elapsed = "100ms-to1s"
+		}
+		c.t.Logf("capture diagnostic: first=%t full=%t tiles=%t failed=%t duration=%s", call == 1, len(full) > 0, len(tiles) > 0, err != nil, elapsed)
+	}
 	if err == nil && len(full) == 0 && len(tiles) > 0 {
 		c.deltas.Add(1)
 	}

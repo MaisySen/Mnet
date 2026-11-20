@@ -122,3 +122,9 @@ Actual direct and chooser pointer journeys now pass concurrently at each host si
 An additional actual pointer case holds a press, resizes the local viewer, restores its original dimensions and releases at the original pixel. The native click count must remain zero before a fresh press. The full journey still ends with exactly two intentional clicks, one scroll, zero keys and joined native owners. Direct and chooser journeys pass at both host sizes, with the two chooser sizes running concurrently using separate owned loopback hosts. No product geometry or permission behavior changed.
 
 The loopback-host change also passes concurrent complete large view-only and chooser view-only journeys. These successful fixture runs do not replace an original hosted checkpoint or physical input acceptance.
+
+## First-frame diagnostics preserve unresolved blank-canvas failures
+
+Two local concurrent pointer cancellation journeys reached available status but timed out under the unchanged five-second pixel check with an empty viewer canvas. Their cause remains unresolved. Later sequential SIGTERM and concurrent transient-root/large-SIGTERM journeys passed unchanged; those successes do not erase or diagnose the earlier failures.
+
+The actual fixture now logs fixed aggregate evidence when the first capture starts and returns, plus any capture failure: full-frame present, tiles present, failure boolean and a coarse duration category. It never logs desktop bytes, hashes, exact image sizes, paths or arbitrary backend error strings. A concurrent SIGTERM/transient-root pair passes with first full captures in the100ms-to1second category. Fresh full uncached race/vet/build pass. No pixel assertion, timeout, transport or product behavior changed. The added evidence still needs its own hosted checkpoint.
