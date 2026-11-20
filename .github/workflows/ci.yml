@@ -134,7 +134,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: install isolated X11 proof dependencies
-        run: sudo apt-get update && sudo apt-get install -y xvfb x11-xserver-utils x11-utils zenity xdotool imagemagick python3-pil
+        run: sudo apt-get update && sudo apt-get install -y xvfb x11-xserver-utils x11-utils zenity xdotool imagemagick python3-pil python3-gi gir1.2-glib-2.0 desktop-file-utils
       - name: live session proof against a local control plane
         run: sh scripts/session-validation.sh
       - name: attended Linux local approval and reserved live-stop (disposable X11)
@@ -185,6 +185,8 @@ jobs:
         run: |
           python3 scripts/desk-prepare-validation.py
           MNET_DESK_TARGET_SIZE=1280x960x24 python3 scripts/desk-prepare-validation.py
+      - name: private Linux install to actual desktop launch and conservative removal
+        run: python3 scripts/linux-installed-validation.py
       - name: read-only native Mnet device window (private Unix API and disposable X11)
         run: python3 scripts/devices-window-validation.py
       - name: retain failed proof diagnostics (no credentials or node state)
@@ -194,6 +196,8 @@ jobs:
           name: session-failure-diagnostics
           retention-days: 7
           path: |
+            /tmp/mnet-installed.*/*.png
+            /tmp/mnet-installed.*/*-last.log
             /tmp/mnet-home.*/*.png
             /tmp/mnet-home.*/client.log
             /tmp/mnet-first-screen.*/*.png
