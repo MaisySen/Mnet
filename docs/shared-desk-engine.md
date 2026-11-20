@@ -383,3 +383,9 @@ Complete equal/mixed actual launcher journeys pass all nineteen malformed/stalle
 Four new actual X11 cases independently hold a key/button from another local fixture connection. A preheld key or button must refuse native setup without releasing that state. After setup, a foreign key/button collision must refuse input, release this run's separately owned key/left-button and preserve the independent foreign key/right-button across repeated cleanup. Further input remains retired.
 
 Complete equal/mixed native/TLS source journeys and fresh full uncached race/vet/build pass. The assertions query the actual X server keymap and button mask rather than trusting the adapter ledger. No product behavior changed. This supports distinct-key/button ownership only: X11 cannot distinguish physical input from another synthetic source pressing the same already-owned key, so that earlier limitation remains. These disposable virtual-display tests are not physical-device acceptance.
+
+## Retired recipient calls retain unconfirmed cleanup
+
+The recipient now joins its stored release error into every later refused Apply call. Previously the first retirement and Close retained that error, but subsequent input refusal reported only retirement. The run still refuses input and never retries cleanup; the immediate caller no longer loses the fact that release was unconfirmed.
+
+Failing-first tests reproduced that omission after invalid input, lost authority, native failure and explicit Close. Each now requires the same release-error identity through three refused input/Close repetitions, exactly one native release, no successor native call and the retained held ledger. Thirty focused recipient race repetitions, fresh full uncached race/vet/build and complete actual native/TLS source and launcher journeys pass. This preserves error evidence, not proof of release, a new retry or any wire disclosure of the recipient's private failure details.

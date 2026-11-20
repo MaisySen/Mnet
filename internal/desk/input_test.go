@@ -91,3 +91,47 @@ func TestRecipientRetainsReleaseFailure(t *testing.T) {
 		}
 	}
 }
+
+func TestRecipientRetiredInputPreservesUnconfirmedRelease(t *testing.T) {
+	for _, trigger := range []string{"invalid-input", "authority-loss", "native-error", "explicit-close"} {
+		t.Run(trigger, func(t *testing.T) {
+			sentinel := errors.New("fixture unconfirmed release")
+			b := &ownedFixture{releaseErr: sentinel}
+			live := true
+			r, err := NewRecipient(b, 100, 100, func() bool { return live })
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = r.Apply(Input{Sequence: 1, Kind: "key", Action: "down", Code: 38}); err != nil {
+				t.Fatal(err)
+			}
+			switch trigger {
+			case "invalid-input":
+				err = r.Apply(Input{Sequence: 2, Kind: "key", Action: "down", Code: 38})
+			case "authority-loss":
+				live = false
+				err = r.Apply(Input{Sequence: 2, Kind: "pointer", Action: "move"})
+			case "native-error":
+				b.fail = true
+				err = r.Apply(Input{Sequence: 2, Kind: "pointer", Action: "move"})
+			case "explicit-close":
+				err = r.Close()
+			}
+			if !errors.Is(err, sentinel) {
+				t.Fatal("first retirement lost unconfirmed cleanup", err)
+			}
+			before := len(b.events)
+			for range 3 {
+				if err = r.Apply(Input{Sequence: 3, Kind: "key", Action: "up", Code: 38}); !errors.Is(err, sentinel) {
+					t.Fatal("later refused input hid unconfirmed cleanup", err)
+				}
+				if err = r.Close(); !errors.Is(err, sentinel) {
+					t.Fatal("close hid unconfirmed cleanup", err)
+				}
+			}
+			if len(b.events) != before || b.released != 1 || !r.Held() {
+				t.Fatal("retired input retried native work or forgot held ledger", len(b.events), before, b.released, r.Held())
+			}
+		})
+	}
+}

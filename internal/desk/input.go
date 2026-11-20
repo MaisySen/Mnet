@@ -69,7 +69,7 @@ func (r *Recipient) Apply(ev Input) error {
 	defer r.mu.Unlock()
 	fail := func(why string) error { return errors.Join(errors.New(why), r.retireLocked()) }
 	if r.retired {
-		return errors.New("recipient retired")
+		return errors.Join(errors.New("recipient retired"), r.releaseErr)
 	}
 	if !r.live() {
 		return fail("pair authority retired")
