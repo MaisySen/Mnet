@@ -173,7 +173,10 @@ try:
   if os.environ.get('MNET_VIEWER_HOME')=='1':
    home=poll(lambda:window(displays[1],'^Mnet: three tools'),'home after joined session')
    assert not window(displays[1],'^Mnet pointer only:'),'old viewer survived home return'
-   assert not window(displays[0],'^Mnet: desktop sharing'),'host session survived home return'
+   # Local closure is synchronous; the independent host observes transport
+   # closure and joins its UI asynchronously. Require the same postcondition
+   # within the existing readiness bound, not on the first cross-display read.
+   poll(lambda:not window(displays[0],'^Mnet: desktop sharing'),'host session ends after local End')
    subprocess.run(['import','-display',displays[1],'-window',home,str(out/'home-after-session.png')],check=True)
    action(displays[1],'windowfocus',home,'key','Escape')
    print('PASS full home-to-chooser-to-host-approved pointer journey and fresh home return; no surviving host/view window',flush=True)
