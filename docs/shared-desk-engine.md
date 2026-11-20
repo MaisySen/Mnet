@@ -391,3 +391,9 @@ The recipient now joins its stored release error into every later refused Apply 
 Failing-first tests reproduced that omission after invalid input, lost authority, native failure and explicit Close. Each now requires the same release-error identity through three refused input/Close repetitions, exactly one native release, no successor native call and the retained held ledger. Thirty focused recipient race repetitions, fresh full uncached race/vet/build and complete actual native/TLS source and launcher journeys pass. This preserves error evidence, not proof of release, a new retry or any wire disclosure of the recipient's private failure details.
 
 The stateful recipient fuzz model now also requires every refused Apply with failed release to retain the original cleanup error, including calls after prior retirement. The complete Desk package passes30race repetitions; a fresh10second ownership fuzz run passes219310executions. This is in-memory error/ledger evidence only and adds no new product behavior.
+
+## Transport admission needs more than a familiar key
+
+Seven added disposable TLS tests refuse a TLS1.2-only connection, matched but wrong ALPN, missing ALPN, absent client certificate, multi-certificate client chain, multi-certificate server chain and foreign server key. Both endpoint calls must end with errors and the recipient native factory must remain unused. Successful negotiation or a matching public key alone cannot become a Desk run.
+
+Thirty focused race repetitions and fresh whole-repository uncached race/vet/build pass. These tests create local TCP/TLS connections but no review, native input owner or consumer identity enrollment. No version, pinning, certificate or approval policy changed.
