@@ -184,6 +184,7 @@ func usage() {
   mnet devices  (read-only Linux X11 snapshot, manual refresh; no network/session changes)
   mnet ip
   mnet ping <node>
+  mnet desk prepare REQUEST_FILE NEW_PRIVATE_DIR (offline one-shot draft pair; no approval or input)
   mnet desk layout-check FILE [--edge DISPLAY EDGE PIXEL]  (offline geometry only)
   mnet desk layout-view FILE           (native offline geometry inspector; Linux X11)
   mnet session browse  (Linux X11 chooser, exact current peer; no automatic control)

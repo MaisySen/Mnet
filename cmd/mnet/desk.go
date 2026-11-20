@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/signal"
@@ -60,6 +61,8 @@ func validDeskArgs(args []string) bool {
 		return false
 	}
 	switch args[0] {
+	case "prepare":
+		return len(args) == 3
 	case "layout-check":
 		return true
 	case "layout-view":
@@ -70,7 +73,15 @@ func validDeskArgs(args []string) bool {
 }
 func runDesk(args []string) {
 	if !validDeskArgs(args) {
-		fatal("usage: mnet desk layout-check FILE [--edge DISPLAY EDGE PIXEL] | mnet desk layout-view FILE")
+		fatal("usage: mnet desk prepare REQUEST_FILE NEW_PRIVATE_DIR | mnet desk layout-check FILE [--edge DISPLAY EDGE PIXEL] | mnet desk layout-view FILE")
+		return
+	}
+	if args[0] == "prepare" {
+		if err := prepareDeskRunFiles(args[1], args[2]); err != nil {
+			fatal(err.Error())
+			return
+		}
+		fmt.Println("Drafts written. Review REVIEW.txt and layout.json; no approval, listener or input was created.")
 		return
 	}
 	if args[0] == "layout-view" {

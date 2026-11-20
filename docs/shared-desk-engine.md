@@ -2,7 +2,7 @@
 
 This is source-level engineering progress, not a released or consumer-ready tool. Shared Desk now has its own layout, physical input protocol, exact one-use pairing transport, native source capture and recipient ownership. It does not use the Remote Desktop video/text session. Mnet network membership alone grants no Desk input.
 
-The supported demonstration is two disposable X11 displays on one computer, using fresh test-only certificates and explicit fixture approvals. There is no production pairing UI, saved trust store, workspace authority verifier or user-facing enable command yet. The only new normal CLI command checks an offline arrangement.
+The supported demonstration is two disposable X11 displays on one computer, using fresh test-only certificates and explicit fixture approvals. There is no production pairing UI, saved trust store, workspace authority verifier or user-facing enable command yet. Normal CLI commands inspect an offline arrangement and prepare explicit one-run drafts; neither establishes trust or starts input.
 
 The separate [offline native arrangement inspector](shared-desk-layout-viewer.md), `mnet desk layout-view FILE`, makes geometry and edge candidates visible without creating a run, trust or input.
 
@@ -411,3 +411,17 @@ Fourteen added local loader cases cover both roles: exact matching identity, wro
 ## Maximum split-edge geometry is order-independent
 
 An offline32display arrangement now checks every source-edge native pixel against an independent rational two-rectangle oracle. Thirty-one adjacent recipients divide the full edge into half-open spans, with unequal native densities. Left/right/top/bottom layouts and reversed display ordering must select the same exact candidate coordinates. Three full race repetitions and fresh whole-repository uncached race/vet/build pass. This is maximum-policy geometry evidence only, not native multi-monitor support, discovery or authority. No product behavior changed.
+
+## Prepare a one-run pair without hand-assembling bindings
+
+`mnet desk prepare REQUEST NEW_PRIVATE_DIR` is a Linux engineering setup step. Supply each computer's actual read-only `mnetd -desk-inspect` output, its local absolute certificate/key paths, a recipient endpoint, a source edge and a finite lifetime. Inspections remain untrusted public evidence. Compare exact keys independently before running anything. No identity or approval is generated or copied, and preparation does not read the named private key files.
+
+The request has version 1, primary and recipient objects (each with `inspection`, `certificate_file`, `private_key_file`), `recipient_address`, `source_edge` and `lifetime_seconds`. The inspection object is the exact inspector output, including `local_evidence_only: true` and `approval: false`. Both keyboard hashes must match; device pins must differ. Preparation refuses unknown/duplicate fields, special input files, nonabsolute identity paths, unsupported geometry and existing output directories. There is no default peer or guessed identity.
+
+The output contains `layout.json`, `REVIEW.txt`, and private `primary/` and `recipient/` folders, each with `run.json` and an empty `replay/` directory. The arrangement places the recipient adjacent to the selected source edge, top-aligned for horizontal edges and left-aligned for vertical edges. Dimensions use the supplied pixel sizes as layout units. Inspect that arrangement before choosing a run. A fresh random run and the same exact layout/device/map binding are supplied to both roles. No replay reservation, network listener, native capture or consent is created.
+
+Copy only the appropriate role folder to that computer. Private keys are not included and must never be transferred to the peer. Absolute certificate/key paths must resolve locally. Explicitly selecting `mnetd -desk-run run.json` still requires the existing local default-decline reviews and live native checks. Decline, failure and completion all consume that attempt; prepare a fresh pair rather than editing/reusing bindings.
+
+Output creation uses descriptor-relative operations anchored to an existing parent owned by the current user and not writable by others. Files are exclusive 0600, directories 0700, and final-component links are refused. Partial output after a filesystem failure is retained with an explicit error, never recursively removed through a possibly changed pathname. Do not run partial output. This is not protection against a malicious process running as the same user or filesystem/mount administrator.
+
+`python3 scripts/desk-prepare-validation.py` runs the actual inspector and built preparation command, then launches those generated configurations on two disposable X servers. It checks the prelaunch absence of input/live windows/replay reservations, both explicit local approvals, source-edge arrival, exact native held key/button state, joined SIGTERM release/reclaim and persistent refusal of consumed configurations. Equal-size and 1280x960 recipient runs passed locally. These are independent Linux fixtures, not physical-device or production pairing acceptance. Installed setup, saved trusted pairing and Multies integration remain unresolved.
