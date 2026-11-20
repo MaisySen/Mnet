@@ -584,7 +584,17 @@ try:
  # An authenticated exact-key peer with the exact approved hello can still
  # send invalid input. Refusal must release the already-held native ledger
  # before this fixture closes TLS, not merely on socket EOF or source keyup.
- for malformed,token in [('duplicate-key','e5'),('stale-sequence','e6'),('unknown-kind','e7'),('missing-heartbeat','e8'),('partial-frame','e9'),('zero-frame','ea'),('oversize-frame','eb'),('duplicate-json-key','ec'),('unknown-json-field','ed'),('stop-with-input','f2'),('pulse-with-binding','f1')]:
+ invalid_inputs={
+  'unowned-key-up':(dict(kind='key',action='up',code=39),'unowned release'),
+  'unowned-key-repeat':(dict(kind='key',action='repeat',code=39),'unowned key repeat'),
+  'unowned-button-up':(dict(kind='button',action='up',code=1),'unowned release'),
+  'duplicate-button':(dict(kind='button',action='down',code=3),'duplicate press'),
+  'pointer-negative':(dict(kind='pointer',action='move',x=-1,y=0),'pointer outside recipient'),
+  'pointer-at-width':(dict(kind='pointer',action='move',x=int(size.split('x')[0]),y=0),'pointer outside recipient'),
+  'button-out-of-range':(dict(kind='button',action='down',code=6),'invalid button'),
+  'key-with-coordinates':(dict(kind='key',action='down',code=39,x=1),'unexpected key/button coordinates'),
+ }
+ for malformed,token in [('duplicate-key','e5'),('stale-sequence','e6'),('unknown-kind','e7'),('missing-heartbeat','e8'),('partial-frame','e9'),('zero-frame','ea'),('oversize-frame','eb'),('duplicate-json-key','ec'),('unknown-json-field','ed'),('stop-with-input','f2'),('pulse-with-binding','f1')]+[(name,format(0x80+i,'02x')) for i,name in enumerate(invalid_inputs)]:
   recipient_path=out/'recipient'/'run.json';bad_spec=json.loads(recipient_path.read_text());bad_spec['binding']['run']=token*32;bad_spec['lifetime_seconds']=30;recipient_path.write_text(json.dumps(bad_spec))
   recipient=launch('recipient');approve('recipient',displays[1],name='-invalid-'+malformed)
   poll(lambda:'waiting for one exact-key' in (out/'recipient.log').read_text(),'invalid input recipient listening')
@@ -609,7 +619,8 @@ try:
    send_frame(dict(kind='input',input=dict(sequence=2,kind='button',action='down',code=3)))
    poll(lambda:keysbuttons(display_handles[1],1024)==(True,True),'native ledger before '+malformed)
    live_capture('recipient',displays[1],'receiving','-invalid-'+malformed)
-   if malformed=='duplicate-key':message=dict(kind='input',input=dict(sequence=3,kind='key',action='down',code=38))
+   if malformed in invalid_inputs:message=dict(kind='input',input=dict(sequence=3,**invalid_inputs[malformed][0]))
+   elif malformed=='duplicate-key':message=dict(kind='input',input=dict(sequence=3,kind='key',action='down',code=38))
    elif malformed=='stale-sequence':message=dict(kind='input',input=dict(sequence=2,kind='pointer',action='move',x=10,y=10))
    else:message=dict(kind='clipboard')
    if malformed=='partial-frame':raw.sendall((4096).to_bytes(4,'big')+b'{')
@@ -622,7 +633,7 @@ try:
    elif malformed!='missing-heartbeat':send_frame(message)
    recipient.wait(timeout=4)
    assert recipient.returncode!=0,'invalid authenticated input reported success'
-   reason={'duplicate-key':'duplicate press','stale-sequence':'stale input sequence','unknown-kind':'unsupported desk message','missing-heartbeat':'desk channel interrupted','partial-frame':'desk channel interrupted','zero-frame':'desk channel interrupted','oversize-frame':'desk channel interrupted','duplicate-json-key':'desk channel interrupted','unknown-json-field':'desk channel interrupted','stop-with-input':'invalid desk stop','pulse-with-binding':'desk message outside active run'}[malformed]
+   reason={'duplicate-key':'duplicate press','stale-sequence':'stale input sequence','unknown-kind':'unsupported desk message','missing-heartbeat':'desk channel interrupted','partial-frame':'desk channel interrupted','zero-frame':'desk channel interrupted','oversize-frame':'desk channel interrupted','duplicate-json-key':'desk channel interrupted','unknown-json-field':'desk channel interrupted','stop-with-input':'invalid desk stop','pulse-with-binding':'desk message outside active run',**{name:case[1] for name,case in invalid_inputs.items()}}[malformed]
    assert reason in (out/'recipient.log').read_text(),'invalid input ended for an unrelated reason'
 
    poll(lambda:keysbuttons(display_handles[1],1024)==(False,False),'native release before TLS close after '+malformed)
