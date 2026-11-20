@@ -43,6 +43,12 @@ func deskFixtureChangeSourceMap(t *testing.T, c *xgb.Conn) func() {
 	}
 }
 func TestDeskX11ArmedSourceMapChangeCannotCreateRecipient(t *testing.T) {
+	deskArmedSourceChangeFixture(t, "map")
+}
+func TestDeskX11ArmedSourceGeometryChangeCannotCreateRecipient(t *testing.T) {
+	deskArmedSourceChangeFixture(t, "geometry")
+}
+func deskArmedSourceChangeFixture(t *testing.T, cause string) {
 	if os.Getenv("MNET_DESK_NATIVE_TEST") != "1" {
 		t.Skip("requires disposable X display")
 	}
@@ -92,37 +98,42 @@ func TestDeskX11ArmedSourceMapChangeCannotCreateRecipient(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	restore := deskFixtureChangeSourceMap(t, conn)
+	var restore func()
+	if cause == "geometry" {
+		restore = deskFixtureResizeSource(t, conn)
+	} else {
+		restore = deskFixtureChangeSourceMap(t, conn)
+	}
 	defer restore()
 	select {
 	case err := <-done:
 		if err == nil {
-			t.Fatal("changed-map arm reported successful capture")
+			t.Fatal("changed-source arm reported successful capture")
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("changed-map arm failed to retire")
+		t.Fatal("changed-source arm failed to retire")
 	}
 	if creates.Load() != 0 {
-		t.Fatal("changed-map arm created recipient")
+		t.Fatal("changed-source arm created recipient")
 	}
 	select {
 	case <-board.Stopped():
 	default:
-		t.Fatal("changed-map arm retained generation")
+		t.Fatal("changed-source arm retained generation")
 	}
 	owner, err := xproto.GetSelectionOwner(conn, atom.Atom).Reply()
 	if err != nil || owner.Owner != 0 {
-		t.Fatal("changed-map arm retained local input owner", err)
+		t.Fatal("changed-source arm retained local input owner", err)
 	}
-	// Restoring the keyboard map is fixture repair only; the retired board must
+	// Restoring source geometry/map is fixture repair only; the retired board must
 	// not become reusable merely because the source layout now looks familiar.
 	restore()
 	if err = board.Cross(desk.Right, 10, binding, func(desk.Binding) (desk.NativeInput, error) { creates.Add(1); return nil, nil }); err == nil || creates.Load() != 0 {
-		t.Fatal("restored map reactivated retired arm")
+		t.Fatal("restored source reactivated retired arm")
 	}
 	safety, err := newDeskSafety(keyboard)
 	if err != nil {
-		t.Fatal("old map arm retained shortcut/ownership", err)
+		t.Fatal("old source arm retained shortcut/ownership", err)
 	}
 	if err = safety.Close(); err != nil {
 		t.Fatal(err)

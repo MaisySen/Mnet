@@ -18,15 +18,16 @@ import (
 // implemented here. X11 does not distinguish hardware from synthetic events.
 // No hooks, remapping, clipboard or screen capture are installed.
 type deskPrimaryCapture struct {
-	conn      *xgb.Conn
-	safety    attendedSafety
-	once      sync.Once
-	stopped   atomic.Bool
-	forwarded atomic.Uint64
-	done      chan struct{}
-	err       error
-	runErr    error
-	board     *desk.Switchboard
+	conn         *xgb.Conn
+	safety       attendedSafety
+	once         sync.Once
+	stopped      atomic.Bool
+	geometryLost atomic.Bool
+	forwarded    atomic.Uint64
+	done         chan struct{}
+	err          error
+	runErr       error
+	board        *desk.Switchboard
 }
 
 func newDeskPrimaryCapture(board *desk.Switchboard, keyboard string, live func() bool) (*deskPrimaryCapture, error) {
@@ -85,7 +86,7 @@ func newDeskPrimaryCapture(board *desk.Switchboard, keyboard string, live func()
 	if err != nil || pointer.Mask&0x1fff != 0 {
 		return nil, errors.New("desk primary preheld buttons/modifiers refused")
 	}
-	if err = xproto.ChangeWindowAttributesChecked(conn, screen.Root, xproto.CwEventMask, []uint32{xproto.EventMaskKeyPress | xproto.EventMaskKeyRelease | xproto.EventMaskPointerMotion | xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease}).Check(); err != nil {
+	if err = xproto.ChangeWindowAttributesChecked(conn, screen.Root, xproto.CwEventMask, []uint32{xproto.EventMaskKeyPress | xproto.EventMaskKeyRelease | xproto.EventMaskPointerMotion | xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskStructureNotify}).Check(); err != nil {
 		return nil, err
 	}
 	keyGrab, err := xproto.GrabKeyboard(conn, false, screen.Root, xproto.TimeCurrentTime, xproto.GrabModeAsync, xproto.GrabModeAsync).Reply()
@@ -144,6 +145,12 @@ func newDeskPrimaryCapture(board *desk.Switchboard, keyboard string, live func()
 				input = desk.Input{Kind: "button", Action: "down", Code: uint16(e.Detail)}
 			case xproto.ButtonReleaseEvent:
 				input = desk.Input{Kind: "button", Action: "up", Code: uint16(e.Detail)}
+			case xproto.ConfigureNotifyEvent:
+				if e.Window == screen.Root && (int64(e.Width) != localDisplay.PixelWidth || int64(e.Height) != localDisplay.PixelHeight) {
+					c.disableForGeometry(true)
+					return
+				}
+				continue
 			case xproto.MappingNotifyEvent:
 				actual, err := deskKeyboardFingerprint(conn)
 				if err == nil && actual == keyboard {
@@ -208,6 +215,8 @@ func newDeskPrimaryCapture(board *desk.Switchboard, keyboard string, live func()
 	go func() {
 		tick := time.NewTicker(10 * time.Millisecond)
 		defer tick.Stop()
+		geometryTick := time.NewTicker(50 * time.Millisecond)
+		defer geometryTick.Stop()
 		for {
 			select {
 			case <-c.done:
@@ -218,6 +227,20 @@ func newDeskPrimaryCapture(board *desk.Switchboard, keyboard string, live func()
 			case <-safety.Stopped():
 				c.disable()
 				return
+			case <-geometryTick.C:
+				// A root change must also retire an otherwise idle capture. The exact
+				// approved source dimensions remain fixed for this one run.
+				if c.stopped.Load() {
+					return
+				}
+				geometry, err := xproto.GetGeometry(conn, xproto.Drawable(screen.Root)).Reply()
+				if c.stopped.Load() {
+					return
+				}
+				if err != nil || int64(geometry.Width) != localDisplay.PixelWidth || int64(geometry.Height) != localDisplay.PixelHeight {
+					c.disableForGeometry(true)
+					return
+				}
 			case <-tick.C:
 				if !live() {
 					c.disable()
@@ -232,8 +255,10 @@ func newDeskPrimaryCapture(board *desk.Switchboard, keyboard string, live func()
 
 // disable is non-reentrant with the board: local grabs disappear before any
 // remote cleanup is attempted. Close joins both event-loop and owned cleanup.
-func (c *deskPrimaryCapture) disable() {
+func (c *deskPrimaryCapture) disable() { c.disableForGeometry(false) }
+func (c *deskPrimaryCapture) disableForGeometry(changed bool) {
 	c.once.Do(func() {
+		c.geometryLost.Store(changed)
 		c.stopped.Store(true)
 		c.err = errors.Join(c.err, xproto.UngrabKeyboardChecked(c.conn, xproto.TimeCurrentTime).Check(), xproto.UngrabPointerChecked(c.conn, xproto.TimeCurrentTime).Check())
 		c.conn.Close()
@@ -243,7 +268,11 @@ func (c *deskPrimaryCapture) disable() {
 func (c *deskPrimaryCapture) Close() error {
 	c.disable()
 	<-c.done
-	return errors.Join(c.err, c.runErr, c.board.Stop())
+	var geometryErr error
+	if c.geometryLost.Load() {
+		geometryErr = errors.New("desk source geometry changed or unavailable")
+	}
+	return errors.Join(c.err, c.runErr, geometryErr, c.board.Stop())
 }
 
 func deskRestoreLocalPointer(local desk.Display, mapped desk.Candidate) error {

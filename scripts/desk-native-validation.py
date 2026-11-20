@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Independent Shared Desk TLS/capture/native-input fixture, no physical acceptance."""
 import os,pathlib,shutil,subprocess,tempfile,time
+from PIL import Image
 os.chdir(pathlib.Path(__file__).resolve().parent.parent)
 for name in ('go','Xvfb','import','xdotool','zenity'):
  if not shutil.which(name):raise SystemExit('missing fixture dependency: '+name)
@@ -34,6 +35,11 @@ try:
   (out/'held.captured').write_text('both actual display roots captured')
   until=time.monotonic()+15
   while not (out/'return.stage').exists():
+   if (out/'source-geometry.stage').exists() and not (out/'source-geometry.captured').exists():
+    for role,display in zip(('source','target'),displays):
+     subprocess.run(['import','-display',display,'-window','root',str(out/(role+'-geometry-retired.png'))],check=True)
+    assert Image.open(out/'source-geometry-retired.png').size==(800,600),'source root screenshot did not resize'
+    (out/'source-geometry.captured').write_text('actual resized root and released recipient captured')
    if test.poll() is not None:raise AssertionError((out/'test.log').read_text())
    if time.monotonic()>until:raise AssertionError('mapped return stage not reached')
    time.sleep(.01)
@@ -73,7 +79,7 @@ try:
   if handled!={'primary','recipient','denial-decline','denial-withdraw'}:raise AssertionError('both actual local review dialogs were not exercised')
   if test.returncode:raise AssertionError((out/'test.log').read_text())
  print((out/'test.log').read_text(),flush=True)
- print('PASS: pinned TLS 1.3 Desk pair, native source capture, independent recipient key/button/pointer, joined stop, source reclaim, source-map retirement/unchanged-map routing, armed-map no-create, surviving-child coordinator-loss cleanup. Virtual displays only.',flush=True)
+ print('PASS: pinned TLS 1.3 Desk pair, native source capture, independent recipient key/button/pointer, joined stop, source reclaim, source-map retirement/unchanged-map routing, actual source-resize retirement, armed-map/geometry no-create, surviving-child coordinator-loss cleanup. Virtual displays only.',flush=True)
 finally:
  if test is not None and test.poll() is None:test.kill();test.wait()
  for process in xs:process.terminate();process.wait()

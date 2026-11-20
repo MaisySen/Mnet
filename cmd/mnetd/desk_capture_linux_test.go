@@ -20,7 +20,7 @@ import (
 )
 
 func TestDeskX11TwoDisplayCaptureAndReclaim(t *testing.T) {
-	for _, mode := range []string{"local-stop", "stop-chord", "idle-peer-loss", "idle-native-child-loss", "source-map-loss", "edge-return", "armed-edge-entry", "reviewed-edge-entry"} {
+	for _, mode := range []string{"local-stop", "stop-chord", "idle-peer-loss", "idle-native-child-loss", "source-map-loss", "source-geometry-loss", "source-geometry-transient", "edge-return", "armed-edge-entry", "reviewed-edge-entry"} {
 		t.Run(mode, func(t *testing.T) { deskTwoDisplayCaptureFixture(t, mode) })
 	}
 }
@@ -264,6 +264,66 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 			}
 			time.Sleep(time.Millisecond)
 		}
+	}
+	if mode == "source-geometry-loss" || mode == "source-geometry-transient" {
+		restore := deskFixtureResizeSource(t, source)
+		defer restore()
+		if mode == "source-geometry-transient" {
+			restore()
+		}
+		select {
+		case <-c.done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("changed source geometry left held-input capture active")
+		}
+		closeErr := c.Close()
+		if closeErr == nil || !strings.Contains(closeErr.Error(), "source geometry changed") {
+			t.Fatal("source geometry loss was not preserved as error", closeErr)
+		}
+		select {
+		case err := <-serverDone:
+			if err != nil {
+				t.Fatal("source geometry loss did not join remote cleanup", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("source geometry loss left pair server live")
+		}
+		keys, ke := xproto.QueryKeymap(target).Reply()
+		pointer, pe := xproto.QueryPointer(target, targetScreen.Root).Reply()
+		if ke != nil || pe != nil || keys.Keys[38/8]&(1<<(38%8)) != 0 || pointer.Mask&xproto.ButtonMask1 != 0 {
+			t.Fatal("source geometry loss left recipient held", ke, pe)
+		}
+		grab, err := xproto.GrabKeyboard(source, false, sourceScreen.Root, xproto.TimeCurrentTime, xproto.GrabModeAsync, xproto.GrabModeAsync).Reply()
+		if err != nil || grab.Status != xproto.GrabStatusSuccess {
+			t.Fatal("source geometry change left source grabbed", err)
+		}
+		xproto.UngrabKeyboardChecked(source, xproto.TimeCurrentTime).Check()
+		if err = board.Apply(desk.Input{Sequence: 100, Kind: "key", Action: "down", Code: 38}); err == nil {
+			t.Fatal("changed-geometry board reused")
+		}
+		if mode == "source-geometry-loss" {
+			deskFixtureObserved(t, source, sourceWindow, "OBSERVED: root resized to800x600; capture retired; local keyboard reclaimed")
+		} else {
+			deskFixtureObserved(t, source, sourceWindow, "OBSERVED: transient root resize restored; old capture still retired")
+		}
+		deskFixtureObserved(t, target, targetWindow, "OBSERVED: source geometry retired; native key38/button1 released; pair cleanup joined")
+		if artifacts := os.Getenv("MNET_DESK_ARTIFACTS"); artifacts != "" && mode == "source-geometry-loss" {
+			if err = os.WriteFile(filepath.Join(artifacts, "source-geometry.stage"), []byte("actual resized source and native held-input cleanup checked"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			until = time.Now().Add(5 * time.Second)
+			for {
+				if _, err = os.Stat(filepath.Join(artifacts, "source-geometry.captured")); err == nil {
+					break
+				}
+				if time.Now().After(until) {
+					t.Fatal("resized root visual acknowledgement missing")
+				}
+				time.Sleep(time.Millisecond)
+			}
+		}
+		t.Log("source root geometry change retired capture and joined native held-input cleanup; local close result:", closeErr)
+		return
 	}
 	if mode == "source-map-loss" {
 		mapping, err := xproto.GetKeyboardMapping(source, 38, 1).Reply()
