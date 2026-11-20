@@ -129,3 +129,26 @@ retain their original fixed enabled-state wrappers.
 This is useful List-review wiring, not completion of the first-run plan above.
 Production configuration, enrollment consent and registration, persistent
 lifecycle, trusted pairing and physical mixed-platform acceptance remain open.
+
+### Installed configured home and real browser acceptance
+
+Exact local installed Mnet `970e29c9ab05814bd6be2ed32d6dc0d846c4e930`
+with isolated Multies `9f7245ce93f1ab61fdb707146befdebff803b73e`
+completed the actual home-to-approval journey. A fresh private desktop home,
+real system xdg-open/Gio association, disposable Chrome profile, real local
+Multies server and fresh stopped fake-TUN daemon were used. The driver opened
+Review Multies approvals from the actual installed home, deliberately started
+identity preparation, reviewed the native key and separately opened the browser.
+It signed into the fixture account, compared the exact native/browser key,
+approved List, observed the native current-device row, waited for real expiry,
+closed the review and verified the returned home explicitly said network setup
+was still not connected. Actual native and browser pixels were inspected.
+
+The home created no identity before that explicit Start. The saved local state
+remained owner-only and unenrolled, with no Multies credential. Browser revoke
+removed the approval. Both native processes and the fixture browser closed, and
+the unchanged installed prefix was removed through the guarded installer.
+Unrelated desktop notification/keyring helpers reported no-display warnings;
+the system-browser, login, native List and return checks passed independently.
+This is a local installed integration test, not a production deployment, normal
+installed first-run enrollment or two-physical-device acceptance.
