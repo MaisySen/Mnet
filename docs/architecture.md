@@ -2,6 +2,10 @@
 
 Development design. [STATUS](STATUS.md) separates implementation, test evidence, published builds and open work.
 
+## Three execution boundaries
+
+Mnet networking, Remote Desktop and Synergy-like Shared Desk are distinct tools. The [three-tool engineering map](three-tools.md) owns their current implementation and completion gates. Network membership is not view/control permission, and neither grants raw Shared Desk input. Existing legacy sessions below remain separate from attended view-only/pointer entries and the independent one-run Desk protocol. Multies bridge primitives are inactive; the real integration and installed consumer setup remain unfinished.
+
 ## Control plane: `mnet-control`
 
 One process stores networks, identities and policies in a JSON file. Changes use private temporary-file replacement and file sync, with rollback on persistence failure. This is not distributed durable storage or a proven large-fleet design.

@@ -1,6 +1,10 @@
 # Product scope and current gaps
 
-Updated 2026-11-19, Australia/Sydney. This page separates the intended consumer product from current engineering builds. [STATUS](STATUS.md) records individual commits/checks; the whole-product plan remains the design direction, not proof that these gates passed.
+Updated 2026-11-20, Australia/Sydney. This page separates the intended consumer product from current engineering builds. [STATUS](STATUS.md) records individual commits/checks; the whole-product plan remains the design direction, not proof that these gates passed.
+
+## Three distinct tools
+
+The current direction is three separate tools: Mnet private networking, Remote Desktop with separate view/control consent, and Synergy-like Shared Desk keyboard/mouse sharing. They may share future Multies identity and native infrastructure, but never inherit each other's input or pairing authority. The [three-tool engineering map](three-tools.md) records their implemented native journeys, source boundaries and ordered remaining gates. This page's older platform matrix is not a claim that the three-tool installed consumer experience exists.
 
 ## Product direction: a Multies-only companion
 

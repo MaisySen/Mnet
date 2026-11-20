@@ -1,5 +1,8 @@
 # Mnet documentation
 
+- [Three distinct tools: implementation, authority and completion gates](three-tools.md)
+- [Mnet read-only native device window](device-window.md)
+- [Remote Desktop native view-only viewer](desktop-native-viewer.md) and [separate pointer entry](desktop-pointer-viewer.md)
 - [Shared Desk: independent Linux engine slice and remaining gates](shared-desk-engine.md)
 
 These documents describe a development project, not a production-readiness guarantee. Start with the status page before installing or relying on a feature.

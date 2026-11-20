@@ -186,3 +186,14 @@ This closes a finite engineering review-evidence gap. It does not edit arrangeme
 The finite run-status Stop target is now44pixels high. It needs a left press and release inside the same local target. A press above Stop followed by release over it, a release outside after pressing Stop, or local focus loss cancels that pending gesture. Escape and the existing local live-stop chord remain separate stop paths; this does not promise they bypass another X11 grab or an unresponsive server. The source forwarding-grab caveat remains visible.
 
 The old published status handler fails the actual outside-press/inside-release regression by ending the waiting run. Current equal/mixed actual launcher journeys reject both mismatched directions and focus-loss activation, then cancel from the newly included top edge of the44pixel band. Existing recipient Stop with held key/right button, joined release and source reclaim still pass. Thirty focused status/hit-test races, full uncached race/vet/build and Darwin/Windows daemon builds pass locally. Final actual role-specific status pixels inspected. This cannot approve, reconnect or save trust.
+
+
+## Keyboard-focused local Stop
+
+The existing one-run status window now exposes its local Stop through Tab or Shift+Tab, with a visible white focus ring. Matching Enter or Space release withdraws only this already-reviewed run. A release without a press does nothing; Tab, focus loss, a pointer press or an unrelated key cancels pending keyboard activation. Local Escape and Ctrl+Alt+Shift+F12 remain unchanged. This adds no approval, saved trust, reconnect or remote-input command.
+
+The source window's warning remains: source input grabs can prevent interacting with its Stop button while forwarding, so use the local shortcut while X11 remains responsive. A focus ring does not fix that platform limitation. Stop requests joined cleanup; failed native release or lost remote acknowledgment remains an error, not a clean-stop claim.
+
+The actual built-launcher fixture fails the new focus-pixel check against the old source. Current equal and mixed-size X11 runs check actual white focus pixels, unpressed-release refusal, focus-loss/Tab cancellation, waiting listener/window teardown and keyboard Stop while an independent source key38 and right button are held on the recipient. Native queries show both released and the source keyboard/pointer grabs reclaimed. Existing exact mouse gesture, default-decline, shortcut, resize and deadline checks still pass. Thirty focused race repetitions, full uncached race/vet/build and Darwin/Windows daemon cross-builds pass. These are disposable same-host X11 fixtures, not physical-computer, other-OS input or consumer integration acceptance.
+
+![Actual recipient keyboard-focused Stop while receiving](ui/shared-desk/recipient-keyboard-stop.png)

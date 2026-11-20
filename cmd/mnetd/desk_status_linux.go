@@ -24,6 +24,7 @@ type deskRunStatus struct {
 	deleteAtom             xproto.Atom
 	escapeKey              xproto.Keycode
 	stopPressed            bool
+	stopKeys               deskStopKeys
 	mu                     sync.Mutex
 	role, run, peer, state string
 	err                    error
@@ -90,7 +91,7 @@ func startDeskRunStatus(parent context.Context, spec desk.RunSpec, state string)
 		return nil, err
 	}
 	mask := uint32(xproto.CwBackPixel | xproto.CwEventMask)
-	if err = xproto.CreateWindowChecked(c, screen.RootDepth, w, screen.Root, 20, 20, 720, 300, 0, xproto.WindowClassInputOutput, screen.RootVisual, mask, []uint32{0x17202e, xproto.EventMaskExposure | xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskFocusChange | xproto.EventMaskKeyPress | xproto.EventMaskStructureNotify}).Check(); err != nil {
+	if err = xproto.CreateWindowChecked(c, screen.RootDepth, w, screen.Root, 20, 20, 720, 300, 0, xproto.WindowClassInputOutput, screen.RootVisual, mask, []uint32{0x17202e, xproto.EventMaskExposure | xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskFocusChange | xproto.EventMaskKeyPress | xproto.EventMaskKeyRelease | xproto.EventMaskStructureNotify}).Check(); err != nil {
 		return nil, err
 	}
 	font, err := xproto.NewFontId(c)
@@ -177,7 +178,12 @@ func (u *deskRunStatus) drawLocked() error {
 	if err = xproto.ChangeGCChecked(u.conn, u.gc, xproto.GcForeground|xproto.GcBackground, []uint32{0xffffff, 0x9b343e}).Check(); err != nil {
 		return err
 	}
-	label := "STOP THIS RUN  (or Escape when this window has focus)"
+	if u.stopKeys.focused {
+		if err = xproto.PolyRectangleChecked(u.conn, xproto.Drawable(u.window), u.gc, []xproto.Rectangle{{X: 21, Y: 243, Width: 677, Height: 37}, {X: 23, Y: 245, Width: 673, Height: 33}}).Check(); err != nil {
+			return err
+		}
+	}
+	label := "STOP THIS RUN  (Tab then Enter/Space; Escape also stops)"
 	if err = xproto.ImageText8Checked(u.conn, byte(len(label)), xproto.Drawable(u.window), u.gc, 205, 267, label).Check(); err != nil {
 		return err
 	}
@@ -211,6 +217,30 @@ func (u *deskRunStatus) Set(state string) error {
 	}
 	return nil
 }
+func (u *deskRunStatus) updateStopKeys(change func()) bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.ctx.Err() != nil {
+		return false
+	}
+	change()
+	if err := u.drawLocked(); err != nil {
+		u.err = errors.New("desk status control repaint failed")
+		u.cancel()
+		return false
+	}
+	return true
+}
+func (u *deskRunStatus) stopKeysym(key xproto.Keycode) (uint32, error) {
+	mapping, err := xproto.GetKeyboardMapping(u.conn, key, 1).Reply()
+	if err == nil && len(mapping.Keysyms) > 0 {
+		return uint32(mapping.Keysyms[0]), nil
+	}
+	u.mu.Lock()
+	u.err = errors.New("desk status keyboard unavailable")
+	u.mu.Unlock()
+	return 0, errors.New("desk status keyboard unavailable")
+}
 func (u *deskRunStatus) events() {
 	defer close(u.done)
 	defer u.cancel()
@@ -236,7 +266,13 @@ func (u *deskRunStatus) events() {
 			u.mu.Unlock()
 		case xproto.FocusOutEvent:
 			u.stopPressed = false
+			if !u.updateStopKeys(func() { u.stopKeys.clear() }) {
+				return
+			}
 		case xproto.ButtonPressEvent:
+			if !u.updateStopKeys(func() { u.stopKeys.clear() }) {
+				return
+			}
 			u.stopPressed = deskStopHit(byte(e.Detail), int(e.EventX), int(e.EventY))
 		case xproto.ButtonReleaseEvent:
 			pressed := u.stopPressed
@@ -245,9 +281,29 @@ func (u *deskRunStatus) events() {
 				return
 			}
 		case xproto.KeyPressEvent:
+			u.stopPressed = false
 			if e.Detail == u.escapeKey {
 				return
-			} // Local X11 Escape; no remote input command.
+			} // Local withdrawal, never remote input.
+			sym, err := u.stopKeysym(e.Detail)
+			if err != nil {
+				return
+			}
+			if !u.updateStopKeys(func() { u.stopKeys.press(sym) }) {
+				return
+			}
+		case xproto.KeyReleaseEvent:
+			sym, err := u.stopKeysym(e.Detail)
+			if err != nil {
+				return
+			}
+			stop := false
+			if !u.updateStopKeys(func() { stop = u.stopKeys.release(sym) }) {
+				return
+			}
+			if stop {
+				return
+			}
 		case xproto.ClientMessageEvent:
 			if e.Format == 32 && xproto.Atom(e.Data.Data32[0]) == u.deleteAtom {
 				return

@@ -193,9 +193,54 @@ try:
   if probe.connect_ex((address[0],int(address[1])))==0:raise AssertionError('unsupported status resize left listener open')
  if live_window('recipient',displays[1]):raise AssertionError('resized status window survived cancellation')
  print('PASS actual unsupported status resize retires waiting run and listener, without hidden fallback',flush=True)
+ # Keyboard-only Stop must use a matching focused Enter/Space release.
+ spec['binding']['run']='7'*64;path.write_text(json.dumps(spec))
+ waiting=launch('recipient');approve('recipient',displays[1],name='-keyboard-stop')
+ poll(lambda:'waiting for one exact-key' in (out/'recipient.log').read_text(),'keyboard waiting listen')
+ stop_window=live_capture('recipient',displays[1],'waiting','-keyboard-stop')
+ command(displays[1],'windowfocus',stop_window,'key','Tab')
+ def stop_focus_pixels():
+  subprocess.run(['import','-display',displays[1],'-window',stop_window,str(out/'live-recipient-keyboard-focus.png')],check=True)
+  return Image.open(out/'live-recipient-keyboard-focus.png').convert('RGB').getpixel((21,243))==(255,255,255)
+ poll(stop_focus_pixels,'actual keyboard Stop focus pixels')
+ command(displays[1],'keyup','Return')
+ time.sleep(.05);assert waiting.poll() is None,'unpressed Return stopped run'
+ command(displays[1],'keydown','Return','windowfocus',str(x.XDefaultRootWindow(display_handles[1])),'keyup','Return','windowfocus',stop_window)
+ time.sleep(.05);assert waiting.poll() is None,'focus loss retained pending keyboard Stop'
+ command(displays[1],'key','Tab','keydown','Return','key','Tab','keyup','Return')
+ time.sleep(.05);assert waiting.poll() is None,'Tab retained pending keyboard Stop'
+ command(displays[1],'key','space');waiting.wait(timeout=5)
+ with socket.socket() as probe:
+  probe.settimeout(.2)
+  if probe.connect_ex((address[0],int(address[1])))==0:raise AssertionError('keyboard Stop left listener open')
+ if live_window('recipient',displays[1]):raise AssertionError('keyboard Stop left status window open')
+ print('PASS actual keyboard Stop focus pixels, exact release, focus-loss/Tab cancellation and joined listener/window teardown',flush=True)
+ # Keyboard Stop also joins the native recipient while independent source
+ # key38 and right button remain held. Local Space cannot release either.
+ for role in ('primary','recipient'):
+  fresh_path=out/role/'run.json';fresh=json.loads(fresh_path.read_text());fresh['binding']['run']='6'*64;fresh_path.write_text(json.dumps(fresh))
+ recipient=launch('recipient');approve('recipient',displays[1],name='-keyboard-held')
+ poll(lambda:'waiting for one exact-key' in (out/'recipient.log').read_text(),'keyboard held recipient listening')
+ primary=launch('primary');approve('primary',displays[0],name='-keyboard-held')
+ command(displays[0],'mousemove','500','300');time.sleep(.05);command(displays[0],'mousemove','1023','300')
+ poll(lambda:'sending raw input' in (out/'primary.log').read_text(),'keyboard Stop source active')
+ command(displays[0],'keydown','a','mousedown','3')
+ poll(lambda:keysbuttons(display_handles[1],1024)==(True,True),'keyboard Stop recipient owns key/right button')
+ stop_window=live_capture('recipient',displays[1],'receiving','-keyboard-held')
+ command(displays[1],'windowfocus',stop_window,'key','Tab');poll(stop_focus_pixels,'receiving keyboard Stop focus pixels')
+ command(displays[1],'key','space');primary.wait(timeout=5);recipient.wait(timeout=5)
+ poll(lambda:keysbuttons(display_handles[1],1024)==(False,False),'keyboard Stop releases native held key/right button')
+ command(displays[0],'keyup','a','mouseup','3')
+ d=display_handles[0];root=x.XDefaultRootWindow(d)
+ if x.XGrabKeyboard(d,root,0,1,1,0)!=0:raise AssertionError('keyboard Stop retained source keyboard')
+ x.XUngrabKeyboard(d,0)
+ if x.XGrabPointer(d,root,0,0,1,1,0,0,0)!=0:raise AssertionError('keyboard Stop retained source pointer')
+ x.XUngrabPointer(d,0);x.XSync(d,0)
+ if live_window('primary',displays[0]) or live_window('recipient',displays[1]):raise AssertionError('keyboard Stop retained live window')
+ print('PASS actual receiving keyboard Stop joins held native key/right-button release and source reclaim',flush=True)
  # The deadline includes local review and waiting. Check the actual listener
  # and process both end rather than leaving a dormant approved service.
- spec['binding']['run']='b'*64;spec['lifetime_seconds']=2;path.write_text(json.dumps(spec))
+ spec['binding']['run']='b'*64;spec['lifetime_seconds']=2;path=out/'recipient'/'run.json';path.write_text(json.dumps(spec))
  timed=launch('recipient');approve('recipient',displays[1],name='-deadline')
  poll(lambda:'waiting for one exact-key' in (out/'recipient.log').read_text(),'deadline recipient listen')
  timed.wait(timeout=5)

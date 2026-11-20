@@ -6,6 +6,10 @@ A development companion for Multies, intended to let eligible Multies users conn
 
 **Test builds only. Do not use Mnet for sensitive traffic or important file transfers yet.** It is not complete, independently audited, or a demonstrated replacement for Tailscale or a production remote-desktop service.
 
+## Three distinct tools in development
+
+The current product direction separates Mnet private networking, Remote Desktop screen viewing/control, and Synergy-like Shared Desk keyboard/mouse sharing. Current source includes distinct engineering paths for all three, not one consent switch. See the [three-tool map](docs/three-tools.md) for what is implemented, what remains and why network membership or view approval does not grant raw input. Multies integration and the installed consumer experience remain unfinished.
+
 ## Start here
 
 - [Documentation index](docs/README.md): guides, design, evidence and history.
@@ -62,7 +66,7 @@ sudo ./mnetd -state /var/lib/mnet-test -session-host -session-auto-accept -sessi
 ./mnet --state /path/to/viewer-state session send host-name ./test-file.zip
 ```
 
-The headless host requires explicit auto-accept; the optional allowlist narrows verified peers. Viewer identity is checked against its source mesh address. The CLI is a terminal viewer, not a full native desktop app. See [session protocol and policies](docs/session-layer.md) and [reliability evidence](docs/session-reliability.md). Physical capture/input and mobile tests remain incomplete.
+The headless host requires explicit auto-accept; the optional allowlist narrows verified peers. Viewer identity is checked against its source mesh address. Those legacy commands remain engineering paths. Separate attended Linux X11 `session view` and `session point` entries now open actual native windows, with host-local view approval and a separate pointer-only request in the latter. They are not a full installed cross-platform desktop app. See the [native viewer](docs/desktop-native-viewer.md) and [pointer entry](docs/desktop-pointer-viewer.md). See [session protocol and policies](docs/session-layer.md) and [reliability evidence](docs/session-reliability.md). Physical capture/input and mobile tests remain incomplete.
 
 ## Routing, authorization and expiry
 
