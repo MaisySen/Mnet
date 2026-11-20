@@ -1,6 +1,6 @@
 # Three separate tools, one future Multies entry
 
-Updated 2026-11-20, Australia/Sydney. This is the engineering product map, not a release or an integration announcement. The requested tools are distinct: Mnet networking, Remote Desktop, and Synergy-like keyboard/mouse sharing, called Shared Desk in these development guides. Those working labels do not rename Multies or any published app.
+Updated 2026-11-21, Australia/Sydney. This is the engineering product map, not a release or an integration announcement. The requested tools are distinct: Mnet networking, Remote Desktop, and Synergy-like keyboard/mouse sharing, called Shared Desk in these development guides. Those working labels do not rename Multies or any published app.
 
 ## Independent outcomes and authority
 
@@ -12,7 +12,7 @@ Updated 2026-11-20, Australia/Sydney. This is the engineering product map, not a
 
 Shared transport or helpers must not erase these boundaries. New consumer adapters must preserve each tool's own admission, local consent, lifetime, visible state, withdrawal and actual resource teardown. No permission is obtained merely because a different tool is already running.
 
-A new [local engineering home](desktop-home.md) gives these existing windows an explicit return path. It is not first-run sign-in or a consumer eligibility gate.
+A new [local engineering home](desktop-home.md) gives these existing windows an explicit return path. A [private Linux source installation](linux-local-installation.md) now builds an exact committed snapshot, launches the actual installed home and removes only unchanged installation files. Neither is first-run sign-in or a consumer eligibility gate.
 
 ## Implemented engineering journeys
 
@@ -20,14 +20,14 @@ These paths are not the intended consumer setup. They require the prerequisites 
 
 - **Mnet:** the existing engineering daemon enrolls and joins under its current explicit configuration. `mnet status` reports current local evidence; `mnet devices` opens an authenticated read-only snapshot window on supported Linux X11. Refresh is manual and clears old rows. No peer action or remote authority is created by this window. See [device window](device-window.md), [operations](operations.md) and [native platform validation](native-platform-validation.md).
 - **Remote Desktop:** `mnet session browse` opens a [current-peer native chooser](desktop-peer-chooser.md) with explicit selection, View Only/Pointer View choice and exact-key revalidation. It is not installed consumer setup or a source of trust. `mnet session view <peer>` stays view-only. `mnet session point <peer>` can request the host-enforced narrow pointer tier only after host-local view approval. A separate host-local answer is required before pointer input. Local buttons/keyboard controls do not forward their own gestures. Revocation preserves viewing while retiring input; End retires the viewing attempt. See [native viewer](desktop-native-viewer.md), [pointer viewer](desktop-pointer-viewer.md) and [attended host](desktop-attended-host.md).
-- **Shared Desk:** `mnet desk layout-check FILE` is offline geometry only. `mnet desk layout-view FILE` adds a [read-only native arrangement inspector](shared-desk-layout-viewer.md), not pairing or input. The separate explicit `mnetd -desk-inspect FILE` and `mnetd -desk-run FILE` engineering modes do not join a network or discover trust. Both endpoints need independently accepted exact key/run/layout evidence, local review and a finite lifetime. A fresh unheld source-edge arrival starts input; local return or Stop joins owned cleanup. See [Shared Desk engine](shared-desk-engine.md).
+- **Shared Desk:** `mnet desk layout-check FILE` is offline geometry only. `mnet desk layout-view FILE` adds a [read-only native arrangement inspector](shared-desk-layout-viewer.md), not pairing or input. `mnet desk prepare REQUEST NEW_PRIVATE_DIR` creates matching fresh run drafts from explicitly supplied inspections and local paths without reading private keys or creating approval/listeners/input. The separate explicit `mnetd -desk-inspect FILE` and `mnetd -desk-run FILE` engineering modes do not join a network or discover trust. Both endpoints need independently accepted exact key/run/layout evidence, local review and a finite lifetime. A fresh unheld source-edge arrival starts input; local return or Stop joins owned cleanup. See [Shared Desk engine](shared-desk-engine.md).
 
 Linux disposable-X11 journeys run real processes, local windows and native input queries. They remain one-computer fixtures, not physical two-computer acceptance. Native Windows/macOS build or networking checks do not establish their screen/input behavior. Failed checkpoints remain failed in [status](STATUS.md) even when a later independent slice passes.
 
 ## Completion gates, in dependency order
 
 1. **Keep the split enforceable.** Maintain separate network, view/control and raw-input authority. Reject stale scope/session/run/layout evidence and join old native owners before replacement. Existing source tests are evidence for their named paths, not a general security certification.
-2. **Finish the Mnet-side installed experience without pretending to be signed in.** Current native engineering windows are not an install/sign-in/eligible-device app. Safe source work can improve them, but cannot substitute fixture peers or a successful prototype screen for live eligibility.
+2. **Finish the Mnet-side installed experience without pretending to be signed in.** The new private Linux engineering prefix has an actual install/desktop-launch/failure-recovery/removal journey. Current native engineering windows are still not a sign-in/eligible-device consumer app. Safe source work can improve them, but cannot substitute fixture peers or a successful prototype screen for live eligibility.
 3. **Agree and implement the real Multies bridge under separate authority.** Multies remains read-only. Current `internal/multies` policy, handoff intent and attended-consent primitives are inactive: no production verifier, route or enrollment caller exists. The bridge must bind fresh person/workspace/device/capability evidence and revocation. A mock verifier, generic identity-provider login, enrollment key or broad cookie is not a workaround. See [Multies boundary](multies-boundary.md).
 4. **Wire each real tool journey to that evidence.** Networking needs eligible enrollment/device data. Remote Desktop needs current workspace/device checks plus separate host view/control consent. Shared Desk needs its own exact pair/layout/raw-input consent and revocation, not reuse of the Remote Desktop control grant. Missing bridge scope must deny rather than broaden an older capability.
 5. **Close supported-platform runtime gaps.** Physical separate-computer traffic and capture/input, secure/locked desktops, permission revocation, sleep/wake, process/backend death, display changes, keyboard layouts, DPI/accessibility and network loss need actual supported-platform evidence. A compile, synthetic image or same-host test cannot close these gates.
@@ -36,3 +36,5 @@ Linux disposable-X11 journeys run real processes, local windows and native input
 ## Current interpretation
 
 There is meaningful implemented engine and native engineering UI in all three tools. There is not a finished three-tool consumer product. The real Multies authorization bridge, installed consumer setup, persistent trusted pairing and physical mixed-platform acceptance remain open. Small source fixes and green CI must not be presented as completion of those outcomes.
+
+The [remembered-device design boundary](shared-desk-remembered-device-design.md) explains the next saved-pair journey without adding a disconnected trust store. A stored exact key can be a comparison hint, never persistent input consent or a replacement for the absent workspace verifier. No production pairing feature is enabled by that proposal.
