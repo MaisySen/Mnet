@@ -157,6 +157,10 @@ jobs:
           MNET_VIEWER_CHOOSER=1 MNET_VIEWER_DISPLAY_SIZE=2048x1536x24 python3 scripts/native-viewer-validation.py
           MNET_VIEWER_CHOOSER=1 python3 scripts/native-pointer-validation.py
           MNET_VIEWER_CHOOSER=1 MNET_VIEWER_DISPLAY_SIZE=2048x1536x24 python3 scripts/native-pointer-validation.py
+      - name: offline Shared Desk arrangement inspector (file only, zero daemon calls)
+        run: |
+          python3 scripts/desk-preview-validation.py
+          MNET_DESK_PREVIEW_DISPLAY_SIZE=2048x1536x24 python3 scripts/desk-preview-validation.py
       - name: independent Shared Desk TLS pair and native input (two disposable X11 displays)
         run: |
           python3 scripts/desk-native-validation.py
@@ -174,6 +178,8 @@ jobs:
           name: session-failure-diagnostics
           retention-days: 7
           path: |
+            /tmp/mnet-desk-preview.*/*.png
+            /tmp/mnet-desk-preview.*/client.log
             /tmp/mnet-peer-chooser.*/*.png
             /tmp/mnet-peer-chooser.*/client.log
             /tmp/mnet-devices-window.*/*.png

@@ -4,6 +4,8 @@ This is source-level engineering progress, not a released or consumer-ready tool
 
 The supported demonstration is two disposable X11 displays on one computer, using fresh test-only certificates and explicit fixture approvals. There is no production pairing UI, saved trust store, workspace authority verifier or user-facing enable command yet. The only new normal CLI command checks an offline arrangement.
 
+The separate [offline native arrangement inspector](shared-desk-layout-viewer.md), `mnet desk layout-view FILE`, makes geometry and edge candidates visible without creating a run, trust or input.
+
 ## What runs
 
 ```sh

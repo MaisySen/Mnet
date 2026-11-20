@@ -1,0 +1,43 @@
+# Shared Desk offline arrangement inspector
+
+`mnet desk layout-view FILE` opens the current file's validated geometry in a native Linux X11 window. It helps inspect display placement, partial shared edges and native-pixel mapping without reading JSON by eye. It is an offline inspector, not an editor, pairing flow, active session or permission prompt.
+
+## What the window does
+
+- Shows every validated display in a single aspect-preserving layout diagram. The selected display is blue; numbered rectangles refer to the file's display order.
+- Shows the selected display's full display and device labels, layout origin and dimensions, and native pixel dimensions. Labels are file data, not verified people or devices.
+- Lets you choose Left, Right, Top or Bottom and an exact source native-edge pixel. The yellow marker names that geometry query, not a live pointer.
+- Uses the existing exact `desk.Compiled.MapEdge` calculation for a destination candidate. Partial-edge gaps and dead corners say **NO NEIGHBOR**. Candidate coordinates are native destination pixels, not scaled preview pixels.
+- Keeps all 2 to 32 supported displays selectable, including maximum-length labels. Very thin or tiny displays can collapse into touching paint pixels. The exact details and mapping come from original geometry, never those rounded pixels; some rectangle numbers cannot fit at that scale.
+
+The window opens a static, bounded, strictly decoded and compiled file snapshot. Unknown/duplicate JSON fields, overlapping or disconnected layouts and invalid dimensions are rejected by the existing layout rules. A later replacement of the file does not change the open diagram. The inspector never writes or exports the file.
+
+## Local controls
+
+Previous/Next or Page Up/Page Down selects another display and resets the source pixel. Choosing an edge also resets the source pixel. Left/Right changes it by one native pixel; Shift+Left/Right changes it by ten. Home/End selects its first/last native pixel. Values clamp at the endpoints rather than wrapping.
+
+Tab/Shift+Tab shows keyboard focus across the local controls. Enter/Space requires a matching release on the same focused control. Moving focus, another gesture or focus loss cancels a pending activation. Mouse buttons likewise need an inside press and release on the same target. Escape/Close ends only this local window. Unsupported resize and display loss end it rather than switching to a terminal fallback.
+
+A supported local X11 screen of at least 940x690 pixels is required. Windows/macOS binaries explicitly reject the native inspector. Cross-compilation is not runtime UI support.
+
+## Authority remains separate
+
+This command makes no local daemon request, enrollment, network connection, trust update, input capture/injection, host approval or Shared Desk run. It does not read a run specification or certificates. It cannot create the independent one-use pair, exact accepted layout binding or local reviews required by `mnetd -desk-run FILE`. Existing `mnet desk layout-check FILE [--edge DISPLAY EDGE PIXEL]` behavior stays unchanged.
+
+See the [Shared Desk engine](shared-desk-engine.md) for actual finite launcher, native input and cleanup evidence, and the [three-tool map](three-tools.md) for the remaining installed setup, real Multies bridge and physical mixed-platform gates.
+
+## Actual source evidence
+
+Model checks cover all four exact offset edge mappings, dead corners, endpoint and integer-overflow clamping, aspect-preserving projection, all 32 displays, collapsed paint, invalid files and strict command separation. Thirty focused race repetitions pass.
+
+The real built inspector runs on both equal and large disposable X11 screens. It checks an unequal/offset two-display arrangement, both dead corners, exact midpoint mapping `(0,750)` and reverse mapping `(999,250)`, actual keyboard focus pixels, mismatched mouse release, focus loss and Tab cancellation. It replaces the opened file while the window is active, checks that the existing snapshot stays exact, visits display 32 with full-length labels and checks source bytes remain unchanged. Resize and actual display loss end the process, malformed files are refused, the existing JSON layout-check still returns its exact candidate, and an owned local daemon trap records zero calls.
+
+An initial fixture expected only the window event-loop's display-loss wording. An X server closing during a checked paint instead correctly returned EOF. The fixture now accepts either actual nonzero display-loss result; product behavior was not relaxed. Full uncached race/vet/build and Darwin/Windows CLI cross-builds pass. These are static synthetic file and same-host X11 checks, not paired physical displays or a consumer setup claim.
+
+## Inspected native windows
+
+![Unequal offset arrangement with exact native candidate](ui/desk-preview/mapped.png)
+
+![Partial-edge gap refuses a candidate](ui/desk-preview/gap.png)
+
+![Display 32 remains inspectable when tiny diagram rectangles collapse](ui/desk-preview/all32-last.png)

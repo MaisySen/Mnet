@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
+	"os/signal"
 	"strconv"
 
 	"fintex.au/mnet/internal/desk"
@@ -52,9 +54,22 @@ func checkDeskLayout(r io.Reader, query []string) (deskLayoutReport, error) {
 	}
 	return report, nil
 }
+func validDeskArgs(args []string) bool {
+	if len(args) < 2 {
+		return false
+	}
+	switch args[0] {
+	case "layout-check":
+		return true
+	case "layout-view":
+		return len(args) == 2
+	default:
+		return false
+	}
+}
 func runDesk(args []string) {
-	if len(args) < 2 || args[0] != "layout-check" {
-		fatal("usage: mnet desk layout-check FILE [--edge DISPLAY EDGE PIXEL]")
+	if !validDeskArgs(args) {
+		fatal("usage: mnet desk layout-check FILE [--edge DISPLAY EDGE PIXEL] | mnet desk layout-view FILE")
 		return
 	}
 	f, err := os.Open(args[1])
@@ -63,6 +78,20 @@ func runDesk(args []string) {
 		return
 	}
 	defer f.Close()
+	if args[0] == "layout-view" {
+		preview, err := readDeskLayoutPreview(f)
+		f.Close()
+		if err != nil {
+			fatal(err.Error())
+			return
+		}
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer cancel()
+		if err = showDeskLayoutPreview(ctx, preview); err != nil {
+			fatal(err.Error())
+		}
+		return
+	}
 	report, err := checkDeskLayout(f, args[2:])
 	if err != nil {
 		fatal(err.Error())
