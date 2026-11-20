@@ -121,6 +121,14 @@ try:
     with (out / 'daemon.log').open('w') as log:
         daemon = subprocess.Popen([str(prefix / 'bin/mnetd'), '-state', str(state), '-fake-tun'], stdout=log, stderr=log)
     poll(lambda: (state / 'mnetd.sock').exists(), 'actual installed daemon local API')
+    token_path = state / 'local-api-token'
+    poll(lambda: token_path.exists(), 'actual installed local capability')
+    token_path.chmod(0o644)
+    denied = subprocess.run([str(prefix / 'bin/mnet'), '--state', str(state), 'status', '--json'], text=True, capture_output=True)
+    assert denied.returncode != 0 and token_path.read_text() not in denied.stdout + denied.stderr, 'unsafe token mode accepted or disclosed'
+    token_path.chmod(0o600)
+    accepted = subprocess.run([str(prefix / 'bin/mnet'), '--state', str(state), 'status', '--json'], text=True, capture_output=True)
+    assert accepted.returncode == 0 and json.loads(accepted.stdout)['status'] == 'down', 'restored private capability did not recover'
     click(window, 100, 250)
     chooser = poll(lambda: find_window(r'^Mnet Remote Desktop: choose \[unavailable\]'), 'actual daemon down guidance')
     capture(chooser, 'device-not-connected')

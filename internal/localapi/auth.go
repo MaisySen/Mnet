@@ -19,19 +19,13 @@ const TokenHeader = "X-Mnet-Local-Token"
 
 func tokenPath(dir string) string { return filepath.Join(dir, "local-api-token") }
 
-// ReadToken reads a private daemon capability without following symlinks.
+// ReadToken reads a bounded local capability. Platform-specific readers verify
+// the opened file; Unix additionally requires current-user owner-only mode.
 func ReadToken(dir string) (string, error) {
 	path := tokenPath(dir)
-	info, err := os.Lstat(path)
+	b, err := readTokenFile(path)
 	if err != nil {
-		return "", fmt.Errorf("local API token unavailable; use the daemon's state directory")
-	}
-	if !info.Mode().IsRegular() {
-		return "", fmt.Errorf("local API token must be a regular file")
-	}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("local API token is not readable")
+		return "", err
 	}
 	raw, err := hex.DecodeString(string(b))
 	if err != nil || len(raw) != 32 {
