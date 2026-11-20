@@ -520,6 +520,47 @@ try:
   x.XUngrabPointer(d,0);x.XSync(d,0)
   if live_window('primary',displays[0]) or live_window('recipient',displays[1]):raise AssertionError('launcher crash retained active status')
   print('PASS actual '+lost+' launcher SIGKILL releases recipient key/right-button, reclaims source and reports peer loss as error; native child survives to clean up',flush=True)
+ # An authenticated exact-key peer with the exact approved hello can still
+ # send invalid input. Refusal must release the already-held native ledger
+ # before this fixture closes TLS, not merely on socket EOF or source keyup.
+ for malformed,token in [('duplicate-key','e5'),('stale-sequence','e6'),('unknown-kind','e7')]:
+  recipient_path=out/'recipient'/'run.json';bad_spec=json.loads(recipient_path.read_text());bad_spec['binding']['run']=token*32;bad_spec['lifetime_seconds']=30;recipient_path.write_text(json.dumps(bad_spec))
+  recipient=launch('recipient');approve('recipient',displays[1],name='-invalid-'+malformed)
+  poll(lambda:'waiting for one exact-key' in (out/'recipient.log').read_text(),'invalid input recipient listening')
+  context=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT);context.check_hostname=False;context.verify_mode=ssl.CERT_NONE
+  context.minimum_version=ssl.TLSVersion.TLSv1_3;context.set_alpn_protocols(['mnet-desk-1']);context.load_cert_chain(str(out/'primary'/'cert.pem'),str(out/'primary'/'key.pem'))
+  address=bad_spec['address'].rsplit(':',1)
+  raw=context.wrap_socket(socket.create_connection((address[0],int(address[1])),timeout=2),server_hostname=None)
+  def send_frame(message):
+   encoded=json.dumps(message).encode();raw.sendall(len(encoded).to_bytes(4,'big')+encoded)
+  def receive_exact(length):
+   result=b''
+   while len(result)<length:
+    chunk=raw.recv(length-len(result))
+    if not chunk:raise AssertionError('TLS ended before ready')
+    result+=chunk
+   return result
+  try:
+   send_frame(dict(kind='hello',binding=bad_spec['binding']))
+   count=int.from_bytes(receive_exact(4),'big');assert 0<count<=4096
+   assert json.loads(receive_exact(count))==dict(kind='ready',ok=True),'no exact ready'
+   send_frame(dict(kind='input',input=dict(sequence=1,kind='key',action='down',code=38)))
+   send_frame(dict(kind='input',input=dict(sequence=2,kind='button',action='down',code=3)))
+   poll(lambda:keysbuttons(display_handles[1],1024)==(True,True),'native ledger before '+malformed)
+   live_capture('recipient',displays[1],'receiving','-invalid-'+malformed)
+   if malformed=='duplicate-key':message=dict(kind='input',input=dict(sequence=3,kind='key',action='down',code=38))
+   elif malformed=='stale-sequence':message=dict(kind='input',input=dict(sequence=2,kind='pointer',action='move',x=10,y=10))
+   else:message=dict(kind='clipboard')
+   send_frame(message);recipient.wait(timeout=4)
+   assert recipient.returncode!=0,'invalid authenticated input reported success'
+   poll(lambda:keysbuttons(display_handles[1],1024)==(False,False),'native release before TLS close after '+malformed)
+   assert not live_window('recipient',displays[1]),'invalid input retained status'
+   with socket.socket() as probe:
+    probe.settimeout(.2)
+    assert probe.connect_ex((address[0],int(address[1])))!=0,'invalid input kept listener'
+   assert (out/'recipient'/'runs'/(token*32)).exists(),'invalid input lost consumed token'
+  finally:raw.close()
+  print('PASS actual exact-key/exact-run '+malformed+' retires native held key/right-button before client TLS close, closes status/listener and retains consumed run',flush=True)
  # First-connection failures consume approval, not an invitation to retry.
  # All certificates/keys are generated only for these disposable processes.
  for mode,token in (('plaintext','d1'),('wrong-role-certificate','d2'),('pending-tls-stop','d3'),('exact-key-wrong-run','d4')):
