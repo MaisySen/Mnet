@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Install or remove a private, opt-in Linux engineering prefix. No service/enrollment."""
 import hashlib
+import io
 import json
 import os
 import pathlib
@@ -9,6 +10,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import tarfile
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 FILES = ('bin/mnet', 'bin/mnetd', 'share/applications/mnet-engineering.desktop', 'README.txt')
@@ -62,6 +64,7 @@ def install(parent, leaf, absolute):
     if status:
         raise ValueError('source tree is not clean; commit/review source before installing')
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip()
+    archive = subprocess.check_output(['git', 'archive', '--format=tar', revision], cwd=REPO)
     os.mkdir(leaf, 0o700, dir_fd=parent)
     root = open_dir(leaf, parent)
     try:
@@ -73,13 +76,16 @@ def install(parent, leaf, absolute):
         env = os.environ.copy()
         env.pop('GOOS', None)
         env.pop('GOARCH', None)
+        env['GOFLAGS'] = ''
+        env['GOWORK'] = 'off'
         with tempfile.TemporaryDirectory(prefix='mnet-install-build.') as temporary:
+            source = pathlib.Path(temporary) / 'source'
+            source.mkdir(mode=0o700)
+            with tarfile.open(fileobj=io.BytesIO(archive)) as snapshot:
+                snapshot.extractall(source, filter='data')
             for name in ('mnet', 'mnetd'):
                 target = pathlib.Path(temporary) / name
-                subprocess.run(['go', 'build', '-buildvcs=true', '-o', str(target), './cmd/' + name], cwd=REPO, env=env, check=True)
-                metadata = subprocess.check_output(['go', 'version', '-m', str(target)], text=True)
-                if 'vcs.revision=' + revision not in metadata or 'vcs.modified=false' not in metadata:
-                    raise ValueError('built executable does not attest the exact clean source revision')
+                subprocess.run(['go', 'build', '-mod=readonly', '-buildvcs=false', '-o', str(target), './cmd/' + name], cwd=source, env=env, check=True)
                 write_file(root, 'bin/' + name, target.read_bytes(), 0o700)
         subprocess.run(['/proc/self/fd/' + str(root) + '/bin/mnet', 'version'], pass_fds=(root,), check=True)
         note = ('Mnet local Linux engineering installation\n\n'
@@ -103,7 +109,7 @@ def install(parent, leaf, absolute):
         for name in FILES:
             data, mode = read_file(root, name)
             entries[name] = {'sha256': digest(data), 'mode': mode}
-        write_file(root, MANIFEST, (json.dumps({'version': 1, 'engineering_only': True, 'source_commit': revision, 'files': entries}, indent=2) + '\n').encode(), 0o600)
+        write_file(root, MANIFEST, (json.dumps({'version': 1, 'engineering_only': True, 'source_commit': revision, 'source_archive_sha256': digest(archive), 'files': entries}, indent=2) + '\n').encode(), 0o600)
         os.fsync(root)
         os.fsync(parent)
     except Exception:
@@ -121,7 +127,7 @@ def uninstall(parent, leaf):
         private_owner(root)
         raw, mode = read_file(root, MANIFEST)
         manifest = json.loads(raw)
-        if mode != 0o600 or set(manifest) != {'version', 'engineering_only', 'source_commit', 'files'} or manifest['version'] != 1 or manifest['engineering_only'] is not True or set(manifest['files']) != set(FILES) or not isinstance(manifest['source_commit'], str) or len(manifest['source_commit']) != 40 or any(c not in '0123456789abcdef' for c in manifest['source_commit']):
+        if mode != 0o600 or set(manifest) != {'version', 'engineering_only', 'source_commit', 'source_archive_sha256', 'files'} or manifest['version'] != 1 or manifest['engineering_only'] is not True or set(manifest['files']) != set(FILES) or not isinstance(manifest['source_commit'], str) or len(manifest['source_commit']) != 40 or any(c not in '0123456789abcdef' for c in manifest['source_commit']) or not isinstance(manifest['source_archive_sha256'], str) or len(manifest['source_archive_sha256']) != 64 or any(c not in '0123456789abcdef' for c in manifest['source_archive_sha256']):
             raise ValueError('installation manifest does not match this installer')
         expected = {'': {'bin', 'share', 'README.txt', MANIFEST}, 'bin': {'mnet', 'mnetd'}, 'share': {'applications'}, 'share/applications': {'mnet-engineering.desktop'}}
         for name, names in expected.items():
