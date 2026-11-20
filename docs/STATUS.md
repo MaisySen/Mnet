@@ -10,9 +10,12 @@ have not been switched to this bridge. Nothing from these branches is deployed.
 
 Exact installed local binaries pass fresh daemon -> explicit key preparation ->
 native key review -> signed-out real local Multies login -> original approval ->
-native device snapshot -> expiry -> browser revoke. System-browser opening is
-captured as argv and opened in controlled Chrome; a real installed OS browser
-launch is not claimed. Native close checks join the worker and retire the
+native device snapshot -> expiry -> browser revoke. Earlier checks captured system-browser opening as argv. A later exact installed
+local520fbdf check also passes the real xdg-open/gio/desktop-association Chrome
+launch inside a disposable home and scoped session bus. Its first fixture
+attempt timed out with an occluded native window; that attempt was not counted.
+The corrected fixture raises/focuses the native window before actions/capture.
+No physical or other-OS browser launch is claimed. Native close checks join the worker and retire the
 listener at initial, pre-browser and waiting phases. Embedded-font rendering
 fits every state and page, including worst-case key width. Current pixels are
 inspected, not inferred from exported files.

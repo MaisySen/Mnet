@@ -57,3 +57,20 @@ preview, not finished network setup.
 - Third-party font/image notices accompany the installed binaries in README.txt.
 - This is not production deployment, mobile callback
   acceptance, VPN enrollment, cross-machine connectivity, or input authority.
+
+## Later system-browser boundary check
+
+Exact installed local520fbdf binaries also complete the journey through the real
+Linux xdg-open, gio and desktop association into full Chrome. A new disposable
+home/browser profile and scoped session bus carry only the local fixture login;
+no saved user browser profile or system default was changed. Native/browser keys
+match, the signed-out login returns to the exact request, native rows expire and
+browser revoke succeeds. Installation and unchanged-prefix removal pass.
+
+The first actual-browser fixture timed out while Chrome covered the native
+window. The automation's click missed the native target and its occluded native
+images were black. It was not counted as completed acceptance. Raising/focusing
+the native window before capture/actions and owning the session bus corrected
+the fixture; the later full check passes without a source or deadline change.
+This is local Linux association evidence, not physical desktop, other OS or
+production bridge readiness.
