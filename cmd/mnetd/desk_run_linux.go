@@ -235,6 +235,12 @@ func serveDeskRun(ctx context.Context, spec desk.RunSpec, layout *desk.Compiled,
 	if err := reviewDeskRun(ctx, "recipient", spec.Binding, layout, live, ui); err != nil {
 		return err
 	}
+	window, err := startDeskRunStatus(ctx, spec, "waiting")
+	if err != nil {
+		return err
+	}
+	defer func() { result = errors.Join(result, window.Close()) }()
+	ctx = window.ctx
 	safety, err := newDeskSafety(spec.Binding.Keyboard)
 	if err != nil {
 		return err
@@ -284,7 +290,10 @@ func serveDeskRun(ctx context.Context, spec desk.RunSpec, layout *desk.Compiled,
 				return nil, errors.Join(errors.New("desk recipient geometry changed during approval"), input.Release())
 			}
 		}
-		return input, nil
+		if err := window.Set("ready"); err != nil {
+			return nil, errors.Join(err, input.Release())
+		}
+		return &deskStatusInput{input, window}, nil
 	})
 	if err != nil {
 		return err
@@ -309,6 +318,15 @@ func serveDeskRun(ctx context.Context, spec desk.RunSpec, layout *desk.Compiled,
 }
 func sendDeskRun(ctx context.Context, spec desk.RunSpec, layout *desk.Compiled, cert tls.Certificate, ui deskReviewUI, status io.Writer) (result error) {
 	live := func() bool { return ctx.Err() == nil }
+	if err := reviewDeskRun(ctx, "primary", spec.Binding, layout, live, deskEdgeReview{ui, spec.Edge}); err != nil {
+		return err
+	}
+	window, err := startDeskRunStatus(ctx, spec, "armed")
+	if err != nil {
+		return err
+	}
+	defer func() { result = errors.Join(result, window.Close()) }()
+	ctx = window.ctx
 	var capture atomic.Pointer[deskPrimaryCapture]
 	board, err := desk.NewSwitchboard(layout, spec.Binding.Primary, spec.SourceDisplay, live, func() {
 		if c := capture.Load(); c != nil {
@@ -319,7 +337,10 @@ func sendDeskRun(ctx context.Context, spec desk.RunSpec, layout *desk.Compiled, 
 		return err
 	}
 	defer func() { result = errors.Join(result, board.Stop()) }()
-	c, err := reviewedDeskEdge(ctx, board, spec.Edge, spec.Binding, layout, spec.Binding.Keyboard, live, ui, func(binding desk.Binding) (desk.NativeInput, error) {
+	c, err := waitDeskEdge(ctx, board, spec.Edge, spec.Binding, spec.Binding.Keyboard, live, func(binding desk.Binding) (desk.NativeInput, error) {
+		if err := window.Set("connecting"); err != nil {
+			return nil, err
+		}
 		conn, err := (&net.Dialer{Timeout: 2 * time.Second}).DialContext(ctx, "tcp", spec.Address)
 		if err != nil {
 			return nil, errors.New("desk exact recipient unavailable; no retry")
@@ -334,6 +355,9 @@ func sendDeskRun(ctx context.Context, spec desk.RunSpec, layout *desk.Compiled, 
 		return err
 	}
 	capture.Store(c)
+	if err := window.Set("forwarding"); err != nil {
+		return errors.Join(err, c.Close())
+	}
 	fmt.Fprintln(status, "Shared Desk sending raw input: local stop, return edge, peer loss, deadline or process exit ends this run")
 	select {
 	case <-ctx.Done():
