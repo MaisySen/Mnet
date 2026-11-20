@@ -43,20 +43,20 @@ type Request struct {
 // verifier, not inferred from an email address, OIDC login or local cache.
 // Allowed contains only grants for this exact workspace and DeviceKey.
 type Evidence struct {
-	UserID          string
-	WorkspaceID     string
-	DeviceKey       string
-	Audience        string
-	AccountState    string
-	WorkspaceState  string
-	MembershipState string
-	VerifiedEmail   bool
-	Demo            bool
-	Guest           bool
-	SSOBlocked      bool
-	Allowed         []Capability
-	CheckedAt       time.Time
-	ExpiresAt       time.Time
+	UserID          string       `json:"userId"`
+	WorkspaceID     string       `json:"workspaceId"`
+	DeviceKey       string       `json:"deviceKey"`
+	Audience        string       `json:"audience"`
+	AccountState    string       `json:"accountState"`
+	WorkspaceState  string       `json:"workspaceState"`
+	MembershipState string       `json:"membershipState"`
+	VerifiedEmail   bool         `json:"verifiedEmail"`
+	Demo            bool         `json:"demo"`
+	Guest           bool         `json:"guest"`
+	SSOBlocked      bool         `json:"ssoBlocked"`
+	Allowed         []Capability `json:"allowed"`
+	CheckedAt       time.Time    `json:"checkedAt"`
+	ExpiresAt       time.Time    `json:"expiresAt"`
 }
 
 // Verifier is the future bridge's trust boundary. Implementations must perform

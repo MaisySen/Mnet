@@ -63,3 +63,11 @@ func FuzzBridgeJSONValidation(f *testing.F) {
 		}
 	})
 }
+
+func TestBridgeJSONMatchesMultiesEvidenceWireNames(t *testing.T) {
+	raw := []byte(`{"userId":"person","workspaceId":"workspace","deviceKey":"","audience":"mnet","accountState":"active","workspaceState":"active","membershipState":"active","verifiedEmail":true,"demo":false,"guest":false,"ssoBlocked":false,"allowed":["list"],"checkedAt":"2026-11-21T00:00:00Z","expiresAt":"2026-11-21T00:00:30Z"}`)
+	var out Evidence
+	if !validateBridgeJSON(raw, &out) || json.Unmarshal(raw, &out) != nil || out.UserID != "person" || out.WorkspaceID != "workspace" || len(out.Allowed) != 1 || out.Allowed[0] != List {
+		t.Fatal("Multies evidence schema drift")
+	}
+}
