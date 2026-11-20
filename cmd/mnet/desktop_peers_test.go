@@ -234,3 +234,39 @@ func TestDesktopPeerSelectedDetailsRemainExplicitAndRetire(t *testing.T) {
 		t.Fatal("cleared key visible")
 	}
 }
+
+func TestDesktopPeerPageKeysNeverSelectOrExtendEvidence(t *testing.T) {
+	now := time.Now()
+	for _, count := range []int{0, 1, 6, 7, 12, 13, 4096} {
+		for _, age := range []time.Duration{-time.Second, 0, desktopPeerMaxAge} {
+			s := newDesktopPeerSelection()
+			s.replace(desktopPeerSnapshot{make([]daemon.SessionPeer, count), now})
+			s.choose(count-1, now)
+			selected := s.selected
+			end := 0
+			if age == 0 && count > 0 {
+				end = (count - 1) / 6
+			}
+			for _, page := range []int{-1, 0, 1, 682, 9999} {
+				for _, key := range []uint32{0xff55, 0xff56} {
+					got, handled := s.pageForKey(key, page, now.Add(age))
+					want := page - 1
+					if key == 0xff56 {
+						want = page + 1
+					}
+					want = min(max(want, 0), end)
+					if !handled || got != want || s.selected != selected || !s.snapshot.Sampled.Equal(now) {
+						t.Fatal(count, age, page, key, got, want, s.selected, selected)
+					}
+				}
+			}
+			if page, handled := s.pageForKey(0xff54, 19, now); handled || page != 19 {
+				t.Fatal("unrelated key handled")
+			}
+			s.clear()
+			if page, _ := s.pageForKey(0xff56, 2, now); page != 0 {
+				t.Fatal("cleared snapshot retained page")
+			}
+		}
+	}
+}

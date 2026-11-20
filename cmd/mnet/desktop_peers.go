@@ -153,6 +153,24 @@ func (s *desktopPeerSelection) detailLines(now time.Time) []string {
 	}
 	return []string{label, key,
 		"Pointer view still needs separate host view approval and a later Ask Pointer/host answer.",
-		"Tab: controls. Arrows/Home/End: select. Enter/Space: release. R: refresh. Escape: close.",
+		"Tab: focus. Arrows/Home/End: select. PgUp/PgDn: page. Enter/Space: release. R: refresh. Esc: close.",
 		"Snapshot expires after 30s; manual local reads only. Files/recording/keyboard are not offered."}
+}
+
+// Page keys inspect other current rows without selecting a peer or retaining
+// mode focus. The selected identity remains explicit in the detail panel.
+func (s *desktopPeerSelection) pageForKey(key uint32, page int, now time.Time) (int, bool) {
+	if key != 0xff55 && key != 0xff56 {
+		return page, false
+	}
+	end := 0
+	if s.current(now) && len(s.snapshot.Peers) > 0 {
+		end = (len(s.snapshot.Peers) - 1) / 6
+	}
+	if key == 0xff55 {
+		page--
+	} else {
+		page++
+	}
+	return min(max(page, 0), end), true
 }

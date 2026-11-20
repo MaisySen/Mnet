@@ -345,6 +345,9 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 							break
 						}
 					}
+				case 0xff55, 0xff56:
+					page, _ = selection.pageForKey(sym, page, time.Now())
+					focus = -1
 				case 0xff50, 0xff57:
 					if selection.endpoint(sym == 0xff57, time.Now()) {
 						page = selection.selected / 6

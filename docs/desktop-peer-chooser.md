@@ -77,3 +77,11 @@ Thirty focused model race repetitions and the complete actual chooser pass, incl
 The actual chooser fixture now delays each of its two local reads by1second. The selected snapshot is expired at30.80seconds from its first observed request, while only28.78seconds have elapsed since the final response was shown. No automatic request occurs. This distinguishes request-start freshness from a receipt-stamped snapshot in the built UI, alongside deterministic cancellation/age model tests. Complete chooser and full uncached race/vet/build pass.
 
 An initial fixture delayed both reads by2seconds and hit the existing bounded chooser read timeout instead of reaching ready. The fixture was corrected to1second per read; no product timeout was extended or retry added. This remains same-host synthetic local evidence, not an atomic read or proof of live Multies identity.
+
+## Keyboard pages without changing selection
+
+Page Up/Page Down now inspect previous/next local pages, clamped at the first/last page. Unlike Up/Down or Home/End, they do not select a different peer. The exact retained selection stays in the detail panel. A page key cancels any pending activation and drops mode focus, so releasing an earlier Enter cannot connect from the new page. Unavailable/expired snapshots have no peer pages. No daemon read, connection or renewed snapshot age is created.
+
+Thirty focused model race repetitions cover empty/one/full/partial and4096peer lists, invalid-age evidence, boundaries and unchanged selection/timestamp. The actual chooser checks PageDown during a pending Pointer activation, dropped focus pixels, unchanged local request count, PageUp return and both page boundaries. The complete actual journey, both-size attended view/pointer chooser entry, full uncached race/vet/build and CLI Darwin/Windows cross-builds pass. Updated page/selection/focus/expiry pixels inspected. One combined validation shell exceeded its outer time limit after actual chooser/full race output; vet/build/cross-builds were rerun separately, then the final complete source gates passed. No product timeout or assertion was relaxed.
+
+![Actual keyboard page change drops mode focus and retains the explicit selected peer](ui/desktop-peers/keyboard-page-two.png)
