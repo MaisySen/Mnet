@@ -15,7 +15,7 @@ The chooser closes after its one choice. It does not reconnect, save trust or re
 
 - Six44px rows per page. Pagination is local, never a daemon read.
 - Mouse selection and buttons require a matching press/release on one enabled target. A row press cannot become a mode choice on release.
-- Tab/Shift+Tab moves through enabled rows and controls. Up/Down selects a current row. Enter/Space activates only on a matching focused release. Tab and focus loss cancel pending activation.
+- Tab/Shift+Tab moves through enabled rows and controls. Up/Down selects a current row. Home/End selects and focuses the first/last current row across pages, without a read or connection. Enter/Space activates only on a matching focused release. Tab and focus loss cancel pending activation.
 - Refresh manually reads current local evidence and clears rows/selection first. There is no automatic daemon polling.
 - A snapshot expires30seconds after the first local status read begins, not30seconds after its final authorization response arrives. Expiry, refresh, empty results, failures and cancellation cannot preserve an actionable old selection. Mode activation checks age directly, not only the expiry paint tick.
 - Escape/Close cancels and joins any pending read. Unsupported resize or display failure ends the chooser, without a terminal fallback or hidden connection.
@@ -51,3 +51,11 @@ An actual old-source 8-bit device window rendered black controls with green text
 Snapshot age now begins before the first status request. Sequential status/authorization reads cannot extend the age of the oldest evidence by stamping only the final response. Nil/already-canceled owners refuse before any HTTP operation. Cancellation after a status response prevents the authorization read; cancellation after a buffered authorization response prevents publication. A response completing after the age budget is refused rather than presented as fresh. These checks create no automatic polling, connection or authority.
 
 New deterministic custom-transport tests return successful bodies despite cancellation and verify zero/one/two requests at each cancellation stage, without publishing a snapshot. The age test compares the recorded snapshot timestamp to the first request itself, and checks exact30second selection refusal. Thirty focused model race repetitions, the complete actual chooser journey, full uncached race/vet/build and CLI Darwin/Windows cross-builds pass. Actual selected/expired pixels inspected; no UI layout changed. This does not make two sequential reads atomic or replace the exact current peer revalidation before connection and ongoing authorization watcher. Fresh hosted verification remains separate.
+
+## Keyboard list endpoints
+
+Home and End now move explicitly to the first and last eligible peer across all local pages and place keyboard focus on that row, not on a previously focused connection mode. Any pending key/mouse gesture is canceled first. Empty, future, expired or cleared snapshots cannot supply an endpoint. A mode still requires its own matching focused activation and exact current peer revalidation.
+
+The actual13peer journey checks Home/End page movement, selected/focused pixels and unchanged local request count with no connection. Model cases include empty/one/full/partial pages, first/last endpoints and invalid-age refusal. Thirty focused model races, complete chooser, both-size attended view/pointer entry and full uncached race/vet/build plus CLI cross-builds pass. Current first/last peer and ordinary selected/expired/focus pixels inspected. All are synthetic local X11 evidence, not physical or Multies identity acceptance.
+
+![Actual last peer selected and focused by End, across three local pages](ui/desktop-peers/keyboard-last-peer.png)

@@ -111,6 +111,15 @@ func (s *desktopPeerSelection) choose(index int, now time.Time) bool {
 	s.selected = index
 	return true
 }
+
+// Endpoints are explicit local selection only, never a mode activation.
+func (s *desktopPeerSelection) endpoint(last bool, now time.Time) bool {
+	index := 0
+	if last {
+		index = len(s.snapshot.Peers) - 1
+	}
+	return s.choose(index, now)
+}
 func (s *desktopPeerSelection) choice(pointer bool, now time.Time) (desktopPeerChoice, error) {
 	if !s.current(now) || s.selected < 0 || s.selected >= len(s.snapshot.Peers) {
 		return desktopPeerChoice{}, errors.New("select a peer from a current snapshot")

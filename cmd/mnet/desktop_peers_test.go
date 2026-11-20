@@ -165,3 +165,40 @@ func TestDesktopPeerSnapshotCanceledResponsesCannotPublish(t *testing.T) {
 		t.Fatal("nil owner accepted")
 	}
 }
+
+func TestDesktopPeerEndpointsAreLocalCurrentSelectionOnly(t *testing.T) {
+	now := time.Now()
+	s := newDesktopPeerSelection()
+	if s.endpoint(false, now) || s.endpoint(true, now) {
+		t.Fatal("absent endpoints")
+	}
+	peers := make([]daemon.SessionPeer, 13)
+	for _, count := range []int{0, 1, 6, 7, 13} {
+		for _, last := range []bool{false, true} {
+			s.replace(desktopPeerSnapshot{peers[:count], now})
+			got := s.endpoint(last, now)
+			if got != (count > 0) {
+				t.Fatal(count, last, got)
+			}
+			if count > 0 {
+				want := 0
+				if last {
+					want = count - 1
+				}
+				if s.selected != want {
+					t.Fatal(count, last, s.selected, want)
+				}
+				s.clear()
+				if _, err := s.choice(false, now); err == nil {
+					t.Fatal("endpoint retained across clear")
+				}
+			}
+		}
+	}
+	s.replace(desktopPeerSnapshot{peers, now})
+	for _, stamp := range []time.Time{now.Add(-time.Nanosecond), now.Add(desktopPeerMaxAge)} {
+		if s.endpoint(false, stamp) || s.endpoint(true, stamp) {
+			t.Fatal("invalid age endpoint")
+		}
+	}
+}

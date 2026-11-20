@@ -221,7 +221,7 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 			p := selection.snapshot.Peers[selection.selected]
 			detail = "Selected exact device key: " + p.PublicKey
 		}
-		for i, line := range []string{detail, "Pointer view still needs separate host view approval and a later Ask Pointer/host answer.", "Tab: controls. Arrows: select. Enter/Space: exact release. R: refresh. Escape: close.", "Snapshot expires after 30s; manual local reads only. Files/recording/keyboard are not offered."} {
+		for i, line := range []string{detail, "Pointer view still needs separate host view approval and a later Ask Pointer/host answer.", "Tab: controls. Arrows/Home/End: select. Enter/Space: release. R: refresh. Escape: close.", "Snapshot expires after 30s; manual local reads only. Files/recording/keyboard are not offered."} {
 			if er := text(20, int16(390+i*22), line, 0x17202e, 0xffffff); er != nil {
 				return er
 			}
@@ -349,6 +349,11 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 						if list[focus].enabled {
 							break
 						}
+					}
+				case 0xff50, 0xff57:
+					if selection.endpoint(sym == 0xff57, time.Now()) {
+						page = selection.selected / 6
+						focus = selection.selected % 6
 					}
 				case 0xff52, 0xff54:
 					next := selection.selected

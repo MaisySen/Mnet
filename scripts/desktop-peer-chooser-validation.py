@@ -62,6 +62,15 @@ try:
   action('windowfocus',wid,'mousemove','--window',wid,'620','510','mousedown','1','windowfocus',other,'mouseup','1','windowfocus',wid)
   time.sleep(.05);assert client.poll() is None and len(server.calls)==2,'focus loss retained Pointer view gesture'
  finally:focus_app.terminate();focus_app.communicate(timeout=2)
+ # Home/End select exact endpoints across pages, never a mode connection.
+ action('key','End');poll(lambda:title().endswith('page3'),'End last page');im=capture('keyboard-last-peer')
+ assert im.getpixel((25,105))==(0,102,204),'End did not select last visible peer'
+ assert len(server.calls)==2 and client.poll() is None,'End fetched or connected'
+ action('key','Home');poll(lambda:title().endswith('page1'),'Home first page');im=capture('keyboard-first-peer')
+ assert im.getpixel((25,105))==(0,102,204),'Home did not select first visible peer'
+ assert len(server.calls)==2 and client.poll() is None,'Home fetched or connected'
+ # Restore the original keyboard journey's starting focus and next-row step.
+ action('windowfocus',wid)
  action('key','Down')
  for _ in range(7):action('key','Tab')
  poll(lambda:capture('keyboard-view-focus').getpixel((413,493))==(255,255,255),'actual View focus pixels')
@@ -91,7 +100,7 @@ try:
  assert 'selected peer changed' in (out/'client.log').read_text(),'missing exact-key refusal'
  server.peers=peers;server.delay=2;launch();phase('loading');action('key','Escape');assert client.wait(timeout=2)==0;client=None
  assert not server.bad
- print('PASS actual chooser:13 exact peers/three local pages, explicit row+mode, mismatched gestures refused, refresh/empty/error/expiry clears selection, no polling, replaced key refused before TCP, close cancels local read; synthetic local evidence only',flush=True)
+ print('PASS actual chooser:13 exact peers/three local pages, Home/End endpoints without reads/connections, explicit row+mode, mismatched gestures refused, refresh/empty/error/expiry clears selection, no polling, replaced key refused before TCP, close cancels local read; synthetic local evidence only',flush=True)
 finally:
  if client is not None and client.poll() is None:client.terminate();client.wait(timeout=3)
  server.shutdown();server.server_close();thread.join(timeout=3);(state/'local-api-token').unlink(missing_ok=True)
