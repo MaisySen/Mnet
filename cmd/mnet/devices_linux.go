@@ -39,6 +39,9 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 	if screen.WidthInPixels < 940 || screen.HeightInPixels < 540 {
 		return errors.New("device window requires at least940x540 local pixels")
 	}
+	if err = nativeControlsWatchRoot(c, screen); err != nil {
+		return err
+	}
 	w, err := xproto.NewWindowId(c)
 	if err != nil {
 		return err
@@ -276,6 +279,9 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 				}
 				changed = false
 			case xproto.ConfigureNotifyEvent:
+				if nativeControlsRootChanged(screen, e) {
+					return errors.New("native controls root geometry changed")
+				}
 				if e.Window == w && (e.Width != 900 || e.Height != 500) {
 					return errors.New("device window resized outside supported layout")
 				}

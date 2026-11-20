@@ -2,7 +2,11 @@
 
 package main
 
-import "github.com/jezek/xgb/xproto"
+import (
+	"errors"
+	"github.com/jezek/xgb"
+	"github.com/jezek/xgb/xproto"
+)
 
 // These native controls paint literal RGB pixels, not allocated palette colors.
 // A different visual must fail before any window or local-evidence read, rather
@@ -23,4 +27,21 @@ func nativeControlsRGB(screen *xproto.ScreenInfo) bool {
 		}
 	}
 	return false
+}
+
+// Fixed-size engineering controls do not reflow when the desktop changes.
+// Watch the root, not only the child window, before any evidence read. The
+// round trip after subscription closes the setup-to-watch geometry gap.
+func nativeControlsWatchRoot(c *xgb.Conn, screen *xproto.ScreenInfo) error {
+	if err := xproto.ChangeWindowAttributesChecked(c, screen.Root, xproto.CwEventMask, []uint32{xproto.EventMaskStructureNotify}).Check(); err != nil {
+		return errors.New("native controls root watch unavailable")
+	}
+	geometry, err := xproto.GetGeometry(c, xproto.Drawable(screen.Root)).Reply()
+	if err != nil || geometry.Width != screen.WidthInPixels || geometry.Height != screen.HeightInPixels {
+		return errors.New("native controls root geometry changed")
+	}
+	return nil
+}
+func nativeControlsRootChanged(screen *xproto.ScreenInfo, event xproto.ConfigureNotifyEvent) bool {
+	return event.Window == screen.Root && (event.Width != screen.WidthInPixels || event.Height != screen.HeightInPixels)
 }

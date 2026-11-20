@@ -146,6 +146,19 @@ try:
  launch();wid=poll(window,'close-button window');phase('up');action('windowfocus',wid,'mousemove','--window',wid,'760','465','click','1');assert client.wait(timeout=2)==0;client=None
  launch();wid=poll(window,'keyboard close window');phase('up');action('windowfocus',wid,'key','shift+Tab','space');assert client.wait(timeout=2)==0;client=None
  server.delay=1;server.entered.clear();launch();wid=poll(window,'termination window');phase('loading');assert server.entered.wait(2);client.terminate();assert client.wait(timeout=2)==0;client=None
+ for mode in ('ready','pending','transient'):
+  server.delay=1 if mode=='pending' else 0;server.entered.clear();launch();wid=poll(window,'root '+mode+' window');phase('loading' if mode=='pending' else 'up')
+  assert server.entered.wait(2),'no request before root resize'
+  if mode!='pending':capture('up-page-before-root-'+mode)
+  try:
+   subprocess.run(['xrandr','--output','screen','--off','--fb','800x600'],env=env,check=True)
+   if mode=='transient':subprocess.run(['xrandr','--fb','1024x768','--output','screen','--mode','1024x768'],env=env,check=True)
+   assert client.wait(timeout=2)!=0,'root resize did not retire devices';client=None
+   assert 'root geometry changed' in (out/'client.log').read_text()
+  finally:subprocess.run(['xrandr','--fb','1024x768','--output','screen','--mode','1024x768'],env=env,check=True)
+  assert not window(),'root restoration retained device window'
+  after=len(server.requests);time.sleep(.05);assert len(server.requests)==after,'root restoration read daemon'
+  print('PASS actual device root '+mode+' resize joins current/pending owner and cannot resume',flush=True)
  count=len(server.requests)
  unavailable=subprocess.run([str(out/'mnet'),'--state',str(state),'devices'],env=env|{'DISPLAY':'not-a-display'},capture_output=True,timeout=5)
  assert unavailable.returncode!=0 and len(server.requests)==count,'missing X11 display contacted daemon or silently fell back'

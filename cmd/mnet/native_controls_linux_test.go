@@ -32,3 +32,24 @@ func TestNativeControlsRequireExactRGBVisual(t *testing.T) {
 		t.Fatal("unrelated depths broke exact root")
 	}
 }
+
+func TestNativeControlsRootChangesAreNotChildResizeOrMovement(t *testing.T) {
+	screen := controlsScreenFixture()
+	screen.Root = 1
+	screen.WidthInPixels = 1024
+	screen.HeightInPixels = 768
+	for _, tc := range []struct {
+		event   xproto.ConfigureNotifyEvent
+		changed bool
+	}{
+		{xproto.ConfigureNotifyEvent{Window: 1, Width: 800, Height: 600}, true},
+		{xproto.ConfigureNotifyEvent{Window: 1, Width: 1024, Height: 600}, true},
+		{xproto.ConfigureNotifyEvent{Window: 1, Width: 2048, Height: 1536}, true},
+		{xproto.ConfigureNotifyEvent{Window: 1, Width: 1024, Height: 768, X: 50, Y: 50}, false},
+		{xproto.ConfigureNotifyEvent{Window: 2, Width: 800, Height: 600}, false},
+	} {
+		if got := nativeControlsRootChanged(screen, tc.event); got != tc.changed {
+			t.Fatal(tc, got)
+		}
+	}
+}

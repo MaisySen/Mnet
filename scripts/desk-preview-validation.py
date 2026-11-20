@@ -91,6 +91,18 @@ try:
  layout.write_bytes(original);launch();capture('before-terminate');client.terminate()
  assert client.wait(timeout=2)==0,'offline window SIGTERM bypassed owned cancellation';client=None
  assert layout.read_bytes()==original and server.calls==0,'termination wrote or contacted daemon'
+ # Root geometry can shrink underneath an unchanged-size window, hiding its
+ # controls without generating a ConfigureNotify for that child window.
+ launch();capture('before-root-resize')
+ try:
+  subprocess.run(['xrandr','--output','screen','--off','--fb','800x600'],env=env,check=True)
+  assert client.wait(timeout=2)!=0,'root resize accepted';client=None
+  assert 'root geometry changed' in (out/'client.log').read_text(),'missing root-resize diagnostic'
+ finally:
+  original_size=size.rsplit('x',1)[0]
+  subprocess.run(['xrandr','--fb',original_size,'--output','screen','--mode',original_size],env=env,check=True)
+ assert not window() and server.calls==0,'root restoration retained offline window or contacted daemon'
+ print('PASS actual offline root resize ends static window; restoration cannot reactivate it',flush=True)
  # Fail closed on resize and actual display loss, without terminal fallback.
  layout.write_bytes(original);launch();action('windowsize',wid,'901','650');assert client.wait(timeout=3)!=0;client=None;assert 'unsupported resize' in (out/'client.log').read_text()
  launch();x.terminate();x.wait(timeout=3);x=None;assert client.wait(timeout=3)!=0;client=None;assert any(message in (out/'client.log').read_text() for message in ('display ended','mnet: EOF'))

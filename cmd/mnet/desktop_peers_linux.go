@@ -44,6 +44,9 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 	if screen.WidthInPixels < 940 || screen.HeightInPixels < 600 {
 		return nil, errors.New("peer chooser requires at least 940x600 pixels")
 	}
+	if err = nativeControlsWatchRoot(c, screen); err != nil {
+		return nil, err
+	}
 	w, err := xproto.NewWindowId(c)
 	if err != nil {
 		return nil, err
@@ -389,7 +392,10 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 					return nil, nil
 				}
 			case xproto.ConfigureNotifyEvent:
-				if e.Width != 900 || e.Height != 560 {
+				if nativeControlsRootChanged(screen, e) {
+					return nil, errors.New("native controls root geometry changed")
+				}
+				if e.Window == w && (e.Width != 900 || e.Height != 560) {
 					return nil, errors.New("peer chooser unsupported resize")
 				}
 			case xproto.DestroyNotifyEvent:

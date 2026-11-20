@@ -34,6 +34,9 @@ func showDeskLayoutPreview(ctx context.Context, p *deskLayoutPreview) error {
 	if screen.WidthInPixels < 940 || screen.HeightInPixels < 690 {
 		return errors.New("layout preview requires at least 940x690 pixels")
 	}
+	if err = nativeControlsWatchRoot(c, screen); err != nil {
+		return err
+	}
 	w, err := xproto.NewWindowId(c)
 	if err != nil {
 		return err
@@ -321,7 +324,10 @@ func showDeskLayoutPreview(ctx context.Context, p *deskLayoutPreview) error {
 					index = old
 				}
 			case xproto.ConfigureNotifyEvent:
-				if e.Width != 900 || e.Height != 650 {
+				if nativeControlsRootChanged(screen, e) {
+					return errors.New("native controls root geometry changed")
+				}
+				if e.Window == w && (e.Width != 900 || e.Height != 650) {
 					return errors.New("offline diagram unsupported resize")
 				}
 			case xproto.DestroyNotifyEvent:

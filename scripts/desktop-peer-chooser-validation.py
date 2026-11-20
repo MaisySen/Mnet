@@ -167,6 +167,21 @@ try:
  poll(lambda:len(server.calls)>=before+2 and server.calls[before+1]=='/localapi/session-peers','pending second authorization request')
  client.terminate();assert client.wait(timeout=2)==0,'SIGTERM did not join second request';client=None
  print('PASS actual chooser SIGTERM cancels and joins first status and second authorization request separately',flush=True)
+ # A root resize is separate from child-window resize. Even a quick
+ # restoration must retire the old chooser rather than preserve its choice.
+ for mode in ('ready','pending','transient'):
+  server.delay=1 if mode=='pending' else 0;before=len(server.calls);launch();phase('loading' if mode=='pending' else 'ready')
+  if mode!='pending':action('key','Down');capture('before-root-'+mode)
+  poll(lambda:len(server.calls)>before,'request before root '+mode)
+  try:
+   subprocess.run(['xrandr','--output','screen','--off','--fb','800x600'],env=env,check=True)
+   if mode=='transient':subprocess.run(['xrandr','--fb','1024x768','--output','screen','--mode','1024x768'],env=env,check=True)
+   assert client.wait(timeout=2)!=0,'root resize did not retire chooser';client=None
+   assert 'root geometry changed' in (out/'client.log').read_text()
+  finally:subprocess.run(['xrandr','--fb','1024x768','--output','screen','--mode','1024x768'],env=env,check=True)
+  assert not window(),'root restoration retained chooser'
+  after=len(server.calls);time.sleep(.05);assert len(server.calls)==after,'root restoration read daemon'
+  print('PASS actual chooser root '+mode+' resize retires selected/pending owner and cannot resume',flush=True)
  assert not server.bad
  print('PASS actual chooser:13 exact peers/three local pages, Home/End endpoints without reads/connections, explicit row+mode, mismatched gestures refused, refresh/empty/error/expiry clears selection, no polling, replaced/missing/renamed/moved/duplicate/non-Up peer refused before TCP, close cancels local read; synthetic local evidence only',flush=True)
 finally:
