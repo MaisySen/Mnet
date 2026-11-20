@@ -40,6 +40,13 @@ try:
   global client,wid
   with (out/'client.log').open('w') as log:client=subprocess.Popen([str(out/'mnet'),'--state',str(state),'desk','layout-view',str(layout)],env=env,stdout=log,stderr=log)
   wid=poll(window,'offline diagram');action('windowfocus',wid)
+ # A static offline diagram cannot block opening a writerless FIFO or read
+ # an endless device. Reject nonregular input before window creation/daemon I/O.
+ fifo=out/'not-a-layout.fifo';os.mkfifo(fifo)
+ for path in (fifo,out,'/dev/zero'):
+  refused=subprocess.run([str(out/'mnet'),'--state',str(state),'desk','layout-view',str(path)],env=env,capture_output=True,text=True,timeout=2)
+  assert refused.returncode!=0 and 'regular' in refused.stderr,'nonregular offline file not refused'
+ assert not window() and server.calls==0,'invalid file created a window or daemon request'
  report=json.loads(subprocess.check_output([str(out/'mnet'),'--state',str(state),'desk','layout-check',str(layout),'--edge','source-display','right','500'],env=env,text=True));assert report['offline_only'] and not report['active'] and report['candidate']==dict(display='recipient-display',device='recipient-device',x=0,y=750)
  for args in (['layout-view'],['layout-view',str(layout),'--approve'],['run',str(layout)]):
   r=subprocess.run([str(out/'mnet'),'--state',str(state),'desk',*args],env=env,capture_output=True,text=True,timeout=3);assert r.returncode!=0 and 'usage:' in r.stderr

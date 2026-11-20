@@ -72,15 +72,8 @@ func runDesk(args []string) {
 		fatal("usage: mnet desk layout-check FILE [--edge DISPLAY EDGE PIXEL] | mnet desk layout-view FILE")
 		return
 	}
-	f, err := os.Open(args[1])
-	if err != nil {
-		fatal("layout file unavailable")
-		return
-	}
-	defer f.Close()
 	if args[0] == "layout-view" {
-		preview, err := readDeskLayoutPreview(f)
-		f.Close()
+		preview, err := readDeskLayoutPreviewFile(args[1])
 		if err != nil {
 			fatal(err.Error())
 			return
@@ -92,6 +85,12 @@ func runDesk(args []string) {
 		}
 		return
 	}
+	f, err := os.Open(args[1])
+	if err != nil {
+		fatal("layout file unavailable")
+		return
+	}
+	defer f.Close()
 	report, err := checkDeskLayout(f, args[2:])
 	if err != nil {
 		fatal(err.Error())
