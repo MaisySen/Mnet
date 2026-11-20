@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Actual home refuses absent readable fonts and opens with declared X11 fonts."""
+"""Actual embedded-font home opens on built-ins-only and normal X11 servers."""
 import os
 import pathlib
 import subprocess
@@ -27,27 +27,21 @@ for absent in (True, False):
         env['DISPLAY'] = ':' + display.read_text().strip()
         with (out / (name + '-client.log')).open('w') as log:
             client = subprocess.Popen([str(out / 'mnet'), '--state', str(out / 'absent-state'), 'open'], env=env, stdout=log, stderr=log)
-        if absent:
-            assert client.wait(timeout=6) != 0
-            assert 'home readable fonts unavailable' in (out / (name + '-client.log')).read_text()
-            assert not (out / 'absent-state').exists()
-            print('PASS actual built-ins-only X server refuses home without readable-font prerequisite; no setup/state fallback', flush=True)
-        else:
-            window = None
-            deadline = time.monotonic() + 6
-            while time.monotonic() < deadline:
-                found = subprocess.run(['xdotool', 'search', '--onlyvisible', '--name', '^Mnet: three tools'], env=env, text=True, capture_output=True)
-                if found.returncode == 0 and found.stdout.strip():
-                    window = found.stdout.strip().splitlines()[-1]
-                    break
-                assert client.poll() is None, (out / (name + '-client.log')).read_text()
-                time.sleep(.02)
-            assert window, 'actual home not opened with declared fonts'
-            subprocess.run(['import', '-display', env['DISPLAY'], '-window', window, str(out / 'font-ready-home.png')], check=True)
-            subprocess.run(['xdotool', 'windowfocus', window, 'key', 'Escape'], env=env, check=True)
-            assert client.wait(timeout=3) == 0
-            assert not (out / 'absent-state').exists()
-            print('PASS actual declared-font X server opens and closes readable home with no daemon/state', flush=True)
+        window = None
+        deadline = time.monotonic() + 6
+        while time.monotonic() < deadline:
+            found = subprocess.run(['xdotool', 'search', '--onlyvisible', '--name', '^Mnet: three tools'], env=env, text=True, capture_output=True)
+            if found.returncode == 0 and found.stdout.strip():
+                window = found.stdout.strip().splitlines()[-1]
+                break
+            assert client.poll() is None, (out / (name + '-client.log')).read_text()
+            time.sleep(.02)
+        assert window, 'actual embedded-font home did not open'
+        subprocess.run(['import', '-display', env['DISPLAY'], '-window', window, str(out / (name + '-home.png'))], check=True)
+        subprocess.run(['xdotool', 'windowfocus', window, 'key', 'Escape'], env=env, check=True)
+        assert client.wait(timeout=3) == 0
+        assert not (out / 'absent-state').exists()
+        print('PASS actual ' + name + ' X server opens/closes embedded-font home without daemon/state', flush=True)
     finally:
         if client is not None and client.poll() is None:
             client.terminate()

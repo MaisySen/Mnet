@@ -99,7 +99,7 @@ try:
     screenshot = out / 'installed-home.png'
     subprocess.run(['import', '-display', display_name, '-window', window, str(screenshot)], check=True)
     image = Image.open(screenshot).convert('RGB')
-    assert image.size == (900, 560) and image.getpixel((20, 110)) == (28, 42, 59)
+    assert image.size == (900, 560) and image.getpixel((20, 110)) == (255, 255, 255) and image.getpixel((24, 18)) == (16, 62, 137)
     assert not list(home.iterdir()), 'opening installed home wrote user state'
     invoke('uninstall', okay=False)
     assert (prefix / 'bin/mnet').read_bytes() == before, 'running install removed'

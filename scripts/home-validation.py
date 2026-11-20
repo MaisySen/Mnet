@@ -35,7 +35,7 @@ def window(pattern):
  return result.stdout.strip().splitlines()[-1] if result.returncode==0 and result.stdout.strip() else None
 def action(*args):subprocess.run(['xdotool',*args],env=env,check=True)
 def screenshot(wid,name):
- path=out/(name+'.png');subprocess.run(['import','-display',env['DISPLAY'],'-window',wid,str(path)],check=True);image=Image.open(path).convert('RGB');assert image.size==(900,560);assert image.getpixel((20,110))==(28,42,59);assert image.getpixel((680,486))==(48,71,97);return path
+ path=out/(name+'.png');subprocess.run(['import','-display',env['DISPLAY'],'-window',wid,str(path)],check=True);image=Image.open(path).convert('RGB');assert image.size==(900,560);assert image.getpixel((20,110))==(255,255,255);assert image.getpixel((680,486))==(255,255,255);assert image.getpixel((24,18))==(16,62,137);return path
 def launch(with_layout=False):
  global client
  with (out/'client.log').open('w') as log:client=subprocess.Popen([str(out/'mnet'),'--state',str(state),'open',*(['--layout',str(layout)] if with_layout else [])],env=env,stdout=log,stderr=log)

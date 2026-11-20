@@ -15,7 +15,7 @@ The home has three distinct tool choices. Networking opens the actual authentica
 
 Opening the home reads no daemon state and starts no network/session operation. A selected home closes and joins its event reader before its child opens. Closing the child returns to a fresh home, not another session. A later device choice rereads current evidence and requires fresh host decisions. Signals cancel the current owner. Existing explicit CLI entry points retain their behavior.
 
-This window uses larger headings/action text and short permission summaries. Technical setup and platform details belong in the owning guides rather than competing with the primary action. Supported local prerequisites are Linux X11, the required readable core fonts, a24-bit TrueColor display and at least940x600pixels. Unsupported configurations fail; there is no Wayland/native fallback or misleading success screen.
+This window uses larger headings/action text and short permission summaries. Technical setup and platform details belong in the owning guides rather than competing with the primary action. The current home uses embedded licensed proportional Go fonts. Supported local prerequisites are Linux X11, a24-bit TrueColor display with the supported32-bit little-endian image format and at least940x600pixels. Other child windows still have their own prerequisites. Unsupported configurations fail; there is no Wayland/native fallback or misleading success screen.
 
 ## Readable device choice and honest loading
 
@@ -71,3 +71,25 @@ An installed Remote Desktop attempt now reports missing local setup, an unreacha
 ## Original hosted prerequisite failure
 
 Original4b3 failed its first hosted home launch with `home readable fonts unavailable`. Its session job did not reach the new complete home or silent first-screen checks. The newer source declares `xfonts-base` explicitly and adds `home-font-validation.py`: a real built-ins-only X server must reproduce refusal and a server with the declared fonts must open the real home. The requirement is not relaxed. That local correction needs its own hosted run; earlier original failure remains recorded in [STATUS](STATUS.md).
+
+
+## Branded local home, later isolated branch
+
+The ordinary local entry now uses the same embedded proportional-font visual
+style as the opt-in Multies preview. It still routes only the existing three
+local tools. No production origin, sign-in bridge, network enrollment, saved
+pairing or remote permission is inferred. Shared Desk remains disabled without
+an explicit offline layout file. The title and route coordinates remain stable.
+
+The home uploads complete strips into an offscreen pixmap and installs the
+completed pixmap as the background before exposing the window. An initial
+attempt copied pixels while the window was unmapped; X11 map cleared them and
+the real screenshots were blank. Actual pixel inspection rejected that attempt.
+The completed-background fix removes the initial blank canvas without a sleep
+or test-deadline change. Layout/notice fit tests cover every route/focus state.
+
+The font check intentionally now confirms actual home rendering and exact close
+on both built-ins-only and normal-font X11 servers. This is a later embedded-font
+implementation, not a repair claim for original4b3 or a change to its historical
+missing-font result. Other native child windows still use their existing core
+fonts, so their installer/CI prerequisites have not been removed.
