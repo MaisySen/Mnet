@@ -27,7 +27,17 @@ func showDeskLayoutPreview(ctx context.Context, p *deskLayoutPreview) error {
 		return errors.New("layout preview requires local Linux X11")
 	}
 	defer c.Close()
-	screen := xproto.Setup(c).DefaultScreen(c)
+	setup := xproto.Setup(c)
+	format := false
+	for _, f := range setup.PixmapFormats {
+		if f.Depth == 24 && f.BitsPerPixel == 32 && f.ScanlinePad == 32 {
+			format = true
+		}
+	}
+	if !format || setup.ImageByteOrder != xproto.ImageOrderLSBFirst {
+		return errors.New("offline diagram pixel format unsupported")
+	}
+	screen := setup.DefaultScreen(c)
 	if !nativeControlsRGB(screen) {
 		return errors.New("native controls require supported 24-bit TrueColor X11")
 	}
@@ -44,18 +54,11 @@ func showDeskLayoutPreview(ctx context.Context, p *deskLayoutPreview) error {
 	if err = xproto.CreateWindowChecked(c, screen.RootDepth, w, screen.Root, 20, 20, 900, 650, 0, xproto.WindowClassInputOutput, screen.RootVisual, xproto.CwBackPixel|xproto.CwEventMask, []uint32{0x17202e, xproto.EventMaskExposure | xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskKeyPress | xproto.EventMaskKeyRelease | xproto.EventMaskFocusChange | xproto.EventMaskStructureNotify}).Check(); err != nil {
 		return err
 	}
-	font, err := xproto.NewFontId(c)
-	if err != nil {
-		return err
-	}
-	if err = xproto.OpenFontChecked(c, font, 5, "fixed").Check(); err != nil {
-		return err
-	}
 	gc, err := xproto.NewGcontextId(c)
 	if err != nil {
 		return err
 	}
-	if err = xproto.CreateGCChecked(c, gc, xproto.Drawable(w), xproto.GcForeground|xproto.GcBackground|xproto.GcFont, []uint32{0xffffff, 0x17202e, uint32(font)}).Check(); err != nil {
+	if err = xproto.CreateGCChecked(c, gc, xproto.Drawable(w), 0, nil).Check(); err != nil {
 		return err
 	}
 	atom, err := xproto.InternAtom(c, false, 16, "WM_DELETE_WINDOW").Reply()
@@ -93,18 +96,22 @@ func showDeskLayoutPreview(ctx context.Context, p *deskLayoutPreview) error {
 		}
 	}()
 	defer func() { cancel(); c.Close(); <-done }()
-	labels := []string{"PREVIOUS", "NEXT", "LEFT", "RIGHT", "TOP", "BOTTOM", "-PIXEL", "+PIXEL", "CLOSE"}
+	labels := []string{"PREVIOUS", "NEXT", "LEFT", "RIGHT", "TOP", "BOTTOM", "-PIXEL", "+PIXEL", "CLOSE", "DETAILS"}
 	focus, pressed := -1, -1
+	details := false
 	var held uint32
 	clear := func() { pressed = -1; held = 0 }
 	hit := func(x, y int16) int {
 		if index := p.hitDisplay(840, 250, int64(x)-30, int64(y)-100); index >= 0 {
 			return len(labels) + index
 		}
+		if x >= 730 && x < 880 && y >= 64 && y < 92 {
+			return 9
+		}
 		if y < 580 || y >= 624 {
 			return -1
 		}
-		for i := range labels {
+		for i := 0; i < 9; i++ {
 			left := int16(20 + i*96)
 			if x >= left && x < left+92 {
 				return i
@@ -113,102 +120,40 @@ func showDeskLayoutPreview(ctx context.Context, p *deskLayoutPreview) error {
 		return -1
 	}
 	draw := func() error {
-		fill := func(color uint32, r xproto.Rectangle) error {
-			if er := xproto.ChangeGCChecked(c, gc, xproto.GcForeground, []uint32{color}).Check(); er != nil {
-				return er
-			}
-			return xproto.PolyFillRectangleChecked(c, xproto.Drawable(w), gc, []xproto.Rectangle{r}).Check()
-		}
-		text := func(x, y int16, label string, bg, fg uint32) error {
-			if er := xproto.ChangeGCChecked(c, gc, xproto.GcForeground|xproto.GcBackground, []uint32{fg, bg}).Check(); er != nil {
-				return er
-			}
-			return xproto.ImageText8Checked(c, byte(len(label)), xproto.Drawable(w), gc, x, y, label).Check()
-		}
-		if er := fill(0x17202e, xproto.Rectangle{Width: 900, Height: 650}); er != nil {
-			return er
-		}
-		for i, line := range []string{"SHARED DESK / OFFLINE ARRANGEMENT INSPECTOR", "FILE GEOMETRY ONLY. No active connection, pairing, identity, input or approval.", "Click a full-size rectangle to inspect it. Tiny/merged rectangles: Previous/Next; labels stay exact."} {
-			if er := text(20, int16(28+i*24), line, 0x17202e, 0xffffff); er != nil {
-				return er
-			}
-		}
-		rects, er := p.rectangles(840, 250)
+		picture, er := renderDeskSurface(p, focus, details)
 		if er != nil {
 			return er
 		}
-		for i, r := range rects {
-			bg := uint32(0x34465d)
-			if i == p.selected {
-				bg = 0x0066cc
-			}
-			if er = fill(bg, xproto.Rectangle{X: int16(30 + r.x), Y: int16(100 + r.y), Width: uint16(r.w), Height: uint16(r.h)}); er != nil {
+		pix, er := xproto.NewPixmapId(c)
+		if er != nil {
+			return er
+		}
+		if er = xproto.CreatePixmapChecked(c, 24, pix, xproto.Drawable(w), 900, 650).Check(); er != nil {
+			return er
+		}
+		defer xproto.FreePixmap(c, pix)
+		sampler := newViewerPixelSource(picture, picture.Bounds(), 900, 650)
+		uploads := make([]xproto.PutImageCookie, 0, 41)
+		for y := 0; y < 650; y += 16 {
+			n := min(16, 650-y)
+			uploads = append(uploads, xproto.PutImageChecked(c, xproto.ImageFormatZPixmap, xproto.Drawable(pix), gc, 900, uint16(n), 0, int16(y), 0, 24, sampler.strip(y, n)))
+		}
+		for _, upload := range uploads {
+			if er = upload.Check(); er != nil {
 				return er
 			}
-			if r.w >= 24 && r.h >= 24 {
-				if er = text(int16(34+r.x), int16(117+r.y), fmt.Sprint(i+1), bg, 0xffffff); er != nil {
-					return er
-				}
-			}
 		}
-		d := p.display()
-		r := rects[p.selected]
-		mx, my := r.x, r.y
-		alongDen := max(int64(1), p.extent()-1)
-		switch p.edge {
-		case desk.Left:
-			my += p.along * (r.h - 1) / alongDen
-		case desk.Right:
-			mx += r.w - 1
-			my += p.along * (r.h - 1) / alongDen
-		case desk.Top:
-			mx += p.along * (r.w - 1) / alongDen
-		case desk.Bottom:
-			mx += p.along * (r.w - 1) / alongDen
-			my += r.h - 1
+		if er = xproto.ChangeWindowAttributesChecked(c, w, xproto.CwBackPixmap, []uint32{uint32(pix)}).Check(); er != nil {
+			return er
 		}
-		// The marker names a geometry query, never a live pointer or activation edge.
-		if er = fill(0xffd166, xproto.Rectangle{X: int16(28 + mx), Y: int16(98 + my), Width: 5, Height: 5}); er != nil {
+		if er = xproto.CopyAreaChecked(c, xproto.Drawable(pix), xproto.Drawable(w), gc, 0, 0, 0, 0, 900, 650).Check(); er != nil {
 			return er
 		}
 		candidate, ok, er := p.candidate()
 		if er != nil {
 			return er
 		}
-		lines := []string{fmt.Sprintf("Selected %d/%d: display=%s", p.selected+1, len(p.layout.Displays), d.ID), "Device label=" + d.Device, fmt.Sprintf("Layout origin (%d,%d), size %dx%d; native pixels %dx%d", d.X, d.Y, d.Width, d.Height, d.PixelWidth, d.PixelHeight), fmt.Sprintf("Query edge=%s source pixel=%d of 0..%d. Yellow dot is this query, not live input.", p.edge, p.along, p.extent()-1)}
-		if ok {
-			lines = append(lines, "CANDIDATE display="+candidate.Display, fmt.Sprintf("Device label=%s native candidate (%d,%d)", candidate.Device, candidate.X, candidate.Y))
-		} else {
-			lines = append(lines, "NO NEIGHBOR at this exact source pixel (gap/dead corner).", "Neighbor tests use exact original geometry, not rounded diagram rectangles.")
-		}
-		lines = append(lines, "Offline candidate only. No run, connection or grant. This window never writes the file.", "Tab: controls. Enter/Space: exact release. Arrows: source pixel. Home/End: endpoints.", "Page Up/Down: display. Shift+arrows: 10 pixels. Escape/Close: local window only.")
-		for i, line := range lines {
-			if er = text(20, int16(377+i*22), line, 0x17202e, 0xffffff); er != nil {
-				return er
-			}
-		}
-		for i, label := range labels {
-			bg := uint32(0x28384e)
-			if i == 8 {
-				bg = 0x9b343e
-			}
-			if i >= 2 && i <= 5 && desk.Edge([]string{"left", "right", "top", "bottom"}[i-2]) == p.edge {
-				bg = 0x0066cc
-			}
-			x := int16(20 + i*96)
-			if er = fill(bg, xproto.Rectangle{X: x, Y: 580, Width: 92, Height: 44}); er != nil {
-				return er
-			}
-			if er = text(x+8, 606, label, bg, 0xffffff); er != nil {
-				return er
-			}
-			if i == focus {
-				if er = xproto.PolyRectangleChecked(c, xproto.Drawable(w), gc, []xproto.Rectangle{{X: x + 3, Y: 583, Width: 85, Height: 37}}).Check(); er != nil {
-					return er
-				}
-			}
-		}
-		title := fmt.Sprintf("Mnet Shared Desk: offline layout display%d edge%s pixel%d", p.selected+1, p.edge, p.along)
+		title := fmt.Sprintf("Mnet Shared Desk: offline layout details%t display%d edge%s pixel%d", details, p.selected+1, p.edge, p.along)
 		if ok {
 			title += fmt.Sprintf(" candidate=%s@%d,%d", candidate.Display, candidate.X, candidate.Y)
 		} else {
@@ -240,6 +185,8 @@ func showDeskLayoutPreview(ctx context.Context, p *deskLayoutPreview) error {
 			p.move(1)
 		case 8:
 			return true
+		case 9:
+			details = !details
 		}
 		return false
 	}
@@ -247,6 +194,8 @@ func showDeskLayoutPreview(ctx context.Context, p *deskLayoutPreview) error {
 		return err
 	}
 	for {
+		beforeSelected, beforeAlong, beforeEdge, beforeFocus, beforeDetails := p.selected, p.along, p.edge, focus, details
+		expose := false
 		index := -1
 		select {
 		case <-owner.Done():
@@ -257,6 +206,7 @@ func showDeskLayoutPreview(ctx context.Context, p *deskLayoutPreview) error {
 			}
 			switch e := ev.event.(type) {
 			case xproto.ExposeEvent:
+				expose = true
 			case xproto.FocusOutEvent:
 				clear()
 				focus = -1
@@ -343,8 +293,10 @@ func showDeskLayoutPreview(ctx context.Context, p *deskLayoutPreview) error {
 		if index >= 0 && activate(index) {
 			return nil
 		}
-		if err = draw(); err != nil {
-			return err
+		if expose || p.selected != beforeSelected || p.along != beforeAlong || p.edge != beforeEdge || focus != beforeFocus || details != beforeDetails {
+			if err = draw(); err != nil {
+				return err
+			}
 		}
 	}
 }

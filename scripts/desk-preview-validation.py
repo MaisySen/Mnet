@@ -51,6 +51,19 @@ try:
  for args in (['layout-view'],['layout-view',str(layout),'--approve'],['run',str(layout)]):
   r=subprocess.run([str(out/'mnet'),'--state',str(state),'desk',*args],env=env,capture_output=True,text=True,timeout=3);assert r.returncode!=0 and 'usage:' in r.stderr
  launch();poll(lambda:title().endswith('edgeright pixel0 no-neighbor'),'initial exact gap');capture('gap')
+ # Secondary details are explicit local disclosure, not pairing, a daemon
+ # query, a file write or a new geometry selection.
+ action('mousemove','--window',wid,'20','80','mousedown','1','mousemove','--window',wid,'800','77','mouseup','1')
+ assert 'detailsfalse' in title(),'outside press opened details'
+ action('mousemove','--window',wid,'800','77','click','1');poll(lambda:'detailstrue' in title(),'mouse layout details');capture('gap-details')
+ assert title().endswith('edgeright pixel0 no-neighbor') and server.calls==0 and layout.read_bytes()==original
+ action('mousemove','--window',wid,'800','77','click','1');poll(lambda:'detailsfalse' in title(),'hide details')
+ action('key','shift+Tab','space');poll(lambda:'detailstrue' in title(),'keyboard layout details');capture('keyboard-details')
+ action('keyup','space');assert 'detailstrue' in title(),'unpressed release changed details'
+ action('key','space');poll(lambda:'detailsfalse' in title(),'keyboard hides details')
+ # Reset the focus before the independent original navigation checks.
+ action('windowfocus',wid,'key','Escape');assert client.wait(timeout=3)==0;client=None
+ launch();poll(lambda:title().endswith('edgeright pixel0 no-neighbor'),'fresh original navigation')
  # Direct diagram selection needs one matching rectangle, not an outside or
  # different-display press. Inspecting a rectangle does not query/mutate a run.
  action('mousemove','--window',wid,'100','120','mousedown','1','mousemove','--window',wid,'550','220','mouseup','1');time.sleep(.05);assert 'display1 ' in title(),'outside press selected rectangle'

@@ -77,3 +77,29 @@ A failing-first actual offline-inspector case remained open after the root shran
 A new offline-only target compares diagram rectangles against an arbitrary-precision rational projection, rather than using production projection output as its expected result. Connected strips in either orientation cover2to32displays, unequal layout dimensions/native densities, translated origins, one-pixel through4096pixel viewports and collapsed paint. An independent half-open hit counter requires exactly one full44px target; tiny, overlapping or outside paint cannot become a direct selection. It also walks every display and edge, clamps extreme signed native-pixel movements and checks that local inspection leaves the source geometry unchanged. No daemon, TLS, capture, input backend or permission path is involved.
 
 Seven seeds, thirty focused race repetitions,64672executions over10seconds and fresh full uncached race/vet/build passed. The first generator incorrectly produced native dimension65536, outside the unchanged65535limit; its domain was corrected rather than relaxing product validation. No failing product input was found. This is model coverage, not native pixels or physical-display acceptance; the existing actual both-size inspector cases remain separate.
+
+## Readable offline arrangement and secondary details
+
+The later isolated branch uses embedded proportional fonts and the same local
+visual style as the home. Primary content describes the saved arrangement,
+selected display, neighbor result and pixel mapping in plain language. Layout
+details reveals exact geometry and native query coordinates separately. Full
+file display/device labels remain visible without truncating them into identity
+claims. Neither screen is an enabled pair or an arrangement editor.
+
+Projection and exact candidate geometry are unchanged. The existing nine bottom
+controls and diagram hit targets retain their positions; a separate tenth
+control opens only local details. Mouse and keyboard disclosure use matched
+press/release rules and never read the daemon, write the file or start a run.
+Actual native checks cover those transitions plus the existing unequal-size,
+gap, reverse-edge, 32-label/tiny-target, gesture/focus, file-snapshot and root
+resize cases at both disposable display sizes.
+
+The first pixel implementation processed unchanged key releases as full paints
+and waited for every upload strip separately. The original bounded navigation
+check caught a responsiveness failure. Painting now skips events with no
+presentation change, and bounded upload requests are queued together, with all
+checked for errors before any completed image is displayed. No event, geometry
+query or admission check is dropped, and the test deadline is unchanged. Both
+native sizes then pass. This is a local responsiveness fix, not a hardware
+latency guarantee. Primary, detailed and maximum-label pixels were inspected.
