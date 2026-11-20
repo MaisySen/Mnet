@@ -12,3 +12,11 @@ Local shell/Python/source checks are not a successful Apple build. Exact-revisio
 
 
 The initial run completed xcodebuild without a signing/account request, then stopped in verification because codesign's diagnostic text was not a reliable unsigned predicate. The checker now inspects every actual executable's Mach-O load commands and rejects LC_CODE_SIGNATURE, including ad-hoc signatures, rather than trusting a diagnostic phrase. The build also disables debug-dylib splitting so bridge symbols belong to the checked extension executable. A module-name warning exposed the app module Mnet colliding with the Go module; the app module is now MnetApp. The initial result is partial build evidence, not accepted unsigned packaging or runtime. The corrected product checks must pass before completion.
+
+## Exact simulator platform gate
+
+The linked-product checker now requires one arm64 Mach-O LC_BUILD_VERSION for iOS Simulator (platform7), rather than accepting any arm64 Mach-O reported by file. Device iOS, macOS, Catalyst, other simulator platforms, missing/duplicate platform commands and legacy ambiguous minimum-version commands refuse acceptance. Signature rejection remains in place. Command headers, eight-byte alignment, declared command lengths/counts and build-tool entries are checked before reading. Malformed input raises a bounded diagnostic rather than reading beyond a declared command region.
+
+Six synthetic parser tests cover every truncation of the minimal valid binary, wrong architecture/magic, device and other platform confusion, duplicate/missing platform declarations, signature/legacy commands and malformed counts/sizes/tool lists. They run normally and with Python optimization to ensure these parser checks do not disappear with assertions disabled. These are fixture tests only. The updated parser still needs a new exact-revision actual macOS linked-product run; no signed, launched or physical-device acceptance is implied. This does not close the containing-app entitlement/signing alignment gap or select a developer team.
+
+Mach-O platform and command definitions: https://github.com/apple-oss-distributions/cctools/blob/7a5450708479bbff61527d5e0c32a3f7b7e4c1d0/include/mach-o/loader.h .

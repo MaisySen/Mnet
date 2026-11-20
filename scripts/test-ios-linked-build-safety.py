@@ -11,7 +11,8 @@ class UnsignedBuildContract(unittest.TestCase):
         for required in ['CODE_SIGNING_ALLOWED=NO', 'CODE_SIGNING_REQUIRED=NO',
                          'CODE_SIGN_IDENTITY= DEVELOPMENT_TEAM=', '-no_adhoc_codesign',
                          '-target=iossimulator/arm64', '-sdk iphonesimulator',
-                         'hashlib.sha256(data).hexdigest()', 'check-ios-linked-product.py']:
+                         'hashlib.sha256(data).hexdigest()', 'check-ios-linked-product.py',
+                         'test-ios-linked-macho.py', 'python3 -O']:
             self.assertIn(required, script)
         for forbidden in ['allowProvisioning', 'simctl', 'notarytool', 'altool', 'archivePath', 'codesign --sign']:
             self.assertNotIn(forbidden, script)

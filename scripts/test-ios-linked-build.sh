@@ -4,6 +4,8 @@
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 python3 "$ROOT/scripts/test-ios-linked-build-safety.py"
+python3 "$ROOT/scripts/test-ios-linked-macho.py"
+python3 -O "$ROOT/scripts/test-ios-linked-macho.py"
 OUT=$(mktemp -d "${TMPDIR:-/tmp}/mnet-ios-link.XXXXXX")
 trap 'rm -rf "$OUT"' EXIT HUP INT TERM
 cp -R "$ROOT/ios" "$OUT/ios"
