@@ -32,3 +32,13 @@ The first local desktop acceptance exposed a real parser limitation: a percent-c
 This closes a bounded developer installation/launch/removal path. It does not close production setup, signed distribution, OS permission onboarding, persistent trusted pairing or physical mixed-platform acceptance. See [desktop journey](desktop-home.md) and [the still-missing Multies bridge](multies-boundary.md).
 
 A later local provenance check found that the available Go toolchain omitted VCS metadata even when requested explicitly. That attempted installation refused and retained a partial private prefix. Rather than silently accepting unverifiable embedded metadata, the installer now builds both programs from an isolated `git archive` of the exact recorded commit and hashes that source snapshot. No toolchain metadata claim is made.
+
+## Missing setup is now a distinct recoverable state
+
+Opening Remote Desktop from the installed home distinguishes missing local capability, unreachable local daemon, refused local capability and a daemon that reports this device is not connected. These are fixed local categories, not raw filesystem/transport/server messages. The chooser keeps every device/mode action disabled when current evidence is unavailable. Closing returns to a fresh home; Refresh is deliberate, not polling. A down status now ends the chooser read before requesting session-peer evidence.
+
+![Actual installed missing-local-setup state](ui/desktop-home/missing-local-setup.png)
+
+![Actual installed disconnected-device state](ui/desktop-home/device-not-connected.png)
+
+The installed acceptance now explicitly starts the installed daemon in an isolated `-fake-tun` fixture with no Up, control-plane URL, network or session-host options. It observes the real authenticated down-state device window and the disconnected chooser, then stops that exact process and observes the separate unreachable-daemon state. Missing-state journeys create no Mnet state; the explicitly started fixture daemon creates its own private state, which subsequent failure journeys and uninstallation preserve byte-for-byte. No real TUN, remote service, membership or user device is used. These checks improve an actual installed failure/recovery journey, not production setup or connectivity acceptance.
