@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Actual one-run engineering CLI processes on two disposable X servers."""
-import ctypes,ctypes.util,json,os,pathlib,shutil,signal,socket,subprocess,tempfile,time
+import ctypes,ctypes.util,json,os,pathlib,shutil,signal,socket,ssl,subprocess,tempfile,time
 from PIL import Image
 os.chdir(pathlib.Path(__file__).resolve().parent.parent)
 for dep in ('go','Xvfb','xdotool','xrandr','import','zenity'):
@@ -463,6 +463,53 @@ try:
   x.XUngrabPointer(d,0);x.XSync(d,0)
   if live_window('primary',displays[0]) or live_window('recipient',displays[1]):raise AssertionError('launcher crash retained active status')
   print('PASS actual '+lost+' launcher SIGKILL releases recipient key/right-button, reclaims source and reports peer loss as error; native child survives to clean up',flush=True)
+ # First-connection failures consume approval, not an invitation to retry.
+ # All certificates/keys are generated only for these disposable processes.
+ for mode,token in (('plaintext','d1'),('wrong-role-certificate','d2'),('pending-tls-stop','d3'),('exact-key-wrong-run','d4')):
+  path=out/'recipient'/'run.json';fresh=json.loads(path.read_text());fresh['binding']['run']=token*32;fresh['lifetime_seconds']=30;path.write_text(json.dumps(fresh))
+  waiting=launch('recipient');approve('recipient',displays[1],name='-'+mode)
+  poll(lambda:'waiting for one exact-key' in (out/'recipient.log').read_text(),mode+' recipient listener')
+  before_children=(pathlib.Path('/proc')/str(waiting.pid)/'task'/str(waiting.pid)/'children').read_text().strip()
+  if before_children:raise AssertionError('waiting untrusted peer created native child')
+  raw=socket.create_connection((address[0],int(address[1])),timeout=1)
+  try:
+   if mode=='plaintext':
+    raw.sendall(b'not-a-TLS-client');raw.shutdown(socket.SHUT_WR)
+   elif mode in ('wrong-role-certificate','exact-key-wrong-run'):
+    context=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT);context.check_hostname=False;context.verify_mode=ssl.CERT_NONE
+    context.minimum_version=ssl.TLSVersion.TLSv1_3;context.set_alpn_protocols(['mnet-desk-1'])
+    identity='recipient' if mode=='wrong-role-certificate' else 'primary'
+    context.load_cert_chain(str(out/identity/'cert.pem'),str(out/identity/'key.pem'))
+    raw=context.wrap_socket(raw,server_hostname=None)
+    if mode=='exact-key-wrong-run':
+     # Possession of the expected primary key is not the exact local grant.
+     wrong=dict(fresh['binding'],run='0'*64);body=json.dumps(dict(kind='hello',binding=wrong)).encode();raw.sendall(len(body).to_bytes(4,'big')+body)
+    try:raw.recv(1)
+    except (ssl.SSLError,ConnectionResetError):pass
+   else:
+    # An accepted TCP socket blocked before ClientHello must remain locally
+    # stoppable without waiting for its TLS timeout or starting an injector.
+    time.sleep(.1)
+    if waiting.poll() is not None:raise AssertionError('pending TLS retired before local stop check')
+    if (pathlib.Path('/proc')/str(waiting.pid)/'task'/str(waiting.pid)/'children').read_text().strip():raise AssertionError('pending TLS created native child')
+    if keysbuttons(display_handles[1],1024)!=(False,False):raise AssertionError('untrusted socket changed recipient input')
+    wid=live_capture('recipient',displays[1],'waiting','-'+mode)
+    command(displays[1],'windowfocus',wid,'mousemove','--window',wid,'850','290','click','1')
+   waiting.wait(timeout=4)
+  finally:raw.close()
+  if waiting.returncode==0:raise AssertionError('first connection failure became success')
+  diagnostic=(out/'recipient.log').read_text()
+  if mode=='wrong-role-certificate' and 'TLS peer or protocol differs' not in diagnostic:raise AssertionError('wrong-role exact-key refusal missing')
+  if mode=='exact-key-wrong-run' and 'exact local approval mismatch' not in diagnostic:raise AssertionError('exact primary key bypassed run binding')
+  if keysbuttons(display_handles[1],1024)!=(False,False):raise AssertionError('refused peer left native input held')
+  if mode=='plaintext' and 'TLS handshake failed' not in diagnostic:raise AssertionError('plaintext TLS refusal missing')
+  if live_window('recipient',displays[1]):raise AssertionError('untrusted connection left status active')
+  with socket.socket() as probe:
+   probe.settimeout(.2)
+   if probe.connect_ex((address[0],int(address[1])))==0:raise AssertionError('untrusted first connection kept listener for retry')
+  replay=subprocess.run([str(out/'mnetd'),'-desk-run',str(path)],env=env|{'DISPLAY':displays[1]},capture_output=True,text=True,timeout=3)
+  if replay.returncode==0 or 'already consumed' not in replay.stderr:raise AssertionError('first connection failure renewed approval')
+  print('PASS actual first-connection '+mode+' retires listener/status with failure and consumed run; no retry or input authority',flush=True)
  # The deadline includes local review and waiting. Check the actual listener
  # and process both end rather than leaving a dormant approved service.
  spec['binding']['run']='b'*64;spec['lifetime_seconds']=2;path=out/'recipient'/'run.json';path.write_text(json.dumps(spec))

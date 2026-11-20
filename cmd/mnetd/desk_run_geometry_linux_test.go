@@ -18,7 +18,7 @@ func TestDeskX11ReviewedGeometryGuardJoinsAndNeverReactivates(t *testing.T) {
 	if os.Getenv("MNET_DESK_NATIVE_TEST") != "1" {
 		t.Skip("requires disposable X server")
 	}
-	for _, mode := range []string{"close", "cancel", "resize", "transient"} {
+	for _, mode := range []string{"close", "cancel", "resize", "transient", "display-loss"} {
 		t.Run(mode, func(t *testing.T) {
 			observer, err := xgb.NewConn()
 			if err != nil {
@@ -55,6 +55,8 @@ func TestDeskX11ReviewedGeometryGuardJoinsAndNeverReactivates(t *testing.T) {
 				}
 			case "cancel":
 				cancel()
+			case "display-loss":
+				guard.conn.Close()
 			case "resize", "transient":
 				restore = deskFixtureResizeSource(t, observer)
 				defer restore()
@@ -68,7 +70,7 @@ func TestDeskX11ReviewedGeometryGuardJoinsAndNeverReactivates(t *testing.T) {
 				t.Fatal("geometry guard did not retire", mode)
 			}
 			err = guard.Close()
-			if (mode == "resize" || mode == "transient") && (err == nil || !strings.Contains(err.Error(), "reviewed recipient geometry changed")) {
+			if (mode == "resize" || mode == "transient" || mode == "display-loss") && (err == nil || !strings.Contains(err.Error(), "reviewed recipient geometry changed")) {
 				t.Fatal("geometry loss not preserved", mode, err)
 			}
 			if (mode == "close" || mode == "cancel") && err != nil {
