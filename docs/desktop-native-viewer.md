@@ -104,3 +104,7 @@ Thirty repeated model runs cover50trials each for both canceled and noncanceled 
 ## Canceled late dials retain local cleanup failures
 
 Additional deterministic coverage cancels the owner immediately before the pending dial returns either an error or no transport. The dial must still join, and cancellation must not suppress a separate display-close failure. All four combinations pass across100focused viewer model race repetitions, followed by a fresh full uncached race/vet/build. These are model branches of the cancellation-order repair, not new native acceptance or a reason to change the original failed checkpoint. No product behavior changed.
+
+## Independent pixel-strip ownership fuzzing
+
+A new bounded offline sampler target compares every BGRX output channel to independent RGBAAt reads over offset parent-stride subimages, translated origins, cropped source regions and unequal source/target sizes. Variable strip partitions must reconstruct the same whole output. Mutating a returned strip cannot affect source pixels, another output or a repeated read. Four seeds, thirty focused race repetitions and45492executions over10seconds pass, followed by a fresh full uncached race/vet/build. No X11, transport, grant or remote input is reached. This is byte/sampling model coverage, not native visual acceptance or a new image-format claim. No product behavior changed.
