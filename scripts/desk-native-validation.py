@@ -3,7 +3,7 @@
 import os,pathlib,shutil,subprocess,tempfile,time
 from PIL import Image
 os.chdir(pathlib.Path(__file__).resolve().parent.parent)
-for name in ('go','Xvfb','import','xdotool','zenity'):
+for name in ('go','Xvfb','import','xdotool','xrandr','zenity'):
  if not shutil.which(name):raise SystemExit('missing fixture dependency: '+name)
 out=pathlib.Path(tempfile.mkdtemp(prefix='mnet-desk-native.'));print(out,flush=True)
 subprocess.run(['go','test','-race','-c','-o',str(out/'desk.test'),'./cmd/mnetd'],check=True)
