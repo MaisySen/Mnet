@@ -37,7 +37,20 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 		return nil, errors.New("peer chooser requires local Linux X11")
 	}
 	defer c.Close()
-	screen := xproto.Setup(c).DefaultScreen(c)
+	setup := xproto.Setup(c)
+	format := false
+	for _, f := range setup.PixmapFormats {
+		if f.Depth == 24 && f.BitsPerPixel == 32 && f.ScanlinePad == 32 {
+			format = true
+		}
+	}
+	screen := setup.DefaultScreen(c)
+	if !nativeControlsRGB(screen) {
+		return nil, errors.New("native controls require supported 24-bit TrueColor X11")
+	}
+	if !format || setup.ImageByteOrder != xproto.ImageOrderLSBFirst {
+		return nil, errors.New("chooser pixel format unsupported")
+	}
 	if !nativeControlsRGB(screen) {
 		return nil, errors.New("native controls require supported 24-bit TrueColor X11")
 	}
@@ -54,22 +67,11 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 	if err = xproto.CreateWindowChecked(c, screen.RootDepth, w, screen.Root, 20, 20, 900, 560, 0, xproto.WindowClassInputOutput, screen.RootVisual, xproto.CwBackPixel|xproto.CwEventMask, []uint32{0x17202e, xproto.EventMaskExposure | xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskKeyPress | xproto.EventMaskKeyRelease | xproto.EventMaskFocusChange | xproto.EventMaskStructureNotify}).Check(); err != nil {
 		return nil, err
 	}
-	fonts := make(map[string]xproto.Font)
-	for _, name := range []string{"6x13", "9x15", "10x20"} {
-		font, er := xproto.NewFontId(c)
-		if er != nil {
-			return nil, er
-		}
-		if er = xproto.OpenFontChecked(c, font, uint16(len(name)), name).Check(); er != nil {
-			return nil, errors.New("peer chooser readable fonts unavailable")
-		}
-		fonts[name] = font
-	}
 	gc, err := xproto.NewGcontextId(c)
 	if err != nil {
 		return nil, err
 	}
-	if err = xproto.CreateGCChecked(c, gc, xproto.Drawable(w), xproto.GcForeground|xproto.GcBackground|xproto.GcFont, []uint32{0xffffff, 0x17202e, uint32(fonts["6x13"])}).Check(); err != nil {
+	if err = xproto.CreateGCChecked(c, gc, xproto.Drawable(w), 0, nil).Check(); err != nil {
 		return nil, err
 	}
 	atom, err := xproto.InternAtom(c, false, 16, "WM_DELETE_WINDOW").Reply()
@@ -174,66 +176,36 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 		}()
 	}
 	draw := func() error {
-		fill := func(color uint32, r xproto.Rectangle) error {
-			if er := xproto.ChangeGCChecked(c, gc, xproto.GcForeground, []uint32{color}).Check(); er != nil {
-				return er
-			}
-			return xproto.PolyFillRectangleChecked(c, xproto.Drawable(w), gc, []xproto.Rectangle{r}).Check()
+
+		list := targets()
+		enabled := make([]bool, len(list))
+		for i, t := range list {
+			enabled[i] = t.enabled
 		}
-		text := func(x, y int16, label string, background, foreground uint32, font string) error {
-			if er := xproto.ChangeGCChecked(c, gc, xproto.GcForeground|xproto.GcBackground|xproto.GcFont, []uint32{foreground, background, uint32(fonts[font])}).Check(); er != nil {
-				return er
-			}
-			return xproto.ImageText8Checked(c, byte(len(label)), xproto.Drawable(w), gc, x, y, label).Check()
-		}
-		if er := fill(0x17202e, xproto.Rectangle{Width: 900, Height: 560}); er != nil {
+		picture, er := renderDesktopChooser(selection, page, focus, message, enabled, time.Now())
+		if er != nil {
 			return er
 		}
-		lines := []string{"Choose a device", "Host approval is required. Pointer control is a separate request.", message}
-		for i, line := range lines {
-			font, color := "6x13", uint32(0xb6c9db)
-			if i == 0 {
-				font, color = "10x20", 0xffffff
-			}
-			if i == 1 {
-				font = "9x15"
-			}
-			if er := text(20, int16(28+i*24), line, 0x17202e, color, font); er != nil {
+		pix, er := xproto.NewPixmapId(c)
+		if er != nil {
+			return er
+		}
+		if er = xproto.CreatePixmapChecked(c, 24, pix, xproto.Drawable(w), 900, 560).Check(); er != nil {
+			return er
+		}
+		defer xproto.FreePixmap(c, pix)
+		sampler := newViewerPixelSource(picture, picture.Bounds(), 900, 560)
+		for y := 0; y < 560; y += 16 {
+			n := min(16, 560-y)
+			if er = xproto.PutImageChecked(c, xproto.ImageFormatZPixmap, xproto.Drawable(pix), gc, 900, uint16(n), 0, int16(y), 0, 24, sampler.strip(y, n)).Check(); er != nil {
 				return er
 			}
 		}
-		list := targets()
-		for i, t := range list {
-			bg := uint32(0x28384e)
-			if !t.enabled {
-				bg = 0x323744
-			}
-			if i < 6 && page*6+i == selection.selected {
-				bg = 0x0066cc
-			}
-			if i == 11 {
-				bg = 0x9b343e
-			}
-			if er := fill(bg, xproto.Rectangle{X: t.x, Y: t.y, Width: uint16(t.width), Height: uint16(t.height)}); er != nil {
-				return er
-			}
-			foreground := uint32(0xffffff)
-			if !t.enabled {
-				foreground = 0x9ca3af
-			}
-			if er := text(t.x+12, t.y+27, t.label, bg, foreground, "9x15"); er != nil {
-				return er
-			}
-			if focus == i && t.enabled {
-				if er := xproto.PolyRectangleChecked(c, xproto.Drawable(w), gc, []xproto.Rectangle{{X: t.x + 3, Y: t.y + 3, Width: uint16(t.width - 7), Height: uint16(t.height - 7)}}).Check(); er != nil {
-					return er
-				}
-			}
+		if er = xproto.ChangeWindowAttributesChecked(c, w, xproto.CwBackPixmap, []uint32{uint32(pix)}).Check(); er != nil {
+			return er
 		}
-		for i, line := range selection.detailLines(time.Now()) {
-			if er := text(20, int16(390+i*22), line, 0x17202e, 0xffffff, "6x13"); er != nil {
-				return er
-			}
+		if er = xproto.CopyAreaChecked(c, xproto.Drawable(pix), xproto.Drawable(w), gc, 0, 0, 0, 0, 900, 560).Check(); er != nil {
+			return er
 		}
 		title := fmt.Sprintf("Mnet Remote Desktop: choose [%s] read%d page%d", phase, generation, page+1)
 		return xproto.ChangePropertyChecked(c, xproto.PropModeReplace, w, xproto.AtomWmName, xproto.AtomString, 8, uint32(len(title)), []byte(title)).Check()

@@ -87,8 +87,8 @@ try:
  # next Enter is row review, not implicit mode approval for a different peer.
  action('mousemove','--window',wid,'120','260','click','1')
  im=capture('mouse-row-after-pointer-focus')
- assert im.getpixel((563,493))!=(255,255,255),'new row retained Pointer focus'
- assert im.getpixel((25,243))==(0,102,204),'new row did not remain selected'
+ poll(lambda:capture('mouse-row-after-pointer-focus').getpixel((563,493))!=(255,255,255),'new row retires Pointer focus')
+ poll(lambda:capture('mouse-row-after-pointer-focus').getpixel((25,243))==(0,102,204),'new row selected')
  action('key','Return');time.sleep(.05)
  assert client.poll() is None and len(server.calls)==2,'new peer inherited previous mode activation'
  # Restore the second peer and Pointer focus for page cancellation checks.
@@ -101,7 +101,7 @@ try:
  action('mousemove','--window',wid,'330','510','click','1')
  poll(lambda:title().endswith('page2'),'mouse page drops mode focus')
  im=capture('mouse-page-two')
- assert im.getpixel((563,493))!=(255,255,255),'mouse page retained Pointer focus'
+ poll(lambda:capture('mouse-page-two').getpixel((563,493))!=(255,255,255),'mouse page retires Pointer focus')
  action('key','Return');time.sleep(.05)
  assert client.poll() is None and len(server.calls)==2,'mouse page retained executable mode focus'
  action('key','Page_Up');poll(lambda:title().endswith('page1'),'restore first page')
@@ -113,7 +113,7 @@ try:
  action('keydown','Return','key','Page_Down','keyup','Return')
  poll(lambda:title().endswith('page2'),'PageDown cancels pending mode')
  im=capture('keyboard-page-two')
- assert im.getpixel((563,493))!=(255,255,255),'page retained Pointer focus'
+ poll(lambda:capture('keyboard-page-two').getpixel((563,493))!=(255,255,255),'page retires Pointer focus')
  assert client.poll() is None and len(server.calls)==2,'page key activated mode or read'
  action('key','Page_Up');poll(lambda:title().endswith('page1'),'PageUp first page')
  action('key','Page_Up');assert title().endswith('page1'),'PageUp exceeded first page'

@@ -121,3 +121,20 @@ A failing-first actual offline-inspector case remained open after the root shran
 ## Cancellation during a stalled response body
 
 Actual process acceptance now separately reaches successful HTTP headers and one response-body byte, then stalls the disposable local server for5seconds. SIGTERM must cancel and join within2seconds rather than wait for that body. The device status path and both sequential chooser paths pass separately. These cases distinguish body-read cancellation from the existing waits before response headers. They add no product timeout, retry or network behavior. Complete actual device/chooser fixtures and thirty focused snapshot model race repetitions pass. Evidence remains private synthetic local API/X11, not a live fleet or Multies identity claim.
+
+## Branded local chooser, later isolated branch
+
+The chooser now uses embedded proportional Go fonts and the home visual style.
+Six-row geometry, exact selection pins, full canonical selected key, separate
+View only/Pointer view choices and all existing authorization checks remain.
+Names are bounded display labels, never selectors or verified people. Expired,
+failed or refreshed snapshots clear both rows and selection before modes work.
+
+Actual native checks retain their selected-blue and focused-white pixel
+contracts. Four formerly immediate focus-removal screenshots now poll for the
+same expected pixels within the existing bounded readiness helper, because a
+mouse event can reach the owner after the screenshot request. An initial run
+caught that capture race; no control check was removed, no deadline was extended
+and connection/read counts are still checked. Worst-case label/key fit tests
+caught overflow before the final bounded labels. Real selected-key/pointer-focus
+and expired/no-selection images were inspected.
