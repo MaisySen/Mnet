@@ -18,6 +18,12 @@ x.XDefaultRootWindow.argtypes=[ctypes.c_void_p];x.XDefaultRootWindow.restype=cty
 x.XQueryKeymap.argtypes=[ctypes.c_void_p,ctypes.c_void_p]
 x.XQueryPointer.argtypes=[ctypes.c_void_p,ctypes.c_ulong,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_void_p]
 x.XCloseDisplay.argtypes=[ctypes.c_void_p]
+x.XUnmapWindow.argtypes=[ctypes.c_void_p,ctypes.c_ulong]
+x.XMapWindow.argtypes=[ctypes.c_void_p,ctypes.c_ulong]
+def hide_status(index,wid,transient):
+ x.XUnmapWindow(display_handles[index],int(wid))
+ if transient:x.XMapWindow(display_handles[index],int(wid))
+ x.XSync(display_handles[index],0)
 x.XGrabKeyboard.argtypes=[ctypes.c_void_p,ctypes.c_ulong,ctypes.c_int,ctypes.c_int,ctypes.c_int,ctypes.c_ulong]
 x.XUngrabKeyboard.argtypes=[ctypes.c_void_p,ctypes.c_ulong]
 x.XGrabPointer.argtypes=[ctypes.c_void_p,ctypes.c_ulong,ctypes.c_int,ctypes.c_uint,ctypes.c_int,ctypes.c_int,ctypes.c_ulong,ctypes.c_ulong,ctypes.c_ulong]
@@ -271,20 +277,25 @@ try:
  print('PASS actual unsupported status resize retires waiting run and listener, without hidden fallback',flush=True)
  # Hiding the local withdrawal surface must end the run, not leave a
  # dormant listener without visible status. Merely restoring it cannot renew.
- spec['binding']['run']='f3'*32;path.write_text(json.dumps(spec))
- waiting=launch('recipient');approve('recipient',displays[1],name='-unmap-stop')
- poll(lambda:'waiting for one exact-key' in (out/'recipient.log').read_text(),'unmap waiting listen')
- hidden_window=live_capture('recipient',displays[1],'waiting','-before-unmap')
- command(displays[1],'windowunmap',hidden_window)
- waiting.wait(timeout=4)
- assert waiting.returncode!=0,'hidden status reported intentional clean Stop'
- assert 'desk status window hidden' in (out/'recipient.log').read_text(),'unmap lost specific status failure'
- with socket.socket() as probe:
-  probe.settimeout(.2)
-  assert probe.connect_ex((address[0],int(address[1])))!=0,'hidden status retained waiting listener'
- replay=subprocess.run([str(out/'mnetd'),'-desk-run',str(path)],env=env|{'DISPLAY':displays[1]},capture_output=True,text=True,timeout=3)
- assert replay.returncode!=0 and 'already consumed' in replay.stderr,'unmap renewed approval'
- print('PASS actual waiting status unmap retires listener with specific failure and consumed-run replay refusal',flush=True)
+ for hidden_role,transient,token in [('recipient',False,'f3'),('recipient',True,'f6'),('primary',False,'f7'),('primary',True,'f8')]:
+  index=0 if hidden_role=='primary' else 1
+  hidden_path=out/hidden_role/'run.json';hidden_spec=json.loads(hidden_path.read_text());hidden_spec['binding']['run']=token*32;hidden_path.write_text(json.dumps(hidden_spec))
+  waiting=launch(hidden_role);approve(hidden_role,displays[index],name='-unmap-'+token)
+  if index==1:poll(lambda:'waiting for one exact-key' in (out/'recipient.log').read_text(),'unmap waiting listen')
+  hidden_window=live_capture(hidden_role,displays[index],'armed' if index==0 else 'waiting','-before-unmap-'+token)
+  hide_status(index,hidden_window,transient)
+  waiting.wait(timeout=4)
+  assert waiting.returncode!=0,'hidden status reported intentional clean Stop'
+  assert 'desk status window hidden' in (out/(hidden_role+'.log')).read_text(),'unmap lost specific status failure'
+  assert 'sending raw input' not in (out/(hidden_role+'.log')).read_text(),'unmapped pre-active status activated input'
+  if index==1:
+   with socket.socket() as probe:
+    probe.settimeout(.2)
+    assert probe.connect_ex((address[0],int(address[1])))!=0,'hidden status retained waiting listener'
+  assert not live_window(hidden_role,displays[index]),'remap restored retired status'
+  replay=subprocess.run([str(out/'mnetd'),'-desk-run',str(hidden_path)],env=env|{'DISPLAY':displays[index]},capture_output=True,text=True,timeout=3)
+  assert replay.returncode!=0 and 'already consumed' in replay.stderr,'unmap renewed approval'
+  print('PASS actual pre-active '+hidden_role+' status '+('transient unmap/remap' if transient else 'unmap')+' retires with specific failure and consumed-run replay refusal',flush=True)
  # Keyboard-only Stop must use a matching focused Enter/Space release.
  spec['binding']['run']='7'*64;path.write_text(json.dumps(spec))
  waiting=launch('recipient');approve('recipient',displays[1],name='-keyboard-stop')
@@ -365,7 +376,7 @@ try:
  print('PASS actual launcher held edge refuses return, released edge joins recipient and restores exact local pixel, no auto-reactivation',flush=True)
  # Hiding either active local status must release the admitted native
  # ledger before the original physical fixture key/button are lifted.
- for hidden_role,token in [('primary','f4'),('recipient','f5')]:
+ for hidden_role,transient,token in [('primary',False,'f4'),('recipient',False,'f5'),('primary',True,'f9'),('recipient',True,'fa')]:
   for role in ('primary','recipient'):
    fresh_path=out/role/'run.json';fresh=json.loads(fresh_path.read_text());fresh['binding']['run']=token*32;fresh_path.write_text(json.dumps(fresh))
   recipient=launch('recipient');approve('recipient',displays[1],name='-unmap-'+hidden_role)
@@ -377,7 +388,7 @@ try:
   poll(lambda:keysbuttons(display_handles[1],1024)==(True,True),'native ledger before status unmap')
   index=0 if hidden_role=='primary' else 1
   hidden_window=live_capture(hidden_role,displays[index],'forwarding' if index==0 else 'receiving','-before-unmap')
-  command(displays[index],'windowunmap',hidden_window)
+  hide_status(index,hidden_window,transient)
   primary.wait(timeout=5);recipient.wait(timeout=5)
   poll(lambda:keysbuttons(display_handles[1],1024)==(False,False),'status unmap releases native ledger before source keyup')
   assert 'desk status window hidden' in (out/(hidden_role+'.log')).read_text(),'hidden active status lost failure diagnostic'
@@ -396,7 +407,7 @@ try:
   for role in ('primary','recipient'):
    replay=subprocess.run([str(out/'mnetd'),'-desk-run',str(out/role/'run.json')],env=env|{'DISPLAY':displays[0 if role=='primary' else 1]},capture_output=True,text=True,timeout=3)
    assert replay.returncode!=0 and 'already consumed' in replay.stderr,'active status unmap renewed approval'
-  print('PASS actual '+hidden_role+' active status unmap releases held native ledger before source keyup, reclaims both source grabs, closes listener/UI and refuses both consumed runs',flush=True)
+  print('PASS actual '+hidden_role+' active status '+('transient unmap/remap' if transient else 'unmap')+' releases held native ledger before source keyup, reclaims both source grabs, closes listener/UI and refuses both consumed runs',flush=True)
  # Actual source-root resize must end both one-run launchers, not merely a
  # direct fixture capture. The recipient owns held key/right-button ledger.
  for role in ('primary','recipient'):

@@ -359,3 +359,9 @@ This intentionally ends an engineering run when a window manager minimizes/unmap
 New disposable TLS tests give the primary an exact pinned peer that returns a malformed ready, input or stop acknowledgement. Eight cases per phase cover a negative result, wrong kind, unexpected input, unexpected binding, zero/oversized framing, duplicate JSON key and unknown field. Each must refuse rather than accepting transport authentication as acknowledgement validity. Active clients must close immediately without sending successor bytes, refuse further input and retain the same uncertain cleanup result through repeated Release calls.
 
 All24cases pass30focused race repetitions and a fresh full uncached race/vet/build. The fake peer creates no native backend, so these tests do not prove remote release and intentionally never report it. No protocol or product code changed.
+
+## Restoring a hidden status cannot restore its run
+
+The actual status-unmap acceptance now also restores the window immediately from the same independent X11 connection, before flushing both requests together. Pending recipient, armed source, sending source and receiving recipient all remain terminal after this unmap/remap sequence. Restoring pixels cannot clear the queued withdrawal event or renew a consumed approval. Separate non-restored unmap cases remain in the same journey.
+
+Complete equal/mixed launcher journeys pass all eight persistent/transient status cases and the remaining native/TLS journey. Active cases still require native key/right-button release before source keyup, both source grabs reclaimed, listener/status teardown and both consumed-run replays refused. Current mixed receiving/Stop pixels were inspected before hiding. Fresh full uncached race, vet/build and Python syntax pass. No additional product behavior changed; a hidden status is intentionally terminal, unlike an ordinary Remote Desktop viewer repaint.
