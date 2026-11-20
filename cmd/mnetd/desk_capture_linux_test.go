@@ -443,15 +443,49 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 		t.Log("source map change retired capture and joined native held-input cleanup; local close result:", closeErr)
 		return
 	}
-	if mode == "edge-return" {
-		// Cross left while key/button held: native routing must remain remote.
-		if err = xtest.FakeInputChecked(source, xproto.MotionNotify, 0, 0, sourceScreen.Root, 0, int16(sourceScreen.HeightInPixels/2), 0).Check(); err != nil {
+	if mode == "edge-return" || mode == "armed-left-entry" || mode == "armed-top-entry" || mode == "armed-bottom-entry" {
+		// Reach the recipient boundary adjacent to the primary while held.
+		// It must not return until both owned transitions have been released.
+		boundaryX, boundaryY := int16(0), int16(sourceScreen.HeightInPixels/2)
+		outwardX, outwardY := int16(sourceScreen.WidthInPixels/2-5), int16(sourceScreen.HeightInPixels/2)
+		expectedLocalX := int64(sourceScreen.WidthInPixels) - 1
+		expectedLocalY := (startY + int64(moveY)) * int64(sourceScreen.HeightInPixels) / int64(targetScreen.HeightInPixels)
+		switch entryEdge {
+		case desk.Left:
+			boundaryX = int16(sourceScreen.WidthInPixels - 1)
+			outwardX = int16(sourceScreen.WidthInPixels/2 + 5)
+			expectedLocalX = 0
+		case desk.Top:
+			boundaryX, boundaryY = int16(sourceScreen.WidthInPixels/2), int16(sourceScreen.HeightInPixels-1)
+			outwardX, outwardY = int16(sourceScreen.WidthInPixels/2), int16(sourceScreen.HeightInPixels/2+5)
+			expectedLocalX = (startX + int64(moveX)) * int64(sourceScreen.WidthInPixels) / int64(targetScreen.WidthInPixels)
+			expectedLocalY = 0
+		case desk.Bottom:
+			boundaryX, boundaryY = int16(sourceScreen.WidthInPixels/2), 0
+			outwardX, outwardY = int16(sourceScreen.WidthInPixels/2), int16(sourceScreen.HeightInPixels/2-5)
+			expectedLocalX = (startX + int64(moveX)) * int64(sourceScreen.WidthInPixels) / int64(targetScreen.WidthInPixels)
+			expectedLocalY = int64(sourceScreen.HeightInPixels) - 1
+		}
+		if err = xtest.FakeInputChecked(source, xproto.MotionNotify, 0, 0, sourceScreen.Root, boundaryX, boundaryY, 0).Check(); err != nil {
 			t.Fatal(err)
 		}
 		until = time.Now().Add(time.Second)
 		for {
 			p, e := xproto.QueryPointer(target, targetScreen.Root).Reply()
-			if e == nil && p.RootX == 0 && c.forwarded.Load() >= 4 {
+			atBoundary := false
+			if e == nil {
+				switch entryEdge {
+				case desk.Right:
+					atBoundary = p.RootX == 0
+				case desk.Left:
+					atBoundary = p.RootX == int16(targetScreen.WidthInPixels-1)
+				case desk.Top:
+					atBoundary = p.RootY == int16(targetScreen.HeightInPixels-1)
+				case desk.Bottom:
+					atBoundary = p.RootY == 0
+				}
+			}
+			if atBoundary && c.forwarded.Load() >= 4 {
 				break
 			}
 			if time.Now().After(until) {
@@ -473,7 +507,7 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 			}
 			time.Sleep(time.Millisecond)
 		}
-		if err = xtest.FakeInputChecked(source, xproto.MotionNotify, 0, 0, sourceScreen.Root, int16(sourceScreen.WidthInPixels/2-5), int16(sourceScreen.HeightInPixels/2), 0).Check(); err != nil {
+		if err = xtest.FakeInputChecked(source, xproto.MotionNotify, 0, 0, sourceScreen.Root, outwardX, outwardY, 0).Check(); err != nil {
 			t.Fatal(err)
 		}
 		select {
@@ -488,11 +522,19 @@ func deskTwoDisplayCaptureFixture(t *testing.T, mode string) {
 			t.Fatal(err)
 		}
 		p, err := xproto.QueryPointer(source, sourceScreen.Root).Reply()
-		if err != nil || p.RootX != int16(sourceScreen.WidthInPixels-1) || int64(p.RootY) != (startY+20)*int64(sourceScreen.HeightInPixels)/int64(targetScreen.HeightInPixels) {
+		if err != nil || int64(p.RootX) != expectedLocalX || int64(p.RootY) != expectedLocalY {
 			t.Fatal("local pointer not restored to mapped pixel", p, err)
 		}
+		releasedKeys, keyErr := xproto.QueryKeymap(target).Reply()
+		releasedPointer, pointerErr := xproto.QueryPointer(target, targetScreen.Root).Reply()
+		if keyErr != nil || pointerErr != nil || releasedKeys.Keys[38/8]&(1<<(38%8)) != 0 || releasedPointer.Mask&xproto.ButtonMask1 != 0 {
+			t.Fatal("mapped return left recipient input held", keyErr, pointerErr)
+		}
+		if err = board.Apply(desk.Input{Sequence: 100, Kind: "key", Action: "down", Code: 38}); err == nil {
+			t.Fatal("mapped return left forwarding reusable")
+		}
 		deskFixtureObserved(t, source, sourceWindow, fmt.Sprintf("OBSERVED: local edge return at (%d, %d); recipient cleanup acknowledged", p.RootX, p.RootY))
-		if artifacts := os.Getenv("MNET_DESK_ARTIFACTS"); artifacts != "" {
+		if artifacts := os.Getenv("MNET_DESK_ARTIFACTS"); artifacts != "" && mode == "edge-return" {
 			if err = os.WriteFile(filepath.Join(artifacts, "return.stage"), []byte("local pointer mapped after cleanup"), 0600); err != nil {
 				t.Fatal(err)
 			}
