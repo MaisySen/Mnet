@@ -73,3 +73,20 @@ placed before legacy Join plus ApproveNode and called atomic registration. It
 is not an authentication service, network membership or permission to send
 input. Review, durable registrar implementation and real multi-service acceptance
 remain required before any product path may use it.
+
+## Experimental proof scope follow-up
+
+A source review caught a mismatch with the proposed contract: the inactive
+candidate bound registrar origin and subject but had no explicit registrar
+purpose audience or person-session identifier. Both are now required, separately
+bound transcript fields. A shared origin does not imply a shared purpose, and a
+subject is not a particular current session. Tests alter each field, reject
+missing/invalid identifiers, and retain the original valid one-use challenge
+after a wrong-scope attempt. The actual durable daemon-key test also supplies
+both explicit fixture values. Thirty focused race repetitions pass.
+
+This corrects the isolated candidate, not the missing upstream authority:
+a caller must still authenticate and obtain those values from trusted mapping
+and current enrollment consent. There is still no production import, route,
+registrar, durable redemption or network enrollment. It remains unreviewed for
+product use and must not be treated as an accepted cryptographic protocol.

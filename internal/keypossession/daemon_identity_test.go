@@ -39,7 +39,7 @@ func TestActualPreparedDaemonIdentityAgreesWithoutEnrollment(t *testing.T) {
 	copy(private[:], priv)
 	defer clear(private[:])
 	copy(publicKey[:], pub)
-	b := keypossession.Binding{RegistrarOrigin: "https://fixture-registrar.test", Issuer: "https://fixture-multies.test", Subject: "fixture-person", WorkspaceID: "fixture-workspace", NetworkID: "fixture-network", AuthorizationID: "fixture-decision-only", DevicePublicKey: publicKey}
+	b := keypossession.Binding{RegistrarOrigin: "https://fixture-registrar.test", Audience: "fixture-enrollment", Issuer: "https://fixture-multies.test", Subject: "fixture-person", PersonSessionID: "fixture-session", WorkspaceID: "fixture-workspace", NetworkID: "fixture-network", AuthorizationID: "fixture-decision-only", DevicePublicKey: publicKey}
 	now := time.Now()
 	pending, challenge, err := keypossession.New(b, now)
 	if err != nil {

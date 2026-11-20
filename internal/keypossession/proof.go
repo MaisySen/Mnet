@@ -28,8 +28,8 @@ var ErrInvalid = errors.New("key possession proof refused")
 // decision. The experiment does not establish any of those facts. Identifiers
 // and public keys are transcript data, not credentials or membership evidence.
 type Binding struct {
-	RegistrarOrigin, Issuer, Subject, WorkspaceID, NetworkID, AuthorizationID string
-	DevicePublicKey                                                           [32]byte
+	RegistrarOrigin, Audience, Issuer, Subject, PersonSessionID, WorkspaceID, NetworkID, AuthorizationID string
+	DevicePublicKey                                                                                      [32]byte
 }
 
 // Challenge contains public transcript data only. It has no user authorization.
@@ -66,7 +66,7 @@ func validBinding(b Binding) bool {
 	if !validOrigin(b.RegistrarOrigin) || !validOrigin(b.Issuer) {
 		return false
 	}
-	for _, s := range []string{b.Subject, b.WorkspaceID, b.NetworkID, b.AuthorizationID} {
+	for _, s := range []string{b.Audience, b.Subject, b.PersonSessionID, b.WorkspaceID, b.NetworkID, b.AuthorizationID} {
 		if len(s) < 1 || len(s) > 256 || !utf8.ValidString(s) || strings.TrimSpace(s) != s || strings.ContainsAny(s, "\x00\r\n") {
 			return false
 		}
@@ -80,7 +80,7 @@ func validChallenge(c Challenge, expected Binding, now time.Time) bool {
 func transcript(c Challenge) []byte {
 	// A fixed field-order tuple gives unambiguous boundaries for every string,
 	// including unusual subject identifiers. No delimiter concatenation.
-	b, _ := json.Marshal([]any{domain, c.ID, c.Nonce, c.EphemeralPublicKey, c.Binding.RegistrarOrigin, c.Binding.Issuer, c.Binding.Subject, c.Binding.WorkspaceID, c.Binding.NetworkID, c.Binding.AuthorizationID, c.Binding.DevicePublicKey, c.ExpiresUnixMilli})
+	b, _ := json.Marshal([]any{domain, c.ID, c.Nonce, c.EphemeralPublicKey, c.Binding.RegistrarOrigin, c.Binding.Audience, c.Binding.Issuer, c.Binding.Subject, c.Binding.PersonSessionID, c.Binding.WorkspaceID, c.Binding.NetworkID, c.Binding.AuthorizationID, c.Binding.DevicePublicKey, c.ExpiresUnixMilli})
 	return b
 }
 func authenticator(shared []byte, c Challenge) ([32]byte, error) {
