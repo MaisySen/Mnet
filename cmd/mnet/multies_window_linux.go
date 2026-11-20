@@ -43,9 +43,19 @@ func runMultiesWindow(parent context.Context, local *http.Client, base, origin s
 		return errors.New("sign in window needs local X11")
 	}
 	defer c.Close()
-	screen := xproto.Setup(c).DefaultScreen(c)
+	setup := xproto.Setup(c)
+	format := false
+	for _, f := range setup.PixmapFormats {
+		if f.Depth == 24 && f.BitsPerPixel == 32 && f.ScanlinePad == 32 {
+			format = true
+		}
+	}
+	if !format || setup.ImageByteOrder != xproto.ImageOrderLSBFirst {
+		return errors.New("unsupported sign in pixel format")
+	}
+	screen := setup.DefaultScreen(c)
 	if !nativeControlsRGB(screen) || screen.WidthInPixels < 940 || screen.HeightInPixels < 540 {
-		return errors.New("sign in window requires24bit940x540X11")
+		return errors.New("sign in window requires supported 24-bit X11 and 940x540 pixels")
 	}
 	if err = nativeControlsWatchRoot(c, screen); err != nil {
 		return err
@@ -56,17 +66,6 @@ func runMultiesWindow(parent context.Context, local *http.Client, base, origin s
 	}
 	if err = xproto.CreateWindowChecked(c, screen.RootDepth, w, screen.Root, 20, 20, 900, 500, 0, xproto.WindowClassInputOutput, screen.RootVisual, xproto.CwBackPixel|xproto.CwEventMask, []uint32{0x101824, xproto.EventMaskExposure | xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskKeyPress | xproto.EventMaskKeyRelease | xproto.EventMaskFocusChange | xproto.EventMaskStructureNotify}).Check(); err != nil {
 		return err
-	}
-	fonts := map[string]xproto.Font{}
-	for _, name := range []string{"6x13", "9x15", "10x20"} {
-		f, e := xproto.NewFontId(c)
-		if e != nil {
-			return e
-		}
-		if e = xproto.OpenFontChecked(c, f, uint16(len(name)), name).Check(); e != nil {
-			return errors.New("readable sign in fonts unavailable")
-		}
-		fonts[name] = f
 	}
 	gc, err := xproto.NewGcontextId(c)
 	if err != nil {
@@ -189,99 +188,29 @@ func runMultiesWindow(parent context.Context, local *http.Client, base, origin s
 			}
 		}()
 	}
-	fill := func(x, y, width, height int16, color uint32) error {
-		if e := xproto.ChangeGCChecked(c, gc, xproto.GcForeground, []uint32{color}).Check(); e != nil {
-			return e
-		}
-		return xproto.PolyFillRectangleChecked(c, xproto.Drawable(w), gc, []xproto.Rectangle{{X: x, Y: y, Width: uint16(width), Height: uint16(height)}}).Check()
-	}
-	text := func(x, y int16, color uint32, font, line string, backgrounds ...uint32) error {
-		background := uint32(0x101824)
-		if len(backgrounds) > 0 {
-			background = backgrounds[0]
-		}
-		if len(line) > 130 {
-			return errors.New("sign in text exceeds bounded layout")
-		}
-		if e := xproto.ChangeGCChecked(c, gc, xproto.GcForeground|xproto.GcBackground|xproto.GcFont, []uint32{color, background, uint32(fonts[font])}).Check(); e != nil {
-			return e
-		}
-		return xproto.ImageText8Checked(c, byte(len(line)), xproto.Drawable(w), gc, x, y, line).Check()
-	}
 	draw := func() error {
-		if e := fill(0, 0, 900, 500, 0x101824); e != nil {
+		picture, e := renderMultiesSurface(multiesSurface{phase: phase, key: key, origin: origin, list: list, page: page, focus: controls.focus, enabled: enabled()})
+		if e != nil {
 			return e
 		}
-		if e := text(22, 32, 0xffffff, "10x20", "Multies device approvals"); e != nil {
+		pix, e := xproto.NewPixmapId(c)
+		if e != nil {
 			return e
 		}
-		lines := []string{"Experimental local build. Own device approvals only. Not VPN connectivity.", "Trusted bridge: " + origin, "No mail, other people's devices, screen viewing, keyboard, mouse or file access."}
-		switch phase {
-		case "start":
-			lines = append(lines, "", "Start prepares a private local device key, then asks you before opening the browser.", "It does not start a network, enroll a VPN peer or save a Multies credential.")
-		case "preparing":
-			lines = append(lines, "", "Preparing local identity. No browser opened yet.")
-		case "review":
-			lines = append(lines, "", "Compare this exact device key with the key on the Multies approval page:", key, "", "Open browser only if this is the bridge you intended to use.", "The browser will ask you to choose an existing workspace and approve list-only access.")
-		case "waiting":
-			lines = append(lines, "", "Waiting for your browser decision. Closing this window cancels the native attempt.", "Compare the key before approving:", key)
-		case "failed":
-			lines = append(lines, "", "Sign in did not finish, or current access was refused. No credential was saved.", "Start again for a fresh request. No previous device rows are kept.")
-		case "stale":
-			lines = append(lines, "", "The device snapshot expired after30seconds. Previous rows were cleared.", "Start again to check current approvals. No background polling.")
-		case "done":
-			lines = append(lines, "", "Current own-device snapshot. These records do not prove a device is online.")
-			if len(list.Devices) == 0 {
-				lines = append(lines, "No current own-device approvals.")
-			}
-			start := page * 4
-			end := start + 4
-			if end > len(list.Devices) {
-				end = len(list.Devices)
-			}
-			for _, d := range list.Devices[start:end] {
-				lines = append(lines, deviceText(d.Platform, 8)+"  "+d.DeviceKey)
-			}
-			if list.Truncated {
-				lines = append(lines, "Server list is truncated. Other records may exist.")
-			}
+		if e = xproto.CreatePixmapChecked(c, 24, pix, xproto.Drawable(w), 900, 500).Check(); e != nil {
+			return e
 		}
-		for i, line := range lines {
-			font := "9x15"
-			if i == 1 || len(line) > 92 {
-				font = "6x13"
-			}
-			if e := text(22, int16(66+i*24), 0xb6c9db, font, line); e != nil {
+		defer xproto.FreePixmap(c, pix)
+		// Upload bounded complete strips into an off-screen pixmap. A failed
+		// strip cannot expose a half-drawn consent or stale device state.
+		sampler := newViewerPixelSource(picture, picture.Bounds(), 900, 500)
+		for y := 0; y < 500; y += 16 {
+			n := min(16, 500-y)
+			if e = xproto.PutImageChecked(c, xproto.ImageFormatZPixmap, xproto.Drawable(pix), gc, 900, uint16(n), 0, int16(y), 0, 24, sampler.strip(y, n)).Check(); e != nil {
 				return e
 			}
 		}
-		labels := [4]string{"Start sign in", "Previous", "Next", "Close"}
-		if phase == "review" {
-			labels[0] = "Open browser"
-		}
-		if phase == "done" || phase == "stale" || phase == "failed" {
-			labels[0] = "Start again"
-		}
-		en := enabled()
-		for i, x := range []int16{20, 240, 460, 680} {
-			bg := uint32(0x304761)
-			fg := uint32(0xffffff)
-			if !en[i] {
-				fg = 0x91a1b3
-				bg = 0x1c2a3b
-			}
-			if e := fill(x, 448, 200, 44, bg); e != nil {
-				return e
-			}
-			label := labels[i]
-			if controls.focus == i && en[i] {
-				label = "> " + label
-			}
-			if e := text(x+12, 475, fg, "9x15", label, bg); e != nil {
-				return e
-			}
-		}
-		return nil
+		return xproto.CopyAreaChecked(c, xproto.Drawable(pix), xproto.Drawable(w), gc, 0, 0, 0, 0, 900, 500).Check()
 	}
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()

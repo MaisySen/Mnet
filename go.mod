@@ -8,9 +8,11 @@ require (
 	github.com/jezek/xgb v1.3.1
 	github.com/miekg/dns v1.1.73
 	golang.org/x/crypto v0.59.0
+	golang.org/x/image v0.47.0
 	golang.org/x/sys v0.50.0
 	golang.org/x/time v0.7.0
 	golang.zx2c4.com/wireguard v0.0.0-20261024220952-b3bc704ef0ee
+	gvisor.dev/gvisor v0.0.0-20250503011706-39ed1f5ac29c
 )
 
 require (
@@ -18,12 +20,12 @@ require (
 	golang.org/x/mobile v0.0.0-20261011034528-197770444867 // indirect
 	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
-	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/telemetry v0.0.0-20261010193011-f71dc92da45e // indirect
+	golang.org/x/text v0.44.0 // indirect
 	golang.org/x/tools v0.52.0 // indirect
 	golang.org/x/vuln v1.9.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
-	gvisor.dev/gvisor v0.0.0-20250503011706-39ed1f5ac29c // indirect
 )
 
 tool (

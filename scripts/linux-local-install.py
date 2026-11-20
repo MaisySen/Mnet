@@ -100,6 +100,7 @@ def install(parent, leaf, absolute):
                 'This build requires Linux X11; Wayland-only and other platforms are unsupported here.\n'
                 'Remove only with the matching source installer uninstall command after review.\n'
                 'Changed or extra files cause removal to stop before deleting anything.\n').encode()
+        note += b'\nThird-party notices\n\n' + (REPO / 'THIRD_PARTY_NOTICES.txt').read_bytes()
         write_file(root, 'README.txt', note, 0o600)
         desktop = ('[Desktop Entry]\nVersion=1.0\nType=Application\nName=Mnet (engineering)\n'
                    'Comment=Local engineering tools; Multies setup is not connected\n'
