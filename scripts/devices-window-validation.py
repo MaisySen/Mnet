@@ -67,6 +67,13 @@ try:
  assert invalid.returncode!=0 and not server.requests,'extra args read API'
  launch();wid=poll(window,'native window');phase('up');capture('up-page-one')
  assert len(server.requests)==1
+ # Mouse activation must belong to one exact enabled target and snapshot.
+ action('windowfocus',wid,'mousemove','--window',wid,'520','420','mousedown','1','mousemove','--window',wid,'520','465','mouseup','1')
+ time.sleep(.05);assert title().endswith('page1') and len(server.requests)==1,'outside press became Next on inside release'
+ action('mousemove','--window',wid,'520','465','mousedown','1','mousemove','--window',wid,'120','465','mouseup','1')
+ time.sleep(.05);assert title().endswith('page1') and len(server.requests)==1,'Next press rebound to Refresh'
+ action('mousemove','--window',wid,'520','465','mousedown','1','mousemove','--window',wid,'520','420','mouseup','1')
+ time.sleep(.05);assert title().endswith('page1') and len(server.requests)==1,'inside press activated outside release'
  action('windowfocus',wid,'mousemove','--window',wid,'520','465','click','1');poll(lambda:title().endswith('page2'),'page two');capture('up-page-two')
  action('click','1');poll(lambda:title().endswith('page3'),'page three');capture('up-page-three')
  assert len(server.requests)==1,'pagination fetched daemon or polled'
@@ -86,6 +93,8 @@ try:
   result=subprocess.run(['xdotool','search','--onlyvisible','--name','^Mnet local focus fixture$'],env=env,capture_output=True,text=True)
   return result.stdout.strip().splitlines()[-1] if result.returncode==0 and result.stdout.strip() else None
  other=poll(focus_window,'independent focus window')
+ action('windowfocus',wid,'mousemove','--window',wid,'760','465','mousedown','1','windowfocus',other,'mouseup','1','windowfocus',wid)
+ time.sleep(.05);assert client.poll() is None,'focus loss retained pending mouse Close'
  action('windowfocus',wid,'keydown','space','windowfocus',other,'keyup','space','windowfocus',wid)
  time.sleep(.05);assert client.poll() is None and title().endswith('page2'),'focus loss kept pending Close'
  focus_fixture.terminate();focus_fixture.wait(timeout=2);focus_fixture=None
@@ -98,9 +107,15 @@ try:
  server.code=500;refresh('unavailable',4);capture('unavailable-no-old-peers')
  server.code=200;server.payload=b'{"status":"up"}{}';refresh('unavailable',5);capture('malformed-no-old-peers')
  server.payload=up;refresh('up',6);count=len(server.requests)
+ action('mousemove','--window',wid,'120','465','mousedown','1')
  time.sleep(31);phase('expired');capture('expired-no-old-peers');assert len(server.requests)==count,'automatic API polling'
+ action('mouseup','1');time.sleep(.05);assert len(server.requests)==count,'expired snapshot retained mouse Refresh'
  server.delay=1;server.entered.clear();action('key','r');phase('loading');assert server.entered.wait(2);capture('loading-no-old-peers')
  action('key','r','r','r');time.sleep(.05);assert len(server.requests)==count+1,'concurrent refreshes'
+ phase('up');server.delay=0;before_refresh=len(server.requests)
+ action('mousemove','--window',wid,'120','465','mousedown','1','key','r');phase('up',8)
+ action('mouseup','1');time.sleep(.05);assert len(server.requests)==before_refresh+1,'new snapshot rebound held mouse Refresh'
+ server.delay=1
  phase('up');server.entered.clear();action('key','r');phase('loading');assert server.entered.wait(2)
  before=time.monotonic();action('key','Escape');assert client.wait(timeout=2)==0;client=None;assert time.monotonic()-before<2,'close failed to cancel status'
  assert not server.bad and all(path=='/localapi/status' and credential==token for path,credential in server.requests)
@@ -114,7 +129,7 @@ try:
  count=len(server.requests)
  unavailable=subprocess.run([str(out/'mnet'),'--state',str(state),'devices'],env=env|{'DISPLAY':'not-a-display'},capture_output=True,timeout=5)
  assert unavailable.returncode!=0 and len(server.requests)==count,'missing X11 display contacted daemon or silently fell back'
- print('PASS actual built native Mnet device window: authenticated GET-only snapshots, Tab/Shift+Tab enabled focus and exact Enter/Space release, focus-loss/Tab cancel pending action, keyboard/mouse local pagination,19 peers/three pages, no pagination fetch/polling, Down/approval/error/malformed/loading/expiry erase old peers, repeated Refresh coalesced, Escape/Close/SIGTERM cancel or end cleanly, missing capability/display sends no request, unsupported resize ends; private synthetic fixture only',flush=True)
+ print('PASS actual built native Mnet device window: authenticated GET-only snapshots, Tab/Shift+Tab enabled focus and exact Enter/Space release, focus-loss/Tab cancel pending action, exact matched mouse targets with focus/expiry/snapshot cancellation, keyboard/mouse local pagination,19 peers/three pages, no pagination fetch/polling, Down/approval/error/malformed/loading/expiry erase old peers, repeated Refresh coalesced, Escape/Close/SIGTERM cancel or end cleanly, missing capability/display sends no request, unsupported resize ends; private synthetic fixture only',flush=True)
 finally:
  if focus_fixture is not None and focus_fixture.poll() is None:focus_fixture.terminate();focus_fixture.wait(timeout=2)
  if client is not None and client.poll() is None:client.terminate();client.wait(timeout=4)

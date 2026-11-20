@@ -51,3 +51,12 @@ The window requires a local Linux X11 display of at least940x540 pixels and the 
 Pure tests cover cancellation, bounded decoding, private-field omission, text controls, unknown/future telemetry, pagination and absent owners. Thirty focused race repetitions and full uncached race/vet/build plus Darwin/Windows CLI cross-builds passed locally. The unchanged general session CI job now includes the native private-fixture check and retains only synthetic screenshots/client diagnostics on failure, never the disposable capability state. Hosted results must still be accounted per exact commit.
 
 This fixture proves built UI/local-API behavior. It does not join a live network, validate production Multies identity, prove real peer traffic, grant remote authority or establish physical/mixed-OS readiness.
+
+
+## Exact mouse gesture ownership
+
+The read-only device window now requires a matching left press and release inside the same enabled44px control. An outside press released over Next, Next pressed then released over Refresh, or an inside press released outside cannot paginate, read the daemon or close the window. This corrects a concrete old-source native regression, not a new peer action.
+
+Pending mouse activation is retired by focus loss, Tab or another keyboard gesture, snapshot refresh, expiry or disabled state. Holding Refresh across a new snapshot or expiry does not turn its later release into a new request. Existing keyboard controls, manual authenticated GET-only Refresh and local-only pagination remain unchanged. No peer is selected and no network, session or enrollment authority is created.
+
+The actual built-window journey reproduces the old mismatch failure, then passes exact/mismatched targets, pending Close through independent focus loss, held Refresh across expiry/new snapshot,19-peer pagination and existing fail-closed lifecycle checks. Thirty focused races, full uncached race/vet/build and Darwin/Windows CLI builds pass. Current populated/expired native pixels were inspected. These remain private synthetic local-daemon fixtures, not live Multies eligibility or physical-device VPN proof.

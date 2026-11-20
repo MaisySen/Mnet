@@ -40,7 +40,7 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 	if err != nil {
 		return err
 	}
-	if err = xproto.CreateWindowChecked(c, screen.RootDepth, w, screen.Root, 20, 20, 900, 500, 0, xproto.WindowClassInputOutput, screen.RootVisual, xproto.CwBackPixel|xproto.CwEventMask, []uint32{0xf5f5f7, xproto.EventMaskExposure | xproto.EventMaskButtonRelease | xproto.EventMaskKeyPress | xproto.EventMaskKeyRelease | xproto.EventMaskFocusChange | xproto.EventMaskStructureNotify}).Check(); err != nil {
+	if err = xproto.CreateWindowChecked(c, screen.RootDepth, w, screen.Root, 20, 20, 900, 500, 0, xproto.WindowClassInputOutput, screen.RootVisual, xproto.CwBackPixel|xproto.CwEventMask, []uint32{0xf5f5f7, xproto.EventMaskExposure | xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskKeyPress | xproto.EventMaskKeyRelease | xproto.EventMaskFocusChange | xproto.EventMaskStructureNotify}).Check(); err != nil {
 		return err
 	}
 	font, err := xproto.NewFontId(c)
@@ -277,24 +277,16 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 					return errors.New("device window resized outside supported layout")
 				}
 				changed = false
+			case xproto.ButtonPressEvent:
+				controls.pressMouse(byte(e.Detail), int(e.EventX), int(e.EventY), enabledControls())
 			case xproto.ButtonReleaseEvent:
-				if e.Detail != 1 || e.EventY < 448 || e.EventY >= 492 {
-					changed = false
-					break
-				}
-				controls.cancel()
-				switch {
-				case e.EventX >= 20 && e.EventX < 220:
+				index := controls.releaseMouse(byte(e.Detail), int(e.EventX), int(e.EventY), enabledControls())
+				if index == 0 {
 					refresh()
-				case e.EventX >= 240 && e.EventX < 440:
-					page--
-				case e.EventX >= 460 && e.EventX < 660:
-					page++
-				case e.EventX >= 680 && e.EventX < 880:
+				} else if index > 0 && activate(index) {
 					return nil
-				default:
-					changed = false
 				}
+
 			case xproto.KeyReleaseEvent:
 				mapping, er := xproto.GetKeyboardMapping(c, e.Detail, 1).Reply()
 				if er != nil {

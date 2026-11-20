@@ -6,11 +6,12 @@ type deviceControls struct {
 	focus      int
 	pressed    int
 	key        uint32
+	mouse      bool
 	generation uint64
 }
 
 func newDeviceControls() deviceControls { return deviceControls{focus: -1, pressed: -1} }
-func (c *deviceControls) cancel()       { c.pressed = -1; c.key = 0 }
+func (c *deviceControls) cancel()       { c.pressed = -1; c.key = 0; c.mouse = false }
 func (c *deviceControls) advance(reverse bool, enabled [4]bool) {
 	c.cancel()
 	step := 1
@@ -54,4 +55,33 @@ func (c *deviceControls) releaseKey(key uint32, enabled [4]bool) int {
 }
 func deviceControlEnabled(loading bool, state string, page, peers int) [4]bool {
 	return [4]bool{!loading, state == "up" && page > 0, state == "up" && (page+1)*devicePageSize < peers, true}
+}
+
+// Fixed 44px control geometry, shared by press/release hit checks.
+func deviceControlHit(button byte, x, y int) int {
+	if button != 1 || y < 448 || y >= 492 {
+		return -1
+	}
+	for i, left := range []int{20, 240, 460, 680} {
+		if x >= left && x < left+200 {
+			return i
+		}
+	}
+	return -1
+}
+func (c *deviceControls) pressMouse(button byte, x, y int, enabled [4]bool) {
+	c.cancel()
+	index := deviceControlHit(button, x, y)
+	if index >= 0 && enabled[index] {
+		c.pressed = index
+		c.mouse = true
+	}
+}
+func (c *deviceControls) releaseMouse(button byte, x, y int, enabled [4]bool) int {
+	pressed, mouse := c.pressed, c.mouse
+	c.cancel()
+	if !mouse || pressed < 0 || deviceControlHit(button, x, y) != pressed || !enabled[pressed] {
+		return -1
+	}
+	return pressed
 }
