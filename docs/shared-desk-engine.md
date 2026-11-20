@@ -108,6 +108,8 @@ mnetd -desk-run /absolute/path/to/local-run.json
 
 `desk-inspect` reads one local PEM public certificate and the current single X screen. It prints the exact certificate public-key pin, keyboard-map hash and native dimensions, marked local-evidence-only and not approval. It reads no private key, reserves no run, claims no desktop owner, starts no listener and proves no person or workspace identity. Each endpoint can compare this evidence independently before accepting a run. A public certificate file alone does not prove possession; the TLS handshake later must prove the matching private key.
 
+Explicit empty or repeated `-desk-run` / `-desk-inspect` file selectors now refuse during argument parsing. Empty selectors never fall through to daemon or version mode; repeats never silently replace the first path. A single nonempty path stays exact, including spaces and relative form, and still cannot combine with other modes. `python3 scripts/desk-flags-validation.py` tests the actual built daemon without starting a daemon, network or display; the check is in normal Go CI. The old main fails the empty-selector regression, the fixed parser and actual CLI pass, and equal/mixed actual launcher input, Stop, replay, decline and deadline journeys still pass. This is engineering mode isolation, not production setup or pairing.
+
 `desk-run` is a finite attended attempt, not a background service or consumer setup. It requires an explicitly prepared version-1 JSON with these fields:
 
 | Field | Required meaning |

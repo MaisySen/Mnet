@@ -27,6 +27,8 @@ jobs:
         run: |
           go build -o "$RUNNER_TEMP/mnet-status-evidence" ./cmd/mnet
           python3 scripts/status-evidence-validation.py "$RUNNER_TEMP/mnet-status-evidence"
+      - name: finite Shared Desk argument fail-closed checks (no daemon/network)
+        run: python3 scripts/desk-flags-validation.py
       - name: cross-compile Windows and Darwin daemons
         run: |
           GOOS=windows go build ./...
