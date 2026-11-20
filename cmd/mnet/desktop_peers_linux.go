@@ -54,18 +54,22 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 	if err = xproto.CreateWindowChecked(c, screen.RootDepth, w, screen.Root, 20, 20, 900, 560, 0, xproto.WindowClassInputOutput, screen.RootVisual, xproto.CwBackPixel|xproto.CwEventMask, []uint32{0x17202e, xproto.EventMaskExposure | xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskKeyPress | xproto.EventMaskKeyRelease | xproto.EventMaskFocusChange | xproto.EventMaskStructureNotify}).Check(); err != nil {
 		return nil, err
 	}
-	font, err := xproto.NewFontId(c)
-	if err != nil {
-		return nil, err
-	}
-	if err = xproto.OpenFontChecked(c, font, 5, "fixed").Check(); err != nil {
-		return nil, err
+	fonts := make(map[string]xproto.Font)
+	for _, name := range []string{"6x13", "9x15", "10x20"} {
+		font, er := xproto.NewFontId(c)
+		if er != nil {
+			return nil, er
+		}
+		if er = xproto.OpenFontChecked(c, font, uint16(len(name)), name).Check(); er != nil {
+			return nil, errors.New("peer chooser readable fonts unavailable")
+		}
+		fonts[name] = font
 	}
 	gc, err := xproto.NewGcontextId(c)
 	if err != nil {
 		return nil, err
 	}
-	if err = xproto.CreateGCChecked(c, gc, xproto.Drawable(w), xproto.GcForeground|xproto.GcBackground|xproto.GcFont, []uint32{0xffffff, 0x17202e, uint32(font)}).Check(); err != nil {
+	if err = xproto.CreateGCChecked(c, gc, xproto.Drawable(w), xproto.GcForeground|xproto.GcBackground|xproto.GcFont, []uint32{0xffffff, 0x17202e, uint32(fonts["6x13"])}).Check(); err != nil {
 		return nil, err
 	}
 	atom, err := xproto.InternAtom(c, false, 16, "WM_DELETE_WINDOW").Reply()
@@ -176,8 +180,8 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 			}
 			return xproto.PolyFillRectangleChecked(c, xproto.Drawable(w), gc, []xproto.Rectangle{r}).Check()
 		}
-		text := func(x, y int16, label string, background, foreground uint32) error {
-			if er := xproto.ChangeGCChecked(c, gc, xproto.GcForeground|xproto.GcBackground, []uint32{foreground, background}).Check(); er != nil {
+		text := func(x, y int16, label string, background, foreground uint32, font string) error {
+			if er := xproto.ChangeGCChecked(c, gc, xproto.GcForeground|xproto.GcBackground|xproto.GcFont, []uint32{foreground, background, uint32(fonts[font])}).Check(); er != nil {
 				return er
 			}
 			return xproto.ImageText8Checked(c, byte(len(label)), xproto.Drawable(w), gc, x, y, label).Check()
@@ -185,9 +189,16 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 		if er := fill(0x17202e, xproto.Rectangle{Width: 900, Height: 560}); er != nil {
 			return er
 		}
-		lines := []string{"REMOTE DESKTOP / CURRENT LOCAL PEERS", "Selection is not view/control approval or verified Multies identity. No auto-connect.", message}
+		lines := []string{"Choose a device", "Host approval is required. Pointer control is a separate request.", message}
 		for i, line := range lines {
-			if er := text(20, int16(28+i*24), line, 0x17202e, 0xffffff); er != nil {
+			font, color := "6x13", uint32(0xb6c9db)
+			if i == 0 {
+				font, color = "10x20", 0xffffff
+			}
+			if i == 1 {
+				font = "9x15"
+			}
+			if er := text(20, int16(28+i*24), line, 0x17202e, color, font); er != nil {
 				return er
 			}
 		}
@@ -210,7 +221,7 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 			if !t.enabled {
 				foreground = 0x9ca3af
 			}
-			if er := text(t.x+12, t.y+25, t.label, bg, foreground); er != nil {
+			if er := text(t.x+12, t.y+27, t.label, bg, foreground, "9x15"); er != nil {
 				return er
 			}
 			if focus == i && t.enabled {
@@ -220,7 +231,7 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 			}
 		}
 		for i, line := range selection.detailLines(time.Now()) {
-			if er := text(20, int16(390+i*22), line, 0x17202e, 0xffffff); er != nil {
+			if er := text(20, int16(390+i*22), line, 0x17202e, 0xffffff, "6x13"); er != nil {
 				return er
 			}
 		}

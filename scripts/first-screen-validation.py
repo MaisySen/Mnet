@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Product first-screen deadline with actual host approval and built home."""
 import os,pathlib,subprocess,tempfile,time
+from PIL import Image
 os.chdir(pathlib.Path(__file__).resolve().parent.parent)
 out=pathlib.Path(tempfile.mkdtemp(prefix='mnet-first-screen.'));print(out,flush=True)
 subprocess.run(['go','build','-race','-o',str(out/'mnet'),'./cmd/mnet'],check=True)
@@ -31,6 +32,10 @@ try:
  host=poll(lambda:window(displays[0],'^Mnet: allow viewing'),'host approval');action(displays[0],'windowfocus',host,'key','Tab','Return')
  started=time.monotonic();viewer=poll(lambda:window(displays[1],'^Mnet view only:.*Connected'),'admitted no-screen state')
  subprocess.run(['import','-display',displays[1],'-window',viewer,str(out/'waiting-first-screen.png')],check=True)
+ image=Image.open(out/'waiting-first-screen.png').convert('RGB')
+ assert image.getpixel((220,312))==(28,42,59),'central first-screen panel absent'
+ assert image.getpixel((880,15))==(155,52,62),'local End absent while loading'
+ assert image.getpixel((330,30))==(21,25,35),'loading paint contaminated header background'
  home=poll(lambda:window(displays[1],'^Mnet: three tools'),'first-screen failure returns home',17)
  elapsed=time.monotonic()-started;assert 14<=elapsed<18,elapsed
  subprocess.run(['import','-display',displays[1],'-window',home,str(out/'first-screen-failed-home.png')],check=True)

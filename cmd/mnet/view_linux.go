@@ -31,6 +31,8 @@ type xDesktopView struct {
 	conn                         *xgb.Conn
 	window                       xproto.Window
 	gc                           xproto.Gcontext
+	loadingGC                    xproto.Gcontext
+	waitingHost                  bool
 	deleteAtom                   xproto.Atom
 	width, height                int
 	maxRowsBytes                 int
@@ -115,7 +117,7 @@ func newDesktopViewMode(peer string, pointer bool) (desktopView, error) {
 	if err != nil {
 		return fail(err)
 	}
-	v := &xDesktopView{root: screen, conn: c, window: window, width: w, height: h, maxRowsBytes: int(setup.MaximumRequestLength)*4 - 32, title: "Mnet view only: " + safeViewerLabel(peer), pointer: pointer}
+	v := &xDesktopView{root: screen, conn: c, window: window, width: w, height: h, maxRowsBytes: int(setup.MaximumRequestLength)*4 - 32, title: "Mnet view only: " + safeViewerLabel(peer), pointer: pointer, waitingHost: true}
 	if pointer {
 		v.title = "Mnet pointer only: " + safeViewerLabel(peer)
 		v.pointerGrant.State = "unavailable"
@@ -129,6 +131,20 @@ func newDesktopViewMode(peer string, pointer bool) (desktopView, error) {
 		return cleanup(err)
 	}
 	if err = xproto.CreateGCChecked(c, v.gc, xproto.Drawable(window), xproto.GcForeground|xproto.GcBackground, []uint32{0xffffff, 0x151923}).Check(); err != nil {
+		return cleanup(err)
+	}
+	font, err := xproto.NewFontId(c)
+	if err != nil {
+		return cleanup(err)
+	}
+	if err = xproto.OpenFontChecked(c, font, uint16(len("9x15")), "9x15").Check(); err != nil {
+		return cleanup(errors.New("viewer readable loading font unavailable"))
+	}
+	v.loadingGC, err = xproto.NewGcontextId(c)
+	if err != nil {
+		return cleanup(err)
+	}
+	if err = xproto.CreateGCChecked(c, v.loadingGC, xproto.Drawable(window), xproto.GcForeground|xproto.GcBackground|xproto.GcFont, []uint32{0xffffff, 0x1c2a3b, uint32(font)}).Check(); err != nil {
 		return cleanup(err)
 	}
 	protocols, err := xproto.InternAtom(c, false, uint16(len("WM_PROTOCOLS")), "WM_PROTOCOLS").Reply()
@@ -159,6 +175,9 @@ func (v *xDesktopView) State(state string) error {
 		return errors.New("viewer closed")
 	}
 	v.state = state
+	if strings.HasPrefix(state, "Connected.") {
+		v.waitingHost = false
+	}
 	mode := "Fit"
 	if v.viewport.one {
 		mode = "1:1 received"
@@ -246,7 +265,7 @@ func (v *xDesktopView) draw() error {
 	if err = xproto.PolyFillRectangleChecked(v.conn, target, v.gc, []xproto.Rectangle{{Width: uint16(v.width), Height: uint16(v.height)}}).Check(); err != nil {
 		return err
 	}
-	if err = xproto.ChangeGCChecked(v.conn, v.gc, xproto.GcForeground, []uint32{0xffffff}).Check(); err != nil {
+	if err = xproto.ChangeGCChecked(v.conn, v.gc, xproto.GcForeground|xproto.GcBackground, []uint32{0xffffff, 0x151923}).Check(); err != nil {
 		return err
 	}
 	mode := "Tab: End; Enter/Space: action. 1: received1:1; F: fit; arrows/Home/End: pan; Esc: end"
@@ -304,7 +323,36 @@ func (v *xDesktopView) draw() error {
 	publish := func() error {
 		return xproto.CopyAreaChecked(v.conn, target, xproto.Drawable(v.window), v.gc, 0, 0, 0, 0, uint16(v.width), uint16(v.height)).Check()
 	}
-	if v.image == nil || v.height <= viewerHeader {
+	if v.image == nil {
+		if v.height >= 260 {
+			heading, detail := "Waiting for host approval", "The host decides whether to share."
+			if !v.waitingHost {
+				heading, detail = "Waiting for the first screen", "No screen in 15 seconds ends this session."
+			}
+			panelWidth := min(v.width-32, 520)
+			left := (v.width - panelWidth) / 2
+			top := viewerHeader + (v.height-viewerHeader-120)/2
+			if err = xproto.ChangeGCChecked(v.conn, v.gc, xproto.GcForeground, []uint32{0x1c2a3b}).Check(); err != nil {
+				return err
+			}
+			if err = xproto.PolyFillRectangleChecked(v.conn, target, v.gc, []xproto.Rectangle{{X: int16(left), Y: int16(top), Width: uint16(panelWidth), Height: 120}}).Check(); err != nil {
+				return err
+			}
+			if err = xproto.ImageText8Checked(v.conn, byte(len(heading)), target, v.loadingGC, int16(left+20), int16(top+36), heading).Check(); err != nil {
+				return err
+			}
+			if err = xproto.ChangeGCChecked(v.conn, v.gc, xproto.GcForeground|xproto.GcBackground, []uint32{0xb6c9db, 0x1c2a3b}).Check(); err != nil {
+				return err
+			}
+			for i, line := range []string{detail, "Use End or Escape to leave at any time."} {
+				if err = xproto.ImageText8Checked(v.conn, byte(len(line)), target, v.gc, int16(left+20), int16(top+65+i*23), line).Check(); err != nil {
+					return err
+				}
+			}
+		}
+		return publish()
+	}
+	if v.height <= viewerHeader {
 		return publish()
 	}
 	b := v.image.Bounds()

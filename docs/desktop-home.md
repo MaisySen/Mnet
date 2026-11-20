@@ -17,6 +17,16 @@ Opening the home reads no daemon state and starts no network/session operation. 
 
 This window uses larger headings/action text and short permission summaries. Technical setup and platform details belong in the owning guides rather than competing with the primary action. Supported local prerequisites are Linux X11, the required readable core fonts, a24-bit TrueColor display and at least940x600pixels. Unsupported configurations fail; there is no Wayland/native fallback or misleading success screen.
 
+## Readable device choice and honest loading
+
+The real peer chooser uses larger heading, device-row and mode-action text while retaining the complete bounded selected label/IP and exact key in its detail panel. Empty or expired rows do not gain eligibility from the new visual style. The viewer has a central waiting-for-host or waiting-for-first-screen panel rather than an unexplained empty canvas. End stays visible; the panel is removed by actual rendered pixels, never merely by host approval. These are implemented screens, not mockups.
+
+![Actual selected device](ui/desktop-home/selected-device.png)
+
+![Actual admitted first-screen wait](ui/desktop-home/waiting-screen.png)
+
+The first local loading-panel attempt panicked before host admission because its explicit font-name length was wrong. Actual journey checks caught it, and the source now computes that length. Pixel inspection then caught an inherited text-background color; the drawing resets it before repainting the header. Neither intermediate version was committed or published. These failures are separate from the older unresolved blank-canvas fixtures.
+
 ## First-screen failure is a real session outcome
 
 Host approval is not proof that pixels are arriving. After admission, the viewer waits at most15seconds for a usable complete screen. Pending host approval has no new timer. A first complete rendered frame disarms the bound, including when the desktop then stays unchanged. A silent or unusable initial stream ends the attempt, closes the viewer/transport and returns to a clear first-screen failure state when launched from home. No automatic reconnect or reuse of host approval occurs.
