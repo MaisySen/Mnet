@@ -183,7 +183,7 @@ func downscale(src *image.RGBA, factor int) *image.RGBA {
 			var r, g, b, n int
 			for dy := 0; dy < factor; dy++ {
 				for dx := 0; dx < factor; dx++ {
-					i := src.PixOffset(x0*factor+dx, y*factor+dy)
+					i := src.PixOffset(src.Rect.Min.X+x0*factor+dx, src.Rect.Min.Y+y*factor+dy)
 					r += int(src.Pix[i])
 					g += int(src.Pix[i+1])
 					b += int(src.Pix[i+2])
