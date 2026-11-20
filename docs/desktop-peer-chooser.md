@@ -71,3 +71,9 @@ Local pagination keeps the explicit selection, but now the detail panel names it
 Thirty focused model race repetitions and the complete actual chooser pass, including a selected row on another page and all six pre-TCP refusal cases. Full uncached race/vet/build, Darwin/Windows CLI cross-builds, and both-size actual attended view/pointer chooser entry pass. Current selected, off-page, keyboard focus and expired pixels were inspected. No connection, consent or trust rule changed.
 
 ![Selection remains explicitly identified when another local page is visible](ui/desktop-peers/selected-off-page.png)
+
+## Delayed actual evidence still ages from request start
+
+The actual chooser fixture now delays each of its two local reads by1second. The selected snapshot is expired at30.80seconds from its first observed request, while only28.78seconds have elapsed since the final response was shown. No automatic request occurs. This distinguishes request-start freshness from a receipt-stamped snapshot in the built UI, alongside deterministic cancellation/age model tests. Complete chooser and full uncached race/vet/build pass.
+
+An initial fixture delayed both reads by2seconds and hit the existing bounded chooser read timeout instead of reaching ready. The fixture was corrected to1second per read; no product timeout was extended or retry added. This remains same-host synthetic local evidence, not an atomic read or proof of live Multies identity.

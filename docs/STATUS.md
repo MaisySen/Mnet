@@ -605,7 +605,7 @@ Local evidence:138selected framework cases,78VPN simulations,16fixture guard tes
 
 General Go failure was a source-wiring guard that expected whitespace in the CONSENT.await expression, not a failed input assertion: https://github.com/MaisySen/Mnet/actions/runs/44152153152 . The source spelling is restored and that guard passes locally. Other completed general jobs passed; macOS canceled. Existing simulator checks do not erase the native revoke failure. Multies architecture study is now the priority under the latest direction; no Multies mutation is authorized by this work record.
 
-### Atomic refusal delta fuzz coverage
+## Atomic refusal delta fuzz coverage
 
 A second small offline delta target puts a known-good first tile before a mutated trailing rectangle/JPEG on an offset parent-stride canvas. Refusal must return no partial output and leave every parent-source byte unchanged. Successful cases must keep bounds, match independent last-tile-wins decoded pixels and produce a nonaliasing result. Seeds include valid overlapping tiles, dimension mismatch, truncated JPEG, empty/invalid JPEG, negative/outside coordinates and an extreme width. Mutation input is bounded to4KiB; this is not a broad decoder-exhaustion or physical-display claim.
 

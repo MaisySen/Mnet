@@ -12,7 +12,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
  def log_message(self,*_):pass
  def do_POST(self):self.server.bad.append('write');self.send_response(403);self.end_headers()
  def do_GET(self):
-  self.server.calls.append(self.path)
+  self.server.calls.append(self.path);self.server.call_times.append(time.monotonic())
   if self.headers.get('X-Mnet-Local-Token')!=token or self.path not in ['/localapi/status','/localapi/session-peers']:
    self.server.bad.append('scope');self.send_response(403);self.end_headers();return
   time.sleep(self.server.delay)
@@ -20,7 +20,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
   raw=b'invalid-private-response' if self.server.malformed else json.dumps(data).encode()
   try:self.send_response(200);self.end_headers();self.wfile.write(raw)
   except BrokenPipeError:pass
-server=Server(str(state/'mnetd.sock'),Handler);server.calls=[];server.bad=[];server.delay=0;server.peers=peers;server.status='up';server.malformed=False
+server=Server(str(state/'mnetd.sock'),Handler);server.calls=[];server.call_times=[];server.bad=[];server.delay=0;server.peers=peers;server.status='up';server.malformed=False
 thread=threading.Thread(target=server.serve_forever);thread.start();x=None;client=None;env=os.environ.copy();log=None
 def poll(fn,label,seconds=5):
  end=time.monotonic()+seconds
@@ -86,8 +86,18 @@ try:
  # Blank/malformed responses cannot keep prior rows or input actions.
  server.peers=[];action('key','r');phase('ready',3);capture('empty')
  server.malformed=True;action('key','r');phase('unavailable',4);capture('unavailable')
- server.malformed=False;server.peers=peers;action('key','r');phase('ready',5);action('key','Down');capture('keyboard-selected')
- calls=len(server.calls);time.sleep(31);phase('expired');capture('expired');assert len(server.calls)==calls,'chooser automatically polled'
+ # Each successful read is delayed1s, so receipt-based age would extend the
+ # two-request snapshot by2s. Expire by30.8s from the first observed request,
+ # before30s have elapsed since its final response. This uses the real window.
+ server.malformed=False;server.peers=peers;server.delay=1;first=len(server.calls)
+ action('key','r');phase('ready',5);received=time.monotonic();server.delay=0
+ started=server.call_times[first];assert received-started>=2,'delayed evidence fixture did not wait'
+ action('key','Down');capture('keyboard-selected')
+ calls=len(server.calls);time.sleep(max(0,started+30.8-time.monotonic()))
+ assert '[expired]' in title(),'snapshot age began after final authorization response'
+ assert time.monotonic()<received+30,'expiry observation did not distinguish request/receipt ages'
+ print('PASS actual delayed chooser expiry: request age %.2fs, receipt age %.2fs, no automatic read'%(time.monotonic()-started,time.monotonic()-received),flush=True)
+ capture('expired');assert len(server.calls)==calls,'chooser automatically polled'
  action('mousemove','--window',wid,'620','510','click','1');time.sleep(.05);assert client.poll() is None and len(server.calls)==calls,'expired chooser connected'
  # A selected row cannot silently become a replacement, missing, duplicate,
  # renamed, moved or non-Up peer while its mode gesture opens the session.
