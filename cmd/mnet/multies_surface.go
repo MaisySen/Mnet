@@ -113,7 +113,7 @@ func renderMultiesSurface(v multiesSurface) (*image.RGBA, error) {
 		subtitle = "This snapshot expired. Check again to see current approvals."
 	case "failed":
 		heading = "That sign in didn't finish"
-		subtitle = "Nothing was saved. You can start again when you're ready."
+		subtitle = "No device list is available. You can try again when you're ready."
 	case "start":
 	default:
 		return nil, errors.New("unknown sign in presentation")
