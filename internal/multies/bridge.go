@@ -238,7 +238,7 @@ func (b *BridgeClient) call(ctx context.Context, method, path, token string, bod
 		return ErrDenied
 	}
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 65537))
-	if err != nil || len(raw) > 65536 {
+	if err != nil || len(raw) > 65536 || !validateBridgeJSON(raw, out) {
 		return ErrDenied
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))

@@ -253,3 +253,23 @@ func TestBridgeCredentialRejectsUnboundAndRecreatedClients(t *testing.T) {
 		t.Fatal("original bound credential refused", err)
 	}
 }
+
+func TestBridgeRejectsAmbiguousDuplicateResponseFields(t *testing.T) {
+	for _, body := range []string{
+		`{"workspaceId":"wrong","workspaceId":"workspace","devices":[],"ownDevicesOnly":true,"inputAuthorized":false,"truncated":false}`,
+		`{"workspaceId":"workspace","devices":[],"ownDevicesOnly":true,"inputAuthorized":true,"inputAuthorized":false,"truncated":false}`,
+		`{"workspaceId":"workspace","devices":[],"ownDevicesOnly":true,"inputAuthorized":false,"truncated":false,"truncated":true}`,
+		`{"workspaceId":"workspace","devices":[],"ownDevicesOnly":true,"inputAuthorized":false,"truncated":false,"WorkspaceId":"workspace"}`,
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, body) }))
+		b, err := NewBridgeClient(server.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c := DeviceCredential{issuer: b, value: thumb("credential"), WorkspaceID: "workspace", DeviceKey: thumb("key"), ExpiresAt: time.Now().Add(time.Minute)}
+		if _, err = b.Devices(context.Background(), c); err == nil {
+			t.Errorf("ambiguous response accepted: %s", body)
+		}
+		server.Close()
+	}
+}
