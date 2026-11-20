@@ -99,6 +99,9 @@ func (v *xDesktopView) pointerMotion(x, y int) error {
 func (v *xDesktopView) pointerButton(button byte, down bool, x, y int) error {
 	px, py, ok := v.pointerPosition(x, y)
 	if down {
+		// Every new button press invalidates the preceding click candidate, even
+		// outside the image or on an unsupported button. It cannot borrow its up.
+		v.pointerPressed = 0
 		if !ok {
 			return nil
 		}

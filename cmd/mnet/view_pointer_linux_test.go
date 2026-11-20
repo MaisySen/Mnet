@@ -94,3 +94,37 @@ func TestDesktopPointerButtonsAndUnsupportedDrag(t *testing.T) {
 		t.Fatal("small click jitter refused", a)
 	}
 }
+
+func TestDesktopPointerNewPressCannotReuseOldClick(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		button byte
+		x, y   int
+	}{
+		{"outside image", 8, 500, 100}, {"unsupported button", 8, 500, 472}, {"scroll", 4, 500, 472},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := pointerFixture()
+			if err := v.pointerButton(1, true, 500, 472); err != nil {
+				t.Fatal(err)
+			}
+			if err := v.pointerButton(tc.button, true, tc.x, tc.y); err != nil {
+				t.Fatal(err)
+			}
+			if err := v.pointerButton(1, false, 500, 472); err != nil {
+				t.Fatal(err)
+			}
+			for _, action := range v.PointerActions() {
+				if action.Input.Action == "click" {
+					t.Fatal("second press preserved old left click", action)
+				}
+			}
+			v.pointerButton(tc.button, false, tc.x, tc.y)
+			v.pointerButton(1, true, 500, 472)
+			v.pointerButton(1, false, 500, 472)
+			if actions := v.PointerActions(); len(actions) != 1 || actions[0].Input.Button != "left" {
+				t.Fatal("fresh exact click unavailable", actions)
+			}
+		})
+	}
+}

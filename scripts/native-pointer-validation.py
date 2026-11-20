@@ -70,6 +70,12 @@ try:
  # Bottom-left lies outside host dialogs and inside the native target window.
  # Viewer is960x672, frame fit is800x600 with left gutter80 at this aspect.
  def click():action(displays[1],'windowfocus',viewer,'mousemove','--window',viewer,'120','580','click','1')
+ # A second unsupported button press cannot leave an earlier left press
+ # armed. Release the left button before the extra button to expose stale state.
+ action(displays[1],'windowfocus',viewer,'mousemove','--window',viewer,'120','580','mousedown','1','mousedown','8','mouseup','1','mouseup','8')
+ time.sleep(.15)
+ assert not (out/'native-clicks').exists() or (out/'native-clicks').read_text()=='0','unsupported second press became a remote left click'
+ print('PASS actual unsupported second button press cancels old remote click candidate',flush=True)
  click();poll(lambda:(out/'native-clicks').exists() and (out/'native-clicks').read_text()=='1','first actual native click')
  action(displays[1],'key','a','click','4');poll(lambda:(out/'native-scroll').exists() and (out/'native-scroll').read_text()=='1','actual scroll before local release')
  action(displays[1],'key','Tab','Tab','space');poll(lambda:'[pointer declined]' in title(),'keyboard local release');capture(displays[1],viewer,'released');click();time.sleep(.1)
