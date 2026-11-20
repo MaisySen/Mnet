@@ -95,3 +95,29 @@ func (p *deskLayoutPreview) rectangles(width, height int64) ([]deskPreviewRect, 
 	}
 	return out, nil
 }
+
+// Direct mouse selection is available only where one unambiguous display has
+// a full44px paint target. Tiny/overlapping projections remain selectable with
+// Previous/Next; never inflate a hitbox across another display or shared edge.
+func (p *deskLayoutPreview) hitDisplay(width, height, x, y int64) int {
+	if x < 0 || y < 0 || x >= width || y >= height {
+		return -1
+	}
+	rectangles, err := p.rectangles(width, height)
+	if err != nil {
+		return -1
+	}
+	found := -1
+	for i, r := range rectangles {
+		if x >= r.x && y >= r.y && x < r.x+r.w && y < r.y+r.h {
+			if found != -1 {
+				return -1
+			}
+			if r.w < 44 || r.h < 44 {
+				return -1
+			}
+			found = i
+		}
+	}
+	return found
+}

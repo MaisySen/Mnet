@@ -95,6 +95,9 @@ func showDeskLayoutPreview(ctx context.Context, p *deskLayoutPreview) error {
 	var held uint32
 	clear := func() { pressed = -1; held = 0 }
 	hit := func(x, y int16) int {
+		if index := p.hitDisplay(840, 250, int64(x)-30, int64(y)-100); index >= 0 {
+			return len(labels) + index
+		}
 		if y < 580 || y >= 624 {
 			return -1
 		}
@@ -122,7 +125,7 @@ func showDeskLayoutPreview(ctx context.Context, p *deskLayoutPreview) error {
 		if er := fill(0x17202e, xproto.Rectangle{Width: 900, Height: 650}); er != nil {
 			return er
 		}
-		for i, line := range []string{"SHARED DESK / OFFLINE ARRANGEMENT INSPECTOR", "FILE GEOMETRY ONLY. No active connection, pairing, identity, input or approval.", "Numbered rectangles use one common layout scale. Tiny paint pixels can merge; labels stay exact."} {
+		for i, line := range []string{"SHARED DESK / OFFLINE ARRANGEMENT INSPECTOR", "FILE GEOMETRY ONLY. No active connection, pairing, identity, input or approval.", "Click a full-size rectangle to inspect it. Tiny/merged rectangles: Previous/Next; labels stay exact."} {
 			if er := text(20, int16(28+i*24), line, 0x17202e, 0xffffff); er != nil {
 				return er
 			}
@@ -212,6 +215,15 @@ func showDeskLayoutPreview(ctx context.Context, p *deskLayoutPreview) error {
 	}
 	activate := func(i int) bool {
 		clear()
+		if i >= len(labels) {
+			index := i - len(labels)
+			if index < len(p.layout.Displays) {
+				p.selected = index
+				p.along = 0
+				focus = -1
+			}
+			return false
+		}
 		switch i {
 		case 0:
 			p.selectDisplay(-1)

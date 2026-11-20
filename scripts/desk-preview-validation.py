@@ -44,6 +44,13 @@ try:
  for args in (['layout-view'],['layout-view',str(layout),'--approve'],['run',str(layout)]):
   r=subprocess.run([str(out/'mnet'),'--state',str(state),'desk',*args],env=env,capture_output=True,text=True,timeout=3);assert r.returncode!=0 and 'usage:' in r.stderr
  launch();poll(lambda:title().endswith('edgeright pixel0 no-neighbor'),'initial exact gap');capture('gap')
+ # Direct diagram selection needs one matching rectangle, not an outside or
+ # different-display press. Inspecting a rectangle does not query/mutate a run.
+ action('mousemove','--window',wid,'100','120','mousedown','1','mousemove','--window',wid,'550','220','mouseup','1');time.sleep(.05);assert 'display1 ' in title(),'outside press selected rectangle'
+ action('mousemove','--window',wid,'300','220','mousedown','1','mousemove','--window',wid,'550','220','mouseup','1');time.sleep(.05);assert 'display1 ' in title(),'source press selected recipient on release'
+ action('mousemove','--window',wid,'550','220','click','1');poll(lambda:'display2 ' in title(),'direct recipient rectangle selection');capture('mouse-selected-recipient')
+ action('mousemove','--window',wid,'300','220','click','1');poll(lambda:'display1 ' in title(),'direct source selection resets native query')
+
  # Rounded diagram must not replace original native-pixel geometry. Exact
  # midpoint on the partially shared edge maps into the native target center.
  action('key','End');poll(lambda:title().endswith('pixel999 no-neighbor'),'other exact gap');action('key','Home')
@@ -57,6 +64,8 @@ try:
  focus_app=subprocess.Popen(['xmessage','-title','Offline preview focus fixture','-buttons','OK','Local focus fixture'],env=env,stdout=(out/'focus.log').open('w'),stderr=subprocess.PIPE)
  other=poll(lambda:window('^Offline preview focus fixture$'),'independent focus fixture')
  action('windowfocus',wid,'mousemove','--window',wid,'830','600','mousedown','1','windowfocus',other,'mouseup','1','windowfocus',wid);assert client.poll() is None
+ action('mousemove','--window',wid,'550','220','mousedown','1','windowfocus',other,'mouseup','1','windowfocus',wid);time.sleep(.05);assert 'display1 ' in title(),'focus loss retained recipient rectangle press'
+ action('mousemove','--window',wid,'550','220','mousedown','1','key','Tab','mouseup','1');time.sleep(.05);assert 'display1 ' in title(),'keyboard change retained recipient rectangle press'
  focus_app.terminate();focus_app.communicate(timeout=2);focus_app=None
  # A later file replacement cannot alter this immutable in-memory snapshot.
  layout.write_text('invalid replacement');action('key','Right');poll(lambda:title().endswith('pixel501 candidate=recipient-display@0,753'),'static opened-file snapshot');layout.write_bytes(original)
@@ -67,7 +76,7 @@ try:
  displays=[dict(id=('display-'+str(i)).ljust(64,'x'),device=('device-'+str(i)).ljust(64,'y'),x=-1000000+i*60000,y=-1000000,width=60000,height=1,pixel_width=65535,pixel_height=1) for i in range(32)]
  layout.write_text(json.dumps(dict(version=1,displays=displays)));many=layout.read_bytes();launch()
  for _ in range(31):action('key','Next')
- poll(lambda:'display32 ' in title(),'all32 labels');action('key','End');poll(lambda:'pixel0 ' in title(),'one native tangent pixel');capture('all32-last')
+ poll(lambda:'display32 ' in title(),'all32 labels');action('mousemove','--window',wid,'40','225','click','1');time.sleep(.05);assert 'display32 ' in title(),'tiny diagram acquired a direct target';action('key','End');poll(lambda:'pixel0 ' in title(),'one native tangent pixel');capture('all32-last')
  action('key','Tab');poll(lambda:capture('all32-keyboard-focus').getpixel((23,583))==(255,255,255),'focus after all32')
  action('key','Escape');assert client.wait(timeout=3)==0;client=None;assert layout.read_bytes()==many
  # Fail closed on resize and actual display loss, without terminal fallback.
@@ -77,7 +86,7 @@ try:
  for data in ('{}',json.dumps(dict(version=1,displays=[source,dict(target,x=-1)])),original.decode()+'{}'):
   layout.write_text(data);r=subprocess.run([str(out/'mnet'),'--state',str(state),'desk','layout-view',str(layout)],env=env,capture_output=True,text=True,timeout=3);assert r.returncode!=0
  assert server.calls==0,'offline preview contacted local daemon'
- print('PASS actual offline diagram: unequal/offset native mapping, gaps and reverse edge; immutable read-only file;32 full labels/tiny paint; exact gestures/focus/Tab cancellation; resize/display loss end; invalid file rejected; zero daemon calls. Synthetic same-host geometry only.',flush=True)
+ print('PASS actual offline diagram: direct44px/unambiguous rectangle selection and gesture cancellation, unequal/offset native mapping, gaps and reverse edge; immutable read-only file;32 full labels/tiny paint; exact gestures/focus/Tab cancellation; resize/display loss end; invalid file rejected; zero daemon calls. Synthetic same-host geometry only.',flush=True)
 finally:
  if focus_app is not None:focus_app.terminate();focus_app.communicate(timeout=3)
  if client is not None and client.poll() is None:client.terminate();client.wait(timeout=3)

@@ -197,3 +197,48 @@ func TestDeskPreviewAllEdgesKeepNativeOffsetMapping(t *testing.T) {
 		}
 	}
 }
+
+func TestDeskPreviewDirectHitsNeverGuessRoundedGeometry(t *testing.T) {
+	p, err := readDeskLayoutPreview(strings.NewReader(deskFixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rects, err := p.rectangles(840, 250)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, r := range rects {
+		if got := p.hitDisplay(840, 250, r.x+r.w/2, r.y+r.h/2); got != i {
+			t.Fatal("exact direct selection", i, got)
+		}
+	}
+	boundary := rects[0].x + rects[0].w
+	if got := p.hitDisplay(840, 250, boundary, 125); got != 1 {
+		t.Fatal("half-open shared edge wrong display", got)
+	}
+	for _, point := range [][2]int64{{-1, 0}, {0, -1}, {840, 125}, {420, 250}, {0, 0}} {
+		if p.hitDisplay(840, 250, point[0], point[1]) != -1 {
+			t.Fatal("outside paint selected display", point)
+		}
+	}
+	if p.hitDisplay(40, 40, 10, 10) != -1 {
+		t.Fatal("tiny preview became mouse target")
+	}
+	if p.hitDisplay(0, 250, 0, 0) != -1 {
+		t.Fatal("invalid preview target")
+	}
+	// Tall thin layouts keep exact selected labels through keyboard navigation,
+	// not silently expanded or ambiguous mouse targets.
+	p.layout.Displays[0].Width = 1
+	p.layout.Displays[1].X = p.layout.Displays[0].X + 1
+	p.layout.Displays[1].Width = 1
+	rects, err = p.rectangles(840, 250)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rects {
+		if p.hitDisplay(840, 250, r.x, r.y) != -1 {
+			t.Fatal("thin display acquired inflated target")
+		}
+	}
+}

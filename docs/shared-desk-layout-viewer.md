@@ -14,6 +14,8 @@ The window opens a static, bounded, strictly decoded and compiled file snapshot.
 
 ## Local controls
 
+A full-size diagram rectangle can be selected directly with a matching left press and release inside that same unambiguous rectangle. Outside-to-inside or cross-display releases, focus loss and an intervening keyboard gesture cannot select it. Direct selection resets the native source pixel to zero; it does not activate a display or send input. Projected rectangles smaller than44pixels in either dimension and overlapping paint targets refuse mouse selection. Previous/Next remains available for every display, without inflating small hitboxes across a neighboring display.
+
 Previous/Next or Page Up/Page Down selects another display and resets the source pixel. Choosing an edge also resets the source pixel. Left/Right changes it by one native pixel; Shift+Left/Right changes it by ten. Home/End selects its first/last native pixel. Values clamp at the endpoints rather than wrapping.
 
 Tab/Shift+Tab shows keyboard focus across the local controls. Enter/Space requires a matching release on the same focused control. Moving focus, another gesture or focus loss cancels a pending activation. Mouse buttons likewise need an inside press and release on the same target. Escape/Close ends only this local window. Unsupported resize and display loss end it rather than switching to a terminal fallback.
@@ -47,3 +49,9 @@ An initial fixture expected only the window event-loop's display-loss wording. A
 The device window, Remote Desktop chooser and offline layout inspector paint literal RGB control pixels. They now require the root's exact supported 24-bit TrueColor RGB visual before creating a window or reading local daemon evidence. Palette, 16-bit, missing/mismatched-root, swapped-mask and other unsupported visuals fail rather than rendering misleading selection/disabled/focus colors. This is separate from the desktop viewer's stricter raw-frame upload format check; it does not claim new display support.
 
 An actual old-source 8-bit device window rendered black controls with green text instead of the intended colors. The new real built three-window fixture rejects both 8-bit and 16-bit root visuals before any window or local daemon call. Exact root/mask model checks pass, and the complete supported 24-bit native device, chooser and offline inspector journeys still pass with inspected pixels. Full uncached race/vet/build and CLI cross-builds pass. This does not change networking, session or Shared Desk authority.
+
+## Direct diagram selection evidence
+
+Both equal and large actual inspector journeys pass direct source/recipient selection, outside/cross-target refusal, focus-loss/keyboard cancellation, native query reset and tiny-display refusal with all32 labels still reachable by keyboard. Thirty focused model races check half-open shared boundaries, outside points, invalid viewports and thin targets; full uncached race/vet/build and CLI cross-builds pass. Final selected and tiny-diagram pixels inspected. The file remains unchanged and the daemon trap records zero calls.
+
+![Actual direct mouse-selected recipient diagram, offline only](ui/desk-preview/mouse-selected-recipient.png)
