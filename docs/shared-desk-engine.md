@@ -231,3 +231,11 @@ This corrects active source-root dimensions on the supported Linux path. It does
 ![Actually resized source root after capture retirement and local reclaim](ui/desk-source-geometry/source-retired.png)
 
 ![Independent recipient after native held-input release and pair join](ui/desk-source-geometry/recipient-retired.png)
+
+## Actual launcher root and map retirement
+
+The real finite `mnetd -desk-run` commands now exercise source and recipient root resize independently, with actual local reviews, fresh edge entry and native held key38/right-button state. Changing either disposable root to800x600 ends both launchers, releases the recipient-owned ledger before a source key-up, lets an independent client reclaim source keyboard/pointer, closes status windows/listener and cannot reactivate when the old root dimensions return. The source-root case must preserve its explicit geometry error; the recipient-root case must report failure rather than clean success.
+
+Separate actual-launcher source and recipient keyboard-map changes also require the native ledger released before map restoration or source key-up, source grabs reclaimed, status/listener gone and no restart after the old map returns. The fixture changes the map through the X server's real keyboard-mapping API and restores its exact original symbols only as cleanup. It does not invoke a private capture helper to retire the run.
+
+Both complete equal/mixed launcher suites pass with these checks included. Existing local Stop, joined edge return, anti-reuse, deadline and abrupt-launcher-loss journeys still run. Full uncached race/vet/build passes. An initial recipient-map fixture reused the first run's ID and was correctly refused by persistent anti-reuse before its review window; the driver now assigns that case a distinct run ID. Product reuse guards were unchanged. The resized root screenshots were inspected: the old live status windows are gone and the roots are800x600. Empty root pixels alone do not prove native release; independent X queries, process exits and listener probes provide that evidence. These remain same-host synthetic native fixtures, not physical display/keyboard or multi-platform acceptance.

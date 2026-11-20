@@ -1,5 +1,7 @@
 # Mnet project status
 
+Latest local Shared Desk acceptance: [actual launcher root/map retirement](shared-desk-engine.md#actual-launcher-root-and-map-retirement) now changes source and recipient roots/maps independently while native key/right-button are held. Both launchers end; ledger release precedes source key-up/map restoration, grabs reclaim, status/listener close and old geometry/map cannot reactivate the run. Complete equal/mixed launcher suites and full uncached race/vet/build pass. An initial reused fixture run was correctly refused, then given its own ID. Product behavior unchanged; physical/platform gates remain open. Source pending the published c96d checkpoint's hourly hosted accounting.
+
 Original ed142b1f458c84e47011620812b7af3b62f633b4 is fully accounted: [all five original CI jobs succeeded](https://github.com/MaisySen/Mnet/actions/runs/44693693113), [exact-SHA Pages succeeded](https://github.com/MaisySen/Mnet/actions/runs/44693691516), all ten intended served chooser/docs/image resources matched source and actual Go/session/macOS logs were inspected. Hosted native chooser negative checks and both-size attended view/pointer entry passed. Chrome157.0.8103.78/Node22.23.5 passed84checks with first response under1second. Earlier startup failures remain failed and cause unknown; no rerun, root-cause or reliability claim. No release or Multies change.
 
 

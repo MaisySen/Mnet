@@ -3,7 +3,7 @@
 import ctypes,ctypes.util,json,os,pathlib,shutil,signal,socket,subprocess,tempfile,time
 from PIL import Image
 os.chdir(pathlib.Path(__file__).resolve().parent.parent)
-for dep in ('go','Xvfb','xdotool','import','zenity'):
+for dep in ('go','Xvfb','xdotool','xrandr','import','zenity'):
  if not shutil.which(dep):raise SystemExit('missing dependency: '+dep)
 out=pathlib.Path(tempfile.mkdtemp(prefix='mnet-desk-launch.'));print(out,flush=True)
 subprocess.run(['go','build','-race','-o',str(out/'mnetd'),'./cmd/mnetd'],check=True)
@@ -23,6 +23,17 @@ x.XUngrabKeyboard.argtypes=[ctypes.c_void_p,ctypes.c_ulong]
 x.XGrabPointer.argtypes=[ctypes.c_void_p,ctypes.c_ulong,ctypes.c_int,ctypes.c_uint,ctypes.c_int,ctypes.c_int,ctypes.c_ulong,ctypes.c_ulong,ctypes.c_ulong]
 x.XUngrabPointer.argtypes=[ctypes.c_void_p,ctypes.c_ulong]
 x.XSync.argtypes=[ctypes.c_void_p,ctypes.c_int]
+x.XGetKeyboardMapping.argtypes=[ctypes.c_void_p,ctypes.c_ubyte,ctypes.c_int,ctypes.POINTER(ctypes.c_int)];x.XGetKeyboardMapping.restype=ctypes.POINTER(ctypes.c_ulong)
+x.XChangeKeyboardMapping.argtypes=[ctypes.c_void_p,ctypes.c_int,ctypes.c_int,ctypes.POINTER(ctypes.c_ulong),ctypes.c_int]
+x.XFree.argtypes=[ctypes.c_void_p]
+def change_keymap(d):
+ width=ctypes.c_int();raw=x.XGetKeyboardMapping(d,38,1,ctypes.byref(width))
+ if not raw or width.value<1 or width.value>255:raise AssertionError('fixture original keymap unavailable')
+ original=(ctypes.c_ulong*width.value)(*[raw[i] for i in range(width.value)]);x.XFree(raw)
+ changed=(ctypes.c_ulong*width.value)(*original);changed[0]=ord('z') if original[0]!=ord('z') else ord('x')
+ x.XChangeKeyboardMapping(d,38,width.value,changed,1);x.XSync(d,0)
+ def restore():x.XChangeKeyboardMapping(d,38,width.value,original,1);x.XSync(d,0)
+ return restore
 def poll(check,label,seconds=5):
  end=time.monotonic()+seconds
  while time.monotonic()<end:
@@ -279,6 +290,108 @@ try:
  time.sleep(.05)
  if primary.poll() is None or recipient.poll() is None:raise AssertionError('edge return automatically reactivated consumed run')
  print('PASS actual launcher held edge refuses return, released edge joins recipient and restores exact local pixel, no auto-reactivation',flush=True)
+ # Actual source-root resize must end both one-run launchers, not merely a
+ # direct fixture capture. The recipient owns held key/right-button ledger.
+ for role in ('primary','recipient'):
+  fresh_path=out/role/'run.json';fresh=json.loads(fresh_path.read_text());fresh['binding']['run']='2'*64;fresh_path.write_text(json.dumps(fresh))
+ recipient=launch('recipient');approve('recipient',displays[1],name='-source-resize')
+ poll(lambda:'waiting for one exact-key' in (out/'recipient.log').read_text(),'source resize recipient listening')
+ primary=launch('primary');approve('primary',displays[0],name='-source-resize')
+ command(displays[0],'mousemove','500','300');time.sleep(.05);command(displays[0],'mousemove','1023','300')
+ poll(lambda:'sending raw input' in (out/'primary.log').read_text(),'source resize active')
+ command(displays[0],'keydown','a','mousedown','3')
+ poll(lambda:keysbuttons(display_handles[1],1024)==(True,True),'held recipient ledger before source root resize')
+ live_capture('primary',displays[0],'forwarding','-before-source-resize');live_capture('recipient',displays[1],'receiving','-before-source-resize')
+ try:
+  subprocess.run(['xrandr','--output','screen','--off','--fb','800x600'],env=env|{'DISPLAY':displays[0]},check=True)
+  primary.wait(timeout=5);recipient.wait(timeout=5)
+  if primary.returncode==0 or 'source geometry changed' not in (out/'primary.log').read_text():raise AssertionError('source resize did not preserve geometry failure')
+  poll(lambda:keysbuttons(display_handles[1],1024)==(False,False),'source resize joins recipient held key/right-button release')
+  command(displays[0],'keyup','a','mouseup','3')
+  d=display_handles[0];root=x.XDefaultRootWindow(d)
+  if x.XGrabKeyboard(d,root,0,1,1,0)!=0:raise AssertionError('source resize retained source keyboard')
+  x.XUngrabKeyboard(d,0)
+  if x.XGrabPointer(d,root,0,0,1,1,0,0,0)!=0:raise AssertionError('source resize retained source pointer')
+  x.XUngrabPointer(d,0);x.XSync(d,0)
+  if live_window('primary',displays[0]) or live_window('recipient',displays[1]):raise AssertionError('source resize retained status window')
+  subprocess.run(['import','-display',displays[0],'-window','root',str(out/'actual-launcher-source-resize.png')],check=True)
+  assert Image.open(out/'actual-launcher-source-resize.png').size==(800,600),'actual launcher source root did not shrink'
+  address=fresh['address'].rsplit(':',1)
+  with socket.socket() as probe:
+   probe.settimeout(.2)
+   if probe.connect_ex((address[0],int(address[1])))==0:raise AssertionError('source resize left recipient listener open')
+ finally:
+  subprocess.run(['xrandr','--fb','1024x768','--output','screen','--mode','1024x768'],env=env|{'DISPLAY':displays[0]},check=True)
+ command(displays[0],'mousemove','500','300','mousemove','1023','300');time.sleep(.05)
+ if primary.poll() is None or recipient.poll() is None:raise AssertionError('restored root reactivated old launcher')
+ print('PASS actual source root resize ends both launchers, preserves geometry error, releases recipient key/right-button, reclaims source and closes status/listener; root restoration cannot reactivate run',flush=True)
+ # Recipient root loss must independently end its native injector and both
+ # launchers while key/right-button remain held, without a source key-up.
+ for role in ('primary','recipient'):
+  fresh_path=out/role/'run.json';fresh=json.loads(fresh_path.read_text());fresh['binding']['run']='1'*64;fresh_path.write_text(json.dumps(fresh))
+ recipient=launch('recipient');approve('recipient',displays[1],name='-recipient-resize')
+ poll(lambda:'waiting for one exact-key' in (out/'recipient.log').read_text(),'recipient resize listening')
+ primary=launch('primary');approve('primary',displays[0],name='-recipient-resize')
+ command(displays[0],'mousemove','500','300');time.sleep(.05);command(displays[0],'mousemove','1023','300')
+ poll(lambda:'sending raw input' in (out/'primary.log').read_text(),'recipient resize active')
+ command(displays[0],'keydown','a','mousedown','3')
+ poll(lambda:keysbuttons(display_handles[1],1024)==(True,True),'held native ledger before recipient resize')
+ try:
+  subprocess.run(['xrandr','--output','screen','--off','--fb','800x600'],env=env|{'DISPLAY':displays[1]},check=True)
+  primary.wait(timeout=5);recipient.wait(timeout=5)
+  poll(lambda:keysbuttons(display_handles[1],1024)==(False,False),'recipient resize releases native held ledger without source keyup')
+  if primary.returncode==0 or recipient.returncode==0:raise AssertionError('recipient resize incorrectly reported clean success')
+  command(displays[0],'keyup','a','mouseup','3')
+  d=display_handles[0];root=x.XDefaultRootWindow(d)
+  if x.XGrabKeyboard(d,root,0,1,1,0)!=0:raise AssertionError('recipient resize retained source keyboard')
+  x.XUngrabKeyboard(d,0)
+  if x.XGrabPointer(d,root,0,0,1,1,0,0,0)!=0:raise AssertionError('recipient resize retained source pointer')
+  x.XUngrabPointer(d,0);x.XSync(d,0)
+  if live_window('primary',displays[0]) or live_window('recipient',displays[1]):raise AssertionError('recipient resize left status window')
+  subprocess.run(['import','-display',displays[1],'-window','root',str(out/'actual-launcher-recipient-resize.png')],check=True)
+  assert Image.open(out/'actual-launcher-recipient-resize.png').size==(800,600),'actual recipient root did not shrink'
+  address=fresh['address'].rsplit(':',1)
+  with socket.socket() as probe:
+   probe.settimeout(.2)
+   if probe.connect_ex((address[0],int(address[1])))==0:raise AssertionError('recipient resize left listener open')
+ finally:
+  original=size.rsplit('x',1)[0]
+  subprocess.run(['xrandr','--fb',original,'--output','screen','--mode',original],env=env|{'DISPLAY':displays[1]},check=True)
+ command(displays[0],'mousemove','500','300','mousemove','1023','300');time.sleep(.05)
+ if primary.poll() is None or recipient.poll() is None:raise AssertionError('recipient root restoration reactivated run')
+ print('PASS actual recipient root resize releases native held key/right-button without source keyup, ends both launchers with errors, reclaims source and closes status/listener; no reactivation',flush=True)
+ # Keyboard-map retirement is checked through both actual launchers too,
+ # not inferred from the fixture-only capture/recipient checks. Restore only
+ # after the native ledger has been observed released, never as recovery.
+ for changed_role,run_id in [('primary','0'*64),('recipient','ab'*32)]:
+  for role in ('primary','recipient'):
+   fresh_path=out/role/'run.json';fresh=json.loads(fresh_path.read_text());fresh['binding']['run']=run_id;fresh_path.write_text(json.dumps(fresh))
+  recipient=launch('recipient');approve('recipient',displays[1],name='-map-'+changed_role)
+  poll(lambda:'waiting for one exact-key' in (out/'recipient.log').read_text(),'map retirement recipient listen')
+  primary=launch('primary');approve('primary',displays[0],name='-map-'+changed_role)
+  command(displays[0],'mousemove','500','300');time.sleep(.05);command(displays[0],'mousemove','1023','300')
+  poll(lambda:'sending raw input' in (out/'primary.log').read_text(),'map retirement active')
+  command(displays[0],'keydown','a','mousedown','3')
+  poll(lambda:keysbuttons(display_handles[1],1024)==(True,True),'native key/right-button held before '+changed_role+' map change')
+  restore=change_keymap(display_handles[0 if changed_role=='primary' else 1])
+  try:
+   primary.wait(timeout=5);recipient.wait(timeout=5)
+   poll(lambda:keysbuttons(display_handles[1],1024)==(False,False),'map loss native release before map restoration/source keyup')
+   if primary.returncode==0:raise AssertionError('map retirement reported clean success at source')
+   if live_window('primary',displays[0]) or live_window('recipient',displays[1]):raise AssertionError('map retirement left live status')
+   d=display_handles[0];root=x.XDefaultRootWindow(d)
+   if x.XGrabKeyboard(d,root,0,1,1,0)!=0:raise AssertionError('map retirement retained source keyboard')
+   x.XUngrabKeyboard(d,0)
+   if x.XGrabPointer(d,root,0,0,1,1,0,0,0)!=0:raise AssertionError('map retirement retained source pointer')
+   x.XUngrabPointer(d,0);x.XSync(d,0)
+   address=fresh['address'].rsplit(':',1)
+   with socket.socket() as probe:
+    probe.settimeout(.2)
+    if probe.connect_ex((address[0],int(address[1])))==0:raise AssertionError('map retirement retained listener')
+  finally:restore()
+  command(displays[0],'keyup','a','mouseup','3','mousemove','500','300','mousemove','1023','300');time.sleep(.05)
+  if primary.poll() is None or recipient.poll() is None:raise AssertionError('restored keyboard map reactivated retired run')
+  print('PASS actual '+changed_role+' keyboard-map change retires both launchers, releases recipient key/right-button before map restoration/source keyup, reclaims source and closes status/listener; no reactivation',flush=True)
  # Abruptly losing either actual launcher must retire its counterpart and
  # release recipient-owned transitions. This does not kill the native child;
  # that surviving child's own lease/EOF cleanup is exactly what is checked.
