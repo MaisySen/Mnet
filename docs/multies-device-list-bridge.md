@@ -107,3 +107,21 @@ registration and mesh-revocation work still missing. Its real legacy-handler
 checks confirm a List credential cannot become operator, account or saved-node
 authority. The public legacy pending-join route still exists; a pending record
 is not Multies enrollment or an approved network peer.
+
+## Strict request reader pair checkpoint
+
+Exact installed Mnet `64258ea1828dc6dbee188a87227cb5dc1231e6cc`
+with isolated Multies `d7dafd98815e64a36e5263125e3fc25d0c56c26b`
+passes the configured home, native key review, real system browser, fixture
+sign-in, matching-key List approval, native list/expiry, incomplete-home return
+and browser revoke journey. Actual browser approval and native device-list
+pixels were inspected. The unchanged fixture prefix was removed afterward.
+
+Multies now rejects ambiguous duplicate decoded request fields before strict
+schema validation or any decision/code consumption. Two actual route tests
+failed before that repair. The change is isolated to bridge JSON reads, retains
+the existing byte limit and introduces no new grant or capability. The selected
+request/parser/freshness/return/auth/session/SSO/authorization regressions pass,
+along with changed-source lint and the strict server-entry type check. This is
+not the full repository/test-graph type check, which still has the separately
+recorded memory-limit failure. No deployment or production account was used.
