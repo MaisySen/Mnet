@@ -144,19 +144,11 @@ func main() {
 	case "session":
 		runSession(args[1:])
 	case "ping":
-		if len(args) < 2 {
-			fatal("usage: mnet ping <node>")
+		if len(args) != 2 {
+			fatal("usage: mnet ping <exact-peer>")
 		}
-		st := status(hc)
-		target := ""
-		for _, p := range st.Peers {
-			if p.Name == args[1] || p.IPv4 == args[1] || p.FQDN == args[1] {
-				target = p.IPv4
-			}
-		}
-		if target == "" {
-			fatal("no such peer: " + args[1])
-		}
+		target, err := selectPingTarget(args[1], status(hc))
+		must(err)
 		ping(target)
 	default:
 		usage()
@@ -257,7 +249,8 @@ func writeHumanStatus(out io.Writer, st *daemon.Status) {
 }
 
 func ping(target string) {
-	// Plain ICMP through the mesh proves the tunnel end to end.
+	// ICMP checks reachability to the selected current map address. It does not
+	// authenticate a remote person/key, prove application health or grant input.
 	out, err := runPing(target)
 	if err != nil {
 		fatal("ping: " + err.Error())

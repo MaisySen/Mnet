@@ -75,9 +75,42 @@ with tempfile.TemporaryDirectory(prefix='mnet-status-', dir='/private/tmp' if sy
                 for key, value in expected.items():
                     assert got[key] == value, 'actual JSON changed ' + key
             assert len(server.requests) == 2 and all(path == '/localapi/status' and token == server.token for path, token in server.requests)
+            # The ping executable is a disposable local stub. This proves CLI
+            # selection/dispatch, not network reachability or real ICMP behavior.
+            stub_dir = state / 'bin'
+            stub_dir.mkdir(mode=0o700)
+            marker = state / 'ping-args.json'
+            stub = stub_dir / 'ping'
+            stub.write_text('#!' + sys.executable + '\nimport json,os,sys\nfrom pathlib import Path\nPath(os.environ["MNET_PING_ARGS"]).write_text(json.dumps(sys.argv[1:]))\nprint("fixture ping dispatched")\n')
+            stub.chmod(0o700)
+            ping_env = os.environ | {'PATH': str(stub_dir) + os.pathsep + os.environ.get('PATH', ''), 'MNET_PING_ARGS': str(marker)}
+            def ping(*args):
+                marker.unlink(missing_ok=True)
+                return subprocess.run([binary, '--state', str(state), 'ping', *args], capture_output=True, text=True, timeout=12, env=ping_env)
+            first = dict(name='peer', fqdn='peer.fixture.mnet', ipv4='100.64.0.2', online=False)
+            server.payload = dict(status='up', peers=[first])
+            for selector in ('peer', 'peer.fixture.mnet', '100.64.0.2'):
+                result = ping(selector)
+                assert result.returncode == 0 and result.stdout == 'fixture ping dispatched\n' and not result.stderr, 'unique target did not dispatch'
+                assert json.loads(marker.read_text()) == ['-c', '3', '-W', '2', '100.64.0.2'], 'OS ping arguments changed'
+            cases = [
+                (dict(status='up', peers=[first, dict(name='peer', ipv4='100.64.0.3')]), ('peer',)),
+                (dict(status='up', peers=[first, dict(name='other', ipv4=first['ipv4'])]), ('peer',)),
+                (dict(status='key-expired', peers=[first]), ('peer',)),
+                (dict(status='up', peers=[dict(name='peer', ipv4='--help')]), ('peer',)),
+                (dict(status='up', peers=[first]), ('missing',)),
+                (dict(status='up', peers=[first]), ('peer', 'extra')),
+            ]
+            for payload, args in cases:
+                server.payload = payload
+                result = ping(*args)
+                assert result.returncode != 0 and not result.stdout and not marker.exists(), 'refused target reached executable'
+            assert all(path == '/localapi/status' and token == server.token for path, token in server.requests), 'status credential/path changed'
+            request_count = len(server.requests)
+            print('PASS actual built ping selector: unique name/FQDN/address dispatched only canonical IPv4 to local stub; ambiguous/address-collision/down/invalid/extra targets never executed; no ICMP/network proof')
             token_path.unlink()
             denied = run()
-            assert denied.returncode != 0 and not denied.stdout and len(server.requests) == 2, 'missing capability reached the status fixture'
+            assert denied.returncode != 0 and not denied.stdout and len(server.requests) == request_count, 'missing capability reached the status fixture'
             print('PASS actual built CLI: authenticated private Unix status, exact unknown/never/future/recent/stale/legacy rows, JSON evidence, missing-capability refusal')
         finally:
             server.shutdown()
