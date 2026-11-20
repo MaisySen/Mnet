@@ -407,3 +407,7 @@ Complete equal/mixed launcher journeys pass all nineteen cases and existing nati
 ## Local identity loading keeps exact role and single-certificate policy
 
 Fourteen added local loader cases cover both roles: exact matching identity, wrong role pin, mismatched private key, multiple certificates, malformed certificate/key and a nonprivate key file. Successful loading must return the exact role's pinned key; refusal must return no partial certificate/private-key object. Thirty focused race repetitions and fresh full uncached race/vet/build pass. All material is disposable and never logged or transmitted. No enrollment, trust, certificate policy or product behavior changed.
+
+## Maximum split-edge geometry is order-independent
+
+An offline32display arrangement now checks every source-edge native pixel against an independent rational two-rectangle oracle. Thirty-one adjacent recipients divide the full edge into half-open spans, with unequal native densities. Left/right/top/bottom layouts and reversed display ordering must select the same exact candidate coordinates. Three full race repetitions and fresh whole-repository uncached race/vet/build pass. This is maximum-policy geometry evidence only, not native multi-monitor support, discovery or authority. No product behavior changed.
