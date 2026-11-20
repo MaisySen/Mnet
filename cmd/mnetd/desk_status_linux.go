@@ -83,6 +83,9 @@ func startDeskRunStatus(parent context.Context, spec desk.RunSpec, state string)
 		}
 	}()
 	screen := xproto.Setup(c).DefaultScreen(c)
+	if !deskStatusRGB(screen) {
+		return nil, errors.New("desk status requires supported 24-bit TrueColor X11")
+	}
 	if screen.WidthInPixels < 760 || screen.HeightInPixels < 330 {
 		return nil, errors.New("desk status requires at least760x330 local pixels")
 	}
@@ -336,4 +339,23 @@ func (i *deskStatusInput) Apply(ev desk.Input) error {
 		return err
 	}
 	return i.status.Set("receiving")
+}
+
+// The withdrawal window paints literal RGB. Do not offer a reviewed run whose
+// local state and Stop control could be unreadable on an indexed visual.
+func deskStatusRGB(screen *xproto.ScreenInfo) bool {
+	if screen == nil || screen.RootDepth != 24 {
+		return false
+	}
+	for _, depth := range screen.AllowedDepths {
+		if depth.Depth != 24 {
+			continue
+		}
+		for _, visual := range depth.Visuals {
+			if visual.VisualId == screen.RootVisual && visual.Class == xproto.VisualClassTrueColor && visual.RedMask == 0xff0000 && visual.GreenMask == 0xff00 && visual.BlueMask == 0xff {
+				return true
+			}
+		}
+	}
+	return false
 }

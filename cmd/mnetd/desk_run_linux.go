@@ -127,6 +127,9 @@ func deskRunDisplay(spec desk.RunSpec) error {
 	}
 	setup := xproto.Setup(c)
 	screen := setup.DefaultScreen(c)
+	if !deskStatusRGB(screen) {
+		return errors.New("desk launch requires supported 24-bit TrueColor X11")
+	}
 	if len(setup.Roots) != 1 {
 		return errors.New("desk launch supports one X screen only")
 	}

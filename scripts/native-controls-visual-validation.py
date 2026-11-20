@@ -5,6 +5,8 @@ os.chdir(pathlib.Path(__file__).resolve().parent.parent)
 out=pathlib.Path(tempfile.mkdtemp(prefix='mnet-controls-visual.'));print(out,flush=True)
 executable=os.environ.get('MNET_CONTROLS_EXECUTABLE',str(out/'mnet'))
 if 'MNET_CONTROLS_EXECUTABLE' not in os.environ:subprocess.run(['go','build','-race','-o',executable,'./cmd/mnet'],check=True)
+subprocess.run(['go','build','-race','-o',str(out/'mnetd'),'./cmd/mnetd'],check=True)
+subprocess.run(['go','test','-race','-c','-o',str(out/'desk-fixture.test'),'./cmd/mnetd'],check=True)
 state=out/'state';state.mkdir(mode=0o700)
 class Handler(socketserver.BaseRequestHandler):
  def handle(self):self.server.calls+=1
@@ -34,9 +36,26 @@ try:
    assert client.poll() is not None,f'{mode} failed to retire unsupported visual'
    assert client.returncode!=0 and 'controls require supported 24-bit TrueColor X11' in path.read_text(),path.read_text()
    assert 'DATA RACE' not in path.read_text();client=None
+  # The actual Desk launcher must reject unsupported RGB before local
+  # review, a consumed replay token, a listener or any native owner exists.
+  deskdir=out/f'desk{depth}';deskdir.mkdir()
+  subprocess.run([str(out/'desk-fixture.test'),'-test.run=^TestDeskX11PrepareLauncher$','-test.timeout=10s'],env=env|{'MNET_DESK_LAUNCH_PREPARE':'1','MNET_DESK_TARGET_DISPLAY':env['DISPLAY'],'MNET_DESK_ARTIFACTS':str(deskdir)},check=True,capture_output=True,text=True)
+  for role in ('primary','recipient'):
+   path=out/f'{depth}-desk-{role}.log'
+   with path.open('w') as log:client=subprocess.Popen([str(out/'mnetd'),'-desk-run',str(deskdir/role/'run.json')],env=env,stdout=log,stderr=log)
+   try:client.wait(timeout=2)
+   except subprocess.TimeoutExpired:
+    result=subprocess.run(['xdotool','search','--onlyvisible','--name','^Mnet Shared Desk'],env=env,text=True,capture_output=True)
+    if result.returncode==0 and result.stdout.strip():
+     subprocess.run(['import','-display',env['DISPLAY'],'-window',result.stdout.strip().splitlines()[-1],str(out/f'{depth}-desk-{role}-unsupported.png')],check=True)
+    raise AssertionError('Desk launcher did not refuse unsupported visual before review')
+   assert client.returncode!=0 and 'supported 24-bit TrueColor X11' in path.read_text(),path.read_text()
+   assert not list((deskdir/role/'runs').iterdir()),'unsupported Desk visual consumed run'
+   assert not subprocess.run(['xdotool','search','--onlyvisible','--name','^Mnet Shared Desk'],env=env,capture_output=True).stdout.strip(),'unsupported Desk visual left window'
+   client=None
   x.terminate();x.wait(timeout=3);x=None
  assert server.calls==0,'unsupported visual contacted daemon'
- print('PASS actual built devices/chooser/layout:8-bit and16-bit root visuals rejected before native window or daemon calls. Supported24-bit actual journeys remain separate gates.',flush=True)
+ print('PASS actual built devices/chooser/layout plus both Desk launcher roles:8-bit and16-bit root visuals rejected before native window, review, replay reservation or daemon calls. Supported24-bit actual journeys remain separate gates.',flush=True)
 finally:
  if client is not None and client.poll() is None:client.terminate();client.wait(timeout=3)
  if x is not None:x.terminate();x.wait(timeout=3)

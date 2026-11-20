@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fintex.au/mnet/internal/desk"
+	"github.com/jezek/xgb/xproto"
 	"strings"
 	"testing"
 )
@@ -46,5 +47,26 @@ func TestDeskStatusRefusesInvalidStartBeforeOpeningDisplay(t *testing.T) {
 	good.Binding.Run = "remote label"
 	if _, err := startDeskRunStatus(context.Background(), good, "armed"); err == nil {
 		t.Fatal("unvalidated binding entered local UI")
+	}
+}
+
+func TestDeskStatusRequiresExactRGBVisual(t *testing.T) {
+	fixture := func() *xproto.ScreenInfo {
+		return &xproto.ScreenInfo{RootDepth: 24, RootVisual: 42, AllowedDepths: []xproto.DepthInfo{{Depth: 24, Visuals: []xproto.VisualInfo{{VisualId: 42, Class: xproto.VisualClassTrueColor, RedMask: 0xff0000, GreenMask: 0xff00, BlueMask: 0xff}}}}}
+	}
+	if deskStatusRGB(nil) || !deskStatusRGB(fixture()) {
+		t.Fatal("base visual")
+	}
+	for _, change := range []func(*xproto.ScreenInfo){
+		func(s *xproto.ScreenInfo) { s.RootDepth = 8 }, func(s *xproto.ScreenInfo) { s.RootDepth = 16 }, func(s *xproto.ScreenInfo) { s.RootDepth = 32 },
+		func(s *xproto.ScreenInfo) { s.RootVisual = 43 }, func(s *xproto.ScreenInfo) { s.AllowedDepths = nil }, func(s *xproto.ScreenInfo) { s.AllowedDepths[0].Depth = 16 },
+		func(s *xproto.ScreenInfo) { s.AllowedDepths[0].Visuals[0].Class = xproto.VisualClassPseudoColor },
+		func(s *xproto.ScreenInfo) { s.AllowedDepths[0].Visuals[0].RedMask = 0xff }, func(s *xproto.ScreenInfo) { s.AllowedDepths[0].Visuals[0].GreenMask = 0xff }, func(s *xproto.ScreenInfo) { s.AllowedDepths[0].Visuals[0].BlueMask = 0xff0000 },
+	} {
+		s := fixture()
+		change(s)
+		if deskStatusRGB(s) {
+			t.Fatal("unsupported accepted", s)
+		}
 	}
 }
