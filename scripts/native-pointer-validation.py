@@ -78,6 +78,17 @@ try:
  time.sleep(.15)
  assert not (out/'native-clicks').exists() or (out/'native-clicks').read_text()=='0','unsupported second press became a remote left click'
  print('PASS actual unsupported second button press cancels old remote click candidate',flush=True)
+ # Returning to the press pixel cannot turn a traveled drag into a click.
+ action(displays[1],'windowfocus',viewer,'mousemove','--window',viewer,'120','580','mousedown','1','mousemove','--window',viewer,'150','580','mousemove','--window',viewer,'120','580','mouseup','1')
+ time.sleep(.15)
+ assert not (out/'native-clicks').exists() or (out/'native-clicks').read_text()=='0','drag returning to origin became a native click'
+ # Switching to local keyboard controls also invalidates the pending image
+ # gesture. Keyup alone cannot borrow a mouse press from the old control.
+ action(displays[1],'mousemove','--window',viewer,'120','580','mousedown','1','key','Tab','mouseup','1')
+ time.sleep(.15)
+ assert not (out/'native-clicks').exists() or (out/'native-clicks').read_text()=='0','Tab retained a pending native click'
+ capture(displays[1],viewer,'canceled-clicks-before-fresh-input')
+ print('PASS actual drag-out-and-back and local Tab cancel pending remote click without native input',flush=True)
  click();poll(lambda:(out/'native-clicks').exists() and (out/'native-clicks').read_text()=='1','first actual native click')
  action(displays[1],'key','a','click','4');poll(lambda:(out/'native-scroll').exists() and (out/'native-scroll').read_text()=='1','actual scroll before local release')
  action(displays[1],'key','Tab','Tab','space');poll(lambda:'[pointer declined]' in title(),'keyboard local release');capture(displays[1],viewer,'released');click();time.sleep(.1)

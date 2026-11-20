@@ -104,3 +104,9 @@ The shared native viewer now ends on any local root geometry change, including s
 A new stateful offline queue test compares ordered actions against an independent copied list across motion coalescing, completed clicks, exact-grant requests, grant revisions, withdrawal and drains. Motion may replace only the immediately preceding same-grant motion. Withdrawal removes queued input without granting access. The64entry bound refuses overflow, including when no room remains for a new control action; draining returns each accepted action once. Explicit seeds cover full click/request queues, withdrawal after saturation and repeated motion.
 
 The10second bounded fuzz run passed8677executions and30focused race repetitions passed. Fresh whole-repository uncached race/vet/build also pass. No display, session, native backend or control grant is created, so this is local ordering/error-model evidence, not new native-input acceptance. No product behavior changed.
+
+## Actual canceled mouse gestures stay local
+
+The full actual pointer journey now travels away from a held left press and back to its exact starting pixel before release. That must not become a remote click. A separate held image press followed by local Tab and release must also leave the native click count at zero. A subsequent fresh click still works; the unchanged final host checks require exactly two completed clicks, one scroll, zero keys and all native owners joined.
+
+Direct and chooser-launched journeys pass at both1024and2048host sizes. Current large-host chooser pixels after the canceled gestures were inspected. One initial concurrent direct/chooser invocation correctly failed because the existing disposable fixture uses the fixed loopback session port5909; both chooser sizes were rerun sequentially and passed. No failed partial journey is counted as completion. No product behavior, permission or physical-input guarantee changed.
