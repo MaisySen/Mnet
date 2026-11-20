@@ -8,7 +8,11 @@ for dep in ('go','Xvfb','xdotool','import','zenity'):
 out=pathlib.Path(tempfile.mkdtemp(prefix='mnet-desk-launch.'));print(out,flush=True)
 subprocess.run(['go','build','-race','-o',str(out/'mnetd'),'./cmd/mnetd'],check=True)
 subprocess.run(['go','test','-race','-c','-o',str(out/'fixture.test'),'./cmd/mnetd'],check=True)
-xs=[];children=[];display_handles=[]
+# Own orphaned disposable grandchildren during intentional launcher crashes.
+# Reap only exact native child PIDs observed in this fixture, never other jobs.
+libc=ctypes.CDLL(None,use_errno=True)
+if libc.prctl(36,1,0,0,0)!=0:raise OSError(ctypes.get_errno(),'fixture subreaper unavailable')
+xs=[];children=[];display_handles=[];native_children=set()
 x=ctypes.CDLL(ctypes.util.find_library('X11'));x.XOpenDisplay.argtypes=[ctypes.c_char_p];x.XOpenDisplay.restype=ctypes.c_void_p
 x.XDefaultRootWindow.argtypes=[ctypes.c_void_p];x.XDefaultRootWindow.restype=ctypes.c_ulong
 x.XQueryKeymap.argtypes=[ctypes.c_void_p,ctypes.c_void_p]
@@ -31,6 +35,10 @@ def keysbuttons(d,button_mask=256):
  a=ctypes.c_ulong();b=ctypes.c_ulong();rx=ctypes.c_int();ry=ctypes.c_int();wx=ctypes.c_int();wy=ctypes.c_int();mask=ctypes.c_uint()
  x.XQueryPointer(d,x.XDefaultRootWindow(d),ctypes.byref(a),ctypes.byref(b),ctypes.byref(rx),ctypes.byref(ry),ctypes.byref(wx),ctypes.byref(wy),ctypes.byref(mask))
  return bool(keys.raw[38//8]&(1<<(38%8))),bool(mask.value&button_mask)
+def native_pointer(d):
+ a=ctypes.c_ulong();b=ctypes.c_ulong();rx=ctypes.c_int();ry=ctypes.c_int();wx=ctypes.c_int();wy=ctypes.c_int();mask=ctypes.c_uint()
+ if not x.XQueryPointer(d,x.XDefaultRootWindow(d),ctypes.byref(a),ctypes.byref(b),ctypes.byref(rx),ctypes.byref(ry),ctypes.byref(wx),ctypes.byref(wy),ctypes.byref(mask)):raise AssertionError('native pointer unavailable')
+ return rx.value,ry.value
 def command(display,*args):subprocess.run(['xdotool',*args],env=env|{'DISPLAY':display},check=True)
 def approve(role,display,action='alt+a',name=''):
  title='^Mnet Shared Desk: review '+role+'$'
@@ -238,6 +246,77 @@ try:
  x.XUngrabPointer(d,0);x.XSync(d,0)
  if live_window('primary',displays[0]) or live_window('recipient',displays[1]):raise AssertionError('keyboard Stop retained live window')
  print('PASS actual receiving keyboard Stop joins held native key/right-button release and source reclaim',flush=True)
+ # The real launcher must return across the approved local edge, not only
+ # through Stop. A held native key/right button blocks that crossing.
+ for role in ('primary','recipient'):
+  fresh_path=out/role/'run.json';fresh=json.loads(fresh_path.read_text());fresh['binding']['run']='5'*64;fresh_path.write_text(json.dumps(fresh))
+ recipient=launch('recipient');approve('recipient',displays[1],name='-edge-return')
+ poll(lambda:'waiting for one exact-key' in (out/'recipient.log').read_text(),'return recipient listening')
+ primary=launch('primary');approve('primary',displays[0],name='-edge-return')
+ command(displays[0],'mousemove','500','300');time.sleep(.05);command(displays[0],'mousemove','1023','300')
+ poll(lambda:'sending raw input' in (out/'primary.log').read_text(),'return source active')
+ command(displays[0],'keydown','a','mousedown','3')
+ poll(lambda:keysbuttons(display_handles[1],1024)==(True,True),'held input before return')
+ command(displays[0],'mousemove','0','384')
+ poll(lambda:native_pointer(display_handles[1])[0]==0,'held recipient left boundary')
+ time.sleep(.05);assert primary.poll() is None and recipient.poll() is None,'held edge returned without release'
+ assert keysbuttons(display_handles[1],1024)==(True,True),'held return lost native ledger'
+ live_capture('primary',displays[0],'forwarding','-held-return');live_capture('recipient',displays[1],'receiving','-held-return')
+ command(displays[0],'keyup','a','mouseup','3')
+ poll(lambda:keysbuttons(display_handles[1],1024)==(False,False),'release before local return')
+ command(displays[0],'mousemove','507','384')
+ primary.wait(timeout=5);recipient.wait(timeout=5)
+ poll(lambda:native_pointer(display_handles[0])==(1023,300),'actual mapped local pointer after joined return')
+ if primary.returncode!=0 or recipient.returncode!=0:raise AssertionError('actual launcher edge return reported cleanup failure')
+ if live_window('primary',displays[0]) or live_window('recipient',displays[1]):raise AssertionError('edge return left live status')
+ subprocess.run(['import','-display',displays[0],'-window','root',str(out/'actual-launcher-local-return.png')],check=True)
+ d=display_handles[0];root=x.XDefaultRootWindow(d)
+ if x.XGrabKeyboard(d,root,0,1,1,0)!=0:raise AssertionError('edge return retained source keyboard')
+ x.XUngrabKeyboard(d,0)
+ if x.XGrabPointer(d,root,0,0,1,1,0,0,0)!=0:raise AssertionError('edge return retained source pointer')
+ x.XUngrabPointer(d,0);x.XSync(d,0)
+ command(displays[0],'mousemove','500','300','mousemove','1023','300')
+ time.sleep(.05)
+ if primary.poll() is None or recipient.poll() is None:raise AssertionError('edge return automatically reactivated consumed run')
+ print('PASS actual launcher held edge refuses return, released edge joins recipient and restores exact local pixel, no auto-reactivation',flush=True)
+ # Abruptly losing either actual launcher must retire its counterpart and
+ # release recipient-owned transitions. This does not kill the native child;
+ # that surviving child's own lease/EOF cleanup is exactly what is checked.
+ for lost,token in [('primary','4'),('recipient','3')]:
+  for role in ('primary','recipient'):
+   fresh_path=out/role/'run.json';fresh=json.loads(fresh_path.read_text());fresh['binding']['run']=token*64;fresh_path.write_text(json.dumps(fresh))
+  recipient=launch('recipient');approve('recipient',displays[1],name='-crash-'+lost)
+  poll(lambda:'waiting for one exact-key' in (out/'recipient.log').read_text(),'crash recipient listening')
+  primary=launch('primary');approve('primary',displays[0],name='-crash-'+lost)
+  command(displays[0],'mousemove','500','300');time.sleep(.05);command(displays[0],'mousemove','1023','300')
+  poll(lambda:'sending raw input' in (out/'primary.log').read_text(),'crash source active')
+  command(displays[0],'keydown','a','mousedown','3')
+  poll(lambda:keysbuttons(display_handles[1],1024)==(True,True),'native held input before launcher crash')
+  child_pids=set()
+  for children_file in (pathlib.Path('/proc')/str(recipient.pid)/'task').glob('*/children'):
+   try:child_pids.update(children_file.read_text().split())
+   except FileNotFoundError:pass
+  input_children=[int(pid) for pid in child_pids if b'--mnet-private-desk-input-v1' in (pathlib.Path('/proc')/pid/'cmdline').read_bytes().split(b'\0')]
+  if len(input_children)!=1:raise AssertionError('exact native input child not found before launcher crash')
+  native_children.update(input_children)
+  victim=primary if lost=='primary' else recipient;survivor=recipient if lost=='primary' else primary
+  victim.kill();victim.wait(timeout=5);survivor.wait(timeout=5)
+  poll(lambda:keysbuttons(display_handles[1],1024)==(False,False),'native release after '+lost+' launcher SIGKILL')
+  def child_ended():
+   try:return (pathlib.Path('/proc')/str(input_children[0])/'stat').read_text().rsplit(')',1)[1].strip().split()[0]=='Z'
+   except FileNotFoundError:return True
+  poll(child_ended,'native child cleanup exit after '+lost+' launcher crash')
+  try:os.waitpid(input_children[0],0)
+  except ChildProcessError:pass # The live recipient already joined its own child.
+  if survivor.returncode==0:raise AssertionError('abrupt peer loss reported clean success')
+  command(displays[0],'keyup','a','mouseup','3')
+  d=display_handles[0];root=x.XDefaultRootWindow(d)
+  if x.XGrabKeyboard(d,root,0,1,1,0)!=0:raise AssertionError('launcher crash retained source keyboard')
+  x.XUngrabKeyboard(d,0)
+  if x.XGrabPointer(d,root,0,0,1,1,0,0,0)!=0:raise AssertionError('launcher crash retained source pointer')
+  x.XUngrabPointer(d,0);x.XSync(d,0)
+  if live_window('primary',displays[0]) or live_window('recipient',displays[1]):raise AssertionError('launcher crash retained active status')
+  print('PASS actual '+lost+' launcher SIGKILL releases recipient key/right-button, reclaims source and reports peer loss as error; native child survives to clean up',flush=True)
  # The deadline includes local review and waiting. Check the actual listener
  # and process both end rather than leaving a dormant approved service.
  spec['binding']['run']='b'*64;spec['lifetime_seconds']=2;path=out/'recipient'/'run.json';path.write_text(json.dumps(spec))
@@ -254,6 +333,9 @@ try:
 finally:
  for p in children:
   if p.poll() is None:p.kill();p.wait()
+ for pid in native_children:
+  try:os.waitpid(pid,0)
+  except ChildProcessError:pass
  for d in display_handles:x.XCloseDisplay(d)
  # Never retain disposable TLS private keys in a CI artifact.
  for role in ('primary','recipient'):(out/role/'key.pem').unlink(missing_ok=True)
