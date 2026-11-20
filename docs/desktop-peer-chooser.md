@@ -63,3 +63,11 @@ The actual13peer journey checks Home/End page movement, selected/focused pixels 
 ## Actual selected-peer changes before connection
 
 The complete real chooser journey now repeats the final selection-to-mode transition with six separate current-evidence changes: selected key replaced, peer removed, name changed, address moved, duplicate record added and local daemon no longer Up. Each fresh actual command refuses before a passive TCP sentinel can accept any session connection. Key/name changes also require the exact selected-peer-changed diagnostic. These checks cover the actual CLI handoff, not only its selector model. All six cases and the complete current chooser journey pass, followed by thirty model race repetitions. No product admission rule changed, and no successor is chosen automatically. Host view approval and separate pointer approval still apply to successful journeys. This is private synthetic evidence, not live Multies identity or physical-network acceptance.
+
+## Retained selection is explicit across pages
+
+Local pagination keeps the explicit selection, but now the detail panel names its eligible-row index/total, bounded printable label, IP and full exact device key. Moving to another page cannot make the visible rows look like the selected peer: the detail still identifies the original row. The label is only a label, not a person's verified identity. Future, expired, refreshed and cleared evidence cannot retain the old label or key.
+
+Thirty focused model race repetitions and the complete actual chooser pass, including a selected row on another page and all six pre-TCP refusal cases. Full uncached race/vet/build, Darwin/Windows CLI cross-builds, and both-size actual attended view/pointer chooser entry pass. Current selected, off-page, keyboard focus and expired pixels were inspected. No connection, consent or trust rule changed.
+
+![Selection remains explicitly identified when another local page is visible](ui/desktop-peers/selected-off-page.png)

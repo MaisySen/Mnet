@@ -216,12 +216,7 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 				}
 			}
 		}
-		detail := "No peer selected. View only or Pointer view opens only after an explicit choice."
-		if selection.current(time.Now()) && selection.selected >= 0 {
-			p := selection.snapshot.Peers[selection.selected]
-			detail = "Selected exact device key: " + p.PublicKey
-		}
-		for i, line := range []string{detail, "Pointer view still needs separate host view approval and a later Ask Pointer/host answer.", "Tab: controls. Arrows/Home/End: select. Enter/Space: release. R: refresh. Escape: close.", "Snapshot expires after 30s; manual local reads only. Files/recording/keyboard are not offered."} {
+		for i, line := range selection.detailLines(time.Now()) {
 			if er := text(20, int16(390+i*22), line, 0x17202e, 0xffffff); er != nil {
 				return er
 			}

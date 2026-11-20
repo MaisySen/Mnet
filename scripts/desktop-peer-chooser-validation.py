@@ -79,7 +79,7 @@ try:
  poll(lambda:capture('keyboard-pointer-focus').getpixel((563,493))==(255,255,255),'actual Pointer focus pixels')
  action('keyup','space');time.sleep(.05);assert client.poll() is None and len(server.calls)==2,'unpressed mode release connected'
  action('mousemove','--window',wid,'330','510','click','1');poll(lambda:title().endswith('page2'),'second page')
- action('click','1');poll(lambda:title().endswith('page3'),'third page');assert len(server.calls)==2,'pagination fetched daemon'
+ action('click','1');poll(lambda:title().endswith('page3'),'third page');capture('selected-off-page');assert len(server.calls)==2,'pagination fetched daemon'
  # Refresh clears old selection, even when the exact rows recur.
  action('key','r');phase('ready',2);capture('refreshed-selection-cleared');assert len(server.calls)==4
  action('mousemove','--window',wid,'620','510','click','1');time.sleep(.05);assert client.poll() is None and len(server.calls)==4,'refresh retained selected peer'

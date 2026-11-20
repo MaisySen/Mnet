@@ -202,3 +202,35 @@ func TestDesktopPeerEndpointsAreLocalCurrentSelectionOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestDesktopPeerSelectedDetailsRemainExplicitAndRetire(t *testing.T) {
+	now := time.Now()
+	s := newDesktopPeerSelection()
+	p := daemon.SessionPeer{Name: "fixture\n\x00é" + strings.Repeat("x", 200), IPv4: "100.64.0.2", PublicKey: strings.Repeat("A", 43) + "="}
+	peers := make([]daemon.SessionPeer, 13)
+	for i := range peers {
+		peers[i] = p
+	}
+	s.replace(desktopPeerSnapshot{peers, now})
+	if !s.choose(12, now) {
+		t.Fatal("select last")
+	}
+	lines := s.detailLines(now)
+	if len(lines) != 5 || !strings.Contains(lines[0], "Selected 13/13 label:") || !strings.Contains(lines[0], p.IPv4) || !strings.Contains(lines[1], p.PublicKey) {
+		t.Fatal(lines)
+	}
+	for _, line := range lines {
+		if len(line) > 143 || strings.ContainsAny(line, "\n\x00é") {
+			t.Fatal("unbounded/unprintable detail", line)
+		}
+	}
+	for _, stamp := range []time.Time{now.Add(-time.Nanosecond), now.Add(desktopPeerMaxAge)} {
+		if strings.Contains(strings.Join(s.detailLines(stamp), " "), p.PublicKey) {
+			t.Fatal("retired key visible")
+		}
+	}
+	s.clear()
+	if strings.Contains(strings.Join(s.detailLines(now), " "), p.PublicKey) {
+		t.Fatal("cleared key visible")
+	}
+}

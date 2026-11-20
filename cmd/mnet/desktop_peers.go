@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"sort"
@@ -138,4 +139,20 @@ func prepareDesktopChoice(ctx context.Context, choice desktopPeerChoice) (*cliSe
 		return nil, "", errors.New("selected peer changed; reopen and review current identity")
 	}
 	return access, name, nil
+}
+
+// Selected labels remain visible even when local pagination hides their row.
+// The full canonical key, not this bounded printable label, pins execution.
+func (s *desktopPeerSelection) detailLines(now time.Time) []string {
+	label := "No peer selected. View only or Pointer view needs an explicit row and mode."
+	key := "No selected key. Labels are not verified people or Multies identity."
+	if s.current(now) && s.selected >= 0 && s.selected < len(s.snapshot.Peers) {
+		p := s.snapshot.Peers[s.selected]
+		label = fmt.Sprintf("Selected %d/%d label: %s  IP: %s", s.selected+1, len(s.snapshot.Peers), deviceText(p.Name, 64), deviceText(p.IPv4, 45))
+		key = "Exact device key: " + p.PublicKey
+	}
+	return []string{label, key,
+		"Pointer view still needs separate host view approval and a later Ask Pointer/host answer.",
+		"Tab: controls. Arrows/Home/End: select. Enter/Space: release. R: refresh. Escape: close.",
+		"Snapshot expires after 30s; manual local reads only. Files/recording/keyboard are not offered."}
 }
