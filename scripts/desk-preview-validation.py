@@ -86,6 +86,11 @@ try:
  poll(lambda:'display32 ' in title(),'all32 labels');action('mousemove','--window',wid,'40','225','click','1');time.sleep(.05);assert 'display32 ' in title(),'tiny diagram acquired a direct target';action('key','End');poll(lambda:'pixel0 ' in title(),'one native tangent pixel');capture('all32-last')
  action('key','Tab');poll(lambda:capture('all32-keyboard-focus').getpixel((23,583))==(255,255,255),'focus after all32')
  action('key','Escape');assert client.wait(timeout=3)==0;client=None;assert layout.read_bytes()==many
+ # SIGTERM is local owner cancellation for this static window. It must join
+ # normal X resource shutdown, without writing the source or reading a daemon.
+ layout.write_bytes(original);launch();capture('before-terminate');client.terminate()
+ assert client.wait(timeout=2)==0,'offline window SIGTERM bypassed owned cancellation';client=None
+ assert layout.read_bytes()==original and server.calls==0,'termination wrote or contacted daemon'
  # Fail closed on resize and actual display loss, without terminal fallback.
  layout.write_bytes(original);launch();action('windowsize',wid,'901','650');assert client.wait(timeout=3)!=0;client=None;assert 'unsupported resize' in (out/'client.log').read_text()
  launch();x.terminate();x.wait(timeout=3);x=None;assert client.wait(timeout=3)!=0;client=None;assert any(message in (out/'client.log').read_text() for message in ('display ended','mnet: EOF'))
