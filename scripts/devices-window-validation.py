@@ -110,9 +110,15 @@ try:
  action('mousemove','--window',wid,'120','465','mousedown','1')
  time.sleep(31);phase('expired');capture('expired-no-old-peers');assert len(server.requests)==count,'automatic API polling'
  action('mouseup','1');time.sleep(.05);assert len(server.requests)==count,'expired snapshot retained mouse Refresh'
- server.delay=1;server.entered.clear();action('key','r');phase('loading');assert server.entered.wait(2);capture('loading-no-old-peers')
+ server.delay=2;server.entered.clear();started=time.monotonic();action('key','r');phase('loading');assert server.entered.wait(2);capture('loading-no-old-peers')
  action('key','r','r','r');time.sleep(.05);assert len(server.requests)==count+1,'concurrent refreshes'
- phase('up');server.delay=0;before_refresh=len(server.requests)
+ phase('up');server.delay=0
+ # The real response took two seconds. Rows must expire from request start,
+ # not gain another thirty seconds when that delayed body arrives.
+ time.sleep(max(0,31.2-(time.monotonic()-started)))
+ assert '[expired]' in title(),'delayed response extended snapshot age'
+ capture('delayed-read-expired');assert len(server.requests)==count+1,'delayed evidence expiry polled'
+ before_refresh=len(server.requests)
  action('mousemove','--window',wid,'120','465','mousedown','1','key','r');phase('up',8)
  action('mouseup','1');time.sleep(.05);assert len(server.requests)==before_refresh+1,'new snapshot rebound held mouse Refresh'
  server.delay=1

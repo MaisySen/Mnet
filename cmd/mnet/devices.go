@@ -17,6 +17,9 @@ const devicePageSize = 8
 
 // An explicit read-only snapshot. It creates no session or network authority.
 func readDeviceSnapshot(ctx context.Context, hc *http.Client, base string) (*daemon.Status, error) {
+	if ctx == nil || ctx.Err() != nil {
+		return nil, errors.New("local status owner unavailable")
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/localapi/status", nil)
 	if err != nil {
 		return nil, errors.New("local status address unavailable")
@@ -37,7 +40,33 @@ func readDeviceSnapshot(ctx context.Context, hc *http.Client, base string) (*dae
 	if err = json.Unmarshal(b, &st); err != nil || st.Status == "" || len(st.Peers) > 4096 {
 		return nil, errors.New("local status response invalid")
 	}
+	if ctx.Err() != nil {
+		return nil, errors.New("local status request canceled")
+	}
 	return &st, nil
+}
+
+const deviceSnapshotMaxAge = 30 * time.Second
+
+type timedDeviceSnapshot struct {
+	status  *daemon.Status
+	started time.Time
+}
+
+func (s timedDeviceSnapshot) current(now time.Time) bool {
+	return s.status != nil && !s.started.IsZero() && !now.Before(s.started) && now.Sub(s.started) < deviceSnapshotMaxAge
+}
+func readTimedDeviceSnapshot(ctx context.Context, hc *http.Client, base string) (timedDeviceSnapshot, error) {
+	started := time.Now()
+	status, err := readDeviceSnapshot(ctx, hc, base)
+	if err != nil {
+		return timedDeviceSnapshot{}, err
+	}
+	snapshot := timedDeviceSnapshot{status, started}
+	if !snapshot.current(time.Now()) {
+		return timedDeviceSnapshot{}, errors.New("local status snapshot expired while reading")
+	}
+	return snapshot, nil
 }
 
 // Core X11's fixed font has no general Unicode text support. Untrusted names
@@ -96,7 +125,7 @@ func deviceSnapshotLines(st *daemon.Status, page int, sampled time.Time) ([]stri
 	case "up", "down", "preparing", "joining", "waiting-approval", "key-expired":
 		state = st.Status
 	}
-	lines = append(lines, "Local daemon: "+state+"  |  Snapshot received: "+sampled.Format("15:04:05 MST"), "This device: "+deviceText(st.NodeName, 32)+"  |  IPv4: "+deviceText(st.IPv4, 20), "Network label: "+deviceText(st.Network, 48)+"  (not verified Multies identity)")
+	lines = append(lines, "Local daemon: "+state+"  |  Read started: "+sampled.Format("15:04:05 MST"), "This device: "+deviceText(st.NodeName, 32)+"  |  IPv4: "+deviceText(st.IPv4, 20), "Network label: "+deviceText(st.Network, 48)+"  (not verified Multies identity)")
 	if st.Status != "up" {
 		hint := "Peer rows hidden while local daemon is not Up. No saved rows imply access."
 		if st.Status == "waiting-approval" {

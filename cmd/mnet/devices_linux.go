@@ -15,8 +15,8 @@ import (
 )
 
 type deviceResult struct {
-	status *daemon.Status
-	err    error
+	snapshot timedDeviceSnapshot
+	err      error
 }
 type deviceEvent struct {
 	event xgb.Event
@@ -159,7 +159,7 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 		go func() {
 			defer close(done)
 			defer stop()
-			snapshot, fetchErr := readDeviceSnapshot(requestCtx, hc, base)
+			snapshot, fetchErr := readTimedDeviceSnapshot(requestCtx, hc, base)
 			select {
 			case results <- deviceResult{snapshot, fetchErr}:
 			case <-ctx.Done():
@@ -239,8 +239,8 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 				phase = "unavailable"
 				message = result.err.Error()
 			} else {
-				st = result.status
-				sampled = time.Now()
+				st = result.snapshot.status
+				sampled = result.snapshot.started
 				phase = st.Status
 				switch phase {
 				case "up", "down", "joining", "preparing", "waiting-approval", "key-expired":
@@ -250,7 +250,7 @@ func runDeviceWindow(parent context.Context, hc *http.Client, base string) error
 				message = "Reported state at the snapshot time only. Refresh before relying on it."
 			}
 		case <-ticker.C:
-			if st == nil || time.Since(sampled) < 30*time.Second {
+			if st == nil || (timedDeviceSnapshot{st, sampled}).current(time.Now()) {
 				changed = false
 			} else {
 				st = nil

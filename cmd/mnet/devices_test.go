@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -115,5 +116,48 @@ func TestDevicePeerStateDoesNotPromoteUnknownOrFutureTelemetry(t *testing.T) {
 		if got := devicePeerState(daemon.PeerStatus{Online: true, HandshakeState: state}); got != "offline" {
 			t.Fatal(state, got)
 		}
+	}
+}
+
+func TestDeviceSnapshotLateCanceledSuccessNeverPublishes(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	calls := 0
+	hc := &http.Client{Transport: desktopSnapshotTransport(func(r *http.Request) (*http.Response, error) {
+		calls++
+		cancel()
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"status":"up"}`)), Header: make(http.Header)}, nil
+	})}
+	if got, err := readDeviceSnapshot(ctx, hc, "http://device.invalid"); err == nil || got != nil || calls != 1 {
+		t.Fatal(got, err, calls)
+	}
+	for _, owner := range []context.Context{nil, ctx} {
+		if got, err := readDeviceSnapshot(owner, nil, ""); err == nil || got != nil {
+			t.Fatal("absent owner accepted", got, err)
+		}
+	}
+}
+
+func TestDeviceSnapshotAgeIncludesReadAndRejectsFutureOrExactExpiry(t *testing.T) {
+	var entered time.Time
+	hc := &http.Client{Transport: desktopSnapshotTransport(func(r *http.Request) (*http.Response, error) {
+		entered = time.Now()
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"status":"up"}`)), Header: make(http.Header)}, nil
+	})}
+	got, err := readTimedDeviceSnapshot(context.Background(), hc, "http://device.invalid")
+	if err != nil || got.started.After(entered) || !got.current(entered) {
+		t.Fatal(got, err, entered)
+	}
+	for _, stamp := range []time.Time{got.started.Add(-time.Nanosecond), got.started.Add(deviceSnapshotMaxAge)} {
+		if got.current(stamp) {
+			t.Fatal("future or expired evidence current", stamp)
+		}
+	}
+	if (timedDeviceSnapshot{}).current(time.Now()) {
+		t.Fatal("empty snapshot current")
+	}
+	got.status = nil
+	if got.current(entered) {
+		t.Fatal("timestamp without status current")
 	}
 }
