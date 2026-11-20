@@ -101,6 +101,37 @@ try:
   d=x.XOpenDisplay(display.encode());assert d;display_handles.append(d)
  def launch(role):
   log=open(out/(role+'.log'),'w');p=subprocess.Popen([str(out/'mnetd'),'-desk-run',str(out/role/'run.json')],env=env|{'DISPLAY':displays[0 if role=='primary' else 1]},stdout=log,stderr=log);children.append(p);log.close();return p
+ # Review is part of the run lifetime and owns a real external dialog.
+ # Cancellation must join that dialog before any listener/native handoff.
+ for role,display,token,mode in [('primary',displays[0],'e1','sigterm'),('recipient',displays[1],'e2','sigterm'),('primary',displays[0],'e3','deadline'),('recipient',displays[1],'e4','deadline')]:
+  review_path=out/role/'run.json';original_spec=review_path.read_text();review_spec=json.loads(original_spec)
+  review_spec['binding']['run']=token*32;review_spec['lifetime_seconds']=2 if mode=='deadline' else 30;review_path.write_text(json.dumps(review_spec))
+  reviewing=launch(role)
+  def review_window():
+   found=subprocess.run(['xdotool','search','--onlyvisible','--name','^Mnet Shared Desk: review '+role+'$'],env=env|{'DISPLAY':display},capture_output=True,text=True)
+   return found.stdout.strip().splitlines()[-1] if found.returncode==0 and found.stdout.strip() else None
+  review_id=poll(review_window,role+' pending review '+mode)
+  review_image=out/('pending-review-'+role+'-'+mode+'.png')
+  def review_painted():
+   subprocess.run(['import','-display',display,'-window',review_id,str(review_image)],check=True)
+   pixels=Image.open(review_image).convert('RGB')
+   return len(pixels.getcolors(pixels.width*pixels.height) or [])>16
+  poll(review_painted,role+' pending review painted')
+  if mode=='sigterm':reviewing.send_signal(signal.SIGTERM)
+  reviewing.wait(timeout=4)
+  if reviewing.returncode==0 or reviewing.returncode<0:raise AssertionError('review cancellation bypassed joined refusal')
+  poll(lambda:not review_window(),role+' review child joined')
+  if live_window(role,display):raise AssertionError('unanswered review opened live status')
+  if (pathlib.Path('/proc')/str(reviewing.pid)).exists():raise AssertionError('reviewing launcher survived wait')
+  if not (out/role/'runs'/(token*32)).exists():raise AssertionError('review cancellation did not consume run')
+  address=review_spec['address'].rsplit(':',1)
+  with socket.socket() as probe:
+   probe.settimeout(.2)
+   if probe.connect_ex((address[0],int(address[1])))==0:raise AssertionError('unanswered review opened listener')
+  replay=subprocess.run([str(out/'mnetd'),'-desk-run',str(review_path)],env=env|{'DISPLAY':display},capture_output=True,text=True,timeout=3)
+  if replay.returncode==0 or 'already consumed' not in replay.stderr:raise AssertionError('canceled review run reusable')
+  review_path.write_text(original_spec)
+  print('PASS actual '+role+' review '+mode+' joins unanswered dialog, consumes run and opens no live status/listener; no implicit approval',flush=True)
  recipient=launch('recipient');approve('recipient',displays[1]);poll(lambda:'waiting for one exact-key' in (out/'recipient.log').read_text(),'recipient listening')
  live_capture('recipient',displays[1],'waiting')
  primary=launch('primary');approve('primary',displays[0])
