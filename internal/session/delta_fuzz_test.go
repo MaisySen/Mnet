@@ -73,3 +73,71 @@ func FuzzDeltaOffsetRoundTrip(f *testing.F) {
 		}
 	})
 }
+
+// Refused untrusted rectangles/JPEGs must never partly paint or alias a base.
+// A known-good first tile makes malformed trailing data exercise atomic refusal.
+func FuzzDeltaCompositeRefusalAtomic(f *testing.F) {
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, solid(4, 4, color.RGBA{G: 177, A: 255}), nil); err != nil {
+		f.Fatal(err)
+	}
+	f.Add(int64(-2), int64(-4), int64(4), int64(4), encoded.Bytes())
+	f.Add(int64(-2), int64(-4), int64(5), int64(4), encoded.Bytes())
+	f.Add(int64(-2), int64(-4), int64(4), int64(4), encoded.Bytes()[:len(encoded.Bytes())-2])
+	f.Add(int64(8), int64(8), int64(8), int64(8), []byte{})
+	f.Add(int64(-1), int64(0), int64(8), int64(8), []byte{1})
+	f.Add(int64(0), int64(0), int64(1<<62), int64(8), []byte{2, 255})
+	f.Fuzz(func(t *testing.T, x, y, width, height int64, raw []byte) {
+		if len(raw) > 4096 {
+			t.Skip()
+		}
+		parent := image.NewRGBA(image.Rect(-7, -9, 25, 23))
+		for i := range parent.Pix {
+			parent.Pix[i] = uint8(i * 17)
+		}
+		base := parent.SubImage(image.Rect(-3, -5, 13, 11)).(*image.RGBA)
+		before := append([]byte(nil), parent.Pix...)
+		goodRect := Rect{X: -3, Y: -5, W: 4, H: 4}
+		good := Tile{Rect: goodRect, Image: jpegBytes(t, solid(4, 4, color.RGBA{R: 201, A: 255}))}
+		candidate := Tile{Rect: Rect{X: int(x), Y: int(y), W: int(width), H: int(height)}, Image: raw}
+		tiles := []Tile{good, candidate}
+		out, err := CompositeTiles(base, tiles)
+		if !bytes.Equal(parent.Pix, before) {
+			t.Fatal("composite mutated source parent")
+		}
+		if err != nil {
+			if out != nil {
+				t.Fatal("refusal returned partial output")
+			}
+			return
+		}
+		if out == nil || out.Bounds() != base.Bounds() {
+			t.Fatal("successful composition lost bounds")
+		}
+		// Every accepted trailing JPEG is tiny, bounded by the advertised16px base.
+		// Compare against independently decoded pixels, with last tile winning.
+		for row := base.Rect.Min.Y; row < base.Rect.Max.Y; row++ {
+			for column := base.Rect.Min.X; column < base.Rect.Max.X; column++ {
+				want := base.RGBAAt(column, row)
+				for _, tile := range tiles {
+					r := image.Rect(tile.Rect.X, tile.Rect.Y, tile.Rect.X+tile.Rect.W, tile.Rect.Y+tile.Rect.H)
+					if !image.Pt(column, row).In(r) {
+						continue
+					}
+					decoded, decodeErr := jpeg.Decode(bytes.NewReader(tile.Image))
+					if decodeErr != nil {
+						t.Fatal(decodeErr)
+					}
+					want = color.RGBAModel.Convert(decoded.At(column-r.Min.X, row-r.Min.Y)).(color.RGBA)
+				}
+				if out.RGBAAt(column, row) != want {
+					t.Fatal("composition differs from last-tile pixel", column, row)
+				}
+			}
+		}
+		out.SetRGBA(-3, -5, color.RGBA{})
+		if !bytes.Equal(parent.Pix, before) {
+			t.Fatal("output aliases source parent")
+		}
+	})
+}
