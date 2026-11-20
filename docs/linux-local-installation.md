@@ -42,3 +42,11 @@ Opening Remote Desktop from the installed home distinguishes missing local capab
 ![Actual installed disconnected-device state](ui/desktop-home/device-not-connected.png)
 
 The installed acceptance now explicitly starts the installed daemon in an isolated `-fake-tun` fixture with no Up, control-plane URL, network or session-host options. It observes the real authenticated down-state device window and the disconnected chooser, then stops that exact process and observes the separate unreachable-daemon state. Missing-state journeys create no Mnet state; the explicitly started fixture daemon creates its own private state, which subsequent failure journeys and uninstallation preserve byte-for-byte. No real TUN, remote service, membership or user device is used. These checks improve an actual installed failure/recovery journey, not production setup or connectivity acceptance.
+
+## Local capability read hardening
+
+A failing-first regression found that the old CLI accepted a publicly readable local capability file. The old reader also separated pathname metadata lookup from an unbounded read. Unix reads now open with NOFOLLOW and NONBLOCK, inspect that exact descriptor for a current-user-owned regular file with no group/other access, and read at most 65 bytes before requiring the exact 64-character encoded capability. No read changes file modes. FIFOs, final-component links, public modes and oversized files are refused. This does not defend against hostile parent-directory administrators or another process running as the same user.
+
+Windows has a separately bounded reader that verifies regular-file identity before reading; Unix modes are not treated as a Windows DACL. Existing dedicated-state ACL protection remains separate. Windows and Darwin cross-builds passed, but no new live Windows ACL or reparse-point acceptance is claimed.
+
+Thirty local race repetitions pass. The actual installed acceptance starts its isolated daemon, makes its test-only local capability publicly readable, observes that the installed CLI refuses without disclosing the token, restores private mode and verifies actual authenticated down status recovers. It does not modify a user's daemon or credential. The current full uncached race/vet/build and Windows/Darwin cross-build gates pass independently.
