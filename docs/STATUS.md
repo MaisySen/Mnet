@@ -1,5 +1,12 @@
 # Mnet project status
 
+## Current local source checkpoint, hosted verification pending
+
+The current source adds a [viewer local-desktop geometry guard](desktop-native-viewer.md#a-changed-local-desktop-retires-the-viewer), [all-direction native Shared Desk entry and mapped return checks](shared-desk-engine.md#native-armed-entry-from-every-layout-direction), and [retained cleanup uncertainty after input-authority loss](shared-desk-engine.md#refused-input-retains-an-unconfirmed-cleanup-result). Independent received-pixel strip and pointer mapping oracles add bounded offline coverage. Exact refusal diagnostics and actual consumed-run replay checks remain required after invalid or stalled Desk input.
+
+A separately assembled source tree excludes an unrelated daemon path-selection change. Every included changed file was compared to its original local revision, and all non-general workflow path filters were checked for zero matches. That exact tree passes a fresh full uncached race suite, vet/build, vulnerability scan with no findings, CLI cross-builds, equal/mixed actual Desk native and launcher journeys, both-size view-only root-change cases, and direct/chooser pointer/view journeys. These are local synthetic identities, userspace processes and disposable X servers. Hosted results for a new publication are still pending; local checks are not a release, physical-device acceptance or real Multies identity evidence.
+
+Original447c session validation failed its actual live view-only SIGTERM check. The later cancellation-ordering correction has its own source checkpoint; no later result changes the original failure. Original0838 frame-fuzz deadline, c96d fixture race and prior injector-death/native limitations also remain recorded. No release, signing, production account, Multies write or live deployment change is made.
 
 ## e454 original hosted checkpoint accounted
 
