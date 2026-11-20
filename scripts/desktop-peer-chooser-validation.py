@@ -56,6 +56,20 @@ try:
  action('mousemove','--window',wid,'30','80','mousedown','1','mousemove','--window',wid,'100','120','mouseup','1')
  capture('outside-row-no-selection');assert len(server.calls)==2
  action('mousemove','--window',wid,'100','120','click','1');capture('selected')
+ # Details is an explicit local disclosure, never a read or a viewing choice.
+ action('mousemove','--window',wid,'30','80','mousedown','1','mousemove','--window',wid,'800','385','mouseup','1')
+ assert 'detailsfalse' in title(),'outside press opened details'
+ action('mousemove','--window',wid,'800','385','click','1')
+ poll(lambda:'detailstrue' in title(),'explicit device details')
+ capture('selected-device-details')
+ assert len(server.calls)==2 and client.poll() is None,'details read or connected'
+ action('key','space');poll(lambda:'detailsfalse' in title(),'keyboard closes disclosure')
+ capture('selected-plain-primary')
+ action('keyup','space');assert 'detailsfalse' in title(),'unpressed release reopened details'
+ action('key','Return');poll(lambda:'detailstrue' in title(),'keyboard opens disclosure')
+ action('key','Down');poll(lambda:'detailsfalse' in title(),'new selection retires details')
+ assert len(server.calls)==2 and client.poll() is None,'disclosure navigation read or connected'
+ action('key','Home')
  action('mousemove','--window',wid,'100','120','mousedown','1','mousemove','--window',wid,'620','510','mouseup','1')
  time.sleep(.05);assert client.poll() is None and len(server.calls)==2,'row press became pointer choice'
  focus_app=subprocess.Popen(['xmessage','-title','Chooser focus fixture','-buttons','OK','Local focus fixture'],env=env,stdout=(out/'focus.log').open('w'),stderr=subprocess.PIPE)
@@ -122,11 +136,15 @@ try:
  action('key','Page_Down');assert title().endswith('page3'),'PageDown exceeded last page'
  assert client.poll() is None and len(server.calls)==2,'clamped page key activated mode or read'
  # Refresh clears old selection, even when the exact rows recur.
+ action('mousemove','--window',wid,'800','385','click','1');poll(lambda:'detailstrue' in title(),'pre-refresh details')
  action('key','r');phase('ready',2);capture('refreshed-selection-cleared');assert len(server.calls)==4
+ assert 'detailsfalse' in title(),'refresh retained disclosed key'
  action('mousemove','--window',wid,'620','510','click','1');time.sleep(.05);assert client.poll() is None and len(server.calls)==4,'refresh retained selected peer'
  # Blank/malformed responses cannot keep prior rows or input actions.
  server.peers=[];action('key','r');phase('ready',3);capture('empty')
- server.malformed=True;action('key','r');phase('unavailable',4);capture('unavailable')
+ server.malformed=True;action('key','r');phase('unavailable',4);capture('unavailable');before_details=len(server.calls)
+ action('mousemove','--window',wid,'800','385','click','1');poll(lambda:'detailstrue' in title(),'failure setup details');capture('unavailable-setup-details')
+ assert len(server.calls)==before_details and client.poll() is None,'setup details read or connected'
  # Each successful read is delayed1s, so receipt-based age would extend the
  # two-request snapshot by2s. Expire by30.8s from the first observed request,
  # before30s have elapsed since its final response. This uses the real window.
@@ -134,11 +152,13 @@ try:
  action('key','r');phase('ready',5);received=time.monotonic();server.delay=0
  started=server.call_times[first];assert received-started>=2,'delayed evidence fixture did not wait'
  action('key','Down');capture('keyboard-selected')
+ action('mousemove','--window',wid,'800','385','click','1');poll(lambda:'detailstrue' in title(),'pre-expiry details');capture('before-expiry-details')
  calls=len(server.calls);time.sleep(max(0,started+30.8-time.monotonic()))
  assert '[expired]' in title(),'snapshot age began after final authorization response'
  assert time.monotonic()<received+30,'expiry observation did not distinguish request/receipt ages'
  print('PASS actual delayed chooser expiry: request age %.2fs, receipt age %.2fs, no automatic read'%(time.monotonic()-started,time.monotonic()-received),flush=True)
- capture('expired');assert len(server.calls)==calls,'chooser automatically polled'
+ capture('expired');assert 'detailsfalse' in title(),'expiry retained disclosed key'
+ assert len(server.calls)==calls,'chooser automatically polled'
  action('mousemove','--window',wid,'620','510','click','1');time.sleep(.05);assert client.poll() is None and len(server.calls)==calls,'expired chooser connected'
  # A selected row cannot silently become a replacement, missing, duplicate,
  # renamed, moved or non-Up peer while its mode gesture opens the session.

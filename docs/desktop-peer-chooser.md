@@ -138,3 +138,29 @@ caught that capture race; no control check was removed, no deadline was extended
 and connection/read counts are still checked. Worst-case label/key fit tests
 caught overflow before the final bounded labels. Real selected-key/pointer-focus
 and expired/no-selection images were inspected.
+
+## Plain primary screen and deliberate device details
+
+The later local chooser keeps the full canonical device key and technical read
+status behind Device details. Opening it is a local disclosure, not a network
+read, connection gesture or permission. Keyboard and mouse use the same matched
+press/release rules as other actions. The primary view explains the two viewing
+choices in plain language. Current exact selection and fresh host consent remain
+independent requirements; opening details does not grant either.
+
+A new selection, page navigation, refresh, response replacement and expiry close
+the disclosure. The renderer independently refuses to show an expired selected
+key, even if handed an open disclosure. On errors or with no selection, Setup
+details remains available for fixed local recovery guidance, without enabling a
+viewing choice. It contains no raw response or transport error. No key is
+truncated in details, and the execution pin is unchanged.
+
+Native acceptance checks opening/closing with mouse and keyboard, an outside
+press followed by a details release, unrelated key release, selection change,
+refresh and real 30-second expiry. It also checks that disclosure does not add
+HTTP reads or a connection, and that failure details remain usable. Renderer
+checks show that changing a key does not affect primary pixels, does affect
+selected detail pixels and cannot affect stale detail pixels. Existing native
+pin-change, focus, gesture, cancellation and geometry tests remain. The actual
+primary, full-key details and error/setup-details pixels were inspected. This is
+still a local preview, not integrated Multies setup or finished trusted pairing.

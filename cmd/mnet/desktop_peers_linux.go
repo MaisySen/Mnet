@@ -51,9 +51,6 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 	if !format || setup.ImageByteOrder != xproto.ImageOrderLSBFirst {
 		return nil, errors.New("chooser pixel format unsupported")
 	}
-	if !nativeControlsRGB(screen) {
-		return nil, errors.New("native controls require supported 24-bit TrueColor X11")
-	}
 	if screen.WidthInPixels < 940 || screen.HeightInPixels < 600 {
 		return nil, errors.New("peer chooser requires at least 940x600 pixels")
 	}
@@ -129,6 +126,7 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 	message := "Reading current local authorization, no connection made."
 	phase := "loading"
 	focus, pressed := -1, -1
+	details := false
 	var held uint32
 	clear := func() { pressed = -1; held = 0 }
 	targets := func() []peerPickerTarget {
@@ -144,7 +142,7 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 			}
 			list = append(list, peerPickerTarget{20, int16(100 + i*46), 860, 44, label, current && index < len(selection.snapshot.Peers)})
 		}
-		return append(list, peerPickerTarget{20, 490, 140, 44, "REFRESH", !loading}, peerPickerTarget{170, 490, 110, 44, "PREVIOUS", current && page > 0}, peerPickerTarget{290, 490, 110, 44, "NEXT", current && (page+1)*6 < len(selection.snapshot.Peers)}, peerPickerTarget{410, 490, 140, 44, "VIEW ONLY", chosen}, peerPickerTarget{560, 490, 160, 44, "POINTER VIEW", chosen}, peerPickerTarget{730, 490, 150, 44, "CLOSE", true})
+		return append(list, peerPickerTarget{20, 490, 140, 44, "REFRESH", !loading}, peerPickerTarget{170, 490, 110, 44, "PREVIOUS", current && page > 0}, peerPickerTarget{290, 490, 110, 44, "NEXT", current && (page+1)*6 < len(selection.snapshot.Peers)}, peerPickerTarget{410, 490, 140, 44, "VIEW ONLY", chosen}, peerPickerTarget{560, 490, 160, 44, "POINTER VIEW", chosen}, peerPickerTarget{730, 490, 150, 44, "CLOSE", true}, peerPickerTarget{730, 370, 150, 32, "DEVICE DETAILS", !loading})
 	}
 	refresh := func() {
 		if loading {
@@ -154,6 +152,7 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 			<-requestDone
 		}
 		selection.clear()
+		details = false
 		clear()
 		focus = -1
 		page = 0
@@ -182,7 +181,7 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 		for i, t := range list {
 			enabled[i] = t.enabled
 		}
-		picture, er := renderDesktopChooser(selection, page, focus, message, enabled, time.Now())
+		picture, er := renderDesktopChooser(selection, page, focus, phase, message, details, enabled, time.Now())
 		if er != nil {
 			return er
 		}
@@ -207,7 +206,7 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 		if er = xproto.CopyAreaChecked(c, xproto.Drawable(pix), xproto.Drawable(w), gc, 0, 0, 0, 0, 900, 560).Check(); er != nil {
 			return er
 		}
-		title := fmt.Sprintf("Mnet Remote Desktop: choose [%s] read%d page%d", phase, generation, page+1)
+		title := fmt.Sprintf("Mnet Remote Desktop: choose [%s] read%d details%t page%d", phase, generation, details, page+1)
 		return xproto.ChangePropertyChecked(c, xproto.PropModeReplace, w, xproto.AtomWmName, xproto.AtomString, 8, uint32(len(title)), []byte(title)).Check()
 	}
 	activate := func(index int) (*desktopPeerChoice, bool, error) {
@@ -219,6 +218,7 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 		if index < 6 {
 			if selection.choose(page*6+index, time.Now()) {
 				focus = index
+				details = false
 			}
 			return nil, false, nil
 		}
@@ -226,9 +226,11 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 		case 6:
 			refresh()
 		case 7:
+			details = false
 			focus = -1
 			page--
 		case 8:
+			details = false
 			focus = -1
 			page++
 		case 9, 10:
@@ -239,6 +241,9 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 			return &choice, true, nil
 		case 11:
 			return nil, true, nil
+		case 12:
+			details = !details
+			focus = 12
 		}
 		return nil, false, nil
 	}
@@ -267,6 +272,7 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 			clear()
 			focus = -1
 			selection.clear()
+			details = false
 			page = 0
 			if r.err != nil {
 				phase = "unavailable"
@@ -279,6 +285,7 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 		case <-tick.C:
 			if !loading && !selection.snapshot.Sampled.IsZero() && !selection.current(time.Now()) {
 				selection.clear()
+				details = false
 				clear()
 				focus = -1
 				page = 0
@@ -336,10 +343,12 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 						}
 					}
 				case 0xff55, 0xff56:
+					details = false
 					page, _ = selection.pageForKey(sym, page, time.Now())
 					focus = -1
 				case 0xff50, 0xff57:
 					if selection.endpoint(sym == 0xff57, time.Now()) {
+						details = false
 						page = selection.selected / 6
 						focus = selection.selected % 6
 					}
@@ -351,6 +360,7 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 						next++
 					}
 					if selection.choose(next, time.Now()) {
+						details = false
 						page = next / 6
 						focus = next % 6
 					}
