@@ -403,3 +403,7 @@ Thirty focused race repetitions and fresh whole-repository uncached race/vet/bui
 Each actual malformed/stalled/input recipient case now drains and validates both exact successful input acknowledgements before sending its invalid command. After native release, process/listener retirement and consumed-run checks, the still-open client socket must contain no successor acknowledgement. A hidden buffered ACK from setup cannot be mistaken for refusal evidence, and an invalid command cannot be reported as accepted input or successful stop.
 
 Complete equal/mixed launcher journeys pass all nineteen cases and existing native/status checks. No product behavior changed. The local TLS client is an independent disposable fixture; this is native refusal/transport evidence, not production identity or a remote-release guarantee for an unresponsive process.
+
+## Local identity loading keeps exact role and single-certificate policy
+
+Fourteen added local loader cases cover both roles: exact matching identity, wrong role pin, mismatched private key, multiple certificates, malformed certificate/key and a nonprivate key file. Successful loading must return the exact role's pinned key; refusal must return no partial certificate/private-key object. Thirty focused race repetitions and fresh full uncached race/vet/build pass. All material is disposable and never logged or transmitted. No enrollment, trust, certificate policy or product behavior changed.
