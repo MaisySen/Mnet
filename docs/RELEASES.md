@@ -1,5 +1,13 @@
 # Releases
 
+## Private installed journey and explicit Desk drafts, hosted verification pending
+
+The [private Linux engineering installer](linux-local-installation.md) now builds an opt-in new prefix, launches the actual installed home through a real desktop entry and removes only unchanged fixed installation files. It does not alter menus, PATH, startup, services, accounts or enrollment, and does not start a daemon. Actual acceptance verifies the installed executable, empty Mnet state, window close, changed/extra/running/link refusals and unchanged removal. A percent-path Gio refusal and fixture session-bus autolaunch were found in intermediate attempts and recorded rather than counted as passes. Final source passes full uncached race, vet/build, Windows/Darwin cross-build and source gates locally. This is not a signed release or completed consumer first run.
+
+[Shared Desk preparation](shared-desk-engine.md#prepare-a-one-run-pair-without-hand-assembling-bindings) now turns explicitly supplied local public inspections and local identity paths into matching fresh one-run drafts in a new private directory. It reads/copies no private keys and creates no approval, listener, capture or replay reservation. Actual equal/mixed-size generated configurations pass both local reviews, native input, joined SIGTERM cleanup and consumed-run refusal. Supplied inspections are not authenticated trust; saved pairing remains open.
+
+The selected-device and first-screen-wait screens are clearer, but neither typography nor local installation closes identity/workspace eligibility. The [proposed Multies handoff contract](multies-boundary.md#proposed-production-handoff-contract-not-an-implemented-integration) records the exact missing verifier, scoped one-use exchange and revocation work without adding a fake verifier or changing Multies. Held daemon publication, original hosted failures, physical/platform gates and all signing/release/account/device/live-infrastructure boundaries remain unchanged. These independent local commits still require their own original hosted accounting; the earlier home checkpoint is not silently replaced.
+
 ## Native entry and first-screen recovery, hosted verification pending
 
 The new [local engineering home](desktop-home.md) opens the actual device snapshot, attended peer chooser or supplied offline arrangement inspector, and returns after the selected child closes. It makes no daemon calls itself and carries no prior peer/mode/approval into a new journey. The screen explicitly states that Multies setup is not connected. This is useful engineering entry, not installed consumer setup or integrated Shared Desk pairing.
