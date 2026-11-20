@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Built native pointer viewer and actual attended host on disposable X11."""
-import os,pathlib,shutil,subprocess,tempfile,time
+import os,pathlib,shutil,subprocess,tempfile,time,signal
 from PIL import Image
 os.chdir(pathlib.Path(__file__).resolve().parent.parent)
 for dep in ('go','Xvfb','xdotool','import','zenity'):
@@ -8,6 +8,8 @@ for dep in ('go','Xvfb','xdotool','import','zenity'):
 out=pathlib.Path(tempfile.mkdtemp(prefix='mnet-native-pointer.'));print(out,flush=True)
 for name,pkg,tests in [('mnet','./cmd/mnet',False),('mnetd','./cmd/mnetd',False),('host.test','./cmd/mnetd',True)]:
  subprocess.run(['go',*(['test','-race','-c'] if tests else ['build','-race']),'-o',str(out/name),pkg],check=True)
+terminate=os.environ.get('MNET_POINTER_TERMINATE','0')
+if terminate not in ('0','1'):raise SystemExit('unsupported pointer termination fixture')
 xs=[];test=None;focus_app=None
 size=os.environ.get('MNET_VIEWER_DISPLAY_SIZE','1024x768x24')
 if size not in ('1024x768x24','2048x1536x24'):raise SystemExit('unsupported disposable size')
@@ -85,20 +87,31 @@ try:
  focus_app.terminate();focus_app.wait();focus_app=None
  action(displays[1],'windowfocus',viewer,'key','F8');host=poll(lambda:window(displays[0],'^Mnet: allow pointer only'),'third allow');action(displays[0],'windowfocus',host,'key','Tab','Return')
  poll(lambda:'[pointer allowed]' in title(),'third grant')
- active=poll(lambda:window(displays[0],'^Mnet: desktop sharing'),'host active')
- # Extra-button hit geometry is checked by the existing attended fixture;
- # click the inspected button band, then require actual viewer revoke state.
- capture(displays[0],active,'host-active-before-revoke')
- image=Image.open(out/'host-active-before-revoke.png')
- width,height=image.size;px,py=width-75,round(height*.86)
- if not (width>500 and height>200 and 0<px<width and height*.78<py<height*.96):raise AssertionError('unrecognized revoke fixture geometry')
- action(displays[0],'windowraise',active,'mousemove','--sync','--window',active,str(px),str(py),'click','1')
- poll(lambda:'[pointer revoked]' in title(),'host revoke');capture(displays[1],viewer,'revoked');click();time.sleep(.1)
- action(displays[1],'key','Tab')
- poll(lambda:focused_pixels(viewer,'keyboard-end-focus',843),'actual End focus ring pixels')
- action(displays[1],'key','space');assert test.wait(timeout=5)==0,(out/'test.log').read_text()
- print((out/'test.log').read_text(),flush=True)
- print('PASS built pointer viewer: host-enforced pointer-only approval, two actual native clicks and scroll, keyboard Ask/Release/End, local release/focus loss, host decline/revoke, no keyboard/held buttons, joined End',flush=True)
+ if terminate=='1':
+  # Kill only the built viewer owned by this exact fixture after its third
+  # explicit grant. Host fixture requires all3owners joined, exact2clicks /
+  # 1scroll / zero keys and no held native button before it passes.
+  capture(displays[1],viewer,'allowed-before-sigterm')
+  os.kill(int((out/'viewer.pid').read_text()),signal.SIGTERM)
+  assert test.wait(timeout=5)==0,(out/'test.log').read_text()
+  assert not window(displays[0],'^Mnet: allow pointer only') and not window(displays[0],'^Mnet: desktop sharing'),'host UI survived viewer termination'
+  print((out/'test.log').read_text(),flush=True)
+  print('PASS actual allowed pointer viewer SIGTERM: all3native owners joined, exact2clicks/1scroll/zero keys, no held button or surviving host UI; same-host fixture only',flush=True)
+ else:
+  active=poll(lambda:window(displays[0],'^Mnet: desktop sharing'),'host active')
+  # Extra-button hit geometry is checked by the existing attended fixture;
+  # click the inspected button band, then require actual viewer revoke state.
+  capture(displays[0],active,'host-active-before-revoke')
+  image=Image.open(out/'host-active-before-revoke.png')
+  width,height=image.size;px,py=width-75,round(height*.86)
+  if not (width>500 and height>200 and 0<px<width and height*.78<py<height*.96):raise AssertionError('unrecognized revoke fixture geometry')
+  action(displays[0],'windowraise',active,'mousemove','--sync','--window',active,str(px),str(py),'click','1')
+  poll(lambda:'[pointer revoked]' in title(),'host revoke');capture(displays[1],viewer,'revoked');click();time.sleep(.1)
+  action(displays[1],'key','Tab')
+  poll(lambda:focused_pixels(viewer,'keyboard-end-focus',843),'actual End focus ring pixels')
+  action(displays[1],'key','space');assert test.wait(timeout=5)==0,(out/'test.log').read_text()
+  print((out/'test.log').read_text(),flush=True)
+  print('PASS built pointer viewer: host-enforced pointer-only approval, two actual native clicks and scroll, keyboard Ask/Release/End, local release/focus loss, host decline/revoke, no keyboard/held buttons, joined End',flush=True)
 finally:
  if focus_app is not None:focus_app.terminate();focus_app.wait()
  if test is not None and test.poll() is None:test.kill();test.wait()

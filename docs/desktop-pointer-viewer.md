@@ -78,3 +78,9 @@ An immediate screenshot after Tab once retained the previous focused button, des
 
 
 The separate [current-peer chooser](desktop-peer-chooser.md), `mnet session browse`, can explicitly select Pointer View. That opens this existing pointer client, not an input grant. Host-local view approval and later Ask Pointer/host approval remain separate.
+
+## Active pointer owner joins on SIGTERM
+
+The actual pointer journey now has a separate termination case after its third explicit host-approved pointer grant, before host revoke or local End. SIGTERM reaches the viewer's owned cancellation path. The actual host fixture requires all three native owners to close successfully, capture/UI teardown to join, exact two native clicks and one scroll with zero keys, no held button and no surviving host control/session prompt. These are previously completed clicks, not a held-button/drag grant.
+
+Direct and chooser-entered cases pass on both equal and large disposable displays. Actual allowed-pointer pixels were inspected before termination. The ordinary local End/host revoke journey still passes separately. Full uncached race/vet/build pass, and the existing general CI session job now includes both direct termination sizes. No Android/native workflow trigger or release is added. These are same-host X11 checks, not physical multi-device cleanup or SIGKILL guarantees; native unresponsive/externally killed backend limits remain separate.
