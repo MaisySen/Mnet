@@ -45,9 +45,17 @@ func desktopEligiblePeers(st *daemon.Status, peers []daemon.SessionPeer) ([]daem
 	return out, nil
 }
 func readDesktopPeerSnapshot(ctx context.Context, hc *http.Client, base string) (desktopPeerSnapshot, error) {
+	if ctx == nil || ctx.Err() != nil {
+		return desktopPeerSnapshot{}, errors.New("local peer snapshot owner unavailable")
+	}
+	// The oldest read bounds freshness, not completion of the last response.
+	started := time.Now()
 	st, err := readDeviceSnapshot(ctx, hc, base)
 	if err != nil {
 		return desktopPeerSnapshot{}, err
+	}
+	if ctx.Err() != nil {
+		return desktopPeerSnapshot{}, errors.New("local peer snapshot canceled")
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/localapi/session-peers", nil)
 	if err != nil {
@@ -73,7 +81,13 @@ func readDesktopPeerSnapshot(ctx context.Context, hc *http.Client, base string) 
 	if err != nil {
 		return desktopPeerSnapshot{}, err
 	}
-	return desktopPeerSnapshot{eligible, time.Now()}, nil
+	if ctx.Err() != nil {
+		return desktopPeerSnapshot{}, errors.New("local peer snapshot canceled")
+	}
+	if time.Since(started) >= desktopPeerMaxAge {
+		return desktopPeerSnapshot{}, errors.New("local peer snapshot expired while reading")
+	}
+	return desktopPeerSnapshot{eligible, started}, nil
 }
 
 type desktopPeerSelection struct {

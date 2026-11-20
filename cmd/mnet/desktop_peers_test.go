@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fintex.au/mnet/internal/daemon"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -98,5 +99,69 @@ func TestDesktopPeerSnapshotOnlyReadsBoundedLocalEvidence(t *testing.T) {
 		if !bad && (len(got.Peers) != 1 || got.Sampled.IsZero()) {
 			t.Fatal(got)
 		}
+	}
+}
+
+type desktopSnapshotTransport func(*http.Request) (*http.Response, error)
+
+func (f desktopSnapshotTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestDesktopPeerSnapshotAgeStartsBeforeOldestRead(t *testing.T) {
+	var first time.Time
+	status := `{"status":"up","peers":[{"name":"fixture","ipv4":"100.64.0.2"}]}`
+	peers := `[{"name":"fixture","ipv4":"100.64.0.2","PublicKey":"` + strings.Repeat("A", 43) + `="}]`
+	hc := &http.Client{Transport: desktopSnapshotTransport(func(r *http.Request) (*http.Response, error) {
+		body := peers
+		if r.URL.Path == "/localapi/status" {
+			first = time.Now()
+			body = status
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}
+	got, err := readDesktopPeerSnapshot(context.Background(), hc, "http://snapshot.invalid")
+	if err != nil || len(got.Peers) != 1 || got.Sampled.After(first) {
+		t.Fatal(got, err, first)
+	}
+	s := newDesktopPeerSelection()
+	s.replace(got)
+	if !s.choose(0, first) {
+		t.Fatal("fresh snapshot refused")
+	}
+	if _, err := s.choice(false, got.Sampled.Add(desktopPeerMaxAge)); err == nil {
+		t.Fatal("oldest read age extended")
+	}
+}
+
+func TestDesktopPeerSnapshotCanceledResponsesCannotPublish(t *testing.T) {
+	for _, stage := range []string{"before", "status", "peers"} {
+		t.Run(stage, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if stage == "before" {
+				cancel()
+			}
+			calls := 0
+			hc := &http.Client{Transport: desktopSnapshotTransport(func(r *http.Request) (*http.Response, error) {
+				calls++
+				body := `[]`
+				if r.URL.Path == "/localapi/status" {
+					body = `{"status":"up"}`
+				}
+				if stage == "status" || (stage == "peers" && calls == 2) {
+					cancel()
+				}
+				// Deliberately return a body despite cancellation, as a late
+				// custom transport or buffered response can do.
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+			})}
+			got, err := readDesktopPeerSnapshot(ctx, hc, "http://snapshot.invalid")
+			want := map[string]int{"before": 0, "status": 1, "peers": 2}[stage]
+			if err == nil || !got.Sampled.IsZero() || len(got.Peers) != 0 || calls != want {
+				t.Fatal(got, err, calls, want)
+			}
+		})
+	}
+	if _, err := readDesktopPeerSnapshot(nil, nil, ""); err == nil {
+		t.Fatal("nil owner accepted")
 	}
 }
