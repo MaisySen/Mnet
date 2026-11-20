@@ -63,3 +63,15 @@ Final actual built pointer acceptance uses the real Ask, Release and End buttons
 ![Actual pointer-allowed window with Ask unavailable and Release available](ui/desktop-toolbar/pointer-allowed.png)
 
 ![Actual released pointer window with a fresh Ask available](ui/desktop-toolbar/pointer-released.png)
+
+## Local keyboard focus
+
+Tab and Shift+Tab now focus enabled native header buttons with a visible double-line ring. Enter or Space activates only on the matching key release over the same focused action. The view-only window has only End; it never exposes Ask or Release. The pointer entry adds the existing narrow Ask/Release actions, not keyboard forwarding. A request still needs the host-local default-decline answer. Focus loss, resize, another local control gesture or a different key cancels a pending activation. Input-increasing activations also need the exact same permission snapshot at release; local End is not disabled by an unrelated remote revision. F8/F9/Escape and existing view controls remain local alternatives.
+
+The old viewer fails the actual keyboard Ask regression. Actual equal/large pointer journeys now use keyboard Ask, Release and End, still requiring exactly two native clicks, one native wheel event, zero native key events and joined cleanup. A held End is canceled across real focus loss. Both view-only sizes verify focused keyboard End with no input owner. Thirty focused race repetitions and full uncached race/vet/build plus Darwin/Windows CLI builds pass locally. This is local keyboard usability, not screen-reader/native accessibility or cross-platform input completion.
+
+An immediate screenshot after Tab once retained the previous focused button, despite a later successful keyboard action. The driver now waits for actual focus-ring pixels inside the existing bounded event wait before capture/activation. No timeout, input-count or cleanup assertion was relaxed. Final Ask/End/view-only ring pixels were inspected.
+
+![Actual local keyboard focus on Ask Pointer](ui/desktop-keyboard/pointer-ask.png)
+
+![Actual local keyboard End focus after host revoke, viewing intact](ui/desktop-keyboard/pointer-end.png)

@@ -27,6 +27,9 @@ def capture(display,wid,name):
  subprocess.run(['import','-display',display,'-window',wid,str(out/(name+'.png'))],check=True)
  if display==displays[1]:
   image=Image.open(out/(name+'.png')).convert('RGB');assert image.getpixel((image.width-80,15))==(155,52,62),'local End pixels absent'
+def focused_pixels(wid,name,x):
+ capture(displays[1],wid,name)
+ return Image.open(out/(name+'.png')).convert('RGB').getpixel((x,11))==(255,255,255)
 try:
  displays=[]
  for role in ('host','viewer'):
@@ -50,7 +53,9 @@ try:
  action(displays[1],'windowfocus',viewer,'mousemove','--window',viewer,'120','580','click','1','key','a')
  time.sleep(.1)
  if (out/'native-clicks').exists():raise AssertionError('view admission enabled native pointer')
- action(displays[1],'windowfocus',viewer,'mousemove','--window',viewer,'614','30','click','1')
+ action(displays[1],'windowfocus',viewer,'key','Tab','Tab')
+ poll(lambda:focused_pixels(viewer,'keyboard-ask-focus',547),'actual Ask focus ring pixels')
+ action(displays[1],'key','Return')
  host=poll(lambda:window(displays[0],'^Mnet: allow pointer only'),'first control');capture(displays[0],host,'control-approval');action(displays[0],'windowfocus',host,'key','Tab','Return')
  poll(lambda:'[pointer allowed]' in title(),'host grants pointer');capture(displays[1],viewer,'allowed')
  # Bottom-left lies outside host dialogs and inside the native target window.
@@ -58,7 +63,7 @@ try:
  def click():action(displays[1],'windowfocus',viewer,'mousemove','--window',viewer,'120','580','click','1')
  click();poll(lambda:(out/'native-clicks').exists() and (out/'native-clicks').read_text()=='1','first actual native click')
  action(displays[1],'key','a','click','4');poll(lambda:(out/'native-scroll').exists() and (out/'native-scroll').read_text()=='1','actual scroll before local release')
- action(displays[1],'mousemove','--window',viewer,'762','30','click','1');poll(lambda:'[pointer declined]' in title(),'local release');capture(displays[1],viewer,'released');click();time.sleep(.1)
+ action(displays[1],'key','Tab','Tab','space');poll(lambda:'[pointer declined]' in title(),'keyboard local release');capture(displays[1],viewer,'released');click();time.sleep(.1)
  # Fresh request, actual host decline, no native owner/input.
  action(displays[1],'key','F8');host=poll(lambda:window(displays[0],'^Mnet: allow pointer only'),'decline control');action(displays[0],'windowfocus',host,'key','Return')
  poll(lambda:'[pointer declined]' in title(),'host decline');click();time.sleep(.1)
@@ -67,8 +72,9 @@ try:
  poll(lambda:'[pointer allowed]' in title(),'second grant');click();poll(lambda:(out/'native-clicks').read_text()=='2','second actual native click')
  focus_app=subprocess.Popen(['xmessage','-geometry','150x100+20+20','-buttons','OK:0','Local focus target, not remote input'],env=env|{'DISPLAY':displays[1]},stdout=subprocess.PIPE,stderr=subprocess.PIPE)
  focus_window=poll(lambda:window(displays[1],'^xmessage$'),'local focus window')
- action(displays[1],'windowfocus',focus_window)
+ action(displays[1],'key','Tab','keydown','Return','windowfocus',focus_window)
  poll(lambda:'[pointer declined]' in title(),'focus loss releases pointer');capture(displays[1],viewer,'focus-released')
+ action(displays[1],'keyup','Return','windowfocus',viewer,'keyup','Return');assert test.poll() is None,'focus loss retained pending End'
  focus_app.terminate();focus_app.wait();focus_app=None
  action(displays[1],'windowfocus',viewer,'key','F8');host=poll(lambda:window(displays[0],'^Mnet: allow pointer only'),'third allow');action(displays[0],'windowfocus',host,'key','Tab','Return')
  poll(lambda:'[pointer allowed]' in title(),'third grant')
@@ -81,9 +87,11 @@ try:
  if not (width>500 and height>200 and 0<px<width and height*.78<py<height*.96):raise AssertionError('unrecognized revoke fixture geometry')
  action(displays[0],'windowraise',active,'mousemove','--sync','--window',active,str(px),str(py),'click','1')
  poll(lambda:'[pointer revoked]' in title(),'host revoke');capture(displays[1],viewer,'revoked');click();time.sleep(.1)
- action(displays[1],'mousemove','--window',viewer,'896','30','click','1');assert test.wait(timeout=5)==0,(out/'test.log').read_text()
+ action(displays[1],'key','Tab')
+ poll(lambda:focused_pixels(viewer,'keyboard-end-focus',843),'actual End focus ring pixels')
+ action(displays[1],'key','space');assert test.wait(timeout=5)==0,(out/'test.log').read_text()
  print((out/'test.log').read_text(),flush=True)
- print('PASS built pointer viewer: host-enforced pointer-only approval, two actual native clicks and scroll, local release/focus loss, host decline/revoke, no keyboard/held buttons, joined End',flush=True)
+ print('PASS built pointer viewer: host-enforced pointer-only approval, two actual native clicks and scroll, keyboard Ask/Release/End, local release/focus loss, host decline/revoke, no keyboard/held buttons, joined End',flush=True)
 finally:
  if focus_app is not None:focus_app.terminate();focus_app.wait()
  if test is not None and test.poll() is None:test.kill();test.wait()

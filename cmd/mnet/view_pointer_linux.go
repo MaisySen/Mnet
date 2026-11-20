@@ -14,6 +14,9 @@ func (v *xDesktopView) PointerStatus(status session.ControlStatus) error {
 	if status == v.pointerGrant {
 		return nil
 	}
+	if v.toolKeyTarget != "end" {
+		v.cancelToolKey()
+	}
 	v.toolPressed = viewerToolGrantChanged(v.toolPressed, v.pointerGrant, status)
 	v.pointerGrant = status
 	v.pointerPressed = 0

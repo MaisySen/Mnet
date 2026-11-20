@@ -20,6 +20,9 @@ import (
 )
 
 type xDesktopView struct {
+	toolFocus, toolKeyTarget     string
+	toolKey                      uint32
+	toolKeyGrant                 session.ControlStatus
 	toolPressed                  string
 	toolPressGrant               session.ControlStatus
 	viewport                     viewerViewport
@@ -111,7 +114,7 @@ func newDesktopViewMode(peer string, pointer bool) (desktopView, error) {
 		v.title = "Mnet pointer only: " + safeViewerLabel(peer)
 		v.pointerGrant.State = "unavailable"
 	}
-	if err = xproto.CreateWindowChecked(c, 24, window, screen.Root, 20, 20, uint16(w), uint16(h), 0, xproto.WindowClassInputOutput, screen.RootVisual, xproto.CwBackPixel|xproto.CwEventMask, []uint32{0x151923, xproto.EventMaskExposure | xproto.EventMaskStructureNotify | xproto.EventMaskKeyPress | xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskPointerMotion | xproto.EventMaskFocusChange}).Check(); err != nil {
+	if err = xproto.CreateWindowChecked(c, 24, window, screen.Root, 20, 20, uint16(w), uint16(h), 0, xproto.WindowClassInputOutput, screen.RootVisual, xproto.CwBackPixel|xproto.CwEventMask, []uint32{0x151923, xproto.EventMaskExposure | xproto.EventMaskStructureNotify | xproto.EventMaskKeyPress | xproto.EventMaskKeyRelease | xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskPointerMotion | xproto.EventMaskFocusChange}).Check(); err != nil {
 		return fail(err)
 	}
 	cleanup := func(e error) (desktopView, error) { v.Close(); return nil, e }
@@ -240,12 +243,12 @@ func (v *xDesktopView) draw() error {
 	if err = xproto.ChangeGCChecked(v.conn, v.gc, xproto.GcForeground, []uint32{0xffffff}).Check(); err != nil {
 		return err
 	}
-	mode := "Fit. 1: received pixels 1:1; arrows/Home/End: pan; F: fit; Escape: end"
+	mode := "Tab: End; Enter/Space: action. 1: received1:1; F: fit; arrows/Home/End: pan; Esc: end"
 	if v.viewport.one {
-		mode = "1:1 received pixels. Arrows/Home/End: pan; F: fit; Escape: end"
+		mode = "1:1 received. Tab: End; Enter/Space: action. Arrows/Home/End: pan; F: fit; Esc: end"
 	}
 	if v.pointer {
-		mode = "F8: ask pointer; F9: release; Escape: end. 1/F/arrows: local view."
+		mode = "Tab: controls; Enter/Space: action. F8/F9: ask/release; Esc: end. 1/F/arrows: view."
 	}
 	for i, text := range []string{safeViewerLabel(v.title), safeViewerLabel(v.state), mode} {
 		if i < 2 {
@@ -279,6 +282,11 @@ func (v *xDesktopView) draw() error {
 		}
 		if err = xproto.ChangeGCChecked(v.conn, v.gc, xproto.GcForeground|xproto.GcBackground, []uint32{foreground, background}).Check(); err != nil {
 			return err
+		}
+		if v.toolFocus == button.kind && button.enabled {
+			if err = xproto.PolyRectangleChecked(v.conn, target, v.gc, []xproto.Rectangle{{X: int16(button.x + 3), Y: 11, Width: uint16(button.width - 7), Height: 37}, {X: int16(button.x + 5), Y: 13, Width: uint16(button.width - 11), Height: 33}}).Check(); err != nil {
+				return err
+			}
 		}
 		if err = xproto.ImageText8Checked(v.conn, byte(len(button.label)), target, v.gc, int16(button.x+12), 35, button.label).Check(); err != nil {
 			return err
@@ -363,7 +371,7 @@ func (v *xDesktopView) Poll() (bool, error) {
 			return false, flush()
 		}
 		switch ev.(type) {
-		case xproto.ButtonPressEvent, xproto.ButtonReleaseEvent, xproto.KeyPressEvent:
+		case xproto.ButtonPressEvent, xproto.ButtonReleaseEvent, xproto.KeyPressEvent, xproto.KeyReleaseEvent:
 			if err := flush(); err != nil {
 				return false, err
 			}
@@ -378,6 +386,9 @@ func (v *xDesktopView) Poll() (bool, error) {
 				return true, nil
 			}
 		case xproto.FocusOutEvent:
+			dirty = true
+			v.cancelToolKey()
+			v.toolFocus = ""
 			v.toolPressed = ""
 			if v.pointer {
 				v.pointerPressed = 0
@@ -386,6 +397,9 @@ func (v *xDesktopView) Poll() (bool, error) {
 				}
 			}
 		case xproto.ButtonPressEvent:
+			dirty = true
+			v.cancelToolKey()
+			v.toolFocus = ""
 			if _, err := v.toolButton(byte(e.Detail), true, int(e.EventX), int(e.EventY)); err != nil {
 				return false, err
 			}
@@ -411,6 +425,16 @@ func (v *xDesktopView) Poll() (bool, error) {
 					return false, err
 				}
 			}
+		case xproto.KeyReleaseEvent:
+			mapping, err := xproto.GetKeyboardMapping(v.conn, e.Detail, 1).Reply()
+			if err != nil {
+				return false, err
+			}
+			if len(mapping.Keysyms) > 0 {
+				if end, err := v.toolKeyRelease(uint32(mapping.Keysyms[0])); err != nil || end {
+					return end, err
+				}
+			}
 		case xproto.KeyPressEvent:
 			// Resolve Escape from the actual layout, never forward any local key.
 			mapping, err := xproto.GetKeyboardMapping(v.conn, e.Detail, 1).Reply()
@@ -419,6 +443,16 @@ func (v *xDesktopView) Poll() (bool, error) {
 			}
 			if len(mapping.Keysyms) > 0 {
 				sym := uint32(mapping.Keysyms[0])
+				if sym == 0xff09 {
+					v.focusTool(e.State&xproto.ModMaskShift != 0)
+					dirty = true
+					continue
+				}
+				if sym == 0xff0d || sym == 0x20 {
+					v.toolKeyPress(sym)
+					continue
+				}
+				v.cancelToolKey()
 				if v.pointer && (sym == 0xffc5 || sym == 0xffc6) { // F8/F9 stay local.
 					kind := "request"
 					if sym == 0xffc6 {
@@ -447,6 +481,7 @@ func (v *xDesktopView) Poll() (bool, error) {
 			if e.Window == v.window {
 				if v.width != int(e.Width) || v.height != int(e.Height) {
 					v.pointerPressed = 0
+					v.cancelToolKey()
 					v.toolPressed = ""
 				}
 				v.width, v.height = int(e.Width), int(e.Height)

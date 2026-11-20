@@ -87,9 +87,18 @@ try:
    if restored:break
    time.sleep(.02)
   assert restored,'localF did not restore fit after pan'
-  subprocess.run(['xdotool','key','Escape'],env=ve,check=True)
+  subprocess.run(['xdotool','key','Tab'],env=ve,check=True)
+  until=time.monotonic()+3;focused=False
+  while time.monotonic()<until:
+   subprocess.run(['import','-window',wid,str(protocol/'keyboard-end-focus.png')],env=ve,check=True)
+   image=Image.open(protocol/'keyboard-end-focus.png').convert('RGB')
+   focused=image.getpixel((image.width-117,11))==(255,255,255)
+   if focused:break
+   time.sleep(.02)
+  assert focused,'view-only focus ring absent'
+  subprocess.run(['xdotool','key','space'],env=ve,check=True)
   assert test.wait(timeout=3)==0,(protocol/'test.log').read_text()
-  print('PASS protocol fit/resize/expose, received1:1/pan/restore and joined Escape',flush=True)
+  print('PASS protocol fit/resize/expose, received1:1/pan/restore and keyboard-focused local End',flush=True)
  subprocess.run([str(out/'viewer.test'),'-test.run','^TestDesktopViewX11FrameCacheOwnership$','-test.v','-test.timeout=15s'],env=pe,check=True)
  # A valid X server with an unsupported pixel format must fail closed.
  with open(out/'depth-display','w') as fd,open(out/'depth-xvfb.log','w') as log:
