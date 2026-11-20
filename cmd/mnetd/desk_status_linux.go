@@ -315,6 +315,13 @@ func (u *deskRunStatus) events() {
 			if e.Window == u.window && (e.Width != 720 || e.Height != 300) {
 				return
 			}
+		case xproto.UnmapNotifyEvent:
+			if e.Window == u.window {
+				u.mu.Lock()
+				u.err = errors.New("desk status window hidden")
+				u.mu.Unlock()
+				return
+			}
 		case xproto.DestroyNotifyEvent:
 			return
 		}
