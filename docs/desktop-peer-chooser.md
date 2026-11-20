@@ -101,3 +101,9 @@ Clicking a peer row now places keyboard focus on that selected row, matching Up/
 A failing-first actual image showed selected peer4/13 with Pointer mode still focused. Fixed pixels show the focus ring on peer4/13 and no Pointer ring; actual Enter does not connect, exit or read local evidence. Complete actual chooser, thirty focused model races, both-size attended view/pointer chooser entries and full uncached race/vet/build plus CLI cross-builds pass. Before/fixed pixels inspected. This is private synthetic local identity evidence, not a Multies person or physical-device claim.
 
 ![New mouse-selected row owns focus, not a previous connection mode](ui/desktop-peers/mouse-row-focus.png)
+
+## Cancellation also reaches local eligibility computation
+
+After bounded HTTP reads, the chooser now checks its owner between each peer's existing exact selector/admission calculation and again after sorting. A canceled owner cannot require processing the remaining4096row limit or return partly accepted rows. The legacy selector and identity-matching rules are unchanged; no cache, alternative matcher or larger evidence limit is introduced.
+
+A one-shot local benchmark of the existing4096peer computation took about680ms on this runner, motivating cooperative cancellation rather than a claim that HTTP cancellation alone joins every stage immediately. This is a synthetic measurement, not supported fleet/UI latency. Deterministic owner tests cancel before computation and after multiple eligible rows, requiring no partial result and no further loop checks. Thirty focused model races, the complete actual chooser, full uncached race/vet/build and CLI cross-builds pass. Actual pending-request SIGTERM remains a separate native case; this new computation-stage check is model evidence, not relabeled native cancellation acceptance.

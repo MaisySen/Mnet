@@ -27,11 +27,20 @@ type desktopPeerSnapshot struct {
 // A label is never a selector by itself. Every displayed row has an exact,
 // unambiguous status and current session-authorization match.
 func desktopEligiblePeers(st *daemon.Status, peers []daemon.SessionPeer) ([]daemon.SessionPeer, error) {
+	return desktopEligiblePeersContext(context.Background(), st, peers)
+}
+func desktopEligiblePeersContext(ctx context.Context, st *daemon.Status, peers []daemon.SessionPeer) ([]daemon.SessionPeer, error) {
+	if ctx == nil || ctx.Err() != nil {
+		return nil, errors.New("local peer selection canceled")
+	}
 	if st == nil || st.Status != "up" || len(st.Peers) > 4096 || len(peers) > 4096 {
 		return nil, errors.New("current network/session evidence unavailable")
 	}
 	out := []daemon.SessionPeer{}
 	for _, peer := range peers {
+		if ctx.Err() != nil {
+			return nil, errors.New("local peer selection canceled")
+		}
 		selected, err := selectCLISessionPeer(peer.IPv4, st, peers)
 		if err == nil && selected == peer {
 			out = append(out, peer)
@@ -43,6 +52,9 @@ func desktopEligiblePeers(st *daemon.Status, peers []daemon.SessionPeer) ([]daem
 		}
 		return out[i].IPv4 < out[j].IPv4
 	})
+	if ctx.Err() != nil {
+		return nil, errors.New("local peer selection canceled")
+	}
 	return out, nil
 }
 func readDesktopPeerSnapshot(ctx context.Context, hc *http.Client, base string) (desktopPeerSnapshot, error) {
@@ -78,7 +90,7 @@ func readDesktopPeerSnapshot(ctx context.Context, hc *http.Client, base string) 
 	if json.Unmarshal(data, &peers) != nil {
 		return desktopPeerSnapshot{}, errors.New("local session evidence invalid")
 	}
-	eligible, err := desktopEligiblePeers(st, peers)
+	eligible, err := desktopEligiblePeersContext(ctx, st, peers)
 	if err != nil {
 		return desktopPeerSnapshot{}, err
 	}
