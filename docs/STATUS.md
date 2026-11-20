@@ -1,5 +1,13 @@
 # Mnet project status
 
+## New local image and fixture checkpoint, hosted verification pending
+
+A failing-first downscale test reproduced a nonzero-origin RGBA panic. The source now includes the rectangle origin when averaging blocks; independent deterministic/fuzz oracles cover signed origins and padded strides. Current native capture creates zero-origin images, so this is not a cause established for blank canvases. Actual large-host view-only/pointer journeys pass. More [native pointer gesture checks](desktop-pointer-viewer.md#actual-canceled-mouse-gestures-stay-local), isolated loopback fixture hosts, bounded first-capture evidence, [transport admission checks](shared-desk-engine.md#transport-admission-needs-more-than-a-familiar-key) and no-successor-ACK checks add separate engineering coverage.
+
+Two concurrent local pointer cancellation journeys timed out with empty canvases before native input. A concurrent large view-only attempt also lost its screenshot window and hit the outer shell limit. Causes remain unresolved. Later complete journeys passed unchanged, but those passes are separate evidence, not repairs. Fixed first-capture/pressure categories add bounded diagnostics without extending assertions/timeouts or logging desktop content. Local Chrome156passes84screen checks; this does not diagnose originalc988Chrome157failure.
+
+Fresh uncached race/vet/build, Windows/Darwin cross-builds, vulnerability/source gates and34JS tests pass. Downscale10second fuzz55034executions and30focused races pass; unchanged frame/STUN10second gates pass165601/365908executions. The independent local source still needs its own exact hosted accounting. Held daemon publication, original failures, no Multies writes and no signing/release/account/device/live infrastructure changes remain unchanged.
+
 ## c988 original hosted checkpoint accounted, Chrome check failed
 
 Originalc988a37e28e632e0614d4d19fbc4e66b866ee491 general CI failed in the Go job's actual Chrome prototype verification: https://github.com/MaisySen/Mnet/actions/runs/44767381965 . The first Target.getTargets request timed out after the unchanged15second bound with no response bytes. Chrome157.0.8103.78/Node22.23.5 remained alive; diagnostics recorded an uninterruptible child and I/O-wait sample, a completed request-write callback and no known sandbox/profile-lock/crash/debug-pipe signature. The cause remains unresolved. No browser screen checks completed, no hosted rerun was used and no later local pass repairs this original failure.
