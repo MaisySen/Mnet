@@ -14,12 +14,15 @@ func (v *xDesktopView) PointerStatus(status session.ControlStatus) error {
 	if status == v.pointerGrant {
 		return nil
 	}
+	v.toolPressed = viewerToolGrantChanged(v.toolPressed, v.pointerGrant, status)
 	v.pointerGrant = status
 	v.pointerPressed = 0
-	// An event observed under one revision cannot survive pause/revoke/resume.
+	// Input observed under one revision cannot survive pause/revoke/resume.
+	// A narrow same-session request is not input or approval. Keep it across a
+	// late cancellation acknowledgement, but never across another session.
 	pending := v.pointerActions[:0]
 	for _, a := range v.pointerActions {
-		if a.Kind != "input" {
+		if a.Kind != "input" && (a.Kind != "request" || a.Grant.Session == status.Session && status.PointerV1) {
 			pending = append(pending, a)
 		}
 	}
@@ -38,6 +41,9 @@ func (v *xDesktopView) PointerActions() []desktopPointerAction {
 func (v *xDesktopView) queuePointer(action desktopPointerAction) error {
 	if !v.pointer {
 		return errors.New("view-only input refused")
+	}
+	if action.Kind == "request" {
+		action.Grant = v.pointerGrant
 	}
 	if action.Kind == "release" {
 		pending := v.pointerActions[:0]

@@ -51,3 +51,23 @@ The actual native protocol fixture first failed when pressing1left the same fit-
 ## Separate pointer engineering entry
 
 The [explicit native pointer viewer](desktop-pointer-viewer.md) is a separate `session point` command. This `session view` entry stays view-only, does not request control and never forwards local input. Shared rendering/lifetime checks do not combine their authority.
+
+## Visible local End control
+
+The native header now has a44px-high End button, visible while waiting as well as viewing. It ends this one attempt through the same joined path as Escape. The driver clicks the real button while host approval is pending and during actual viewing, then verifies host prompt/capture/window retirement. It does not send a remote click. View-only still has no control-request button. Existing Escape, window close and Ctrl-C remain available; End in the image-navigation key instructions still means the local keyboard pan key, not the red button.
+
+Buttons live entirely above the received desktop. A left press and matching release must name the same local target. A press in the image followed by release over End does not activate it, nor does a press in a button followed by release in the image become remote input. Focus loss and resize retire a pending toolbar press. The supported window minimum is now320x120 for view-only and640x120 for pointer mode; insufficient initial displays or resized windows refuse rather than overlap controls. Existing header text is bounded to the space before buttons.
+
+![Actual view-only pending approval with local End](ui/desktop-toolbar/view-waiting.png)
+
+![Actual2048px host capture through the built client with local End](ui/desktop-toolbar/view-large.png)
+
+During local toolbar work, the larger protocol resize case twice missed its unchanged three-second pixel postcondition, retaining clipped preceding-size pixels. A longer private diagnostic observation established eventual Configure handling and slow full-image repaint, not a passed acceptance or root-cause repair. Repaint coalescing alone did not reliably solve it. The final path coalesces resize/expose work per event batch and precomputes nearest-pixel columns for each repaint, keeping the same pixels/stride/padding. Equivalence tests include crop origins, padded subimages, up/downsampling and partial strips. An isolated race-enabled pixel-preparation benchmark measured roughly55ms before and37ms after in this environment; it is not end-to-end display latency or an X11 responsiveness guarantee. A later unchanged larger resize acceptance failed again, so those isolated passes and the faster pixel loop were not treated as a reliable repair. The repeated full-frame work was then addressed with the bounded cache below. Final cache-enabled equal/large native journeys pass the original unchanged checks. These failures are retained, with no deadline/assertion relaxation or claim of physical/performance acceptance.
+
+### One owned current-image cache
+
+Repeated complete JPEG content now reuses its decoded image by a fixed SHA256 digest. The digest is local rendering metadata, never identity or input authority. No encoded JPEG copy or screen history is retained. Header/expose redraws reuse one owned server pixmap for the current image/crop/target geometry, instead of rescaling and uploading the same image again. A changed complete frame, pan/zoom or window geometry frees and replaces that pixmap. All strips must upload successfully before a new cache is copied into the offscreen composition. Display/upload failure remains terminal. Close frees the final pixmap, decoded image, cache references and digest.
+
+This adds one bounded image pixmap alongside the existing bounded composition pixmap, not an unbounded frame queue. The existing16-megapixel geometry bound remains. A cache never supplies permission, keeps input enabled or starts reconnecting. Local authority/status text is repainted independently, including pointer grant changes. Receipt time continues to update for identical completed frames without implying source capture freshness.
+
+A separate actual-X11 test executes12 identical completed frames and a header-only update, requiring the same decoded image/server pixmap. It checks native viewport/resize/changed-frame replacements, queries the server to prove each old pixmap was freed, and proves final native cache and in-memory ownership are gone after Close. Both final source display sizes pass this test and the unchanged resize/expose/fit/1:1/pan/End journeys. Both pointer sizes also pass with the cache. The earlier resize failures remain evidence; these owned fixtures do not establish a physical stop-latency guarantee or eliminate unresponsive-X11 risks.

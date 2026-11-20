@@ -49,3 +49,17 @@ The unchanged view-only native journey is run again to check its existing no-inj
 ![Actual host pointer-only approval dialog](ui/desktop-viewer/pointer-host-approval.png)
 
 ![Actual revoked state while viewing remains open](ui/desktop-viewer/pointer-revoked.png)
+
+## Native header buttons
+
+The pointer entry now adds44px-high Ask Pointer, Release and End buttons in its always-local header. Ask Pointer is available only when the current same-session host advertises the narrow pointer tier and the protocol permits a new request. It asks the existing default-decline host dialog; it does not grant input. Release withdraws pending/allowed/paused pointer authority while keeping viewing. End closes this one viewing attempt. F8/F9/Escape remain local alternatives. The separate view-only entry has End but no Ask/Release.
+
+Disabled controls are visibly gray. Header gestures never become remote input, even when crossing the image boundary. A button needs a matching left press/release; input-increasing toolbar presses are discarded on a permission-revision change, focus loss or resize. No stale press can enable another session. Actual remote image clicks remain bound to the exact allowed revision, with no keyboard, held-button or drag support.
+
+The first local toolbar journey ended with zero observed scroll events after a fixed150ms delay before Release. The fixture now waits for an actual target-side scroll marker before testing withdrawal, while retaining exact final counts and joined cleanup. A later larger journey exposed a new local request-filter issue: discarding all queued requests on any status revision could lose a fresh narrow request when a late same-session cancellation acknowledgement arrived. A deterministic failing-first test now retains only that same-session narrow request across the acknowledgement, never another session. A request still cannot grant input, change host scope or bypass the host's fresh local answer.
+
+Final actual built pointer acceptance uses the real Ask, Release and End buttons, preserves keyboard F8/focus-loss cases, and passes both source display sizes with two actual allowed native clicks, one delivered scroll, zero native key events, host decline/revoke, no held native button and joined cleanup. Thirty focused race repetitions cover toolbar geometry/press ownership and same-session request behavior. This is engineering UI/owned-fixture evidence, not a complete cross-platform remote-control product or an always-responsive local-stop guarantee.
+
+![Actual pointer-allowed window with Ask unavailable and Release available](ui/desktop-toolbar/pointer-allowed.png)
+
+![Actual released pointer window with a fresh Ask available](ui/desktop-toolbar/pointer-released.png)

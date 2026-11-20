@@ -90,6 +90,7 @@ try:
   subprocess.run(['xdotool','key','Escape'],env=ve,check=True)
   assert test.wait(timeout=3)==0,(protocol/'test.log').read_text()
   print('PASS protocol fit/resize/expose, received1:1/pan/restore and joined Escape',flush=True)
+ subprocess.run([str(out/'viewer.test'),'-test.run','^TestDesktopViewX11FrameCacheOwnership$','-test.v','-test.timeout=15s'],env=pe,check=True)
  # A valid X server with an unsupported pixel format must fail closed.
  with open(out/'depth-display','w') as fd,open(out/'depth-xvfb.log','w') as log:
   depth=subprocess.Popen(['Xvfb','-noreset','-nolisten','tcp','-displayfd',str(fd.fileno()),'-screen','0','800x600x16'],pass_fds=(fd.fileno(),),stdout=log,stderr=log)
@@ -115,9 +116,11 @@ try:
       if host and viewer:
        subprocess.run(['import','-window',host,str(case/'host-approval.png')],env=env,check=True)
        subprocess.run(['import','-window',viewer,str(case/'waiting.png')],env=ve,check=True)
-       assert len(Image.open(case/'waiting.png').getcolors(1024*768) or [])<10,'preapproval image not blank'
+       waiting_image=Image.open(case/'waiting.png').convert('RGB')
+       assert waiting_image.getpixel((waiting_image.width-80,15))==(155,52,62),'local End pixels absent before approval'
+       assert len(waiting_image.getcolors(1024*768) or [])<10,'preapproval image not blank'
        if mode=='pending-close':
-        subprocess.run(['xdotool','windowfocus',viewer,'key','Escape'],env=ve,check=True);captured=True
+        subprocess.run(['xdotool','windowfocus',viewer,'mousemove','--window',viewer,'896' if size=='1024x768x24' else '960','30','click','1'],env=ve,check=True);captured=True
        elif mode=='decline':
         subprocess.run(['xdotool','windowfocus',host,'key','Return'],env=env,check=True);captured=True
        else:subprocess.run(['xdotool','windowfocus',host,'key','Tab','Return'],env=env,check=True)
@@ -150,7 +153,7 @@ try:
           if native_one:break
           time.sleep(.02)
          assert native_one,'native one-to-one window unavailable'
-         subprocess.run(['xdotool','key','f','a','Escape'],env=ve,check=True)
+         subprocess.run(['xdotool','key','f','a','mousemove','--window',viewer,'896' if size=='1024x768x24' else '960','30','click','1'],env=ve,check=True)
         elif mode=='host-end':subprocess.run(['xdotool','windowfocus',active,'key','Return'],env=env,check=True)
         elif mode=='authority-loss':(case/'withdraw-authority').write_text('withdraw')
         elif mode=='display-loss':xs[1].terminate();xs[1].wait()

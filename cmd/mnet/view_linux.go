@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"image"
@@ -19,6 +20,8 @@ import (
 )
 
 type xDesktopView struct {
+	toolPressed                  string
+	toolPressGrant               session.ControlStatus
 	viewport                     viewerViewport
 	lastProbe                    time.Time
 	conn                         *xgb.Conn
@@ -28,6 +31,11 @@ type xDesktopView struct {
 	width, height                int
 	maxRowsBytes                 int
 	image                        *image.RGBA
+	lastJPEGHash                 [sha256.Size]byte
+	lastJPEGValid                bool
+	cachedImage                  *image.RGBA
+	cachedSource, cachedTarget   image.Rectangle
+	imagePixmap                  xproto.Pixmap
 	state                        string
 	title                        string
 	closed                       bool
@@ -91,7 +99,7 @@ func newDesktopViewMode(peer string, pointer bool) (desktopView, error) {
 	if h > 800 {
 		h = 800
 	}
-	if w < 160 || h < 120 {
+	if w < 320 || h < 120 || pointer && w < 640 {
 		return fail(errors.New("viewer local display is too small"))
 	}
 	window, err := xproto.NewWindowId(c)
@@ -163,6 +171,10 @@ func (v *xDesktopView) Frame(fr session.ScreenFrame) error {
 	if v.closed {
 		return errors.New("viewer closed")
 	}
+	imageHash := sha256.Sum256(fr.Image)
+	if v.image != nil && v.lastJPEGValid && v.lastJPEGHash == imageHash {
+		return v.receivedFrameState()
+	}
 	cfg, err := jpeg.DecodeConfig(bytes.NewReader(fr.Image))
 	if err != nil {
 		return errors.New("viewer invalid screen image")
@@ -180,6 +192,10 @@ func (v *xDesktopView) Frame(fr session.ScreenFrame) error {
 		v.pointerPressed = 0
 	}
 	v.image = rgba
+	v.lastJPEGHash, v.lastJPEGValid = imageHash, true
+	return v.receivedFrameState()
+}
+func (v *xDesktopView) receivedFrameState() error {
 	v.state = "Viewing. Last screen " + time.Now().Format("15:04:05") + ". View only. Escape ends."
 	if v.pointer {
 		v.state = "Screen " + time.Now().Format("15:04:05") + ". Pointer: " + v.pointerGrant.State + ". No keyboard/dragging."
@@ -201,7 +217,7 @@ func (v *xDesktopView) draw() error {
 	if v.closed {
 		return errors.New("viewer closed")
 	}
-	if v.width < 1 || v.height < 1 || v.width > 8192 || v.height > 8192 || v.width > 16*1024*1024/v.height {
+	if v.width < 320 || v.pointer && v.width < 640 || v.height < 120 || v.width > 8192 || v.height > 8192 || v.width > 16*1024*1024/v.height {
 		return errors.New("viewer window exceeds rendering policy")
 	}
 	// Compose off-screen, then copy once. Clearing the visible window before
@@ -232,9 +248,44 @@ func (v *xDesktopView) draw() error {
 		mode = "F8: ask pointer; F9: release; Escape: end. 1/F/arrows: local view."
 	}
 	for i, text := range []string{safeViewerLabel(v.title), safeViewerLabel(v.state), mode} {
+		if i < 2 {
+			edge := v.width - 128
+			if v.pointer {
+				edge = v.width - 424
+			}
+			text = safeViewerLabel(text)
+			limit := max(0, (edge-20)/6)
+			if len(text) > limit {
+				text = text[:limit]
+			}
+		}
 		if err = xproto.ImageText8Checked(v.conn, byte(len(text)), target, v.gc, 10, int16(18+i*20), text).Check(); err != nil {
 			return err
 		}
+	}
+	for _, button := range v.tools() {
+		background, foreground := uint32(0x9b343e), uint32(0xffffff)
+		if button.kind != "end" {
+			background = 0x285f9b
+		}
+		if !button.enabled {
+			background, foreground = 0x303744, 0xa1a9b6
+		}
+		if err = xproto.ChangeGCChecked(v.conn, v.gc, xproto.GcForeground, []uint32{background}).Check(); err != nil {
+			return err
+		}
+		if err = xproto.PolyFillRectangleChecked(v.conn, target, v.gc, []xproto.Rectangle{{X: int16(button.x), Y: 8, Width: uint16(button.width), Height: 44}}).Check(); err != nil {
+			return err
+		}
+		if err = xproto.ChangeGCChecked(v.conn, v.gc, xproto.GcForeground|xproto.GcBackground, []uint32{foreground, background}).Check(); err != nil {
+			return err
+		}
+		if err = xproto.ImageText8Checked(v.conn, byte(len(button.label)), target, v.gc, int16(button.x+12), 35, button.label).Check(); err != nil {
+			return err
+		}
+	}
+	if err = xproto.ChangeGCChecked(v.conn, v.gc, xproto.GcBackground, []uint32{0x151923}).Check(); err != nil {
+		return err
 	}
 	publish := func() error {
 		return xproto.CopyAreaChecked(v.conn, target, xproto.Drawable(v.window), v.gc, 0, 0, 0, 0, uint16(v.width), uint16(v.height)).Check()
@@ -248,24 +299,35 @@ func (v *xDesktopView) draw() error {
 	if w == 0 || h == 0 {
 		return publish()
 	}
-	rows := v.maxRowsBytes / (w * 4)
-	if rows < 1 {
-		return errors.New("viewer X11 request limit too small")
-	}
-	dx, dy := region.target.Min.X, viewerHeader+region.target.Min.Y
-	for y := 0; y < h; y += rows {
-		n := min(rows, h-y)
-		pixels := make([]byte, w*n*4)
-		for row := 0; row < n; row++ {
-			for x := 0; x < w; x++ {
-				src := v.image.PixOffset(b.Min.X+region.source.Min.X+x*region.source.Dx()/w, b.Min.Y+region.source.Min.Y+(y+row)*region.source.Dy()/h)
-				i := (row*w + x) * 4
-				pixels[i], pixels[i+1], pixels[i+2] = v.image.Pix[src+2], v.image.Pix[src+1], v.image.Pix[src]
-			}
-		}
-		if err := xproto.PutImageChecked(v.conn, xproto.ImageFormatZPixmap, target, v.gc, uint16(w), uint16(n), int16(dx), int16(dy+y), 0, 24, pixels).Check(); err != nil {
+	if v.imagePixmap == 0 || v.cachedImage != v.image || v.cachedSource != region.source || v.cachedTarget != region.target {
+		if err := v.clearImageCache(); err != nil {
 			return err
 		}
+		pix, err := xproto.NewPixmapId(v.conn)
+		if err != nil {
+			return err
+		}
+		if err = xproto.CreatePixmapChecked(v.conn, 24, pix, xproto.Drawable(v.window), uint16(w), uint16(h)).Check(); err != nil {
+			return err
+		}
+		v.imagePixmap = pix
+		rows := v.maxRowsBytes / (w * 4)
+		if rows < 1 {
+			return errors.New("viewer X11 request limit too small")
+		}
+		sampler := newViewerPixelSource(v.image, region.source, w, h)
+		for y := 0; y < h; y += rows {
+			n := min(rows, h-y)
+			pixels := sampler.strip(y, n)
+			if err = xproto.PutImageChecked(v.conn, xproto.ImageFormatZPixmap, xproto.Drawable(pix), v.gc, uint16(w), uint16(n), 0, int16(y), 0, 24, pixels).Check(); err != nil {
+				return err
+			}
+		}
+		// Cache only after every strip succeeded. A partial cache is never copied.
+		v.cachedImage, v.cachedSource, v.cachedTarget = v.image, region.source, region.target
+	}
+	if err = xproto.CopyAreaChecked(v.conn, xproto.Drawable(v.imagePixmap), target, v.gc, 0, 0, int16(region.target.Min.X), int16(viewerHeader+region.target.Min.Y), uint16(w), uint16(h)).Check(); err != nil {
+		return err
 	}
 	return publish()
 }
@@ -282,14 +344,29 @@ func (v *xDesktopView) Poll() (bool, error) {
 	if v.closed {
 		return true, nil
 	}
-	// Bound event work so resize/expose floods cannot starve cancellation.
+	// Bound and coalesce repaint work. A resize/expose burst must not cause
+	//64 full decoded-image repaints before the next local End check.
+	dirty := false
+	flush := func() error {
+		if !dirty {
+			return nil
+		}
+		dirty = false
+		return v.State(v.state)
+	}
 	for i := 0; i < 64; i++ {
 		ev, err := v.conn.PollForEvent()
 		if err != nil {
 			return false, fmt.Errorf("viewer X11 event failure: %w", err)
 		}
 		if ev == nil {
-			return false, nil
+			return false, flush()
+		}
+		switch ev.(type) {
+		case xproto.ButtonPressEvent, xproto.ButtonReleaseEvent, xproto.KeyPressEvent:
+			if err := flush(); err != nil {
+				return false, err
+			}
 		}
 		switch e := ev.(type) {
 		case xproto.ClientMessageEvent:
@@ -301,6 +378,7 @@ func (v *xDesktopView) Poll() (bool, error) {
 				return true, nil
 			}
 		case xproto.FocusOutEvent:
+			v.toolPressed = ""
 			if v.pointer {
 				v.pointerPressed = 0
 				if err := v.queuePointer(desktopPointerAction{Kind: "release"}); err != nil {
@@ -308,12 +386,20 @@ func (v *xDesktopView) Poll() (bool, error) {
 				}
 			}
 		case xproto.ButtonPressEvent:
+			if _, err := v.toolButton(byte(e.Detail), true, int(e.EventX), int(e.EventY)); err != nil {
+				return false, err
+			}
 			if v.pointer {
 				if err := v.pointerButton(byte(e.Detail), true, int(e.EventX), int(e.EventY)); err != nil {
 					return false, err
 				}
 			}
 		case xproto.ButtonReleaseEvent:
+			if end, err := v.toolButton(byte(e.Detail), false, int(e.EventX), int(e.EventY)); err != nil {
+				return false, err
+			} else if end {
+				return true, nil
+			}
 			if v.pointer {
 				if err := v.pointerButton(byte(e.Detail), false, int(e.EventX), int(e.EventY)); err != nil {
 					return false, err
@@ -355,23 +441,31 @@ func (v *xDesktopView) Poll() (bool, error) {
 			}
 		case xproto.ExposeEvent:
 			if e.Count == 0 {
-				if err := v.draw(); err != nil {
-					return false, err
-				}
+				dirty = true
 			}
 		case xproto.ConfigureNotifyEvent:
 			if e.Window == v.window {
 				if v.width != int(e.Width) || v.height != int(e.Height) {
 					v.pointerPressed = 0
+					v.toolPressed = ""
 				}
 				v.width, v.height = int(e.Width), int(e.Height)
-				if err := v.draw(); err != nil {
-					return false, err
-				}
+				dirty = true
 			}
 		}
 	}
-	return false, nil
+	return false, flush()
+}
+func (v *xDesktopView) clearImageCache() error {
+	pix := v.imagePixmap
+	v.imagePixmap = 0
+	v.cachedImage = nil
+	v.cachedSource = image.Rectangle{}
+	v.cachedTarget = image.Rectangle{}
+	if pix != 0 {
+		return xproto.FreePixmapChecked(v.conn, pix).Check()
+	}
+	return nil
 }
 func (v *xDesktopView) Close() error {
 	if v.closed {
@@ -379,7 +473,10 @@ func (v *xDesktopView) Close() error {
 	}
 	v.closed = true
 	v.image = nil
+	v.lastJPEGHash = [sha256.Size]byte{}
+	v.lastJPEGValid = false
 	var errs []error
+	errs = append(errs, v.clearImageCache())
 	if v.gc != 0 {
 		errs = append(errs, xproto.FreeGCChecked(v.conn, v.gc).Check())
 	}

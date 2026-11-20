@@ -186,7 +186,8 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 						os.WriteFile(filepath.Join(dir, "native-clicks"), []byte(fmt.Sprint(n)), 0600)
 					}
 					if e.Detail == 4 {
-						nativeScroll.Add(1)
+						n := nativeScroll.Add(1)
+						os.WriteFile(filepath.Join(dir, "native-scroll"), []byte(fmt.Sprint(n)), 0600)
 					}
 				case xproto.KeyPressEvent:
 					nativeKeys.Add(1)

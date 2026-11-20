@@ -23,7 +23,10 @@ def window(display,pattern):
  result=subprocess.run(['xdotool','search','--onlyvisible','--name',pattern],env=env|{'DISPLAY':display},capture_output=True,text=True)
  return result.stdout.strip().splitlines()[-1] if result.returncode==0 and result.stdout.strip() else None
 def action(display,*args):subprocess.run(['xdotool',*args],env=env|{'DISPLAY':display},check=True)
-def capture(display,wid,name):subprocess.run(['import','-display',display,'-window',wid,str(out/(name+'.png'))],check=True)
+def capture(display,wid,name):
+ subprocess.run(['import','-display',display,'-window',wid,str(out/(name+'.png'))],check=True)
+ if display==displays[1]:
+  image=Image.open(out/(name+'.png')).convert('RGB');assert image.getpixel((image.width-80,15))==(155,52,62),'local End pixels absent'
 try:
  displays=[]
  for role in ('host','viewer'):
@@ -47,15 +50,15 @@ try:
  action(displays[1],'windowfocus',viewer,'mousemove','--window',viewer,'120','580','click','1','key','a')
  time.sleep(.1)
  if (out/'native-clicks').exists():raise AssertionError('view admission enabled native pointer')
- action(displays[1],'windowfocus',viewer,'key','F8')
+ action(displays[1],'windowfocus',viewer,'mousemove','--window',viewer,'614','30','click','1')
  host=poll(lambda:window(displays[0],'^Mnet: allow pointer only'),'first control');capture(displays[0],host,'control-approval');action(displays[0],'windowfocus',host,'key','Tab','Return')
  poll(lambda:'[pointer allowed]' in title(),'host grants pointer');capture(displays[1],viewer,'allowed')
  # Bottom-left lies outside host dialogs and inside the native target window.
  # Viewer is960x672, frame fit is800x600 with left gutter80 at this aspect.
  def click():action(displays[1],'windowfocus',viewer,'mousemove','--window',viewer,'120','580','click','1')
  click();poll(lambda:(out/'native-clicks').exists() and (out/'native-clicks').read_text()=='1','first actual native click')
- action(displays[1],'key','a','click','4');time.sleep(.15)
- action(displays[1],'key','F9');poll(lambda:'[pointer declined]' in title(),'local release');capture(displays[1],viewer,'released');click();time.sleep(.1)
+ action(displays[1],'key','a','click','4');poll(lambda:(out/'native-scroll').exists() and (out/'native-scroll').read_text()=='1','actual scroll before local release')
+ action(displays[1],'mousemove','--window',viewer,'762','30','click','1');poll(lambda:'[pointer declined]' in title(),'local release');capture(displays[1],viewer,'released');click();time.sleep(.1)
  # Fresh request, actual host decline, no native owner/input.
  action(displays[1],'key','F8');host=poll(lambda:window(displays[0],'^Mnet: allow pointer only'),'decline control');action(displays[0],'windowfocus',host,'key','Return')
  poll(lambda:'[pointer declined]' in title(),'host decline');click();time.sleep(.1)
@@ -78,7 +81,7 @@ try:
  if not (width>500 and height>200 and 0<px<width and height*.78<py<height*.96):raise AssertionError('unrecognized revoke fixture geometry')
  action(displays[0],'windowraise',active,'mousemove','--sync','--window',active,str(px),str(py),'click','1')
  poll(lambda:'[pointer revoked]' in title(),'host revoke');capture(displays[1],viewer,'revoked');click();time.sleep(.1)
- action(displays[1],'key','Escape');assert test.wait(timeout=5)==0,(out/'test.log').read_text()
+ action(displays[1],'mousemove','--window',viewer,'896','30','click','1');assert test.wait(timeout=5)==0,(out/'test.log').read_text()
  print((out/'test.log').read_text(),flush=True)
  print('PASS built pointer viewer: host-enforced pointer-only approval, two actual native clicks and scroll, local release/focus loss, host decline/revoke, no keyboard/held buttons, joined End',flush=True)
 finally:
