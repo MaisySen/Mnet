@@ -45,6 +45,7 @@ try:
     invoke('install')
     manifest = json.loads((prefix / 'INSTALLATION.json').read_text())
     assert manifest['engineering_only'] is True
+    assert manifest['source_commit'] == subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     assert set(manifest['files']) == {'bin/mnet', 'bin/mnetd', 'share/applications/mnet-engineering.desktop', 'README.txt'}
     desktop = prefix / 'share/applications/mnet-engineering.desktop'
     subprocess.run(['desktop-file-validate', str(desktop)], check=True)
