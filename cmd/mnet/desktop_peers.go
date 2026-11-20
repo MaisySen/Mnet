@@ -70,6 +70,9 @@ func readDesktopPeerSnapshot(ctx context.Context, hc *http.Client, base string) 
 	if ctx.Err() != nil {
 		return desktopPeerSnapshot{}, errors.New("local peer snapshot canceled")
 	}
+	if st.Status != "up" {
+		return desktopPeerSnapshot{}, errLocalNetworkDown
+	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/localapi/session-peers", nil)
 	if err != nil {
 		return desktopPeerSnapshot{}, errors.New("local session address unavailable")
@@ -80,6 +83,9 @@ func readDesktopPeerSnapshot(ctx context.Context, hc *http.Client, base string) 
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
+		if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
+			return desktopPeerSnapshot{}, errLocalAccess
+		}
 		return desktopPeerSnapshot{}, errors.New("local session evidence refused")
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, (4<<20)+1))

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"fintex.au/mnet/internal/daemon"
+	"fintex.au/mnet/internal/localapi"
 )
 
 func TestDeviceSnapshotUsesOnlyReadOnlyStatusAndBounds(t *testing.T) {
@@ -204,3 +205,38 @@ type deviceFailureBody struct {
 }
 
 func (b *deviceFailureBody) Close() error { *b.closed = true; return nil }
+
+func TestLocalSetupGuidanceOnlyUsesFixedCategories(t *testing.T) {
+	for _, known := range []error{errLocalSetup, errLocalDaemon, errLocalAccess, errLocalNetworkDown} {
+		if got := localSetupMessage(fmt.Errorf("untrusted wrapper: %w", known)); got != known.Error() {
+			t.Fatal(got)
+		}
+	}
+	if got := localSetupMessage(fmt.Errorf("PRIVATE_TOKEN private path and remote error")); strings.Contains(got, "PRIVATE") || !strings.Contains(got, "Refresh") {
+		t.Fatal(got)
+	}
+}
+
+func TestDesktopDownSnapshotStopsBeforeSessionEvidence(t *testing.T) {
+	calls := 0
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.Path != "/localapi/status" {
+			t.Error("read session evidence while down")
+		}
+		fmt.Fprint(w, `{"status":"down"}`)
+	}))
+	defer s.Close()
+	got, err := readDesktopPeerSnapshot(context.Background(), s.Client(), s.URL)
+	if err != errLocalNetworkDown || calls != 1 || len(got.Peers) != 0 {
+		t.Fatal(got, err, calls)
+	}
+}
+
+func TestMissingLocalCapabilityBecomesFixedSetupGuidance(t *testing.T) {
+	hc := &http.Client{Transport: localapi.Transport{StateDir: t.TempDir()}}
+	st, err := readDeviceSnapshot(context.Background(), hc, "http://mnetd")
+	if st != nil || err != errLocalSetup {
+		t.Fatal(st, err)
+	}
+}

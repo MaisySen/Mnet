@@ -5,12 +5,15 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
+	"errors"
 	"fintex.au/mnet/internal/privatefs"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 )
+
+var ErrCredential = errors.New("local API capability unavailable; use the daemon state directory")
 
 const TokenHeader = "X-Mnet-Local-Token"
 
@@ -114,7 +117,7 @@ func (t Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	token, err := ReadToken(t.StateDir)
 	if err != nil {
-		return nil, err
+		return nil, ErrCredential
 	}
 	clone := r.Clone(r.Context())
 	clone.Header = r.Header.Clone()

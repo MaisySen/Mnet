@@ -298,7 +298,7 @@ func chooseDesktopPeer(parent context.Context, hc *http.Client, base string) (*d
 			page = 0
 			if r.err != nil {
 				phase = "unavailable"
-				message = "Current local evidence unavailable. Refresh to try again."
+				message = localSetupMessage(r.err)
 			} else {
 				selection.replace(r.snapshot)
 				phase = "ready"

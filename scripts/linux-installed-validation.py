@@ -35,6 +35,7 @@ def poll(check, label):
 
 
 xserver = None
+daemon = None
 pids = []
 old_environment = dict(os.environ)
 try:
@@ -99,17 +100,54 @@ try:
     assert not list(home.iterdir()), 'opening installed home wrote user state'
     invoke('uninstall', okay=False)
     assert (prefix / 'bin/mnet').read_bytes() == before, 'running install removed'
+    def find_window(pattern):
+        value = subprocess.run(['xdotool', 'search', '--onlyvisible', '--name', pattern], text=True, capture_output=True)
+        return value.stdout.strip().splitlines()[-1] if value.returncode == 0 and value.stdout.strip() else None
+    def click(wid, x, y):
+        subprocess.run(['xdotool', 'windowfocus', wid, 'mousemove', '--window', wid, str(x), str(y), 'click', '1'], check=True)
+    def close_child(wid):
+        subprocess.run(['xdotool', 'windowfocus', wid, 'key', 'Escape'], check=True)
+        return poll(visible, 'fresh home after setup state')
+    def capture(wid, name):
+        subprocess.run(['import', '-display', display_name, '-window', wid, str(out / (name + '.png'))], check=True)
+    click(window, 100, 250)
+    chooser = poll(lambda: find_window(r'^Mnet Remote Desktop: choose \[unavailable\]'), 'missing capability guidance')
+    capture(chooser, 'missing-local-setup')
+    assert not list(home.iterdir()), 'missing setup journey wrote user state'
+    window = close_child(chooser)
+    # Explicit fixture-only daemon startup. No Up, control-plane URL, network,
+    # session-host flag, enrollment or real interface is requested.
+    state = home / '.config/mnet'
+    with (out / 'daemon.log').open('w') as log:
+        daemon = subprocess.Popen([str(prefix / 'bin/mnetd'), '-state', str(state), '-fake-tun'], stdout=log, stderr=log)
+    poll(lambda: (state / 'mnetd.sock').exists(), 'actual installed daemon local API')
+    click(window, 100, 250)
+    chooser = poll(lambda: find_window(r'^Mnet Remote Desktop: choose \[unavailable\]'), 'actual daemon down guidance')
+    capture(chooser, 'device-not-connected')
+    window = close_child(chooser)
+    click(window, 100, 140)
+    devices = poll(lambda: find_window(r'^Mnet devices: read-only \[down\]'), 'actual installed daemon down snapshot')
+    capture(devices, 'actual-daemon-down')
+    window = close_child(devices)
+    daemon.terminate()
+    assert daemon.wait(timeout=5) == 0
+    daemon = None
+    state_before = {str(path.relative_to(state)): path.read_bytes() for path in state.rglob('*') if path.is_file() and not path.is_symlink()}
+    click(window, 100, 250)
+    chooser = poll(lambda: find_window(r'^Mnet Remote Desktop: choose \[unavailable\]'), 'stopped daemon guidance')
+    capture(chooser, 'local-daemon-not-reached')
+    window = close_child(chooser)
     subprocess.run(['xdotool', 'windowfocus', window, 'key', 'Escape'], check=True)
     pid = pids.pop()
     assert os.waitpid(pid, 0)[1] == 0
     assert not visible(), 'installed home survived closing'
-    assert not list(home.iterdir()), 'closing installed home wrote user state'
+    assert state_before == {str(path.relative_to(state)): path.read_bytes() for path in state.rglob('*') if path.is_file() and not path.is_symlink()}, 'failure journey altered daemon state'
     os.environ.clear()
     os.environ.update(old_environment)
     invoke('uninstall')
     assert not prefix.exists()
-    assert not list(home.iterdir()) and linked.is_symlink(), 'removal touched unrelated state'
-    print('PASS actual clean-prefix binary install, desktop-file parser and launched native home from special-character path; no state/service/enrollment; exact close; changed/extra/link refusals; unchanged removal', flush=True)
+    assert state_before == {str(path.relative_to(state)): path.read_bytes() for path in state.rglob('*') if path.is_file() and not path.is_symlink()} and linked.is_symlink(), 'removal touched unrelated state'
+    print('PASS actual clean-prefix binary install, desktop-file parser and launched native home from special-character path; no initial Mnet state/service/enrollment; actual installed daemon down/missing/stopped recovery; preserved fixture state; exact close; changed/extra/link refusals; unchanged removal', flush=True)
 finally:
     os.environ.clear()
     os.environ.update(old_environment)
@@ -119,6 +157,9 @@ finally:
             os.waitpid(pid, 0)
         except ProcessLookupError:
             pass
+    if daemon is not None:
+        daemon.terminate()
+        daemon.wait(timeout=5)
     if xserver is not None:
         xserver.terminate()
         xserver.wait(timeout=3)

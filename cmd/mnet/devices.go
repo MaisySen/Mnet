@@ -11,7 +11,26 @@ import (
 	"time"
 
 	"fintex.au/mnet/internal/daemon"
+	"fintex.au/mnet/internal/localapi"
 )
+
+var (
+	errLocalSetup       = errors.New("Local setup is incomplete. Use the same --state directory as mnetd.")
+	errLocalDaemon      = errors.New("Local daemon not reached. Start it separately, then Refresh.")
+	errLocalAccess      = errors.New("Local capability refused. Check the selected daemon state directory.")
+	errLocalNetworkDown = errors.New("This device is not connected. Multies setup is not available in this build.")
+)
+
+// Only fixed local categories become setup guidance. Never display raw transport,
+// filesystem, remote response or credential details in the chooser.
+func localSetupMessage(err error) string {
+	for _, known := range []error{errLocalSetup, errLocalDaemon, errLocalAccess, errLocalNetworkDown} {
+		if errors.Is(err, known) {
+			return known.Error()
+		}
+	}
+	return "Current local evidence unavailable. Refresh to try again."
+}
 
 const devicePageSize = 8
 
@@ -26,11 +45,14 @@ func readDeviceSnapshot(ctx context.Context, hc *http.Client, base string) (*dae
 	}
 	response, err := hc.Do(req)
 	if err != nil {
-		return nil, errors.New("local daemon unavailable or status timed out")
+		if errors.Is(err, localapi.ErrCredential) {
+			return nil, errLocalSetup
+		}
+		return nil, errLocalDaemon
 	}
 	defer response.Body.Close()
 	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
-		return nil, errors.New("local status refused; check this daemon's local capability")
+		return nil, errLocalAccess
 	}
 	if response.StatusCode != http.StatusOK {
 		return nil, errors.New("local daemon status unavailable; refresh to try again")
