@@ -2,7 +2,9 @@
 
 This is an opt-in source installation into a new private prefix, not a release, signed package, system installer or completed first-run setup. It supports the current Linux X11 engineering home. No Multies code or configuration is changed.
 
-From the repository, as a non-root Linux user with Go available:
+Prerequisites are Go, Git, Python 3.12 or newer, a supported local Linux X11 desktop with readable6x13/9x15/10x20core fonts (`xfonts-base` on the checked Debian/Ubuntu fixture), and the native tools required by the selected feature. The installer never installs system packages. Missing fonts fail rather than silently changing the UI.
+
+From the repository, as a non-root Linux user with those prerequisites:
 
 ```sh
 python3 scripts/linux-local-install.py install /absolute/private/parent/mnet-engineering

@@ -134,7 +134,9 @@ jobs:
         with:
           go-version-file: go.mod
       - name: install isolated X11 proof dependencies
-        run: sudo apt-get update && sudo apt-get install -y xvfb x11-xserver-utils x11-utils zenity xdotool imagemagick python3-pil python3-gi gir1.2-glib-2.0 desktop-file-utils
+        run: sudo apt-get update && sudo apt-get install -y xvfb xfonts-base x11-xserver-utils x11-utils zenity xdotool imagemagick python3-pil python3-gi gir1.2-glib-2.0 desktop-file-utils
+      - name: actual readable-font prerequisite and home refusal
+        run: python3 scripts/home-font-validation.py
       - name: live session proof against a local control plane
         run: sh scripts/session-validation.sh
       - name: attended Linux local approval and reserved live-stop (disposable X11)
@@ -198,6 +200,8 @@ jobs:
           path: |
             /tmp/mnet-installed.*/*.png
             /tmp/mnet-installed.*/*-last.log
+            /tmp/mnet-font-prerequisite.*/*.png
+            /tmp/mnet-font-prerequisite.*/*-client.log
             /tmp/mnet-home.*/*.png
             /tmp/mnet-home.*/client.log
             /tmp/mnet-first-screen.*/*.png

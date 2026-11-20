@@ -1,5 +1,13 @@
 # Releases
 
+## 4b3 original hosted checkpoint accounted, home font prerequisite failed
+
+Original4b3c6e5cae6463a72c38d8b15eb63d5ee104e5a7 general CI failed session-validation at the first new home launch: https://github.com/MaisySen/Mnet/actions/runs/44790918679 . The app explicitly refused because its readable core fonts were unavailable. Home routing, pointer-from-home and silent first-screen steps therefore did not complete in this original run; later Desk steps were skipped. Failed diagnostics were retained: https://github.com/MaisySen/Mnet/actions/runs/44790918679/artifacts/14656712754 . This is a concrete prerequisite failure, separate from the unknown earlier blank canvases and Chrome startup failures. No rerun or relaxed UI requirement is counted as repair of that original attempt.
+
+The four other original jobs passed. Go Chrome157.0.8103.78/Node22.23.5 passed84screen checks, first response under5seconds; unchanged10second frame/STUN gates passed271074/434560executions. This does not repair originalc988/9a62. Actual macOS logs passed14checker fixtures normal/optimized and unsigned arm64 simulator app/extension linking, not launch/sign/device/entitlement acceptance. Original Pages passed all3jobs: https://github.com/MaisySen/Mnet/actions/runs/44790917172 . All10intended markdown/PNG resources were fetched and exactly matched4b3 before any newer source publication. No automatic native workflow dispatched.
+
+The independently corrected source declares `xfonts-base` in the disposable X11 CI prerequisites. Local package ownership shows it supplies the required6x13/9x15/10x20core fonts. A new actual built-ins-only X server reproduces the same home-font refusal; a normal X server with the declared fonts opens the real home and closes without daemon/state. Missing fonts still fail, with no tiny-font fallback or extended deadline. This correction and the installed/setup work above need their own exact hosted checkpoint. Held daemon publication, release and Multies boundaries remain unchanged.
+
 ## Private installed journey and explicit Desk drafts, hosted verification pending
 
 The installed Remote Desktop journey now distinguishes missing local setup, unreachable daemon, refused capability and an actually disconnected local device with fixed safe guidance. An actual installed daemon in an explicit disposable in-memory-TUN down-state fixture supplies the status, then stopped-daemon recovery is checked while preserving its state. A down snapshot no longer requests session-peer evidence. Full uncached race/vet/build/cross gates and complete adversarial chooser acceptance pass locally. No production setup, connection or identity is inferred.
