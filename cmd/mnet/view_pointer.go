@@ -25,7 +25,10 @@ func dispatchDesktopPointer(display desktopPointerView, control *session.ViewerC
 		switch action.Kind {
 		case "request":
 			if current.State == "available" || current.State == "declined" || current.State == "revoked" {
-				if err := control.Request(); err != nil {
+				if !current.PointerV1 {
+					continue
+				}
+				if err := control.RequestPointer(); err != nil {
 					return err
 				}
 			}

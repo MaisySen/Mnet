@@ -10,18 +10,26 @@ import (
 
 const controlKind = "mnet-control-v1"
 
+// ControlScopePointer grants only atomic pointer actions, never key events or
+// button holds. The empty scope retains explicit legacy full-control behavior.
+const ControlScopePointer = "pointer-v1"
+
 type ControlStatus struct {
-	Session  string `json:"session"`
-	Request  string `json:"request,omitempty"`
-	Revision uint64 `json:"revision"`
-	State    string `json:"state"`
+	Scope     string `json:"scope,omitempty"`
+	PointerV1 bool   `json:"pointer_v1,omitempty"`
+	Session   string `json:"session"`
+	Request   string `json:"request,omitempty"`
+	Revision  uint64 `json:"revision"`
+	State     string `json:"state"`
 }
 type controlMessage struct {
-	Kind     string `json:"kind"`
-	Session  string `json:"session"`
-	Request  string `json:"request,omitempty"`
-	Revision uint64 `json:"revision,omitempty"`
-	State    string `json:"state,omitempty"`
+	Scope     string `json:"scope,omitempty"`
+	PointerV1 bool   `json:"pointer_v1,omitempty"`
+	Kind      string `json:"kind"`
+	Session   string `json:"session"`
+	Request   string `json:"request,omitempty"`
+	Revision  uint64 `json:"revision,omitempty"`
+	State     string `json:"state,omitempty"`
 }
 
 func controlToken() string {
@@ -55,20 +63,56 @@ type HostControl struct {
 }
 
 func NewHostControl(onRequest func(ControlStatus)) *HostControl {
-	return &HostControl{status: ControlStatus{Session: controlToken(), State: "unavailable"}, onRequest: onRequest, seen: make(map[string]bool)}
+	return newHostControl(onRequest, false)
+}
+
+// NewHostControlWithPointerScope opts a locally scope-aware host UI into narrow
+// pointer requests. Legacy/mobile hosts keep their existing generic negotiation.
+func NewHostControlWithPointerScope(onRequest func(ControlStatus)) *HostControl {
+	return newHostControl(onRequest, true)
+}
+func newHostControl(onRequest func(ControlStatus), pointer bool) *HostControl {
+	return &HostControl{status: ControlStatus{Session: controlToken(), State: "unavailable", PointerV1: pointer}, onRequest: onRequest, seen: make(map[string]bool)}
 }
 func (c *HostControl) Snapshot() ControlStatus { c.mu.Lock(); defer c.mu.Unlock(); return c.status }
 func (c *HostControl) InputAllowed(ev InputEvent) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.status.State == "allowed" && ev.ControlSession == c.status.Session && ev.ControlRequest == c.status.Request
+	if c.ended || c.status.State != "allowed" || ev.ControlSession != c.status.Session || ev.ControlRequest != c.status.Request {
+		return false
+	}
+	switch c.status.Scope {
+	case "":
+		return true
+	case ControlScopePointer:
+		return pointerScopeInput(ev)
+	default:
+		return false
+	}
+}
+
+// Reject mixed payloads too. Pointer scope has no remote held state to retire.
+func pointerScopeInput(ev InputEvent) bool {
+	if ev.Kind != "pointer" || ev.Text != "" || ev.X < 0 || ev.Y < 0 {
+		return false
+	}
+	switch ev.Action {
+	case "move":
+		return ev.Button == "" && ev.DX == 0 && ev.DY == 0
+	case "click":
+		return (ev.Button == "left" || ev.Button == "middle" || ev.Button == "right") && ev.DX == 0 && ev.DY == 0
+	case "scroll":
+		return ev.Button == "" && ev.X == 0 && ev.Y == 0 && ev.DX == 0 && (ev.DY == -1 || ev.DY == 1)
+	default:
+		return false
+	}
 }
 func (c *HostControl) emitLocked() error {
 	c.status.Revision++
 	if c.mux == nil {
 		return errors.New("control unavailable")
 	}
-	err := c.mux.controlJSON(c.stream, controlMessage{Kind: controlKind, Session: c.status.Session, Request: c.status.Request, State: c.status.State, Revision: c.status.Revision})
+	err := c.mux.controlJSON(c.stream, controlMessage{Kind: controlKind, Session: c.status.Session, Request: c.status.Request, State: c.status.State, Revision: c.status.Revision, Scope: c.status.Scope, PointerV1: c.status.PointerV1})
 	if err != nil {
 		c.ended = true
 		c.status.State = "unavailable"
@@ -83,7 +127,7 @@ func (c *HostControl) Start(m *Mux) {
 		return
 	}
 	c.mux = m
-	s, err := m.open(PriInteractive, controlMessage{Kind: controlKind, Session: c.status.Session}, false)
+	s, err := m.open(PriInteractive, controlMessage{Kind: controlKind, Session: c.status.Session, PointerV1: c.status.PointerV1}, false)
 	if err != nil {
 		c.mu.Unlock()
 		m.Close()
@@ -120,6 +164,10 @@ func (c *HostControl) receive(s Stream) {
 		notify := false
 		switch msg.State {
 		case "request":
+			if msg.Scope != "" && (!c.status.PointerV1 || msg.Scope != ControlScopePointer) {
+				c.mu.Unlock()
+				continue
+			}
 			if c.status.State == "pending" || c.status.State == "allowed" || c.status.State == "paused" {
 				c.mu.Unlock()
 				continue
@@ -135,6 +183,7 @@ func (c *HostControl) receive(s Stream) {
 			}
 			c.seen[msg.Request] = true
 			c.status.Request = msg.Request
+			c.status.Scope = msg.Scope
 			c.status.State = "pending"
 			notify = true
 		case "cancel":
@@ -250,6 +299,7 @@ func (c *ViewerControl) Handle(s Stream) {
 	c.mux = s.Mux
 	c.stream = s.ID
 	c.status.Session = open.Session
+	c.status.PointerV1 = open.PointerV1
 	c.mu.Unlock()
 	defer s.release()
 	defer s.Mux.Close()
@@ -276,7 +326,7 @@ func (c *ViewerControl) Handle(s Stream) {
 		}
 		// Every grant/revoke is bound to our latest request. An unsolicited grant
 		// cannot arm viewer input, even from a peer implementing the protocol badly.
-		if msg.State != "available" && (msg.Request == "" || msg.Request != c.status.Request) {
+		if msg.State != "available" && (msg.Request == "" || msg.Request != c.status.Request || msg.Scope != c.status.Scope) {
 			c.mu.Unlock()
 			continue
 		}
@@ -294,8 +344,14 @@ func (c *ViewerControl) Handle(s Stream) {
 		c.notify()
 	}
 }
-func (c *ViewerControl) Request() error {
+func (c *ViewerControl) Request() error        { return c.request("") }
+func (c *ViewerControl) RequestPointer() error { return c.request(ControlScopePointer) }
+func (c *ViewerControl) request(scope string) error {
 	c.mu.Lock()
+	if scope == ControlScopePointer && !c.status.PointerV1 {
+		c.mu.Unlock()
+		return errors.New("host has no pointer-only permission support")
+	}
 	if c.ended || !c.attached || c.status.State == "unavailable" || c.status.State == "pending" || c.status.State == "allowed" || c.status.State == "paused" {
 		c.mu.Unlock()
 		return errors.New("control request unavailable")
@@ -306,8 +362,9 @@ func (c *ViewerControl) Request() error {
 		return errors.New("control request unavailable")
 	}
 	c.status.Request = token
+	c.status.Scope = scope
 	c.status.State = "pending"
-	err := c.mux.controlJSON(c.stream, controlMessage{Kind: controlKind, Session: c.status.Session, Request: token, State: "request"})
+	err := c.mux.controlJSON(c.stream, controlMessage{Kind: controlKind, Session: c.status.Session, Request: token, State: "request", Scope: scope})
 	c.mu.Unlock()
 	c.notify()
 	if err != nil {
@@ -337,6 +394,9 @@ func (c *ViewerControl) BindInput(ev *InputEvent) error {
 	defer c.mu.Unlock()
 	if c.status.State != "allowed" {
 		return errors.New("control is not granted")
+	}
+	if c.status.Scope == ControlScopePointer && !pointerScopeInput(*ev) {
+		return errors.New("input outside pointer-only permission")
 	}
 	ev.ControlSession = c.status.Session
 	ev.ControlRequest = c.status.Request
@@ -377,6 +437,9 @@ func (c *ViewerControl) bindInputFor(expected ControlStatus, ev *InputEvent) err
 	defer c.mu.Unlock()
 	if c.ended || c.status.State != "allowed" || c.status != expected {
 		return errors.New("exact control revision no longer granted")
+	}
+	if c.status.Scope == ControlScopePointer && !pointerScopeInput(*ev) {
+		return errors.New("input outside pointer-only permission")
 	}
 	ev.ControlSession = c.status.Session
 	ev.ControlRequest = c.status.Request

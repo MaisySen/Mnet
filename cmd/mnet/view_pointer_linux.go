@@ -24,7 +24,10 @@ func (v *xDesktopView) PointerStatus(status session.ControlStatus) error {
 		}
 	}
 	v.pointerActions = pending
-	v.state = "Pointer: " + status.State + ". No keyboard or dragging. Focus loss releases."
+	v.state = "Pointer: " + status.State + ". Host-enforced pointer only. No keyboard or dragging."
+	if !status.PointerV1 && status.State != "unavailable" {
+		v.state = "View only: host lacks pointer-only permission support. F8 cannot request broader control."
+	}
 	return v.State(v.state)
 }
 func (v *xDesktopView) PointerActions() []desktopPointerAction {
@@ -60,7 +63,7 @@ func (v *xDesktopView) queuePointer(action desktopPointerAction) error {
 	return nil
 }
 func (v *xDesktopView) pointerPosition(x, y int) (int, int, bool) {
-	if !v.pointer || v.image == nil || v.pointerGrant.State != "allowed" {
+	if !v.pointer || v.image == nil || (v.pointerGrant.State != "allowed" || v.pointerGrant.Scope != session.ControlScopePointer) {
 		return 0, 0, false
 	}
 	b := v.image.Bounds()

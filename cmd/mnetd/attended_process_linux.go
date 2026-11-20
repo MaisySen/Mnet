@@ -323,7 +323,7 @@ func (p *attendedProcessInjector) InjectAuthorized(ev session.InputEvent, live f
 	}
 	if live == nil || !live() {
 		p.retire()
-		return errors.New("retired input owner")
+		return errAttendedInputRetired
 	}
 	p.id++
 	if p.send(attendedProcessCommand{Kind: "input", ID: p.id, Event: ev}) != nil {
@@ -345,7 +345,7 @@ func (p *attendedProcessInjector) InjectAuthorized(ev session.InputEvent, live f
 		case <-tick.C:
 			if !live() {
 				p.retire()
-				return errors.New("in-flight input owner retired")
+				return errAttendedInputRetired
 			}
 		case <-p.exit:
 			return errors.New("local input process exited")

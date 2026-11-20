@@ -16,7 +16,7 @@ import (
 
 // The UI is local-only. A peer can request a prompt, never answer one.
 // Each Ask owns and joins its process; cancellation means denial/end.
-type attendedPrompt struct{ Kind, Peer string }
+type attendedPrompt struct{ Kind, Peer, Scope string }
 type attendedUI interface {
 	Ask(context.Context, attendedPrompt) (string, error)
 }
@@ -47,6 +47,10 @@ func validateAttendedOptions(o options) error {
 	return nil
 }
 
+// Only a checked local backend may return this when authority ended during
+// dispatch. It is not proof of release; its owner must still join Close.
+var errAttendedInputRetired = errors.New("local input authority retired")
+
 // Serialize input backend ownership with grant transitions. In particular a
 // paused/revoked host releases its owned pressed keys/buttons before prompting.
 type attendedInput struct {
@@ -76,6 +80,13 @@ func (i *attendedInput) Inject(ev session.InputEvent) error {
 		err = i.backend.Inject(ev)
 	}
 	if err != nil {
+		// A revoked in-flight event is not a device failure. It may already have
+		// completed in the child, so do not report success or send another event.
+		// Retire and join this owner first; Close failure still ends the session.
+		if errors.Is(err, errAttendedInputRetired) && ((i.live != nil && !i.live()) || !i.gate.InputAllowed(ev)) {
+			i.closeLocked()
+			return err
+		}
 		i.failed = true
 		i.gate.End()
 		i.closeLocked()
@@ -214,7 +225,7 @@ func serveAttendedSession(parent context.Context, m *session.Mux, peer string, n
 		}
 	}
 	var input *attendedInput
-	gate := session.NewHostControl(func(s session.ControlStatus) {
+	gate := session.NewHostControlWithPointerScope(func(s session.ControlStatus) {
 		if s.State == "pending" {
 			offer(s)
 		} else {
@@ -302,7 +313,7 @@ func serveAttendedSession(parent context.Context, m *session.Mux, peer string, n
 						}
 					}
 				}()
-				action, err := ui.Ask(decisionCtx, attendedPrompt{Kind: "control", Peer: peer})
+				action, err := ui.Ask(decisionCtx, attendedPrompt{Kind: "control", Peer: peer, Scope: s.Scope})
 				allow := err == nil && decisionCtx.Err() == nil && action == "allow"
 				stop()
 				<-watched

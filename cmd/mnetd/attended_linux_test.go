@@ -30,7 +30,7 @@ func (u tracedAttendedUI) Ask(c context.Context, p attendedPrompt) (string, erro
 
 func TestAttendedDialogArgumentsAndProcessCancellation(t *testing.T) {
 	for _, kind := range []string{"view", "control", "active"} {
-		args, err := attendedDialogArgs(attendedPrompt{kind, "<b>fixture</b>"})
+		args, err := attendedDialogArgs(attendedPrompt{Kind: kind, Peer: "<b>fixture</b>"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -286,4 +286,23 @@ func TestAttendedX11RealLocalSurface(t *testing.T) {
 	}
 	next.Close()
 	stage("complete")
+}
+
+func TestAttendedPointerDialogCannotOfferBroaderApproval(t *testing.T) {
+	args, err := attendedDialogArgs(attendedPrompt{Kind: "control", Peer: "fixture", Scope: session.ControlScopePointer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(args, "\n")
+	for _, want := range []string{"--default-cancel", "--no-markup", "--title=Mnet: allow pointer only?", "Keyboard input and button holds/dragging are refused by this host.", "--ok-label=Allow pointer", "--cancel-label=View only"} {
+		if !strings.Contains(joined, want) {
+			t.Fatal("pointer approval wording lost", want, joined)
+		}
+	}
+	if strings.Contains(joined, "requests keyboard and pointer control") {
+		t.Fatal("narrow approval broadened")
+	}
+	if _, err := attendedDialogArgs(attendedPrompt{Kind: "control", Scope: "unknown"}); err == nil {
+		t.Fatal("unknown permission got approval dialog")
+	}
 }

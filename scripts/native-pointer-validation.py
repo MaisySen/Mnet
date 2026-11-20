@@ -48,7 +48,7 @@ try:
  time.sleep(.1)
  if (out/'native-clicks').exists():raise AssertionError('view admission enabled native pointer')
  action(displays[1],'windowfocus',viewer,'key','F8')
- host=poll(lambda:window(displays[0],'^Mnet: allow control'),'first control');capture(displays[0],host,'control-approval');action(displays[0],'windowfocus',host,'key','Tab','Return')
+ host=poll(lambda:window(displays[0],'^Mnet: allow pointer only'),'first control');capture(displays[0],host,'control-approval');action(displays[0],'windowfocus',host,'key','Tab','Return')
  poll(lambda:'[pointer allowed]' in title(),'host grants pointer');capture(displays[1],viewer,'allowed')
  # Bottom-left lies outside host dialogs and inside the native target window.
  # Viewer is960x672, frame fit is800x600 with left gutter80 at this aspect.
@@ -57,17 +57,17 @@ try:
  action(displays[1],'key','a','click','4');time.sleep(.15)
  action(displays[1],'key','F9');poll(lambda:'[pointer declined]' in title(),'local release');capture(displays[1],viewer,'released');click();time.sleep(.1)
  # Fresh request, actual host decline, no native owner/input.
- action(displays[1],'key','F8');host=poll(lambda:window(displays[0],'^Mnet: allow control'),'decline control');action(displays[0],'windowfocus',host,'key','Return')
+ action(displays[1],'key','F8');host=poll(lambda:window(displays[0],'^Mnet: allow pointer only'),'decline control');action(displays[0],'windowfocus',host,'key','Return')
  poll(lambda:'[pointer declined]' in title(),'host decline');click();time.sleep(.1)
  # Fresh allow then actual host Revoke, preserving viewing.
- action(displays[1],'key','F8');host=poll(lambda:window(displays[0],'^Mnet: allow control'),'second allow');action(displays[0],'windowfocus',host,'key','Tab','Return')
+ action(displays[1],'key','F8');host=poll(lambda:window(displays[0],'^Mnet: allow pointer only'),'second allow');action(displays[0],'windowfocus',host,'key','Tab','Return')
  poll(lambda:'[pointer allowed]' in title(),'second grant');click();poll(lambda:(out/'native-clicks').read_text()=='2','second actual native click')
  focus_app=subprocess.Popen(['xmessage','-geometry','150x100+20+20','-buttons','OK:0','Local focus target, not remote input'],env=env|{'DISPLAY':displays[1]},stdout=subprocess.PIPE,stderr=subprocess.PIPE)
  focus_window=poll(lambda:window(displays[1],'^xmessage$'),'local focus window')
  action(displays[1],'windowfocus',focus_window)
  poll(lambda:'[pointer declined]' in title(),'focus loss releases pointer');capture(displays[1],viewer,'focus-released')
  focus_app.terminate();focus_app.wait();focus_app=None
- action(displays[1],'windowfocus',viewer,'key','F8');host=poll(lambda:window(displays[0],'^Mnet: allow control'),'third allow');action(displays[0],'windowfocus',host,'key','Tab','Return')
+ action(displays[1],'windowfocus',viewer,'key','F8');host=poll(lambda:window(displays[0],'^Mnet: allow pointer only'),'third allow');action(displays[0],'windowfocus',host,'key','Tab','Return')
  poll(lambda:'[pointer allowed]' in title(),'third grant')
  active=poll(lambda:window(displays[0],'^Mnet: desktop sharing'),'host active')
  # Extra-button hit geometry is checked by the existing attended fixture;
@@ -80,7 +80,7 @@ try:
  poll(lambda:'[pointer revoked]' in title(),'host revoke');capture(displays[1],viewer,'revoked');click();time.sleep(.1)
  action(displays[1],'key','Escape');assert test.wait(timeout=5)==0,(out/'test.log').read_text()
  print((out/'test.log').read_text(),flush=True)
- print('PASS built pointer viewer: separate host approval, two actual native clicks and scroll, local release/focus loss, host decline/revoke, no keyboard/held buttons, joined End',flush=True)
+ print('PASS built pointer viewer: host-enforced pointer-only approval, two actual native clicks and scroll, local release/focus loss, host decline/revoke, no keyboard/held buttons, joined End',flush=True)
 finally:
  if focus_app is not None:focus_app.terminate();focus_app.wait()
  if test is not None and test.poll() is None:test.kill();test.wait()

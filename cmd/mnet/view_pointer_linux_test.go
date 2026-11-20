@@ -9,7 +9,7 @@ import (
 )
 
 func pointerFixture() *xDesktopView {
-	return &xDesktopView{pointer: true, width: 1000, height: 872, image: image.NewRGBA(image.Rect(0, 0, 2000, 1000)), pointerGrant: session.ControlStatus{State: "allowed", Session: "one", Request: "two", Revision: 3}}
+	return &xDesktopView{pointer: true, width: 1000, height: 872, image: image.NewRGBA(image.Rect(0, 0, 2000, 1000)), pointerGrant: session.ControlStatus{State: "allowed", Scope: session.ControlScopePointer, PointerV1: true, Session: "one", Request: "two", Revision: 3}}
 }
 func TestDesktopPointerMappingAndGrant(t *testing.T) {
 	v := pointerFixture()

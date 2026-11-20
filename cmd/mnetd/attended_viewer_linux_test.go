@@ -213,7 +213,11 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 	_, sessionDone := serveAttendedSession(ctx, host, fixturePeer, pointer, ui, capture, func() (session.Injector, error) {
 		injected.Add(1)
 		if pointer {
-			return testAttendedProcessInjector()
+			backend, err := testAttendedProcessInjector()
+			if err != nil {
+				return nil, err
+			}
+			return &observedPointerProcess{backend.(*attendedProcessInjector), t}, nil
 		}
 		return nil, errors.New("view-only must not create input")
 	}, attendedSafetyAuthorized(safety, current))
@@ -291,4 +295,24 @@ func (c *observedViewCapture) Close() error {
 		return closer.Close()
 	}
 	return nil
+}
+
+// Preserve every native-process interface while retaining the exact failing
+// operation in the fixture log. This adds no retries or changed outcomes.
+type observedPointerProcess struct {
+	*attendedProcessInjector
+	t *testing.T
+}
+
+func (p *observedPointerProcess) InjectAuthorized(ev session.InputEvent, live func() bool) error {
+	err := p.attendedProcessInjector.InjectAuthorized(ev, live)
+	if err != nil {
+		p.t.Logf("native pointer dispatch kind=%s action=%s failed: %v", ev.Kind, ev.Action, err)
+	}
+	return err
+}
+func (p *observedPointerProcess) Close() error {
+	err := p.attendedProcessInjector.Close()
+	p.t.Logf("native pointer owner Close: %v", err)
+	return err
 }

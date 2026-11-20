@@ -32,6 +32,13 @@ func attendedDialogArgs(p attendedPrompt) ([]string, error) {
 	case "view":
 		args = append(args, "--title=Mnet: allow viewing?", "--text="+p.Peer+" wants to view this desktop.\n\nAllow viewing only? Control needs another local approval.\nFiles and recording are unavailable.\n\nEngineering mesh session, not Multies sign-in.", "--ok-label=Allow viewing", "--cancel-label=Decline")
 	case "control":
+		if p.Scope == session.ControlScopePointer {
+			args = append(args, "--title=Mnet: allow pointer only?", "--text="+p.Peer+" requests pointer-only control.\n\nAllow pointer movement, atomic clicks and single wheel steps?\nKeyboard input and button holds/dragging are refused by this host.\nViewing alone grants no input. Pause/revoke/end remain available.", "--ok-label=Allow pointer", "--cancel-label=View only")
+			break
+		}
+		if p.Scope != "" {
+			return nil, errors.New("unsupported local control scope")
+		}
 		args = append(args, "--title=Mnet: allow control?", "--text="+p.Peer+" requests keyboard and pointer control.\n\nAllow only if you trust this peer.\nViewing alone does not grant control.\nUse the session window to pause, revoke or end.", "--ok-label=Allow control", "--cancel-label=View only")
 	case "active":
 		args = []string{"--info", "--no-markup", "--width=480"}

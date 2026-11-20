@@ -795,3 +795,104 @@ func TestAttendedPendingViewRetiresOnPeerOrAuthorityLoss(t *testing.T) {
 		})
 	}
 }
+
+func TestAttendedPointerRequestCarriesScopeToLocalAnswer(t *testing.T) {
+	v, vc, ui, inj, _, _ := newAttendedFixture(t, true)
+	_ = takePrompt(t, ui, "active")
+	waitAttended(t, vc, "available")
+	if err := vc.RequestPointer(); err != nil {
+		t.Fatal(err)
+	}
+	prompt := takePrompt(t, ui, "control")
+	if prompt.prompt.Scope != session.ControlScopePointer {
+		t.Fatal("local approval broadened", prompt.prompt)
+	}
+	prompt.answer <- "allow"
+	grant := waitAttended(t, vc, "allowed")
+	if grant.Scope != session.ControlScopePointer {
+		t.Fatal("local grant broadened", grant)
+	}
+	if v.SendInput(session.InputEvent{Kind: "key", Action: "down", Text: "a"}) == nil {
+		t.Fatal("key event accepted under narrow local approval")
+	}
+	if err := v.SendInput(session.InputEvent{Kind: "pointer", Action: "click", Button: "left"}); err != nil {
+		t.Fatal(err)
+	}
+	until := time.Now().Add(time.Second)
+	for inj.calls.Load() < 1 && time.Now().Before(until) {
+		time.Sleep(time.Millisecond)
+	}
+	if inj.calls.Load() != 1 {
+		t.Fatal("narrow local approval did not reach injector", inj.calls.Load())
+	}
+}
+
+type retiredAttendedFixture struct {
+	attendedFixtureInput
+	retire                func()
+	dispatchErr, closeErr error
+}
+
+func (i *retiredAttendedFixture) InjectAuthorized(_ session.InputEvent, _ func() bool) error {
+	i.retire()
+	return i.dispatchErr
+}
+func (i *retiredAttendedFixture) Close() error { i.closes.Add(1); return i.closeErr }
+func TestAttendedRetiredDispatchPreservesViewOnlyAfterJoinedCleanup(t *testing.T) {
+	for _, tc := range []struct {
+		name                  string
+		dispatchErr, closeErr error
+		fatal                 bool
+	}{
+		{"expected-withdrawal", errAttendedInputRetired, nil, false},
+		{"unconfirmed-cleanup", errAttendedInputRetired, errors.New("cleanup failed"), true},
+		{"unrelated-dispatch-failure", errors.New("device failure"), nil, true},
+		{"unexpected-retirement-while-live", errAttendedInputRetired, nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client, server := attendedPair(t, true)
+			vc := session.NewViewerControl(nil)
+			session.ConnectViewerWithOptions(client, session.ViewerOptions{Control: vc})
+			gate := session.NewHostControlWithPointerScope(nil)
+			gate.Start(server)
+			waitAttended(t, vc, "available")
+			if err := vc.RequestPointer(); err != nil {
+				t.Fatal(err)
+			}
+			until := time.Now().Add(time.Second)
+			for gate.Snapshot().State != "pending" && time.Now().Before(until) {
+				time.Sleep(time.Millisecond)
+			}
+			pending := gate.Snapshot()
+			if pending.State != "pending" {
+				t.Fatal("no pending request")
+			}
+			backend := &retiredAttendedFixture{retire: func() {
+				if tc.name != "unexpected-retirement-while-live" {
+					if err := gate.Revoke(pending.Session, pending.Request); err != nil {
+						t.Error(err)
+					}
+				}
+			}, dispatchErr: tc.dispatchErr, closeErr: tc.closeErr}
+			var failures atomic.Int32
+			input := &attendedInput{gate: gate, live: func() bool { return true }, create: func() (session.Injector, error) { return backend, nil }, fail: func() { failures.Add(1) }}
+			if err := input.decide(pending, true); err != nil {
+				t.Fatal(err)
+			}
+			err := input.Inject(session.InputEvent{Kind: "pointer", Action: "scroll", DY: -1, ControlSession: pending.Session, ControlRequest: pending.Request})
+			if err == nil {
+				t.Fatal("interrupted event falsely reported success")
+			}
+			if input.failed != tc.fatal || (failures.Load() > 0) != tc.fatal || backend.closes.Load() != 1 {
+				t.Fatal("retirement/cleanup classification", input.failed, failures.Load(), backend.closes.Load())
+			}
+			want := "revoked"
+			if tc.fatal {
+				want = "unavailable"
+			}
+			if gate.Snapshot().State != want {
+				t.Fatal("unexpected view/control retirement", gate.Snapshot())
+			}
+		})
+	}
+}
