@@ -1,5 +1,13 @@
 # Releases
 
+## 0877037 original hosted checkpoint accounted, frame-fuzz deadline failed
+
+Original08770379f6bdbdd19160c2a66adeb5bf26e8be51 session-validation passed, including the actual installed source-prefix/Gio/missing-down-stopped/token-mode journey, both running executables refusing removal, held guards blocking later exec, unrelated uninspectable-process survival and final unchanged removal. Complete home routing, both-size pointer-from-home, silent15second first-screen recovery, equal/mixed generated Desk input/cleanup and final device-window acceptance passed. This is the removal correction's own hosted evidence, not repair of original69cc.
+
+Overall CI failed: https://github.com/MaisySen/Mnet/actions/runs/44811947731 . The Go job's unchanged10second FuzzFrameDecoder stopped at10.04seconds after257204executions with `context deadline exceeded`. No input/crash counterexample was shown. STUN and later Go/browser checks were skipped. Cause is not established; no rerun, relaxed deadline, suppressed failure or parser correction is claimed. An independent local run on the same source/flags passed259957executions in10seconds, which does not repair the original failure or explain it. The target uses an in-memory bytes reader and no application context/network/files; review alone cannot attribute the reported deadline to a parser bug or toolchain defect.
+
+The other four original jobs passed: session, kernel, Windows and macOS. Actual macOS logs passed14checker fixtures normal/optimized and unsigned simulator app/extension linking, not launch/sign/device/entitlement acceptance. Original Pages passed all3jobs https://github.com/MaisySen/Mnet/actions/runs/44811946493 . All3intended served docs were fetched and exactly matched0877037 before newer publication. No automatic native workflow appeared. Earlier failures and held daemon/release/Multies boundaries remain separate. The consumer identity/workspace bridge, saved usable pairing and physical mixed-platform acceptance remain open.
+
 ## 69cc original hosted checkpoint accounted, installed removal refused
 
 Original69cc5605a454af23d9d645b06183556c336ee224 CI failed only session-validation: https://github.com/MaisySen/Mnet/actions/runs/44801276238 . Its final installed-prefix removal encountered a same-user process whose executable could not be inspected and refused before deleting anything. The exact hosted process/cause is unknown. Diagnostics: https://github.com/MaisySen/Mnet/actions/runs/44801276238/artifacts/14661578012 . The final device-window step was skipped. No rerun or relaxed safety check counts as repair of that original attempt.
