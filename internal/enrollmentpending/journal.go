@@ -32,6 +32,7 @@ type record struct {
 	Version      int                      `json:"version"`
 	Phase        string                   `json:"phase"`
 	Launch       contract.SourceLaunch    `json:"launch"`
+	SourceOrigin string                   `json:"source_origin"`
 	Authority    string                   `json:"authority"`
 	Allowed      []contract.SourceMapping `json:"allowed"`
 	Credential   string                   `json:"credential"`
@@ -179,7 +180,7 @@ func (j *Journal) Status() (string, error) {
 // launch DATA. Caller must independently own the listener and existing durable
 // WireGuard key. Passing a key/callback here proves neither fact. No defaults
 // for duration, authority or allowed mappings are supplied.
-func (j *Journal) Begin(publicKey, platform, callback, authority string, allowed []contract.SourceMapping, now, expires time.Time) (contract.SourceLaunch, error) {
+func (j *Journal) Begin(publicKey, platform, callback, sourceOrigin, authority string, allowed []contract.SourceMapping, now, expires time.Time) (contract.SourceLaunch, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if err := j.health(); err != nil {
@@ -188,7 +189,7 @@ func (j *Journal) Begin(publicKey, platform, callback, authority string, allowed
 	if j.data != nil {
 		return contract.SourceLaunch{}, ErrPending
 	}
-	r := record{Version: 1, Phase: "prepared", Authority: authority, Allowed: append([]contract.SourceMapping(nil), allowed...), CreatedMS: now.UnixMilli(), ExpiresMS: expires.UnixMilli()}
+	r := record{Version: 1, Phase: "prepared", SourceOrigin: sourceOrigin, Authority: authority, Allowed: append([]contract.SourceMapping(nil), allowed...), CreatedMS: now.UnixMilli(), ExpiresMS: expires.UnixMilli()}
 	var err error
 	for _, field := range []*string{&r.Credential, &r.Verifier, &r.Launch.AttemptID, &r.Launch.State} {
 		*field, err = opaque()
@@ -293,7 +294,7 @@ func token(s string) bool {
 	return false
 }
 func validRecord(r record) bool {
-	if r.Version != 1 || r.CreatedMS <= 0 || r.ExpiresMS <= r.CreatedMS || !enrollmentidentity.ValidOrigin(r.Authority) || len(r.Allowed) == 0 || len(r.Allowed) > 20 || !token(r.Credential) || !token(r.Verifier) || r.Launch.CredentialDigest != hash(r.Credential) || r.Launch.Challenge != hash(r.Verifier) {
+	if r.Version != 1 || r.CreatedMS <= 0 || r.ExpiresMS <= r.CreatedMS || !enrollmentidentity.ValidOrigin(r.SourceOrigin) || !enrollmentidentity.ValidOrigin(r.Authority) || len(r.Allowed) == 0 || len(r.Allowed) > 20 || !token(r.Credential) || !token(r.Verifier) || r.Launch.CredentialDigest != hash(r.Credential) || r.Launch.Challenge != hash(r.Verifier) {
 		return false
 	}
 	// Reuse DATA-only descriptor grammar for launch/mappings, not a fabricated

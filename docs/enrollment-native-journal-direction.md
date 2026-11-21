@@ -122,3 +122,8 @@ from historical/uncertain states. No fixture-created journal object can produce 
 trusted native or Store permit. Affected daemon library/mobile/process owner paths
 must join the final design before integration; their existing behavior remains
 untouched in this extraction.
+
+Follow-up correction: original sourceOrigin is now a separate required exact HTTPS
+field in the unshipped journal and Begin input, not inferred from principalAuthority.
+See enrollment-native-source-transport-checkpoint.md for rationale and missing-field
+refusal. Tests pin distinct source and principal-authority origins.

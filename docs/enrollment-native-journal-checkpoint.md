@@ -95,3 +95,8 @@ source-authenticated result inaccessible to public DATA constructors; one-shot
 response-loss product recovery; clock/staleness/lease policy; bootstrap/possession/
 confirmation/admission and actual atomic control Store consumption. No live source,
 account, daemon, release or desktop action was taken by this checkpoint.
+
+Follow-up correction: original sourceOrigin is now a separate required exact HTTPS
+field in the unshipped journal and Begin input, not inferred from principalAuthority.
+See enrollment-native-source-transport-checkpoint.md for rationale and missing-field
+refusal. Tests pin distinct source and principal-authority origins.

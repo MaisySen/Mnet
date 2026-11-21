@@ -30,7 +30,7 @@ func prepared(t *testing.T) (*Journal, contract.SourceLaunch, time.Time, string)
 	now := time.Unix(1800000000, 0)
 	key := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))
 	mapping := contract.SourceMapping{WorkspaceID: "org_test", Issuer: "https://issuer.test/path", RegistrarOrigin: "https://registrar.test", Audience: "fixture", MappingRevision: "r1", NetworkID: "net_test"}
-	launch, err := j.Begin(key, "linux", "http://127.0.0.1:34567/mnet/enrollment/callback", "https://multies.test", []contract.SourceMapping{mapping}, now, now.Add(2*time.Minute))
+	launch, err := j.Begin(key, "linux", "http://127.0.0.1:34567/mnet/enrollment/callback", "https://source.test", "https://multies.test", []contract.SourceMapping{mapping}, now, now.Add(2*time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestSavedOwnMaterialAndExplicitRemoteAmbiguitySurviveReopen(t *testing.T) {
 	if phase, err := j.Status(); err != nil || phase != "callback-recorded" {
 		t.Fatal("restart lost recorded callback", err)
 	}
-	if _, err := j.Begin(launch.DevicePublicKey, launch.Platform, launch.RedirectURI, j.data.Authority, j.data.Allowed, now, now.Add(time.Minute)); !errors.Is(err, ErrPending) {
+	if _, err := j.Begin(launch.DevicePublicKey, launch.Platform, launch.RedirectURI, j.data.SourceOrigin, j.data.Authority, j.data.Allowed, now, now.Add(time.Minute)); !errors.Is(err, ErrPending) {
 		t.Fatal("silently replaced intent", err)
 	}
 	if err := j.RecordCallback(launch.AttemptID, launch.State, code(), now); err == nil {
@@ -363,7 +363,7 @@ func TestBeginPublicationFailureDoesNotReturnLaunchOrRegenerateExisting(t *testi
 	j.fs.rename = func(string, string) error { return injected }
 	now := time.Unix(1800000000, 0)
 	mapping := contract.SourceMapping{WorkspaceID: "org", Issuer: "https://issuer.test", RegistrarOrigin: "https://registrar.test", Audience: "fixture", MappingRevision: "r1", NetworkID: "net"}
-	launch, err := j.Begin(code(), "linux", "http://127.0.0.1:34567/mnet/enrollment/callback", "https://multies.test", []contract.SourceMapping{mapping}, now, now.Add(time.Minute))
+	launch, err := j.Begin(code(), "linux", "http://127.0.0.1:34567/mnet/enrollment/callback", "https://source.test", "https://multies.test", []contract.SourceMapping{mapping}, now, now.Add(time.Minute))
 	if err == nil || launch != (contract.SourceLaunch{}) || j.data != nil {
 		t.Fatal("failed Begin returned unpublished launch")
 	}
@@ -371,7 +371,7 @@ func TestBeginPublicationFailureDoesNotReturnLaunchOrRegenerateExisting(t *testi
 		t.Fatal("prepublish failed Begin left state")
 	}
 	j.fs = original
-	if _, err := j.Begin(code(), "linux", "http://127.0.0.1:34567/mnet/enrollment/callback", "https://multies.test", []contract.SourceMapping{mapping}, now, now.Add(time.Minute)); err != nil {
+	if _, err := j.Begin(code(), "linux", "http://127.0.0.1:34567/mnet/enrollment/callback", "https://source.test", "https://multies.test", []contract.SourceMapping{mapping}, now, now.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -465,7 +465,7 @@ func TestJournalSubprocessDeathReleasesOwner(t *testing.T) {
 }
 func FuzzSavedIntentStrictDecoder(f *testing.F) {
 	public := code()
-	r := record{Version: 1, Phase: "prepared", Authority: "https://multies.test", Allowed: []contract.SourceMapping{{WorkspaceID: "org", Issuer: "https://issuer.test", RegistrarOrigin: "https://registrar.test", Audience: "fixture", MappingRevision: "r1", NetworkID: "net"}}, Credential: public, Verifier: public, CreatedMS: 1800000000000, ExpiresMS: 1800000060000}
+	r := record{Version: 1, Phase: "prepared", SourceOrigin: "https://source.test", Authority: "https://multies.test", Allowed: []contract.SourceMapping{{WorkspaceID: "org", Issuer: "https://issuer.test", RegistrarOrigin: "https://registrar.test", Audience: "fixture", MappingRevision: "r1", NetworkID: "net"}}, Credential: public, Verifier: public, CreatedMS: 1800000000000, ExpiresMS: 1800000060000}
 	r.Launch = contract.SourceLaunch{Version: 1, Purpose: "mnet-enrollment", AttemptID: public, DevicePublicKey: public, CredentialDigest: hash(public), Challenge: hash(public), State: public, RedirectURI: "http://127.0.0.1:34567/mnet/enrollment/callback", Platform: "linux"}
 	if !validRecord(r) {
 		f.Fatal("public fuzz seed invalid")
@@ -484,4 +484,33 @@ func FuzzSavedIntentStrictDecoder(f *testing.F) {
 			validRecord(r)
 		}
 	})
+}
+
+func TestConcurrentCloseAndCallbackLeavesWholeReopenableImage(t *testing.T) {
+	j, l, now, dir := prepared(t)
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if i%3 == 0 {
+				j.Close()
+			} else {
+				j.RecordCallback(l.AttemptID, l.State, code(), now)
+			}
+		}(i)
+	}
+	wg.Wait()
+	if _, err := j.Status(); !errors.Is(err, ErrClosed) {
+		t.Fatal("Close raced into usable object", err)
+	}
+	reopened, err := Open(dir)
+	if err != nil {
+		t.Fatal("Close race left partial file", err)
+	}
+	defer reopened.Close()
+	phase, err := reopened.Status()
+	if err != nil || (phase != "callback-recorded" && phase != "prepared-listener-not-owned") {
+		t.Fatal("Close race returned invalid phase", err)
+	}
 }
