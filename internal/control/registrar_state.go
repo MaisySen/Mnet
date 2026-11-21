@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	contract "fintex.au/mnet/internal/enrollmentcontract"
 	"fintex.au/mnet/internal/enrollmentidentity"
 )
 
@@ -59,6 +60,10 @@ type registrarRecord struct {
 // represented as uint64 BE positive Unix milliseconds. Phase is mutable history
 // and deliberately not in the immutable receipt. No raw credential is included.
 func registrarReceiptBytes(r registrarRecord) []byte {
+	if r.ReceiptEncodingVersion == 2 && r.Consumption != nil {
+		return contract.ReceiptV2Bytes(contract.ReceiptV2{Issuer: r.Scope.Issuer, RegistrarOrigin: r.Scope.RegistrarOrigin, Audience: r.Scope.Audience, ServiceID: r.Scope.ServiceID, WorkspaceID: r.Scope.WorkspaceID, MappingRevision: r.Scope.MappingRevision, HandoffID: r.Scope.HandoffID, AttemptID: r.Scope.AttemptID, ReserveID: r.Scope.ReserveID, DescriptorDigest: r.DescriptorDigest, DescriptorEncodingVersion: r.DescriptorEncodingVersion, ReceiptID: r.ReceiptID, NodeID: r.NodeID, NetworkID: r.NetworkID, DevicePublicKey: r.DevicePublicKey, CredentialDigest: r.CredentialDigest, CommittedAtMS: r.CommittedAtMS, AccessExpiresAtMS: r.AccessExpiresAtMS, ChallengeID: r.Consumption.Challenge.ID, TranscriptDigest: r.Consumption.TranscriptDigest})
+	}
+
 	domain := "mnet/store-enrollment-receipt/v1"
 	if r.ReceiptEncodingVersion == 2 {
 		domain = "mnet/store-enrollment-receipt/v2"
