@@ -21,7 +21,7 @@ type routeSocket struct {
 }
 
 func (n *namespaceCustody) checkCurrent() error {
-	if n == nil || n.fd < 0 {
+	if n == nil || n.fd < 0 || n.threadID != unix.Gettid() {
 		return ErrConflict
 	}
 	var target unix.Stat_t
@@ -83,7 +83,7 @@ func (s *routeSocket) Exchange(ctx context.Context, request []byte) (out []Datag
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	defer func() {
-		if err != nil && !s.closed {
+		if !s.closed {
 			s.closed = true
 			_ = unix.Close(s.fd)
 		}
@@ -160,4 +160,41 @@ func (s *routeSocket) Exchange(ctx context.Context, request []byte) (out []Datag
 			b = b[size:]
 		}
 	}
+}
+
+// Each live request has a fresh socket AND matching fresh port identity. A
+// closed per-exchange socket is never reused by ReadStableInventory retries.
+// Resident caller must be inside withResidentNamespace's locked-thread scope.
+type residentNetlink struct{ ns *namespaceCustody }
+
+func (r residentNetlink) Request(ctx context.Context, kind uint16, payload []byte, dump bool) ([][]byte, error) {
+	if !kernelExecutionReleased {
+		return nil, ErrExecutorUnreleased
+	}
+	s, e := openRouteSocket(r.ns)
+	if e != nil {
+		return nil, e
+	}
+	defer s.Close()
+	return NewInMemoryNetlinkClient(s, s.pid).Request(ctx, kind, payload, dump)
+}
+func (r residentNetlink) applyExact(ctx context.Context, m ExactMutation) error {
+	if !kernelExecutionReleased {
+		return ErrExecutorUnreleased
+	}
+	if r.ns == nil {
+		return ErrConflict
+	}
+	if e := r.ns.checkCurrent(); e != nil {
+		return e
+	}
+	if !sameNamespace(r.ns.identity, m.identity.Namespace) {
+		return ErrConflict
+	}
+	s, e := openRouteSocket(r.ns)
+	if e != nil {
+		return e
+	}
+	defer s.Close()
+	return NewInMemoryNetlinkClient(s, s.pid).ApplyExact(ctx, m)
 }

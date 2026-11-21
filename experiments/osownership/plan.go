@@ -34,6 +34,7 @@ type Binding struct {
 type Link struct {
 	Index             int
 	Name, Alias, Kind string
+	MTU               uint32
 }
 type Route struct {
 	Destination      netip.Prefix
@@ -51,14 +52,16 @@ type Address struct {
 	KernelOrigin bool
 }
 type Inventory struct {
-	Namespace     Namespace
-	Links         []Link
-	Routes        []Route
-	Addresses     []Address
-	LinkUp        map[int]bool
-	IPv6Disabled  map[int]bool
-	ForeignPolicy bool
-	Forwarding    bool
+	Namespace           Namespace
+	Links               []Link
+	Routes              []Route
+	Addresses           []Address
+	LinkUp              map[int]bool
+	IPv6Disabled        map[int]bool
+	ForeignPolicy       bool
+	Forwarding          bool
+	baselineLinks       []Link
+	baselineFingerprint string
 }
 type Operation struct {
 	Kind        string
@@ -124,7 +127,7 @@ func Prepare(b Binding, i Inventory, now time.Time) (Plan, error) {
 		return p, ErrConflict
 	}
 	for _, l := range i.Links {
-		if l.Name != "lo" || l.Kind != "loopback" {
+		if !baselineLink(i, l) {
 			return p, ErrConflict
 		}
 	}
@@ -144,7 +147,7 @@ func Prepare(b Binding, i Inventory, now time.Time) (Plan, error) {
 	if b.PeerExpiry.Before(p.EffectiveExpiry) {
 		p.EffectiveExpiry = b.PeerExpiry
 	}
-	p.Operations = []Operation{{Kind: "create-nonpersistent-tun", Name: b.Name, Alias: b.Alias, MTU: MTU}, {Kind: "disable-owned-link-ipv6"}, {Kind: "address-add-exclusive", Address: netip.PrefixFrom(netip.MustParseAddr(b.OwnIP), 32)}, {Kind: "link-up-exact"}, {Kind: "route-add-exclusive", Route: Route{Destination: netip.PrefixFrom(netip.MustParseAddr(b.PeerIP), 32), Protocol: Protocol, Table: 254, Scope: "link", Type: "unicast", Metric: 42700, Priority: 42700}}}
+	p.Operations = []Operation{{Kind: "create-nonpersistent-tun", Name: b.Name, Alias: b.Alias, MTU: MTU}, {Kind: "set-alias-mtu-exact", Name: b.Name, Alias: b.Alias, MTU: MTU}, {Kind: "disable-owned-link-ipv6"}, {Kind: "address-add-exclusive", Address: netip.PrefixFrom(netip.MustParseAddr(b.OwnIP), 32)}, {Kind: "link-up-exact"}, {Kind: "route-add-exclusive", Route: Route{Destination: netip.PrefixFrom(netip.MustParseAddr(b.PeerIP), 32), Protocol: Protocol, Table: 254, Scope: "link", Type: "unicast", Metric: 42700, Priority: 42700}}}
 	return p, nil
 }
 
@@ -155,16 +158,20 @@ type Handle struct {
 	Link      Link
 	Address   Address
 	Route     Route
+	// CreationLink is observed using exclusive original FD custody before tagging.
+	CreationLink Link
+	TagConfirmed bool
 }
 
 func Attach(p Plan, index int) (Handle, error) {
-	if len(p.Operations) != 5 || p.Operations[0].Kind != "create-nonpersistent-tun" || p.Operations[4].Kind != "route-add-exclusive" {
+	if len(p.Operations) != 6 || p.Operations[0].Kind != "create-nonpersistent-tun" || p.Operations[5].Kind != "route-add-exclusive" {
 		return Handle{}, errors.New("invalid inert plan")
 	}
 	if index <= 0 {
 		return Handle{}, errors.New("actual kernel ifindex required")
 	}
-	h := Handle{Namespace: p.Binding.Namespace, Link: Link{Index: index, Name: p.Binding.Name, Alias: p.Binding.Alias, Kind: "tun"}, Address: Address{Prefix: p.Operations[2].Address, LinkIndex: index}, Route: p.Operations[4].Route}
+	h := Handle{Namespace: p.Binding.Namespace, Link: Link{Index: index, Name: p.Binding.Name, Alias: p.Binding.Alias, Kind: "tun", MTU: MTU}, Address: Address{Prefix: p.Operations[3].Address, LinkIndex: index}, Route: p.Operations[5].Route}
+	h.TagConfirmed = true
 	h.Route.LinkIndex = index
 	return h, nil
 }
@@ -180,7 +187,7 @@ func Rollback(h Handle, i Inventory) ([]Operation, error) {
 	for n := range i.Links {
 		l := &i.Links[n]
 		if l.Index == h.Link.Index || l.Name == h.Link.Name || l.Alias == h.Link.Alias {
-			if *l != h.Link {
+			if !handleLinkMatches(h, *l) {
 				return nil, ErrConflict
 			}
 			if link != nil {
@@ -238,6 +245,35 @@ func kernelDerivedRoute(h Handle, r Route) bool {
 			return r.Table == 255 && r.Type == "multicast" && r.Scope == "link"
 		}
 		return r.Destination.Bits() == 64 && netip.MustParsePrefix("fe80::/10").Contains(r.Destination.Addr()) && r.Table == 254 && r.Type == "unicast" && r.Scope == "link"
+	}
+	return false
+}
+
+// AttachCreated binds the observed unconfigured link ONLY under original
+// exclusive FD custody. Name/index alone can never authorize this transition.
+func AttachCreated(p Plan, index int, observedMTU uint32) (Handle, error) {
+	h, e := Attach(p, index)
+	if e != nil || observedMTU == 0 {
+		return Handle{}, ErrConflict
+	}
+	h.CreationLink = h.Link
+	h.CreationLink.Alias = ""
+	h.CreationLink.MTU = observedMTU
+	h.TagConfirmed = false
+	return h, nil
+}
+func handleLinkMatches(h Handle, l Link) bool {
+	return l == h.Link || (!h.TagConfirmed && h.CreationLink.Index > 0 && l == h.CreationLink)
+}
+
+func baselineLink(i Inventory, l Link) bool {
+	if i.baselineFingerprint == "" {
+		return l.Name == "lo" && l.Kind == "loopback"
+	}
+	for _, v := range i.baselineLinks {
+		if l == v {
+			return true
+		}
 	}
 	return false
 }

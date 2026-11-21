@@ -59,7 +59,7 @@ func faultRig(t *testing.T) (*Transaction, *faultKernel) {
 	return tx, f
 }
 func TestSnapshotFailureRetainsCustodyAtCreateApplyAndStop(t *testing.T) {
-	for _, at := range []int{2, 3, 4, 5, 6} {
+	for _, at := range []int{2, 3, 4, 5, 6, 7} {
 		tx, k := faultRig(t)
 		k.failSnap = at
 		if e := tx.Start(context.Background()); e == nil || !tx.PendingCleanup || tx.handle == nil {
@@ -95,7 +95,7 @@ func TestAmbiguousCreateNeverAdoptsOrClaimsAbsence(t *testing.T) {
 	}
 }
 func TestMissingEffectAtEachStepAndCancellation(t *testing.T) {
-	for _, step := range []string{"disable-owned-link-ipv6", "address-add-exclusive", "link-up-exact", "route-add-exclusive"} {
+	for _, step := range []string{"set-alias-mtu-exact", "disable-owned-link-ipv6", "address-add-exclusive", "link-up-exact", "route-add-exclusive"} {
 		t.Run(step, func(t *testing.T) {
 			tx, k := faultRig(t)
 			k.missingStep = step

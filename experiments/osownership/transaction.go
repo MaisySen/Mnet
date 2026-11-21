@@ -17,7 +17,8 @@ import (
 type Kernel interface {
 	Snapshot(context.Context) (Inventory, error)
 	// Create must return a custody handle for its exclusive nonpersistent FD even
-	// on an error after creation. If it cannot prove custody, return no handle.
+	// on an error after creation. If no handle can be returned, Create MUST close
+	// its original FD itself before returning. Uncertain kernel state stays pending.
 	Create(context.Context, Plan) (Handle, error)
 	Apply(context.Context, Handle, Operation) error
 	CloseOriginalFD(Handle) error
@@ -158,6 +159,10 @@ func (t *Transaction) Start(ctx context.Context) error {
 		if !verified {
 			return errors.New("ACK without exact operation readback")
 		}
+		if op.Kind == "set-alias-mtu-exact" {
+			h.TagConfirmed = true
+			t.handle = &h
+		}
 		if e = t.live(ctx); e != nil {
 			return e
 		}
@@ -167,7 +172,7 @@ func (t *Transaction) Start(ctx context.Context) error {
 }
 func exactHandle(h Handle, p Plan, i Inventory) error {
 	expected, e := Attach(p, h.Link.Index)
-	if e != nil || h != expected {
+	if e != nil || h.Link != expected.Link || h.Namespace != expected.Namespace || h.Address != expected.Address || h.Route != expected.Route {
 		return ErrConflict
 	}
 	if !sameNamespace(h.Namespace, i.Namespace) {
@@ -196,11 +201,11 @@ func exactHandle(h Handle, p Plan, i Inventory) error {
 	}
 	matches := 0
 	for _, l := range i.Links {
-		if l.Index != h.Link.Index && l.Name != "lo" {
+		if l.Index != h.Link.Index && !baselineLink(i, l) {
 			return ErrConflict
 		}
 		if l.Index == h.Link.Index || l.Name == h.Link.Name || l.Alias == h.Link.Alias {
-			if l != h.Link {
+			if !handleLinkMatches(h, l) {
 				return ErrConflict
 			}
 			matches++
@@ -213,6 +218,12 @@ func exactHandle(h Handle, p Plan, i Inventory) error {
 }
 func stepPresent(op Operation, h Handle, i Inventory) bool {
 	switch op.Kind {
+	case "set-alias-mtu-exact":
+		for _, l := range i.Links {
+			if l == h.Link {
+				return true
+			}
+		}
 	case "disable-owned-link-ipv6":
 		return i.IPv6Disabled[h.Link.Index]
 	case "address-add-exclusive":
@@ -350,6 +361,7 @@ func (t *Transaction) closeFDOnce(h Handle) error {
 	return t.k.CloseOriginalFD(h)
 }
 func cloneInventory(i Inventory) Inventory {
+	i.baselineLinks = append([]Link(nil), i.baselineLinks...)
 	i.IPv6Disabled = maps.Clone(i.IPv6Disabled)
 	i.LinkUp = maps.Clone(i.LinkUp)
 	i.Links = append([]Link(nil), i.Links...)
@@ -382,7 +394,7 @@ func verifyAbsence(h Handle, i Inventory, baseline *Inventory) error {
 	return nil
 }
 func equalInventoryBaseline(a, b Inventory) bool {
-	if a.Namespace != b.Namespace || a.ForeignPolicy != b.ForeignPolicy || a.Forwarding != b.Forwarding || len(a.Links) != len(b.Links) || len(a.Routes) != len(b.Routes) || len(a.Addresses) != len(b.Addresses) {
+	if a.baselineFingerprint != b.baselineFingerprint || !sameMultiset(a.baselineLinks, b.baselineLinks) || a.Namespace != b.Namespace || a.ForeignPolicy != b.ForeignPolicy || a.Forwarding != b.Forwarding || len(a.Links) != len(b.Links) || len(a.Routes) != len(b.Routes) || len(a.Addresses) != len(b.Addresses) {
 		return false
 	}
 	return maps.Equal(a.IPv6Disabled, b.IPv6Disabled) && maps.Equal(a.LinkUp, b.LinkUp) && sameMultiset(a.Links, b.Links) && sameMultiset(a.Routes, b.Routes) && sameMultiset(a.Addresses, b.Addresses)

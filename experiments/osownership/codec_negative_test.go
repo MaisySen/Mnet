@@ -67,7 +67,7 @@ func TestEachACKEmbeddedFieldAndTerminalCorruption(t *testing.T) {
 				}
 				return []Datagram{{Bytes: b}}, nil
 			})
-			if _, e := NewInMemoryNetlinkClient(w, 55).Request(context.Background(), 16, nil, false); e == nil {
+			if _, e := NewInMemoryNetlinkClient(w, 55).requestFixture(context.Background(), 16, nil, false); e == nil {
 				t.Fatal("single corrupted ACK field accepted")
 			}
 		})
@@ -105,7 +105,7 @@ func TestEachDumpCompletionAndMultipartCorruption(t *testing.T) {
 				}
 				return []Datagram{{Bytes: b}, {Bytes: d}}, nil
 			})
-			_, e := NewInMemoryNetlinkClient(w, 55).Request(context.Background(), 18, nil, true)
+			_, e := NewInMemoryNetlinkClient(w, 55).requestFixture(context.Background(), 18, nil, true)
 			if e == nil {
 				t.Fatal("dump corruption accepted")
 			}
@@ -118,7 +118,7 @@ func TestEachDumpCompletionAndMultipartCorruption(t *testing.T) {
 func TestTypedErrnosAndValidMultiDatagram(t *testing.T) {
 	for _, errno := range []syscall.Errno{syscall.EEXIST, syscall.EPERM, syscall.EBUSY, syscall.ENODEV} {
 		w := wireFunc(func(r []byte) ([]Datagram, error) { return []Datagram{{Bytes: ackFrame(r, -int32(errno))}}, nil })
-		if _, e := NewInMemoryNetlinkClient(w, 1).Request(context.Background(), 16, nil, false); !errors.Is(e, errno) {
+		if _, e := NewInMemoryNetlinkClient(w, 1).requestFixture(context.Background(), 16, nil, false); !errors.Is(e, errno) {
 			t.Fatal("typed errno lost", e)
 		}
 	}
@@ -126,7 +126,7 @@ func TestTypedErrnosAndValidMultiDatagram(t *testing.T) {
 		b, d := dumpFrames(r)
 		return []Datagram{{Bytes: b}, {Bytes: b}, {Bytes: d}}, nil
 	})
-	ms, e := NewInMemoryNetlinkClient(w, 1).Request(context.Background(), 18, nil, true)
+	ms, e := NewInMemoryNetlinkClient(w, 1).requestFixture(context.Background(), 18, nil, true)
 	if e != nil || len(ms) != 2 {
 		t.Fatal("valid multidatagram refused", e)
 	}
@@ -145,10 +145,10 @@ func TestDumpHeaderConstructionAndRefusal(t *testing.T) {
 			return []Datagram{{Bytes: d}}, nil
 		})
 		c := NewInMemoryNetlinkClient(w, 1)
-		if _, e = c.Request(context.Background(), kind, nil, true); e != nil {
+		if _, e = c.requestFixture(context.Background(), kind, nil, true); e != nil {
 			t.Fatal(e)
 		}
-		if _, e = c.Request(context.Background(), kind, []byte{2}, true); e == nil {
+		if _, e = c.requestFixture(context.Background(), kind, []byte{2}, true); e == nil {
 			t.Fatal("malformed header accepted")
 		}
 	}

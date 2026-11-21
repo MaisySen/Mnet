@@ -30,7 +30,7 @@ func (w *fakeWire) Exchange(_ context.Context, b []byte) ([]Datagram, error) {
 func TestNetlinkExclusiveACKAndNegativeFrames(t *testing.T) {
 	w := &fakeWire{}
 	c := NewInMemoryNetlinkClient(w, 123)
-	if _, e := c.Request(context.Background(), 16, nil, false); e != nil {
+	if _, e := c.requestFixture(context.Background(), 16, nil, false); e != nil {
 		t.Fatal(e)
 	}
 	if binary.NativeEndian.Uint16(w.request[6:]) != 1|4|0x200|0x400 {
@@ -60,7 +60,7 @@ func TestNetlinkExclusiveACKAndNegativeFrames(t *testing.T) {
 				}
 				return d
 			}}
-			if _, e := NewInMemoryNetlinkClient(w, 123).Request(context.Background(), 16, nil, false); e == nil {
+			if _, e := NewInMemoryNetlinkClient(w, 123).requestFixture(context.Background(), 16, nil, false); e == nil {
 				t.Fatal("accepted invalid ACK")
 			}
 		})
@@ -68,7 +68,7 @@ func TestNetlinkExclusiveACKAndNegativeFrames(t *testing.T) {
 }
 func TestNetlinkTransportTimeoutNotSuccess(t *testing.T) {
 	c := NewInMemoryNetlinkClient(timeoutWire{}, 1)
-	if _, e := c.Request(context.Background(), 16, nil, false); e == nil {
+	if _, e := c.requestFixture(context.Background(), 16, nil, false); e == nil {
 		t.Fatal("timeout treated as ACK")
 	}
 }
@@ -103,7 +103,7 @@ func (w dumpWire) Exchange(_ context.Context, r []byte) ([]Datagram, error) {
 func TestNetlinkMultipartDumpRequiresUninterruptedCompletion(t *testing.T) {
 	for _, w := range []dumpWire{{}, {missing: true}, {interrupted: true}} {
 		c := NewInMemoryNetlinkClient(w, 123)
-		ms, e := c.Request(context.Background(), 18, nil, true)
+		ms, e := c.requestFixture(context.Background(), 18, nil, true)
 		if !w.missing && !w.interrupted {
 			if e != nil || len(ms) != 1 || ms[0][0] != 42 {
 				t.Fatal(ms, e)
@@ -112,7 +112,7 @@ func TestNetlinkMultipartDumpRequiresUninterruptedCompletion(t *testing.T) {
 			t.Fatal("incomplete/interrupted dump accepted")
 		}
 	}
-	if _, e := NewInMemoryNetlinkClient(&fakeWire{}, 1).Request(context.Background(), 17, nil, false); e == nil {
+	if _, e := NewInMemoryNetlinkClient(&fakeWire{}, 1).requestFixture(context.Background(), 17, nil, false); e == nil {
 		t.Fatal("live delete kind incorrectly allowed by create codec")
 	}
 }

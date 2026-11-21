@@ -38,7 +38,7 @@ type NetlinkClient struct {
 func NewInMemoryNetlinkClient(w NetlinkWire, localPID uint32) *NetlinkClient {
 	return &NetlinkClient{wire: w, localPID: localPID}
 }
-func (c *NetlinkClient) Request(ctx context.Context, kind uint16, payload []byte, dump bool) ([][]byte, error) {
+func (c *NetlinkClient) requestFixture(ctx context.Context, kind uint16, payload []byte, dump bool) ([][]byte, error) {
 	flags := uint16(1 | 4 | 0x200 | 0x400)
 	if dump {
 		flags = 1 | 0x300
@@ -67,7 +67,7 @@ func (c *NetlinkClient) request(ctx context.Context, kind uint16, payload []byte
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	defer func() {
-		if err != nil {
+		{
 			if closer, ok := c.wire.(interface{ Close() error }); ok {
 				err = errors.Join(err, closer.Close())
 			}
@@ -171,12 +171,12 @@ func (c *NetlinkClient) request(ctx context.Context, kind uint16, payload []byte
 
 // Mutation flags are operation-specific. Delete is ACK-only, never CREATE or
 // REPLACE. Link update is ACK-only. Address/route additions are exclusive.
-func (c *NetlinkClient) Mutate(ctx context.Context, kind uint16, payload []byte) error {
+func (c *NetlinkClient) mutate(ctx context.Context, kind uint16, payload []byte) error {
 	flags := uint16(1 | 4)
 	switch kind {
 	case 20, 24:
 		flags |= 0x200 | 0x400
-	case 16, 17, 21, 25:
+	case 16, 21, 25:
 	default:
 		return errors.New("unsupported mutation kind")
 	}
@@ -195,4 +195,13 @@ func DumpRequestHeader(kind uint16) ([]byte, error) {
 		return make([]byte, 12), nil
 	}
 	return nil, errors.New("unsupported dump header")
+}
+
+// Request is exclusively a dump entry point. Mutations use opaque exact
+// constructors, never generic public byte+kind submission.
+func (c *NetlinkClient) Request(ctx context.Context, kind uint16, payload []byte, dump bool) ([][]byte, error) {
+	if !dump {
+		return nil, errors.New("raw mutation API refused")
+	}
+	return c.requestFixture(ctx, kind, payload, true)
 }

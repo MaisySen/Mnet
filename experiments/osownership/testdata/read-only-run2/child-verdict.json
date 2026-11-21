@@ -1,0 +1,161 @@
+{
+ "stage": "child",
+ "uid": 0,
+ "errors": [],
+ "child_ns": [
+  7,
+  4026532293
+ ],
+ "thread_ns_link": "net:[4026532293]",
+ "links": [
+  "bonding_masters",
+  "erspan0",
+  "eth0",
+  "gre0",
+  "gretap0",
+  "ip6_vti0",
+  "ip6gre0",
+  "ip6tnl0",
+  "ip_vti0",
+  "lo",
+  "sit0",
+  "teql0",
+  "tunl0"
+ ],
+ "uname": [
+  "Linux",
+  "modal",
+  "7.3.4",
+  "#32f524f9fff8 SMP PREEMPT Wed Nov 18 21:52:30 UTC 2026",
+  "x86_64"
+ ],
+ "sysctl": {
+  "/proc/sys/net/ipv4/conf/all/forwarding": "0",
+  "/proc/sys/net/ipv4/conf/default/forwarding": "0",
+  "/proc/sys/net/ipv4/conf/erspan0/forwarding": "0",
+  "/proc/sys/net/ipv4/conf/gre0/forwarding": "0",
+  "/proc/sys/net/ipv4/conf/gretap0/forwarding": "0",
+  "/proc/sys/net/ipv4/conf/ip6_vti0/forwarding": "0",
+  "/proc/sys/net/ipv4/conf/ip6gre0/forwarding": "0",
+  "/proc/sys/net/ipv4/conf/ip6tnl0/forwarding": "0",
+  "/proc/sys/net/ipv4/conf/ip_vti0/forwarding": "0",
+  "/proc/sys/net/ipv4/conf/lo/forwarding": "0",
+  "/proc/sys/net/ipv4/conf/sit0/forwarding": "0",
+  "/proc/sys/net/ipv4/conf/tunl0/forwarding": "0",
+  "/proc/sys/net/ipv4/ip_forward": "0",
+  "/proc/sys/net/ipv6/conf/all/addr_gen_mode": "0",
+  "/proc/sys/net/ipv6/conf/all/disable_ipv6": "0",
+  "/proc/sys/net/ipv6/conf/all/forwarding": "0",
+  "/proc/sys/net/ipv6/conf/default/addr_gen_mode": "0",
+  "/proc/sys/net/ipv6/conf/default/disable_ipv6": "0",
+  "/proc/sys/net/ipv6/conf/default/forwarding": "0",
+  "/proc/sys/net/ipv6/conf/erspan0/addr_gen_mode": "0",
+  "/proc/sys/net/ipv6/conf/erspan0/disable_ipv6": "0",
+  "/proc/sys/net/ipv6/conf/erspan0/forwarding": "0",
+  "/proc/sys/net/ipv6/conf/gretap0/addr_gen_mode": "0",
+  "/proc/sys/net/ipv6/conf/gretap0/disable_ipv6": "0",
+  "/proc/sys/net/ipv6/conf/gretap0/forwarding": "0",
+  "/proc/sys/net/ipv6/conf/ip6_vti0/addr_gen_mode": "0",
+  "/proc/sys/net/ipv6/conf/ip6_vti0/disable_ipv6": "0",
+  "/proc/sys/net/ipv6/conf/ip6_vti0/forwarding": "0",
+  "/proc/sys/net/ipv6/conf/ip6gre0/addr_gen_mode": "0",
+  "/proc/sys/net/ipv6/conf/ip6gre0/disable_ipv6": "0",
+  "/proc/sys/net/ipv6/conf/ip6gre0/forwarding": "0",
+  "/proc/sys/net/ipv6/conf/ip6tnl0/addr_gen_mode": "0",
+  "/proc/sys/net/ipv6/conf/ip6tnl0/disable_ipv6": "0",
+  "/proc/sys/net/ipv6/conf/ip6tnl0/forwarding": "0",
+  "/proc/sys/net/ipv6/conf/lo/addr_gen_mode": "0",
+  "/proc/sys/net/ipv6/conf/lo/disable_ipv6": "0",
+  "/proc/sys/net/ipv6/conf/lo/forwarding": "0",
+  "/proc/sys/net/ipv6/conf/sit0/addr_gen_mode": "0",
+  "/proc/sys/net/ipv6/conf/sit0/disable_ipv6": "0",
+  "/proc/sys/net/ipv6/conf/sit0/forwarding": "0"
+ },
+ "proc_net_route": "",
+ "proc_net_ipv6_route": "00000000000000000000000000000000 00 00000000000000000000000000000000 00 00000000000000000000000000000000 ffffffff 00000001 00000000 00200200       lo\n00000000000000000000000000000000 00 00000000000000000000000000000000 00 00000000000000000000000000000000 ffffffff 00000001 00000000 00200200       lo\n",
+ "sysfs_links_note": "sysfs is bound to the mount netns, not the reader; NOT valid for this namespace",
+ "dumps": {
+  "link": {
+   "datagrams": [
+    {
+     "file": "link-0.bin",
+     "len": 3328,
+     "sender": [
+      0,
+      0
+     ],
+     "msg_flags": 0
+    },
+    {
+     "file": "link-1.bin",
+     "len": 10736,
+     "sender": [
+      0,
+      0
+     ],
+     "msg_flags": 0
+    },
+    {
+     "file": "link-2.bin",
+     "len": 20,
+     "sender": [
+      0,
+      0
+     ],
+     "msg_flags": 0
+    }
+   ],
+   "error": null,
+   "done": true,
+   "total": 14084
+  },
+  "addr": {
+   "datagrams": [
+    {
+     "file": "addr-0.bin",
+     "len": 20,
+     "sender": [
+      0,
+      0
+     ],
+     "msg_flags": 0
+    }
+   ],
+   "error": null,
+   "done": true,
+   "total": 20
+  },
+  "route": {
+   "datagrams": [
+    {
+     "file": "route-0.bin",
+     "len": 20,
+     "sender": [
+      0,
+      0
+     ],
+     "msg_flags": 0
+    }
+   ],
+   "error": null,
+   "done": true,
+   "total": 20
+  },
+  "rule": {
+   "datagrams": [
+    {
+     "file": "rule-0.bin",
+     "len": 424,
+     "sender": [
+      0,
+      0
+     ],
+     "msg_flags": 0
+    }
+   ],
+   "error": null,
+   "done": true,
+   "total": 424
+  }
+ }
+}

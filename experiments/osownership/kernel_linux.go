@@ -16,6 +16,7 @@ var ErrExecutorUnreleased = errors.New("OS executor not released")
 type namespaceCustody struct {
 	fd       int
 	identity Namespace
+	threadID int
 }
 
 const kernelExecutionReleased = false
@@ -79,7 +80,7 @@ func proveNamespaceFD(targetFD, parentFD int) (*namespaceCustody, error) {
 		return nil, errors.New("current namespace does not match held target FD")
 	}
 	ok = true
-	return &namespaceCustody{fd: target, identity: id}, nil
+	return &namespaceCustody{fd: target, identity: id, threadID: unix.Gettid()}, nil
 }
 
 // openExclusiveNonpersistentTUN cannot adopt an existing TUN: IFF_TUN_EXCL and

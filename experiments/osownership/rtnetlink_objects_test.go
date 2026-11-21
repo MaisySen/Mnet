@@ -43,7 +43,7 @@ func TestRouteAddressLinkFixturesAndExactDeletePayload(t *testing.T) {
 		t.Fatal(l, e)
 	}
 	w := &fakeWire{}
-	if e := NewInMemoryNetlinkClient(w, 1).Mutate(context.Background(), 25, rb); e != nil {
+	if e := NewInMemoryNetlinkClient(w, 1).mutate(context.Background(), 25, rb); e != nil {
 		t.Fatal(e)
 	}
 	if binary.NativeEndian.Uint16(w.request[6:]) != 5 {
@@ -180,7 +180,7 @@ func TestDummyEncoderAndNestedLinkInfoFixture(t *testing.T) {
 		t.Fatal(kind, e)
 	}
 	w := &fakeWire{}
-	if e = NewInMemoryNetlinkClient(w, 1).CreateDummy(context.Background(), raw); e != nil {
+	if e = NewInMemoryNetlinkClient(w, 1).createDummy(context.Background(), raw); e != nil {
 		t.Fatal(e)
 	}
 	if binary.NativeEndian.Uint16(w.request[6:]) != 1|4|0x200|0x400 {

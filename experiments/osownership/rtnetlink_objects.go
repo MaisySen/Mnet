@@ -200,7 +200,7 @@ func EncodeDummy(name, alias string) ([]byte, error) {
 	nested := attr(1, []byte{'d', 'u', 'm', 'm', 'y', 0})
 	return append(b, attr(18|0x8000, nested)...), nil
 }
-func (c *NetlinkClient) CreateDummy(ctx context.Context, payload []byte) error {
+func (c *NetlinkClient) createDummy(ctx context.Context, payload []byte) error {
 	if len(payload) < 16 {
 		return errors.New("short dummy creation")
 	}

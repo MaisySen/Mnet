@@ -22,7 +22,7 @@ func TestPlanOnlyExactHostRoutesAndOriginalExpiry(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if p.EffectiveExpiry != b.SelfExpiry || p.Operations[2].Address.Bits() != 32 || p.Operations[4].Route.Destination.String() != "100.64.0.2/32" {
+	if p.EffectiveExpiry != b.SelfExpiry || p.Operations[3].Address.Bits() != 32 || p.Operations[5].Route.Destination.String() != "100.64.0.2/32" {
 		t.Fatal(p)
 	}
 	for _, op := range p.Operations {

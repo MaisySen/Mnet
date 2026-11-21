@@ -29,13 +29,13 @@ type fakeKernel struct {
 func (k *fakeKernel) Snapshot(context.Context) (Inventory, error) { return k.i, nil }
 func (k *fakeKernel) Create(_ context.Context, p Plan) (Handle, error) {
 	k.calls = append(k.calls, "create")
-	h, e := Attach(p, 7)
+	h, e := AttachCreated(p, 7, 1500)
 	if e != nil {
 		return h, e
 	}
 	k.h = h
 	if k.fault != "create" || k.successOnError {
-		k.i.Links = append(k.i.Links, h.Link)
+		k.i.Links = append(k.i.Links, h.CreationLink)
 	}
 	if k.fault == "create" {
 		return h, errors.New("create transport timeout")
@@ -52,6 +52,12 @@ func (k *fakeKernel) Apply(_ context.Context, h Handle, o Operation) error {
 	if !bad || k.successOnError {
 		if !k.missingACK {
 			switch o.Kind {
+			case "set-alias-mtu-exact":
+				for j, l := range k.i.Links {
+					if l == h.CreationLink {
+						k.i.Links[j] = h.Link
+					}
+				}
 			case "disable-owned-link-ipv6":
 				k.i.IPv6Disabled[h.Link.Index] = true
 			case "address-add-exclusive":
@@ -95,7 +101,7 @@ func (k *fakeKernel) CloseOriginalFD(h Handle) error {
 	delete(k.i.LinkUp, h.Link.Index)
 	var links []Link
 	for _, l := range k.i.Links {
-		if l != h.Link {
+		if !handleLinkMatches(h, l) {
 			links = append(links, l)
 		}
 	}
@@ -134,7 +140,7 @@ func TestACKReadbackAndExactStop(t *testing.T) {
 	if e := tx.Start(context.Background()); e != nil {
 		t.Fatal(e)
 	}
-	if !tx.Ready || !tx.PendingCleanup || len(tx.Evidence) != 10 {
+	if !tx.Ready || !tx.PendingCleanup || len(tx.Evidence) != 12 {
 		t.Fatal("step evidence missing", tx.Evidence)
 	}
 	if e := tx.Stop(context.Background()); e != nil || tx.PendingCleanup {
