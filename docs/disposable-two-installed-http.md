@@ -42,11 +42,12 @@ chunking, wrong Host/path/method, missing close and oversized headers.
 
 After the original earlier expiry, A makes a NEW independent-context TCP dial
 attempt, then attempts fresh Write/read on the existing probe stream even if
-SetDeadline reports it closed. Both must fail. B's exact peer scope owns its
+SetDeadline reports it closed. A denied result requires both to fail within the observation bound. B's exact peer scope owns its
 listener and all accepted streams. The extra Accept must return on closure,
 accept/application and old-probe goroutines join, and final counters must still
 be two initial proofs, one pre-expiry old-stream proof and one HTTP response.
-No post-expiry accepted application acknowledgement is permitted.
+No post-expiry accepted application acknowledgement is permitted. These are
+owner-scope/application observations, NOT independent tunnel enforcement.
 
 ## Unproven timing envelope
 
@@ -99,3 +100,36 @@ inconclusive timing, or failure without replacing its identities or retrying.
 Browser screenshots and real listener/HTTP/expiry proof remain unverified until
 that separate run. No live user-owned account/device/network is used by this
 candidate or permitted by the test fixture.
+
+## Review correction: observation and claims
+
+This run tests OWNER-SCOPE RETIREMENT and application I/O failure only. A's scope
+closes its local stream/network while B closes its listener/streams. Thus either
+local close can explain failure; no independent tunnel key-removal/enforcement
+claim is possible. The earlier B-enforcement spike remains separate and covered
+established streams/key removal only, not a fresh post-expiry dial.
+
+The expiry observation is predeclared at E+50ms; actual native timestamps and
+observed lag are logged. Both application probes share absolute E+500ms as their
+final deadline, not500ms per sequential operation. Listener/stream closure and
+owner final-check timestamps record observed lag. Time here permits observation
+and joining only, never later payload authority. The fixed delay is not a claim
+of zero-lag retirement. A successful +50ms dial is logged as closure lag, not
+an immediate safety failure; the owner must still retire by E+500ms. Because
+this run forbids a retry/new connection attempt, that initial successful dial
+makes its denial result INCONCLUSIVE, even if the owner closes by the final
+check. No second dial is made to fish for pass. A valid fresh post-expiry old
+stream acknowledgement remains a hard failure, not a timing skip.
+
+Premature context/session end and timeouts are explicitly inconclusive. Identity,
+HTTP/proof mismatch, unexpected application acknowledgement and other contract
+errors remain failures. Coordinator reads explicit native failure classification
+before readiness-miss handling and before success assertions. It never converts
+an explicit safety failure into a window miss. Other setup/contract errors with
+no established timing cause remain failures rather than guessed timing misses.
+
+One proposed timing run uses NON-RACE binaries, with coordinator process-spawn
+and every native stage timestamp plus spawn-to-stage interval. Race compile and
+unit tests are separate evidence. A commits first and has the earlier expiry;
+receipt ordering is asserted. B-earlier behavior is NOT covered. Required
+Go1.26.11 remains unproven, and no app-graph typecheck is claimed.

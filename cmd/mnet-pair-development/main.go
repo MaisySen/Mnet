@@ -147,7 +147,11 @@ func main() {
 	defer cancel()
 	out := &emitter{enc: json.NewEncoder(os.Stdout)}
 	if e = runPair(ctx, *root, c, out, os.Stdin); e != nil {
-		out.stage("pair-failed", map[string]any{"error": e.Error(), "partial_slices_remain_spent": true})
+		class := "failed-safety-or-contract"
+		if inconclusive(e) {
+			class = "inconclusive"
+		}
+		out.stage("pair-failed", map[string]any{"error": e.Error(), "classification": class, "partial_slices_remain_spent": true})
 		os.Exit(1)
 	}
 }
@@ -371,10 +375,11 @@ func runPair(ctx context.Context, root string, c config, out *emitter, ready io.
 	return out.stage("pair-finished", map[string]any{"owners_joined": true, "slice_refunded": false})
 }
 func runListener(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *daemon.DevelopmentNetworkSession, n *proofnet.Net, c config, pin daemon.SessionPeer, out *emitter) error {
-	l, e := n.ListenTCPAddrPort(netip.AddrPortFrom(netip.MustParseAddr(c.SelfIP), pairPort))
+	rawListener, e := n.ListenTCPAddrPort(netip.AddrPortFrom(netip.MustParseAddr(c.SelfIP), pairPort))
 	if e != nil {
 		return e
 	}
+	var l net.Listener = &observedListener{Listener: rawListener, out: out, expiry: c.EarlierExpiryMS}
 	if e = scope.Own(l); e != nil {
 		return e
 	}
@@ -410,6 +415,7 @@ func runListener(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *dae
 				r.err = e
 				return
 			}
+			conn = &observedConn{Conn: conn, out: out, expiry: c.EarlierExpiryMS, kind: fmt.Sprintf("accepted-%d", i)}
 			if e = scope.Own(conn); e != nil {
 				r.err = e
 				return
@@ -493,7 +499,7 @@ func runListener(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *dae
 	case <-scope.Context().Done():
 	}
 	if time.Now().UnixMilli() < c.EarlierExpiryMS {
-		return errors.New("session stopped before expiry oracle")
+		return fmt.Errorf("%w: session stopped before expiry oracle", errWindow)
 	}
 	// Scope closes listener and both accepted connections; join accept/application owner.
 	scope.Close()
@@ -511,8 +517,8 @@ func runListener(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *dae
 		if e := out.stage("pair-listener-closed", map[string]any{"proof_count": r.proofs, "http_count": r.http, "old_live_proof_count": oldProofs.Load()}); e != nil {
 			return e
 		}
-	case <-time.After(time.Second):
-		return errors.New("listener did not join")
+	case <-time.After(time.Until(time.UnixMilli(c.EarlierExpiryMS).Add(500 * time.Millisecond))):
+		return errors.New("listener did not join by expiry+500ms")
 	}
 	return nil
 }
@@ -636,35 +642,62 @@ func runDialer(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *daemo
 		return errWindow
 	}
 	out.stage("pair-http-verified", map[string]any{"remaining_ms": c.EarlierExpiryMS - time.Now().UnixMilli()})
-	timer := time.NewTimer(time.Until(time.UnixMilli(c.EarlierExpiryMS).Add(50 * time.Millisecond)))
+
+	// Observation delay is predeclared, not added authority. Both local owners may
+	// already close; these failures do NOT isolate remote tunnel enforcement.
+	observeAt := time.UnixMilli(c.EarlierExpiryMS).Add(50 * time.Millisecond)
+	timer := time.NewTimer(time.Until(observeAt))
 	defer timer.Stop()
 	select {
 	case <-timer.C:
 	case <-scope.Context().Done():
 		if time.Now().UnixMilli() < c.EarlierExpiryMS {
-			return errors.New("scope ended before expiry oracle")
+			return fmt.Errorf("%w: scope ended before expiry oracle", errWindow)
 		}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(time.Until(observeAt))
 	}
-	// A NEW independent context makes this an actual fresh dial attempt, not merely
-	// a trivially pre-cancelled scope context. Userspace network is already retiring.
-	probe, probeCancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	finalAt := time.UnixMilli(c.EarlierExpiryMS).Add(500 * time.Millisecond)
+	out.stage("pair-retirement-observation", map[string]any{"expiry_ms": c.EarlierExpiryMS, "scheduled_observation_ms": observeAt.UnixMilli(), "observed_lag_ms": time.Now().UnixMilli() - c.EarlierExpiryMS, "final_check_ms": finalAt.UnixMilli()})
+	if !time.Now().Before(finalAt) {
+		return fmt.Errorf("%w: observation scheduled too late", errWindow)
+	}
+	probe, probeCancel := context.WithDeadline(context.Background(), finalAt)
 	defer probeCancel()
-	fresh, e := n.DialContextTCPAddrPort(probe, netip.AddrPortFrom(netip.MustParseAddr(c.PeerIP), pairPort))
-	if e == nil {
+	oldResult := make(chan error, 1)
+	go func() { oldResult <- postExpiryChallengeUntil(old, finalAt) }()
+	fresh, dialErr := n.DialContextTCPAddrPort(probe, netip.AddrPortFrom(netip.MustParseAddr(c.PeerIP), pairPort))
+	if dialErr == nil {
 		fresh.Close()
-		return errors.New("fresh post-expiry dial unexpectedly succeeded")
+		out.stage("pair-dial-closure-lag-observed", map[string]any{"observed_lag_ms": time.Now().UnixMilli() - c.EarlierExpiryMS, "retry": false})
 	}
-	if e = postExpiryChallenge(old); e == nil {
+	oldErr := <-oldResult
+	if oldErr == nil {
 		return errors.New("old stream delivered after expiry")
 	}
-	return out.stage("pair-post-expiry-denied", map[string]any{"new_dial_denied": true, "old_stream_ack_denied": true})
+	if time.Now().After(finalAt) {
+		return fmt.Errorf("%w: retirement check completed after expiry+500ms", errWindow)
+	}
+	closed := make(chan struct{})
+	go func() { scope.Close(); close(closed) }()
+	select {
+	case <-closed:
+	case <-time.After(time.Until(finalAt)):
+		return errors.New("owner scope not retired by expiry+500ms")
+	}
+	out.stage("pair-owner-final-check", map[string]any{"observed_lag_ms": time.Now().UnixMilli() - c.EarlierExpiryMS, "final_check_ms": finalAt.UnixMilli()})
+	if dialErr == nil {
+		return fmt.Errorf("%w: initial+50ms dial observed closure lag; no retry permitted", errWindow)
+	}
+	return out.stage("pair-post-expiry-denied", map[string]any{"new_dial_denied": true, "old_stream_ack_denied": true, "expiry_ms": c.EarlierExpiryMS, "observed_lag_ms": time.Now().UnixMilli() - c.EarlierExpiryMS, "claim": "owner-scope-retirement-application-io-only", "independent_tunnel_enforcement": false})
 }
 
 // Even a closed old stream receives a fresh Write attempt; a SetDeadline refusal
 // alone is not counted as attempted post-expiry application I/O.
 func postExpiryChallenge(conn net.Conn) error {
-	deadlineErr := conn.SetDeadline(time.Now().Add(500 * time.Millisecond))
+	return postExpiryChallengeUntil(conn, time.Now().Add(500*time.Millisecond))
+}
+func postExpiryChallengeUntil(conn net.Conn, deadline time.Time) error {
+	deadlineErr := conn.SetDeadline(deadline)
 	var fresh, ack [32]byte
 	if _, e := rand.Read(fresh[:]); e != nil {
 		return e
@@ -685,4 +718,43 @@ func postExpiryChallenge(conn net.Conn) error {
 		return errors.New("post-expiry ack mismatch")
 	}
 	return nil
+}
+
+func inconclusive(e error) bool {
+	if errors.Is(e, errWindow) || errors.Is(e, context.Canceled) || errors.Is(e, context.DeadlineExceeded) {
+		return true
+	}
+	var n net.Error
+	return errors.As(e, &n) && n.Timeout()
+}
+
+type observedListener struct {
+	net.Listener
+	once   sync.Once
+	out    *emitter
+	expiry int64
+}
+
+func (l *observedListener) Close() error {
+	e := l.Listener.Close()
+	l.once.Do(func() {
+		l.out.stage("pair-listener-close-observed", map[string]any{"expiry_ms": l.expiry, "observed_lag_ms": time.Now().UnixMilli() - l.expiry})
+	})
+	return e
+}
+
+type observedConn struct {
+	net.Conn
+	once   sync.Once
+	out    *emitter
+	expiry int64
+	kind   string
+}
+
+func (c *observedConn) Close() error {
+	e := c.Conn.Close()
+	c.once.Do(func() {
+		c.out.stage("pair-stream-close-observed", map[string]any{"stream": c.kind, "expiry_ms": c.expiry, "observed_lag_ms": time.Now().UnixMilli() - c.expiry})
+	})
+	return e
 }

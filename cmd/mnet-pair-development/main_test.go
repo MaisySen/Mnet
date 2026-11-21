@@ -166,3 +166,15 @@ func TestPostExpiryStillAttemptsOldStreamWrite(t *testing.T) {
 		t.Fatal("post expiry only checked deadline, no Write")
 	}
 }
+func TestOutcomeClassificationDoesNotHideSafetyFailure(t *testing.T) {
+	for _, e := range []error{errWindow, context.Canceled, context.DeadlineExceeded} {
+		if !inconclusive(e) {
+			t.Fatal("window/session end not inconclusive")
+		}
+	}
+	for _, e := range []error{io.EOF, io.ErrUnexpectedEOF, io.ErrClosedPipe} {
+		if inconclusive(e) {
+			t.Fatal("non timing error hidden as inconclusive")
+		}
+	}
+}
