@@ -4,6 +4,9 @@ Goal: ordinary applications can address an approved peer through an actual OS
 interface without special proxies. This replaces the local-ingress proposal as
 the next product direction. It is not an activation or duration grant.
 
+Historical S0 design below; current SOURCE-only transaction/helper status is
+in os-network-s1-source-status.md. No live executor is wired.
+
 No TUN, netlink socket, namespace, route, privileged helper, daemon or child
 process has been created for this candidate. Only the inert model's race unit
 tests ran. No normal entry, production wiring or accepted source was changed.

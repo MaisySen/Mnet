@@ -1,7 +1,8 @@
 //go:build mnet_enrollment_development
 
-// Package osownership is a pure, inert planning model. No OS calls, command
-// runner, daemon integration, netlink socket or TUN constructor exists here.
+// Package osownership contains inert planning/transaction models and guarded
+// source-only Linux helpers. No live executor, command runner, daemon integration
+// or netlink socket is wired. Tests use in-memory fake kernel data only.
 package osownership
 
 import (
@@ -35,21 +36,27 @@ type Link struct {
 	Name, Alias, Kind string
 }
 type Route struct {
-	Destination netip.Prefix
-	LinkIndex   int
-	Protocol    int
-	Table       int
-	Scope       string
+	Destination      netip.Prefix
+	LinkIndex        int
+	Protocol         int
+	Table            int
+	Scope            string
+	Type             string
+	Metric, Priority uint32
+	KernelOrigin     bool
 }
 type Address struct {
-	Prefix    netip.Prefix
-	LinkIndex int
+	Prefix       netip.Prefix
+	LinkIndex    int
+	KernelOrigin bool
 }
 type Inventory struct {
 	Namespace     Namespace
 	Links         []Link
 	Routes        []Route
 	Addresses     []Address
+	LinkUp        map[int]bool
+	IPv6Disabled  map[int]bool
 	ForeignPolicy bool
 	Forwarding    bool
 }
@@ -137,7 +144,7 @@ func Prepare(b Binding, i Inventory, now time.Time) (Plan, error) {
 	if b.PeerExpiry.Before(p.EffectiveExpiry) {
 		p.EffectiveExpiry = b.PeerExpiry
 	}
-	p.Operations = []Operation{{Kind: "create-nonpersistent-tun", Name: b.Name, Alias: b.Alias, MTU: MTU}, {Kind: "address-add-exclusive", Address: netip.PrefixFrom(netip.MustParseAddr(b.OwnIP), 32)}, {Kind: "link-up-exact"}, {Kind: "route-add-exclusive", Route: Route{Destination: netip.PrefixFrom(netip.MustParseAddr(b.PeerIP), 32), Protocol: Protocol, Table: 254, Scope: "link"}}}
+	p.Operations = []Operation{{Kind: "create-nonpersistent-tun", Name: b.Name, Alias: b.Alias, MTU: MTU}, {Kind: "disable-owned-link-ipv6"}, {Kind: "address-add-exclusive", Address: netip.PrefixFrom(netip.MustParseAddr(b.OwnIP), 32)}, {Kind: "link-up-exact"}, {Kind: "route-add-exclusive", Route: Route{Destination: netip.PrefixFrom(netip.MustParseAddr(b.PeerIP), 32), Protocol: Protocol, Table: 254, Scope: "link", Type: "unicast", Metric: 42700, Priority: 42700}}}
 	return p, nil
 }
 
@@ -151,13 +158,13 @@ type Handle struct {
 }
 
 func Attach(p Plan, index int) (Handle, error) {
-	if len(p.Operations) != 4 || p.Operations[0].Kind != "create-nonpersistent-tun" || p.Operations[3].Kind != "route-add-exclusive" {
+	if len(p.Operations) != 5 || p.Operations[0].Kind != "create-nonpersistent-tun" || p.Operations[4].Kind != "route-add-exclusive" {
 		return Handle{}, errors.New("invalid inert plan")
 	}
 	if index <= 0 {
 		return Handle{}, errors.New("actual kernel ifindex required")
 	}
-	h := Handle{Namespace: p.Binding.Namespace, Link: Link{Index: index, Name: p.Binding.Name, Alias: p.Binding.Alias, Kind: "tun"}, Address: Address{Prefix: p.Operations[1].Address, LinkIndex: index}, Route: p.Operations[3].Route}
+	h := Handle{Namespace: p.Binding.Namespace, Link: Link{Index: index, Name: p.Binding.Name, Alias: p.Binding.Alias, Kind: "tun"}, Address: Address{Prefix: p.Operations[2].Address, LinkIndex: index}, Route: p.Operations[4].Route}
 	h.Route.LinkIndex = index
 	return h, nil
 }
@@ -187,6 +194,9 @@ func Rollback(h Handle, i Inventory) ([]Operation, error) {
 	}
 	var ops []Operation
 	for _, r := range i.Routes {
+		if r.LinkIndex == h.Link.Index && r != h.Route && !kernelDerivedRoute(h, r) {
+			return nil, ErrConflict
+		}
 		if r.Destination == h.Route.Destination {
 			if r != h.Route {
 				return nil, ErrConflict
@@ -195,8 +205,8 @@ func Rollback(h Handle, i Inventory) ([]Operation, error) {
 		}
 	}
 	for _, a := range i.Addresses {
-		if a.LinkIndex == h.Link.Index && a.Prefix != h.Address.Prefix {
-			return nil, ErrConflict
+		if a.LinkIndex == h.Link.Index && a.Prefix != h.Address.Prefix && !kernelDerivedAddress(h, a) {
+			return nil, fmt.Errorf("%w: unexpected address, including auto IPv6, requires pending cleanup", ErrConflict)
 		}
 		if a.LinkIndex == h.Link.Index && a.Prefix == h.Address.Prefix {
 			ops = append(ops, Operation{Kind: "address-del-exact", Address: a.Prefix, Index: a.LinkIndex})
@@ -207,4 +217,27 @@ func Rollback(h Handle, i Inventory) ([]Operation, error) {
 }
 func (p Plan) String() string {
 	return fmt.Sprintf("inert Linux namespace plan: /32 self, /32 exact peer, effective expiry %s", p.EffectiveExpiry.UTC().Format(time.RFC3339Nano))
+}
+
+// KernelOrigin must come from audited netlink flags/protocol and exclusive
+// namespace provenance, never caller claims in a future live executor. These
+// items are recorded but NEVER explicitly deleted; original FD close removes
+// kernel-derived state with the original link. Foreign/replaced state refuses.
+func kernelDerivedAddress(h Handle, a Address) bool {
+	return a.LinkIndex == h.Link.Index && a.KernelOrigin && a.Prefix.IsValid() && a.Prefix.Addr().Is6() && netip.MustParsePrefix("fe80::/10").Contains(a.Prefix.Addr()) && a.Prefix.Bits() == 64
+}
+func kernelDerivedRoute(h Handle, r Route) bool {
+	if r.LinkIndex != h.Link.Index || !r.KernelOrigin || r.Protocol != 2 || r.Metric != 0 || r.Priority != 0 {
+		return false
+	}
+	if r.Destination == h.Address.Prefix {
+		return r.Table == 255 && r.Type == "local" && r.Scope == "host"
+	}
+	if r.Destination.IsValid() && r.Destination.Addr().Is6() {
+		if r.Destination == netip.MustParsePrefix("ff00::/8") {
+			return r.Table == 255 && r.Type == "multicast" && r.Scope == "link"
+		}
+		return r.Destination.Bits() == 64 && netip.MustParsePrefix("fe80::/10").Contains(r.Destination.Addr()) && r.Table == 254 && r.Type == "unicast" && r.Scope == "link"
+	}
+	return false
 }
