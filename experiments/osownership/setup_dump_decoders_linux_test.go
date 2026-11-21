@@ -167,3 +167,45 @@ func TestActualSetupDecodersDumpPADForeignFlagsAndOwnedTwoSites(t *testing.T) {
 		t.Fatal("parser adopted original index")
 	}
 }
+
+func TestActualSetupSelectorsPreserveForeignSizeAndNameSemantics(t *testing.T) {
+	_, f := fullSetupRunRig(t, "0")
+	creation := creationSetupDump{name: f.h.Link.Name}
+	owned := ownedSetupDump{handle: f.h}
+	for _, name := range []string{"foreign:name0", "foreign space0"} {
+		// Full emitted-shaped foreign metadata plus a large unknown attribute old
+		// DecodeLink preserves. This is below existing64KiB transport envelope,
+		// deliberately above owned profile's16KiB policy cap.
+		l := *f.owned()
+		l.Raw = cloneRawAttrs(l.Raw)
+		l.Index = 999
+		l.Name = name
+		l.Raw[3] = append([]byte(name), 0)
+		l.Flags = 0xabcdef01
+		l.Raw[999] = make([]byte, 20000)
+		for _, hardware := range []uint16{65534, 772} {
+			l.Hardware = hardware
+			body := fullSetupBodyTest(l, "")
+			if len(body) <= 16384 || len(body) >= 65536 {
+				t.Fatal("bad test envelope", len(body))
+			}
+			want, e := DecodeLink(body)
+			if e != nil {
+				t.Fatal("foreign old semantics", e)
+			}
+			for _, decoder := range []setupLinkDumpDecoder{creation, owned} {
+				got, e := decoder.decodeOwnedSetupLink(body)
+				if e != nil || !reflect.DeepEqual(got, want) {
+					t.Fatal("foreign selection narrowed", hardware, name, len(body), e)
+				}
+			}
+		}
+	}
+	// The owned canonical name still invokes the owned size policy after match.
+	l := *f.owned()
+	l.Raw = cloneRawAttrs(l.Raw)
+	l.Raw[999] = make([]byte, 20000)
+	if _, e := creation.decodeOwnedSetupLink(fullSetupBodyTest(l, "")); e == nil {
+		t.Fatal("owned oversized profile accepted")
+	}
+}

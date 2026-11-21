@@ -239,7 +239,7 @@ func validateSetupOuter(l LinkRecord) error {
 // complete owned profile, or the unchanged generic foreign decoder. In
 // particular no hardware-class or generic owned PAD decode is used to select.
 func setupSelectionName(body []byte) (string, error) {
-	if len(body) < 16 || len(body) > 16384 {
+	if len(body) < 16 {
 		return "", afShape
 	}
 	var name string
@@ -266,7 +266,7 @@ func setupSelectionName(body []byte) (string, error) {
 			found = true
 			var e error
 			name, e = attrText(map[uint16][]byte{3: raw[4:n]}, 3, true)
-			if e != nil || !safeInterfaceName(name) {
+			if e != nil {
 				return "", afShape
 			}
 		}
@@ -283,9 +283,8 @@ func setupSelectionName(body []byte) (string, error) {
 // PAD immediately before STATS64 or MAP is supported. Named singleton/flag
 // validation still happens in the strict dump decoder after this scan.
 func dumpAttrsWithoutPAD(raw []byte) (out []byte, hadPAD bool, err error) {
-	if len(raw) > 16384 {
-		return nil, false, afShape
-	}
+	// Receive-size limits belong to the existing transport, not a new
+	// stricter foreign-link selector cap.
 	pending := false
 	for len(raw) > 0 {
 		if len(raw) < 4 {
