@@ -1,8 +1,12 @@
 # Two-installed-owner userspace HTTP feasibility candidate
 
-Source review candidate only. Integrated adapter execution has NOT occurred.
-No claim of window fit, production readiness, OS networking, startup, renewal,
-screen/input permission, relationship grant, or consent-record integration.
+One separately released corrected run passed: two actual saved disposable owners
+exchanged finite userspace application data and their owners retired. It fit the
+predeclared work envelope on that ONE non-race run only. An earlier invocation
+failed before any observed native stage; its deleted evidence remains missing.
+No production readiness, OS networking, startup, renewal, screen/input permission,
+relationship grant, consent-record integration or independent tunnel-enforcement
+claim. Sections below preserve source-stage planning and later corrections.
 
 ## Boundary
 
@@ -236,3 +240,30 @@ not all-load timing, B-earlier, OS networking, duration/startup/renewal or
 production. No screen/input activated. Go1.26.6 temporary modfile, required
 Go1.26.11 and full app typecheck remain unproven. Actual browser prepared-screen
 pixels inspected; no active-network UI was added by this adapter.
+
+
+## Evidence-reading corrections, raw evidence immutable
+
+The fresh build-provenance file contains an ambient `go version go1.26.11` line
+because that unpinned command ran from the repository at packaging time. That
+line is NOT the compiler used for the run. The actual run command set
+GOTOOLCHAIN=local and GOFLAGS='-mod=mod -modfile=/tmp/pair-compile.mod'. Both
+retained binaries embed go1.26.6; the separate modfile says go1.26.6. Repository
+go.mod still says1.26.11 unchanged. Thus run build is Go1.26.6 with a temporary
+relaxed modfile, NOT an exact1.26.11 build or validation claim. Current ambient
+versions can vary by working directory/toolchain selection and prove no past
+compiler. Binary embedded provenance and the invocation are the relevant pins.
+
+Timestamp distinction: process-close event T+269/806ms, versus coordinator's
+subsequent save-exit observation T+271/807ms. Neither replaces the other. The
+reviewer used process-close arithmetic; original summary used later observation.
+Both are within1s with under200ms spare on ownerB, not a repeatability guarantee.
+Earlier reviewer prose misidentifies which ledger was absent at the first
+snapshot: raw owner0 is ready, owner1 is ENOENT/prepared while save1 has not yet
+completed. Raw rows are unchanged and authoritative. Both ready before connects.
+
+Prepared PNGs are identical and establish no owner identity. Identity evidence
+comes from each actual browser's exact handoff public-key check and later
+saved-key/receipt/map/peer pins, not these generic prepared-screen pixels. All
+original JSONL, logs, screenshots and provenance file stay unchanged; this
+addendum clarifies them without replacing or repairing evidence.
