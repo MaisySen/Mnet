@@ -34,6 +34,9 @@ func newInertAdapterProtocol(e inertKernelProtocol, b *CapturedBaseline) (*inert
 func (a *inertAdapterProtocol) Snapshot(ctx context.Context) (Inventory, error) {
 	i, e := a.effects.Snapshot(ctx)
 	if e != nil {
+		if a.session.pending != nil {
+			a.session.poisoned = true
+		}
 		return i, e
 	}
 	if a.session.cleanupPending != nil {
@@ -49,13 +52,16 @@ func (a *inertAdapterProtocol) Snapshot(ctx context.Context) (Inventory, error) 
 	return i, nil
 }
 func (a *inertAdapterProtocol) Create(ctx context.Context, p Plan) (Handle, error) {
-	if a.session.canonical != nil || a.session.poisoned || a.session.closeAttempted {
+	if a.session.createAttempted || a.session.canonical != nil || a.session.poisoned || a.session.closeAttempted {
 		return Handle{}, ErrConflict
 	}
+	a.session.createAttempted = true
 	h, e := a.effects.Create(ctx, p)
 	if h.Link.Index > 0 {
 		if bind := a.session.bindCreated(p, h); bind != nil {
 			a.session.poisoned = true
+			copy := h
+			a.session.rejectedHandle = &copy
 			return h, errors.Join(e, bind)
 		}
 	}

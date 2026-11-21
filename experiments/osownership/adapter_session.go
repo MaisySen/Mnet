@@ -16,6 +16,8 @@ import (
 
 type adapterSession struct {
 	baseline         *CapturedBaseline
+	createAttempted  bool
+	rejectedHandle   *Handle
 	plan             *Plan
 	forwardStep      int
 	cleanupMode      bool
@@ -122,7 +124,12 @@ func (s *adapterSession) recordACK(err error) error {
 	s.pendingACK = true
 	return nil
 }
-func (s *adapterSession) observe(i Inventory) error {
+func (s *adapterSession) observe(i Inventory) (err error) {
+	defer func() {
+		if err != nil && s != nil {
+			s.poisoned = true
+		}
+	}()
 	if s == nil || s.cleanupMode || s.poisoned || s.canonical == nil || s.closeAttempted || !sameNamespace(i.Namespace, s.baseline.ns) {
 		return ErrConflict
 	}
@@ -289,7 +296,7 @@ func (s *adapterSession) reconcile(raw RawInventory, sys SysctlSnapshot) (adapte
 		r.CleanupPending = &copy
 	}
 	r.RawBaselineEqual = reflect.DeepEqual(raw, s.baseline.raw) && reflect.DeepEqual(map[string]string(sys), s.baseline.sys)
-	r.CustodyUnresolved = s.canonical != nil && (!s.closeConfirmed || !r.RawBaselineEqual)
+	r.CustodyUnresolved = s.rejectedHandle != nil || (s.createAttempted && s.canonical == nil) || (s.canonical != nil && (!s.closeConfirmed || !r.RawBaselineEqual))
 	if !r.RawBaselineEqual {
 		return r, ErrConflict
 	}
