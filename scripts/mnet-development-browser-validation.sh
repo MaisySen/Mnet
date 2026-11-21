@@ -17,12 +17,13 @@ Type=Application
 Name=Mnet disposable development browser
 Exec=/usr/bin/google-chrome --no-sandbox --no-first-run --ignore-certificate-errors --remote-debugging-port=9237 --user-data-dir=$run/home/chrome %U
 Terminal=false
-MimeType=x-scheme-handler/http;x-scheme-handler/https;
+MimeType=x-scheme-handler/http;x-scheme-handler/https;text/html;
 EOF
 cat > "$run/home/.config/mimeapps.list" <<'EOF'
 [Default Applications]
 x-scheme-handler/http=mnet-disposable.desktop
 x-scheme-handler/https=mnet-disposable.desktop
+text/html=mnet-disposable.desktop
 EOF
 Xvfb -displayfd 3 -screen 0 1280x1000x24 3>"$run/display" >"$run/xvfb.log" 2>&1 &
 xpid=$!

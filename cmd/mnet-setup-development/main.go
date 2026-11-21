@@ -9,12 +9,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"html/template"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
 	"syscall"
+	"time"
 
 	"fintex.au/mnet/internal/daemon"
 )
@@ -30,7 +32,39 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	encoder := json.NewEncoder(os.Stdout)
+	writeStatus := func(joined bool, peers int) error {
+		title, body := "Setup did not finish", "No completed joining result was reported. The original local attempt is retained. Do not assume this computer is joined or connected."
+		if joined {
+			title = "Joining saved. Not connected."
+			body = fmt.Sprintf("Mnet verified this computer and saved its joining result. The current map checked during setup contained %d live peers. This is a historical setup result, not a live connection indicator. No tunnel, screen, keyboard or mouse access was started.", peers)
+		}
+		file, err := os.OpenFile(filepath.Join(*root, "setup-result.html"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		if err != nil {
+			return err
+		}
+		page := template.Must(template.New("result").Parse(`<!doctype html><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>Mnet development setup result</title><style>body{font:17px system-ui;background:#f4f5f7;color:#202124;margin:0;padding:64px 24px}main{max-width:620px;margin:auto;background:white;border:1px solid #ddd;border-radius:18px;padding:32px}p{line-height:1.6}small{color:#596171}</style><main><small>DISPOSABLE DEVELOPMENT SETUP</small><h1>{{.Title}}</h1><p>{{.Body}}</p><p>You can close this tab.</p></main>`))
+		err = page.Execute(file, struct{ Title, Body string }{title, body})
+		closeErr := file.Close()
+		if err != nil {
+			return err
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		if *open && runtime.GOOS == "linux" {
+			bounded, stop := context.WithTimeout(context.Background(), 3*time.Second)
+			defer stop()
+			cmd := exec.CommandContext(bounded, "xdg-open", filepath.Join(*root, "setup-result.html"))
+			return cmd.Run()
+		}
+		return nil
+	}
 	err := daemon.RunDisposableEnrollment(ctx, *root, func(event daemon.DevelopmentEnrollmentEvent) error {
+		if event.Stage == "joined-not-connected" {
+			if err := writeStatus(true, event.Peers); err != nil {
+				return err
+			}
+		}
 		if err := encoder.Encode(event); err != nil {
 			return err
 		}
@@ -56,6 +90,11 @@ func main() {
 		return nil
 	})
 	if err != nil {
+		// Only a configured disposable root with an owned native attempt may
+		// receive a historical failure page. Never create in a refused root.
+		if info, statErr := os.Lstat(filepath.Join(*root, "native", "state.json")); statErr == nil && info.Mode().IsRegular() {
+			_ = writeStatus(false, 0)
+		}
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

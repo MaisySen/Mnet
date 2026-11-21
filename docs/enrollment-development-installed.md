@@ -76,3 +76,15 @@ pixels were inspected: readable, and the full private-network identifier stays
 on one code line without the orphaned character. This corrects interim copy
 only. The plain callback still lacks actual final native status and remains
 unfinished, as do browser decline/cancel/configuration-change controls.
+
+### Actual historical native result page
+
+A later tagged command writes a private static result page only from the actual
+joined-not-connected event, then opens that local file through the system HTML
+association. It names zero live peers as checked during setup and explicitly
+labels the result historical, not a current connection indicator. Actual browser
+pixels were inspected: readable result heading/body, no observed clipping. The
+first run lacked a disposable text/html association and failed to open it; the
+corrected fixture sets that association only in its private HOME and passes with
+clean session exit. Generic failure-page code exists but actual decline/cancel
+browser controls are still pending, so the failure path is not accepted.
