@@ -15,7 +15,7 @@ cat > "$run/home/.local/share/applications/mnet-disposable.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Mnet disposable development browser
-Exec=/usr/bin/google-chrome --no-sandbox --no-first-run --ignore-certificate-errors --remote-debugging-port=9237 --user-data-dir=$run/home/chrome %U
+Exec=/usr/bin/google-chrome --no-sandbox --no-first-run --ignore-certificate-errors --remote-debugging-port=0 --user-data-dir=$run/home/chrome %U
 Terminal=false
 MimeType=x-scheme-handler/http;x-scheme-handler/https;text/html;
 EOF
@@ -29,6 +29,6 @@ Xvfb -displayfd 3 -screen 0 1280x1000x24 3>"$run/display" >"$run/xvfb.log" 2>&1 
 xpid=$!
 for i in $(seq 1 50);do if [ -s "$run/display" ];then break;fi;sleep .1;done
 cd "$multies"
-dbus-run-session -- env DISPLAY=":$(cat "$run/display")" GOPATH="$(go env GOPATH)" GOCACHE="$(go env GOCACHE)" HOME="$run/home" XDG_CONFIG_HOME="$run/home/.config" XDG_DATA_HOME="$run/home/.local/share" XDG_CURRENT_DESKTOP=GNOME GIO_USE_VFS=local MNET_DEVELOPMENT_SETUP_BROWSER=1 MNET_DEVELOPMENT_SETUP_BINARY="$run/app/bin/mnet-setup-development" MNET_NATIVE_REPO="$mnet" node node_modules/vitest/vitest.mjs run tests/mnet-installed-development.test.ts
+dbus-run-session -- env DISPLAY=":$(cat "$run/display")" GOPATH="$(go env GOPATH)" GOCACHE="$(go env GOCACHE)" HOME="$run/home" XDG_CONFIG_HOME="$run/home/.config" XDG_DATA_HOME="$run/home/.local/share" XDG_CURRENT_DESKTOP=GNOME GIO_USE_VFS=local MNET_DEVELOPMENT_SETUP_DEVTOOLS_FILE="$run/home/chrome/DevToolsActivePort" MNET_DEVELOPMENT_SETUP_BROWSER=1 MNET_DEVELOPMENT_SETUP_BINARY="$run/app/bin/mnet-setup-development" MNET_NATIVE_REPO="$mnet" node node_modules/vitest/vitest.mjs run tests/mnet-installed-development.test.ts
 sleep 2
 printf 'Disposable development validation root: %s\n' "$run"

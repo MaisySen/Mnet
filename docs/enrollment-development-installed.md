@@ -158,3 +158,13 @@ without changing State/journal bytes, retries or a new attempt. The late
 callback refuses and the disposable session is joined. This differs from lost
 submit response: here a local credential IS saved. Neither case deletes it or
 reconciles uncertainty automatically. Test cleanup alone deletes remote nodes.
+
+### Owned disposable browser endpoint
+
+The browser harness now asks Chrome for an ephemeral debug port and reads its
+endpoint only from that run's fresh private profile, instead of attaching to a
+shared fixed port. Actual success and map-failure journeys pass. An additional
+map-failure journey runs while a disposable unrelated HTTP listener owns9237;
+it completes and the unrelated listener receives zero requests. This avoids
+cross-run browser attachment. It does not by itself validate concurrent fixture
+artifact filenames or permit automating any non-disposable browser profile.
