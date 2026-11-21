@@ -79,5 +79,10 @@ invocation skips rather than manufacturing receipts. Existing targeted boundary:
     go test -race -tags multies_native_fixture ./internal/daemon -run 'Test(LocalExpiryWithoutControlResponse|DaemonExpiryWithBlockedControlAndRestart|ApplyMapRejectsExpiredAuthorization|ExpiryGuardRenewsAndWakesFromNoDeadline|ExpiryEqualityAndNoDeadlineCompatibility)$' -count=1
     go vet -tags multies_native_fixture ./internal/daemon
 
-Independent review is pending. No broader readiness or execution authority follows
-from this packet.
+Independent review accepted this test-only B-side scope. That decision is not
+standalone execution authority or broader readiness. Precise limits: only traffic
+on established TCP connections was tested, no fresh postexpiry dial. Streams did
+not automatically close. The stopped registrar returned no new map, but the exact
+request error mechanism was not established. B status up was fixture-set; B device
+survival through the assertions is not proof it served another valid peer. No
+additional authority, renewal, carrier or duration is released.
