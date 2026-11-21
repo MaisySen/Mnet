@@ -64,10 +64,8 @@ func predictFreshDownDisable(raw RawInventory, sys SysctlSnapshot, index int) (R
 		if found || l.Hardware != 65534 || l.Flags & ^uint32(0x40|0x10000) != 0x1090 || l.MTU != 1280 {
 			return RawInventory{}, nil, afPhase
 		}
-		kind, e := linkKind(*l)
-		if e != nil || kind != "tun" {
-			return RawInventory{}, nil, afShape
-		}
+		// parseTUNNested validates kind=tun AND the exact required INFO_DATA
+		// nesting flag. Generic linkKind's plain decoder rejects that flag.
 		if _, e := parseTUNNested(*l); e != nil {
 			return RawInventory{}, nil, e
 		}

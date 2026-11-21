@@ -12,7 +12,7 @@ import (
 // transferred or released by this adapter; resident owns it through cleanup.
 type operation1ResidentSource struct {
 	disableLife      *disableResidentLifetime
-	disableAttempted bool
+	disableAttempted bool // controller-lane only; source entry validates authorized lease
 	afOwner          *afSourcePassOwner
 	owner            *operation1Controller
 	ns               *namespaceCustody
@@ -38,14 +38,16 @@ func withOperation1ResidentSource(ctx context.Context, ns *namespaceCustody, b *
 	if e != nil {
 		return e
 	}
-	source := &operation1ResidentSource{disableLife: &disableResidentLifetime{active: true}, owner: c, ns: ns, baseline: c.adapter.session.baseline, active: true}
+	source := &operation1ResidentSource{disableLife: &disableResidentLifetime{}, owner: c, ns: ns, baseline: c.adapter.session.baseline, active: true}
 	c.adapter.creation = source
 	c.absence = source
 	defer func() {
+		// Revoke packet-result lifetime FIRST. Keep source.active until stop
+		// completes so original-close/absence cleanup can still use the source.
+		source.disableLife.revoke()
 		err = errors.Join(err, c.stop(ctx))
 		c.mu.Lock()
 		source.active = false
-		source.disableLife.active = false
 		if source.afOwner != nil {
 			source.afOwner.active = false
 			source.afOwner.last = nil

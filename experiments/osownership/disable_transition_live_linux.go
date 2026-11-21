@@ -89,7 +89,7 @@ func (s *operation1ResidentSource) disableFreshDownSource(ctx context.Context, o
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
 	}
-	if s == nil || o == nil || s.owner == nil || o.owner != s.owner.tx || o.session != s.owner.adapter.session || o.namespace != s.ns || o.creation == nil || o.creation.fd == nil || s.disableLife == nil || !s.disableLife.active {
+	if s == nil || o == nil || s.owner == nil || o.owner != s.owner.tx || o.session != s.owner.adapter.session || o.namespace != s.ns || o.creation == nil || o.creation.fd == nil || s.disableLife == nil || !s.disableLife.current() {
 		return nil, afPhase
 	}
 	if e := s.check(ctx, s.owner.attempt); e != nil {
@@ -98,6 +98,8 @@ func (s *operation1ResidentSource) disableFreshDownSource(ctx context.Context, o
 	if s.owner.adapter == nil || !s.owner.adapter.authorized(ctx) || o.creation.fd != s.owner.attempt.custody {
 		return nil, afPhase
 	}
+	// disableAttempted is protected by the authorized controller lane above,
+	// not by lifetime atomics or the later file mutex.
 	if s.disableAttempted {
 		return nil, afPhase
 	}

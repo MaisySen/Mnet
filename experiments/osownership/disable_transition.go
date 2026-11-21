@@ -5,10 +5,19 @@ package osownership
 import (
 	"context"
 	"reflect"
+	"sync/atomic"
 )
 
 // Private resident lease. Revocation is terminal. Not namespace writer exclusion.
-type disableResidentLifetime struct{ active bool }
+type disableResidentLifetime struct{ revoked atomic.Bool }
+
+func (l *disableResidentLifetime) current() bool { return l != nil && !l.revoked.Load() }
+func (l *disableResidentLifetime) revoke() {
+	if l != nil {
+		l.revoked.Store(true)
+	}
+}
+
 type postDisableResult struct {
 	lifetime *disableResidentLifetime
 	ledger   *heldPacketLedger
@@ -18,7 +27,7 @@ type postDisableResult struct {
 }
 
 func (r *postDisableResult) current() bool {
-	return r != nil && r.lifetime != nil && r.lifetime.active && r.ledger != nil && r.ledger.matches(r.identity)
+	return r != nil && r.lifetime != nil && r.lifetime.current() && r.ledger != nil && r.ledger.matches(r.identity)
 }
 
 // No Ready method, no Inventory conversion, no actual packet supplier. Any later
@@ -29,8 +38,12 @@ type ownedDisableDependencies struct {
 	collect func(context.Context) (RawInventory, SysctlSnapshot, error)
 }
 
+// Caller holds the controller ownership lane and original fileCustody.mu for
+// this COMPLETE call, including lineage restoration. The source wrapper checks
+// its owner lease and holds that file mutex through return. Lifetime validity
+// remains independently atomic for result.current readers outside that lane.
 func finishOwnedDisable(ctx context.Context, life *disableResidentLifetime, l *heldPacketLedger, d ownedSourceDiagnostic, deps ownedDisableDependencies) (result *postDisableResult, err error) {
-	if ctx == nil || ctx.Err() != nil || life == nil || !life.active || l == nil || d.held == nil || d.held.ledger != l || !d.lineageUsable || deps.check == nil || deps.leaf == nil || deps.collect == nil {
+	if ctx == nil || ctx.Err() != nil || life == nil || !life.current() || l == nil || d.held == nil || d.held.ledger != l || !d.lineageUsable || deps.check == nil || deps.leaf == nil || deps.collect == nil {
 		return nil, afPhase
 	}
 	h := d.held
@@ -74,7 +87,7 @@ func finishOwnedDisable(ctx context.Context, life *disableResidentLifetime, l *h
 	l.mu.Unlock()
 	// Any failure remains uncertain. There is no retry or recovery-by-name.
 	check := func() error {
-		if ctx.Err() != nil || !life.active || h.owner.stopStarted || h.owner.fdCloseAttempted || h.owner.deadline.expired(h.owner.clock.Now()) {
+		if ctx.Err() != nil || !life.current() || h.owner.stopStarted || h.owner.fdCloseAttempted || h.owner.deadline.expired(h.owner.clock.Now()) {
 			return afPhase
 		}
 		l.mu.Lock()
@@ -110,7 +123,7 @@ func finishOwnedDisable(ctx context.Context, life *disableResidentLifetime, l *h
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.current.generation != generation || l.current.closed || l.current.fdObject != original.fdObject || !life.active {
+	if l.current.generation != generation || l.current.closed || l.current.fdObject != original.fdObject || !life.current() {
 		return nil, afPhase
 	}
 	l.current.uncertain = false

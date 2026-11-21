@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/binary"
 	"reflect"
+	"sync"
 	"testing"
 )
 
@@ -27,7 +28,7 @@ func freshDisableFixture(t *testing.T) (ownedSourceDiagnostic, *disableResidentL
 	setCreationWord(t, &d, 10, 26, 0)
 	p := "/proc/sys/net/ipv6/conf/" + l.Name + "/disable_ipv6"
 	d.sys = SysctlSnapshot{p: "0"}
-	return d, &disableResidentLifetime{active: true}
+	return d, &disableResidentLifetime{}
 }
 func disableFakeDeps(t *testing.T, d ownedSourceDiagnostic, f *disableLeafMemory, mode string) ownedDisableDependencies {
 	t.Helper()
@@ -126,7 +127,7 @@ func TestDisableTypedResultRequiresIndependentReadbackAndLifetime(t *testing.T) 
 	if d.held.session.forwardStep != 2 {
 		t.Fatal("transition advanced session")
 	}
-	life.active = false
+	life.revoke()
 	if result.current() {
 		t.Fatal("resident lifetime escape")
 	}
@@ -188,5 +189,68 @@ func TestDisableAlreadyOneNoWriteStillRequiresFullCollection(t *testing.T) {
 	_ = d.held.ledger.invalidate("close-intent")
 	if r.current() {
 		t.Fatal("postclose result usable")
+	}
+}
+
+func TestFreshDisableRequiresExactTUNNestingAndKind(t *testing.T) {
+	for _, mode := range []string{"plain-info-data", "missing-info-data", "wrong-kind", "unknown-info-attr", "malformed-af"} {
+		t.Run(mode, func(t *testing.T) {
+			d, _ := freshDisableFixture(t)
+			l := &d.raw.Links[0]
+			switch mode {
+			case "plain-info-data":
+				info, e := schemaAttrs(l.Raw[18], map[uint16]bool{1: false, 2: true})
+				if e != nil {
+					t.Fatal(e)
+				}
+				l.Raw[18] = append(attr(1, info[1]), attr(2, info[2])...)
+			case "missing-info-data":
+				l.Raw[18] = attr(1, []byte("tun\x00"))
+			case "wrong-kind":
+				info, e := schemaAttrs(l.Raw[18], map[uint16]bool{1: false, 2: true})
+				if e != nil {
+					t.Fatal(e)
+				}
+				l.Raw[18] = append(attr(1, []byte("tap\x00")), attr(0x8002, info[2])...)
+			case "unknown-info-attr":
+				l.Raw[18] = append(l.Raw[18], attr(3, []byte{0})...)
+			case "malformed-af":
+				l.Raw[26] = append(l.Raw[26], []byte{0}...)
+			}
+			if _, _, e := predictFreshDownDisable(d.raw, d.sys, l.Index); e == nil {
+				t.Fatal("weakened shape", mode)
+			}
+		})
+	}
+	d, _ := freshDisableFixture(t)
+	if _, _, e := predictFreshDownDisable(d.raw, d.sys, d.raw.Links[0].Index); e != nil {
+		t.Fatal("correct nested kind rejected", e)
+	}
+}
+func TestPostDisableLifetimeConcurrentRevocation(t *testing.T) {
+	d, life := freshDisableFixture(t)
+	f := &disableLeafMemory{value: "0\n"}
+	r, e := finishOwnedDisable(context.Background(), life, d.held.ledger, d, disableFakeDeps(t, d, f, ""))
+	if e != nil {
+		t.Fatal(e)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for n := 0; n < 1000; n++ {
+				_ = r.current()
+			}
+		}()
+	}
+	life.revoke()
+	wg.Wait()
+	if r.current() {
+		t.Fatal("revoked lifetime current")
+	}
+	life.revoke()
+	if life.current() {
+		t.Fatal("revocation not terminal")
 	}
 }

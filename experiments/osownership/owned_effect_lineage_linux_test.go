@@ -92,3 +92,16 @@ func TestOwnedDisableTransitionOrdersPredictionInvalidationIOAndReadback(t *test
 		}
 	}
 }
+
+func TestResidentRevokesDisableLifetimeBeforeCleanupNoSourceLoss(t *testing.T) {
+	s := sourceFunction(t, "operation1_resident_source_live_linux.go", "withOperation1ResidentSource")
+	revoke, stop, inactive := strings.Index(s, "source.disableLife.revoke()"), strings.Index(s, "c.stop(ctx)"), strings.Index(s, "source.active = false")
+	if revoke < 0 || stop < revoke || inactive < stop {
+		t.Fatal("lifetime/cleanup source order", revoke, stop, inactive)
+	}
+	s = sourceFunction(t, "disable_transition_live_linux.go", "disableFreshDownSource")
+	auth, attempt, lock := strings.Index(s, "adapter.authorized(ctx)"), strings.Index(s, "s.disableAttempted = true"), strings.Index(s, "o.creation.fd.mu.Lock()")
+	if auth < 0 || attempt < auth || lock < attempt {
+		t.Fatal("attempt not lane-owned", auth, attempt, lock)
+	}
+}
