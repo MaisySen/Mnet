@@ -31,6 +31,12 @@ if root_change not in ('','shrink','transient'):raise SystemExit('unsupported po
 decline_first=os.environ.get('MNET_POINTER_DECLINE_FIRST','0')
 if decline_first not in ('0','1'):raise SystemExit('unsupported decline-first fixture')
 if decline_first=='1' and (root_change or terminate=='1'):raise SystemExit('decline-first combines with no other pointer case')
+# The decline journey (home -> chooser -> host decline -> specific home notice)
+# exists only in home mode, while the host harness arms its decline expectation
+# from the decline flag alone. Without home mode the first request would get a
+# normal approval and the host would fail its decline assertion; fail fast on
+# the unsupported combination instead of retiring the viewer mid-journey.
+if decline_first=='1' and os.environ.get('MNET_VIEWER_HOME')!='1':raise SystemExit('decline-first requires home mode: set MNET_VIEWER_HOME=1')
 xs=[];test=None;focus_app=None
 size=os.environ.get('MNET_VIEWER_DISPLAY_SIZE','1024x768x24')
 if size not in ('1024x768x24','2048x1536x24'):raise SystemExit('unsupported disposable size')
