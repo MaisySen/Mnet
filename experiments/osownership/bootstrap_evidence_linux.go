@@ -209,6 +209,9 @@ func runReadOnlyClientAndJoin(ctx context.Context, ns *namespaceCustody) (Client
 	runtimeSummary := classifyRuntimeStderr(stderr.Bytes(), failure.StderrComplete)
 	failure.Runtime = &runtimeSummary
 	failure.ChildDiagnostic, failure.Phase = scanSanitizedStderr(stderr.Bytes(), failure.StderrComplete)
+	if failure.ChildDiagnostic == nil && runtimeSummary.LeadingDiagnostic != nil {
+		failure.ChildDiagnostic = runtimeSummary.LeadingDiagnostic
+	}
 	if failure.Phase == "unknown" {
 		failure.Phase = runtimeSummary.LastStrictPhase
 	}
