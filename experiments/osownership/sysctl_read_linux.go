@@ -74,7 +74,15 @@ func readPolicySysctlsSource(ctx context.Context, ns *namespaceCustody, raw RawI
 			return nil, e
 		}
 	}
+	// Full nonsecret ALL/default IPv6 policy operands, exact source allowlist.
+	// Missing CONFIG-dependent leaves are explicit unsupported-profile errors.
+	for _, path := range ipv6PolicyPaths() {
+		paths = append(paths, strings.TrimPrefix(path, "/proc/sys/net/"))
+	}
 	for _, path := range paths {
+		if !permittedIPv6OperandPath(path) {
+			return nil, afPolicy
+		}
 		if e = ctx.Err(); e != nil {
 			return nil, e
 		}
@@ -116,6 +124,9 @@ func readPolicySysctlsSource(ctx context.Context, ns *namespaceCustody, raw RawI
 		}
 	}
 	if _, e := parseEffectiveV4(out); e != nil {
+		return nil, e
+	}
+	if _, e := parseIPv6PolicyOperands(out); e != nil {
 		return nil, e
 	}
 	return out, validateForwarding(raw, out)

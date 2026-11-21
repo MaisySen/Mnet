@@ -7,6 +7,9 @@ import "context"
 // Typed postcreate DIAGNOSTIC, no Inventory/Ready conversion. Original custody
 // brackets the ACTUAL route AF producer, raw/sys collection and assessment.
 type postcreateAFSourceDiagnostic struct {
+	ipv6Operands  *ipv6PolicyOperands
+	ipv6Rules     []ipv6ConsumerAssessment
+	ipv4Rules     []ipv4ConsumerAssessment
 	before, after *originalDeviceEvidence
 	pass          *afReadPass
 	diagnostic    ownedSourceDiagnostic
@@ -92,6 +95,18 @@ func (s *operation1ResidentSource) observeCreatedOriginalAF(ctx context.Context,
 	if e != nil {
 		return nil, e
 	}
+	operands, e := parseIPv6PolicyOperands(sys)
+	if e != nil {
+		return nil, e
+	}
+	v4rules, e := assessIPv4ConsumerOperands(link, pass.effective)
+	if e != nil {
+		return nil, e
+	}
+	rules, e := assessIPv6ConsumerOperands(link, operands)
+	if e != nil {
+		return nil, e
+	}
 	policy, e := assessOwnedTUNPolicy(link)
 	if e != nil {
 		return nil, e
@@ -103,5 +118,5 @@ func (s *operation1ResidentSource) observeCreatedOriginalAF(ctx context.Context,
 	good = true
 	// DO NOT bindCreationApplicability, change policy.Resolved or convert. Missing
 	// phase/profile semantics stay explicit. Snapshot caller still always refuses.
-	return &postcreateAFSourceDiagnostic{before: before, after: after, pass: pass, diagnostic: diagnostic, policy: policy}, nil
+	return &postcreateAFSourceDiagnostic{before: before, after: after, pass: pass, diagnostic: diagnostic, policy: policy, ipv6Operands: operands, ipv6Rules: rules, ipv4Rules: v4rules}, nil
 }
