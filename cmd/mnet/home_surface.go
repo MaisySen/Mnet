@@ -15,7 +15,9 @@ import (
 
 // renderHomeSurface is presentation only. Existing route selection, local
 // capability checks and child ownership do not enter this pixel renderer.
-func renderHomeSurface(notice string, hasLayout, hasMulties bool, focus int) (*image.RGBA, error) {
+// The info panel is a local explanation of the separate consent each tool
+// requires. It grants nothing and changes no route.
+func renderHomeSurface(notice string, hasLayout, hasMulties bool, focus int, info bool) (*image.RGBA, error) {
 	regular, err := opentype.Parse(goregular.TTF)
 	if err != nil {
 		return nil, err
@@ -70,6 +72,36 @@ func renderHomeSurface(notice string, hasLayout, hasMulties bool, focus int) (*i
 	text(31, 46, 27, 28, true, 0xffffff, "M")
 	text(74, 43, 300, 24, true, 0x172b4d, "Your devices, together")
 	text(742, 41, 136, 12, true, 0x63758c, "LOCAL PREVIEW")
+	// The consent-map explanation is always available and never a route.
+	infoBG, infoFG := uint32(0xffffff), uint32(0x214f90)
+	rect(520, 18, 200, 40, infoBG)
+	text(542, 44, 160, 15, true, infoFG, "How this works")
+	if focus == 5 {
+		rect(523, 21, 194, 1, 0x2563c7)
+		rect(523, 54, 194, 1, 0x2563c7)
+	}
+	if info {
+		rect(20, 84, 860, 384, 0xffffff)
+		text(38, 116, 800, 18, true, 0x172b4d, "How these tools work")
+		blocks := [][2]string{
+			{"Mnet networking", "See which devices are online. Being connected never shares a screen or any input."},
+			{"Remote Desktop", "Viewing needs the host's approval every time. Pointer control is a separate question the host answers later. No keyboard, files or recording."},
+			{"Shared Desk", "One keyboard and mouse across your displays needs exact pairing and a fresh approval each run. It is not connected in this preview."},
+			{"Multies setup", "Sign-in and device setup are not connected here. When configured, Review Multies approvals only reviews access."},
+		}
+		for i, block := range blocks {
+			y := 152 + i*66
+			text(38, y, 800, 15, true, 0x124b9a, block[0])
+			for j, line := range wrapHomeInfo(block[1], 96) {
+				text(38, y+22+j*18, 800, 13, false, 0x526780, line)
+			}
+		}
+		text(38, 448, 800, 12, false, 0x63758c, "Each tool asks on its own. No tool inherits another tool's approval.")
+		if renderErr != nil {
+			return nil, renderErr
+		}
+		return picture, nil
+	}
 	intro := "Three separate tools. Multies setup isn't configured for this home."
 	if hasMulties {
 		intro = "Three separate tools. You can review Multies approvals. Network setup is not connected."
@@ -128,4 +160,25 @@ func renderHomeSurface(notice string, hasLayout, hasMulties bool, focus int) (*i
 		return nil, renderErr
 	}
 	return picture, nil
+}
+
+// wrapHomeInfo splits an explanation line at word boundaries, bounded so the
+// presentation check still rejects anything unexpected.
+func wrapHomeInfo(s string, limit int) []string {
+	var lines []string
+	for len(s) > limit {
+		cut := limit
+		for cut > 0 && s[cut-1] != ' ' {
+			cut--
+		}
+		if cut == 0 {
+			cut = limit
+		}
+		lines = append(lines, s[:cut])
+		s = s[cut:]
+		for len(s) > 0 && s[0] == ' ' {
+			s = s[1:]
+		}
+	}
+	return append(lines, s)
 }

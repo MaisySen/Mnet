@@ -9,7 +9,7 @@ func TestHomeSurfaceAllRoutesAndNoticesFit(t *testing.T) {
 	for _, notice := range []string{"Choose a tool to begin.", "No screen arrived. The session ended. Choose Remote Desktop to try again.", "The tool could not finish. Choose it again to try a fresh attempt.", "Tool closed. You can choose another tool."} {
 		for _, layout := range []bool{false, true} {
 			for focus := -1; focus < 5; focus++ {
-				im, err := renderHomeSurface(notice, layout, true, focus)
+				im, err := renderHomeSurface(notice, layout, true, focus, false)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -19,7 +19,7 @@ func TestHomeSurfaceAllRoutesAndNoticesFit(t *testing.T) {
 			}
 		}
 	}
-	if _, err := renderHomeSurface(strings.Repeat("W", 200), false, false, -1); err == nil {
+	if _, err := renderHomeSurface(strings.Repeat("W", 200), false, false, -1, false); err == nil {
 		t.Fatal("overflow notice accepted")
 	}
 }
@@ -49,7 +49,7 @@ func TestHomeOriginIsOnlyExplicitStrictConfiguration(t *testing.T) {
 		}
 	}
 	for _, configured := range []bool{false, true} {
-		if _, err := renderHomeSurface("Approval review closed. Network setup is still not connected.", false, configured, 4); err != nil {
+		if _, err := renderHomeSurface("Approval review closed. Network setup is still not connected.", false, configured, 4, false); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -86,5 +86,62 @@ func TestControlNoSymbolReleaseCannotCompleteMousePress(t *testing.T) {
 	c.pressMouse(1, 30, 460, enabled)
 	if c.releaseKey(0, enabled) != -1 {
 		t.Fatal("NoSymbol release activated a mouse press")
+	}
+}
+
+func TestHomeInfoPanelRendersAndFocusIsHeaderButton(t *testing.T) {
+	for _, layout := range []bool{false, true} {
+		for _, multies := range []bool{false, true} {
+			im, err := renderHomeSurface("Choose a tool to begin.", layout, multies, 5, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if im.Bounds().Dx() != 900 || im.Bounds().Dy() != 560 {
+				t.Fatal("home dimensions changed")
+			}
+			// Focus underline on the header button while the panel is open.
+			if p := im.RGBAAt(600, 21); p.R != 0x25 || p.G != 0x63 || p.B != 0xc7 {
+				t.Fatal("info focus underline missing", p)
+			}
+			// Panel heading region is painted (dark heading ink).
+			found := false
+			for x := 38; x < 400 && !found; x += 2 {
+				for y := 100; y < 116 && !found; y++ {
+					p := im.RGBAAt(x, y)
+					if p.R == 0x17 && p.G == 0x2b {
+						found = true
+					}
+				}
+			}
+			if !found {
+				t.Fatal("info panel heading missing")
+			}
+			imOff, err := renderHomeSurface("Choose a tool to begin.", layout, multies, -1, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if p := imOff.RGBAAt(600, 21); p.R != 0xff || p.G != 0xff {
+				t.Fatal("info underline drawn without focus", p)
+			}
+			if p := imOff.RGBAAt(38, 120); p.R != 0xf4 && p.R != 0xff {
+				t.Fatal("panel drawn while closed", p)
+			}
+		}
+	}
+}
+
+func TestWrapHomeInfoBoundsLines(t *testing.T) {
+	long := strings.Repeat("word ", 40)
+	lines := wrapHomeInfo(long, 96)
+	if len(lines) < 3 {
+		t.Fatal("long explanation not wrapped")
+	}
+	for _, line := range lines {
+		if len(line) > 96 {
+			t.Fatal("wrapped line overflows", len(line))
+		}
+	}
+	if got := wrapHomeInfo("short", 96); len(got) != 1 || got[0] != "short" {
+		t.Fatal("short explanation changed", got)
 	}
 }

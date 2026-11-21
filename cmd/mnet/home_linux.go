@@ -69,9 +69,23 @@ func chooseHome(parent context.Context, notice string, hasLayout, hasMulties boo
 	if err = xproto.ChangePropertyChecked(c, xproto.PropModeReplace, w, protocols.Atom, xproto.AtomAtom, 32, 1, data).Check(); err != nil {
 		return homeClose, err
 	}
-	title := "Mnet: three tools [local engineering]"
+	title := "Mnet: three tools [local engineering] info0"
 	if err = xproto.ChangePropertyChecked(c, xproto.PropModeReplace, w, xproto.AtomWmName, xproto.AtomString, 8, uint32(len(title)), []byte(title)).Check(); err != nil {
 		return homeClose, err
+	}
+	// Title updates from the event loop are unchecked: a checked round trip
+	// here stalls behind the event read and shows the previous state.
+	titleInfo := false
+	setTitle := func(info bool) {
+		if info == titleInfo {
+			return
+		}
+		name := "Mnet: three tools [local engineering] info0"
+		if info {
+			name = "Mnet: three tools [local engineering] info1"
+		}
+		_ = xproto.ChangeProperty(c, xproto.PropModeReplace, w, xproto.AtomWmName, xproto.AtomString, 8, uint32(len(name)), []byte(name))
+		titleInfo = info
 	}
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -92,11 +106,19 @@ func chooseHome(parent context.Context, notice string, hasLayout, hasMulties boo
 		}
 	}()
 	defer func() { cancel(); c.Close(); <-done }()
-	enabled := [5]bool{true, true, hasLayout, true, hasMulties}
+	enabledAll := [6]bool{true, true, hasLayout, true, hasMulties, true}
+	enabledInfo := [6]bool{false, false, false, false, false, true}
+	info := false
+	enabled := func() []bool {
+		if info {
+			return enabledInfo[:]
+		}
+		return enabledAll[:]
+	}
 	controls := newDeviceControls()
 
 	draw := func() error {
-		picture, er := renderHomeSurface(notice, hasLayout, hasMulties, controls.focus)
+		picture, er := renderHomeSurface(notice, hasLayout, hasMulties, controls.focus, info)
 		if er != nil {
 			return er
 		}
@@ -118,10 +140,22 @@ func chooseHome(parent context.Context, notice string, hasLayout, hasMulties boo
 		if er = xproto.ChangeWindowAttributesChecked(c, w, xproto.CwBackPixmap, []uint32{uint32(pix)}).Check(); er != nil {
 			return er
 		}
-		return xproto.CopyAreaChecked(c, xproto.Drawable(pix), xproto.Drawable(w), gc, 0, 0, 0, 0, 900, 560).Check()
+		if er = xproto.CopyAreaChecked(c, xproto.Drawable(pix), xproto.Drawable(w), gc, 0, 0, 0, 0, 900, 560).Check(); er != nil {
+			return er
+		}
+		// The title flips only after the new pixels are on screen, so a
+		// screenshot keyed on the title never captures stale content.
+		setTitle(info)
+		return nil
 	}
 	hit := func(button byte, x, y int) int {
 		if button != 1 {
+			return -1
+		}
+		if x >= 520 && x < 720 && y >= 18 && y < 58 {
+			return 5
+		}
+		if info {
 			return -1
 		}
 		for i := 0; i < 3; i++ {
@@ -190,14 +224,14 @@ func chooseHome(parent context.Context, notice string, hasLayout, hasMulties boo
 			case xproto.ButtonPressEvent:
 				controls.cancel()
 				index := hit(byte(e.Detail), int(e.EventX), int(e.EventY))
-				if index >= 0 && enabled[index] {
+				if index >= 0 && enabled()[index] {
 					controls.pressed = index
 					controls.mouse = true
 					controls.focus = index
 				}
 			case xproto.ButtonReleaseEvent:
 				index := hit(byte(e.Detail), int(e.EventX), int(e.EventY))
-				if controls.mouse && index >= 0 && index == controls.pressed && enabled[index] {
+				if controls.mouse && index >= 0 && index == controls.pressed && enabled()[index] {
 					selected = index
 				}
 				controls.cancel()
@@ -213,11 +247,15 @@ func chooseHome(parent context.Context, notice string, hasLayout, hasMulties boo
 				key := uint32(mapping.Keysyms[0])
 				switch key {
 				case 0xff1b:
+					if info {
+						info = false
+						break
+					}
 					return homeClose, nil
 				case 0xff09:
-					controls.advanceAmong(e.State&xproto.ModMaskShift != 0, enabled[:])
+					controls.advanceAmong(e.State&xproto.ModMaskShift != 0, enabled())
 				default:
-					controls.pressKeyAmong(key, enabled[:])
+					controls.pressKeyAmong(key, enabled())
 				}
 			case xproto.KeyReleaseEvent:
 				mapping, er := xproto.GetKeyboardMapping(c, e.Detail, 1).Reply()
@@ -225,10 +263,15 @@ func chooseHome(parent context.Context, notice string, hasLayout, hasMulties boo
 					return homeClose, errors.New("home keyboard unavailable")
 				}
 				if len(mapping.Keysyms) > 0 {
-					selected = controls.releaseKeyAmong(uint32(mapping.Keysyms[0]), enabled[:])
+					selected = controls.releaseKeyAmong(uint32(mapping.Keysyms[0]), enabled())
 				} else {
 					controls.cancel()
 				}
+			}
+			if selected == 5 {
+				info = !info
+				controls.focus = 5
+				selected = -1
 			}
 			if choice, ok := route(selected); ok {
 				return choice, nil

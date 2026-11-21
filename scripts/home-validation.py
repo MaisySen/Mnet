@@ -83,17 +83,34 @@ try:
  launch(origin='https://multies.example.test');home=poll(lambda:window('^Mnet: three tools'),'fresh configured home')
  action('windowfocus',home,'key','Tab','Tab','Tab','Tab')
  # No layout means Tab visits network, desktop, close, then approval review.
+ # The header explanation is focus 5, after review.
  action('keydown','Return','key','Tab','keyup','Return');time.sleep(.1)
  assert window('^Mnet: three tools') and server.reads==before,'pending approval action migrated'
- action('key','Tab','Tab','Tab','Return')
+ action('key','Tab','Tab','Tab','Tab','Return')
  review=poll(lambda:window('^Mnet: experimental Multies device approvals'),'configured review child')
  assert not window('^Mnet: three tools') and server.reads==before and not server.bad,'review entry made request'
  action('windowfocus',review,'key','Escape');home=poll(lambda:window('^Mnet: three tools'),'review return');screenshot(home,'review-return-home')
  assert server.reads==before and not server.bad,'review return made request'
+ # The consent-map explanation is a header toggle, never a route: no daemon
+ # reads, the window stays, and while open the tool routes are inert.
+ action('windowfocus',home,'key','Tab','Tab','Tab','Tab','Tab','Return');time.sleep(.1)
+ info=poll(lambda:window('info1'),'keyboard info panel')
+ path=out/'home-info.png';subprocess.run(['import','-display',env['DISPLAY'],'-window',info,str(path)],check=True)
+ image=Image.open(path).convert('RGB');assert image.size==(900,560)
+ # Panel pixels: logo and white panel present, tool footer cards absent.
+ assert image.getpixel((24,18))==(16,62,137) and image.getpixel((400,200))==(255,255,255),'info panel not painted'
+ assert image.getpixel((20,500))==(244,246,250),'info panel kept tool footer'
+ assert server.reads==before,'info panel consulted daemon'
+ action('mousemove','--window',info,'100','140','click','1');time.sleep(.1)
+ assert window('info1') and server.reads==before and not window('^Mnet devices'),'info panel routed a tool'
+ action('key','Escape');poll(lambda:not window('info1'),'info panel close');assert window('^Mnet: three tools')
+ action('windowfocus',home,'mousemove','--window',home,'620','38','click','1');poll(lambda:window('info1'),'mouse info panel')
+ assert server.reads==before,'mouse info panel consulted daemon'
+ action('key','Escape');poll(lambda:not window('info1'),'mouse info panel close')
  action('windowfocus',home,'mousemove','--window',home,'200','510','click','1');review=poll(lambda:window('^Mnet: experimental Multies device approvals'),'mouse review child')
  client.terminate();assert client.wait(timeout=3)==0
  assert server.reads==before and not server.bad,'review cancellation made request'
- print('PASS actual home routes devices/chooser/offline layout, child return without retry, zero home API reads, disabled layout, pending-key cancellation and SIGTERM join',flush=True)
+ print('PASS actual home routes, info panel toggle devices/chooser/offline layout, child return without retry, zero home API reads, disabled layout, pending-key cancellation and SIGTERM join',flush=True)
 finally:
  if client is not None and client.poll() is None:client.kill();client.wait()
  if x is not None:x.terminate();x.wait(timeout=3)
