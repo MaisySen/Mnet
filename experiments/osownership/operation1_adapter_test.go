@@ -6,6 +6,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 )
 
 type operation1FakeSource struct {
@@ -75,7 +76,7 @@ func TestOperation1AdapterOneCompletionJoinsCanonicalWithoutInventory(t *testing
 		}
 	}
 	e = c.withOwner(context.Background(), func(ctx context.Context) error { _, e := c.adapter.Snapshot(ctx); return e })
-	if e != ownedAFPolicyIncomplete || c.adapter.diagnostic == nil || c.tx.Ready || !c.tx.PendingCleanup {
+	if e != ownedAFPolicyIncomplete || c.tx.Ready || !c.tx.PendingCleanup {
 		t.Fatal("diagnostic bypass", e)
 	}
 }
@@ -93,10 +94,40 @@ func TestOperation1OwnershipLaneSerializesStopAndState(t *testing.T) {
 		applyErr <- c.withOwner(context.Background(), func(ctx context.Context) error { return c.adapter.Apply(ctx, h, f.p.Operations[1]) })
 	}()
 	<-f.entered
-	// Stop and state must wait for the entire operation1 owner scope. Neither
-	// reads mutable session/transaction/clock outside the ownership mutex.
-	go func() { defer wg.Done(); stopErr <- c.stop(context.Background()) }()
-	go func() { defer wg.Done(); _ = c.state() }()
+	// Mark arrival immediately before attempting the owner lock, then require
+	// BOTH operations remain blocked for a bounded interval while Apply owns it.
+	stopArrived, stateArrived := make(chan struct{}), make(chan struct{})
+	stopReturned, stateReturned := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer wg.Done()
+		close(stopArrived)
+		stopErr <- c.stop(context.Background())
+		close(stopReturned)
+	}()
+	go func() { defer wg.Done(); close(stateArrived); _ = c.state(); close(stateReturned) }()
+	for _, arrived := range []<-chan struct{}{stopArrived, stateArrived} {
+		select {
+		case <-arrived:
+		case <-time.After(time.Second):
+			close(f.release)
+			wg.Wait()
+			t.Fatal("contender did not reach pre-lock arrival")
+		}
+	}
+	timer := time.NewTimer(30 * time.Millisecond)
+	select {
+	case <-stopReturned:
+		timer.Stop()
+		close(f.release)
+		wg.Wait()
+		t.Fatal("stop returned while Apply held lane")
+	case <-stateReturned:
+		timer.Stop()
+		close(f.release)
+		wg.Wait()
+		t.Fatal("state returned while Apply held lane")
+	case <-timer.C:
+	}
 	close(f.release)
 	wg.Wait()
 	if e := <-applyErr; e != nil {

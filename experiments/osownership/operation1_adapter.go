@@ -86,7 +86,6 @@ type operation1Adapter struct {
 	controller *operation1Controller
 	session    *adapterSession
 	source     operation1DiagnosticSource
-	diagnostic *ownedSourceDiagnostic
 }
 
 var _ transactionLedgerAdapter = (*operation1Adapter)(nil)
@@ -111,7 +110,6 @@ func (a *operation1Adapter) Snapshot(ctx context.Context) (Inventory, error) {
 	if _, e = sourceDiagnosticFromRecords(diagnostic.raw, diagnostic.sys, *a.session.canonical, diagnostic.lineageUsable); e != nil {
 		return Inventory{}, e
 	}
-	a.diagnostic = &diagnostic
 	// No .inventory field extraction, no fabricated afReadPass, no active gate
 	// bypass. Canonical diagnostic-to-Inventory policy is still incomplete.
 	return Inventory{}, ownedAFPolicyIncomplete
