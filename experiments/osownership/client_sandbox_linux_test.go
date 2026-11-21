@@ -8,7 +8,7 @@ import (
 )
 
 func TestClientStatusZeroCapsAndNoNewPrivsEachField(t *testing.T) {
-	valid := "CapInh: 0000000000000000\nCapPrm: 0000000000000000\nCapEff: 0000000000000000\nCapBnd: 0000000000000000\nCapAmb: 0000000000000000\nNoNewPrivs: 1\n"
+	valid := "CapInh: 0000000000000000\nCapPrm: 0000000000000000\nCapEff: 0000000000000000\nCapBnd: 0000000000000000\nCapAmb: 0000000000000000\nNoNewPrivs: 1\nSeccomp: 2\n"
 	if e := validateClientStatus(valid); e != nil {
 		t.Fatal(e)
 	}

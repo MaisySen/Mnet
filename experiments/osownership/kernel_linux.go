@@ -26,7 +26,7 @@ const kernelExecutionReleased = false
 // supplied by the caller. Exclusive ancestry/userns containment still needs
 // supervisor proof before this check can ever be enabled.
 func proveNamespaceFD(targetFD int, parent Namespace) (*namespaceCustody, error) {
-	if !kernelExecutionReleased {
+	if !kernelExecutionReleased && !readOnlyEvidenceBuild {
 		return nil, ErrExecutorUnreleased
 	}
 	target, e := unix.FcntlInt(uintptr(targetFD), unix.F_DUPFD_CLOEXEC, 0)

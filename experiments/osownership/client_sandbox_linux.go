@@ -17,7 +17,7 @@ import (
 // replaces ALL existing threads. Subsequent runtime threads inherit zero caps.
 // No bootstrap handler is wired into an executable; guard is still false.
 func execUnprivilegedClientSource() error {
-	if !kernelExecutionReleased {
+	if !kernelExecutionReleased && !readOnlyEvidenceBuild {
 		return ErrExecutorUnreleased
 	}
 	runtime.LockOSThread()
@@ -47,12 +47,19 @@ func execUnprivilegedClientSource() error {
 	}
 	// SECBIT_NOROOT|NOROOT_LOCKED|NO_SETUID_FIXUP|NO_SETUID_FIXUP_LOCKED|
 	// KEEP_CAPS_LOCKED: uid0 alone cannot regain capabilities at exec.
-	if e = unix.Prctl(unix.PR_SET_SECUREBITS, 1|2|4|8|32, 0, 0, 0); e != nil {
+	if e = unix.Prctl(unix.PR_SET_SECUREBITS, clientSecurebits, 0, 0, 0); e != nil {
 		return e
 	}
 	hdr := unix.CapUserHeader{Version: unix.LINUX_CAPABILITY_VERSION_3}
 	data := [2]unix.CapUserData{}
 	if e = unix.Capset(&hdr, &data[0]); e != nil {
+		return e
+	}
+	filterBaseline, e := currentSeccompFilterCount()
+	if e != nil {
+		return e
+	}
+	if e = installEvidenceClientFilter(os.Getpid()); e != nil {
 		return e
 	}
 	if e = unix.CloseRange(3, ^uint(0), unix.CLOSE_RANGE_CLOEXEC); e != nil {
@@ -65,12 +72,12 @@ func execUnprivilegedClientSource() error {
 	if os.Getppid() != parent {
 		return ErrConflict
 	}
-	return syscall.Exec(exe, []string{exe, "--osownership-client-unprivileged-source"}, []string{"PATH=/usr/bin:/bin", "MNO_CLIENT_PARENT_PID=" + strconv.Itoa(parent)})
+	return syscall.Exec(exe, []string{exe, "--osownership-client-unprivileged-source"}, []string{"PATH=/usr/bin:/bin", "MNO_CLIENT_PARENT_PID=" + strconv.Itoa(parent), "MNO_CLIENT_FILTER_BASELINE=" + strconv.Itoa(filterBaseline)})
 }
 
 // Must pass in final unprivileged entry BEFORE client sockets or app work.
 func verifyClientSandboxSource() error {
-	if !kernelExecutionReleased {
+	if !kernelExecutionReleased && !readOnlyEvidenceBuild {
 		return ErrExecutorUnreleased
 	}
 	b, e := os.ReadFile("/proc/self/status")
@@ -80,22 +87,12 @@ func verifyClientSandboxSource() error {
 	if e = validateClientStatus(string(b)); e != nil {
 		return e
 	}
-	fds, e := os.ReadDir("/proc/self/fd")
+	fds, e := clientFDInventorySource()
 	if e != nil {
 		return e
 	}
-	for _, fd := range fds {
-		n, e := strconv.Atoi(fd.Name())
-		if e != nil {
-			return e
-		}
-		if n <= 2 {
-			continue
-		}
-		if _, e = os.Readlink("/proc/self/fd/" + fd.Name()); os.IsNotExist(e) {
-			continue
-		}
-		return errors.New("client inherited descriptor outside stdin/out/err allowlist")
+	if e = validateFDAllowlist(fds); e != nil {
+		return e
 	}
 	if os.Getppid() <= 1 {
 		return ErrConflict
@@ -120,8 +117,60 @@ func validateClientStatus(status string) error {
 			return errors.New("client capabilities not zero")
 		}
 	}
+	if fields["Seccomp"] != "2" {
+		return errors.New("client seccomp absent")
+	}
 	if fields["NoNewPrivs"] != "1" {
 		return errors.New("client no-new-privs absent")
 	}
 	return nil
+}
+
+func clientFDInventorySource() ([]int, error) {
+	entries, e := os.ReadDir("/proc/self/fd")
+	if e != nil {
+		return nil, e
+	}
+	var out []int
+	for _, entry := range entries {
+		n, e := strconv.Atoi(entry.Name())
+		if e != nil {
+			return nil, e
+		}
+		if _, e = os.Readlink("/proc/self/fd/" + entry.Name()); os.IsNotExist(e) {
+			continue
+		} else if e != nil {
+			return nil, e
+		}
+		out = append(out, n)
+	}
+	return out, nil
+}
+func validateFDAllowlist(fds []int) error {
+	seen := map[int]bool{}
+	for _, n := range fds {
+		if n < 0 || n > 2 || seen[n] {
+			return errors.New("client inherited descriptor outside allowlist")
+		}
+		seen[n] = true
+	}
+	return nil
+}
+
+func currentSeccompFilterCount() (int, error) {
+	b, e := os.ReadFile("/proc/self/status")
+	if e != nil {
+		return 0, e
+	}
+	for _, l := range strings.Split(string(b), "\n") {
+		kv := strings.SplitN(l, ":", 2)
+		if len(kv) == 2 && kv[0] == "Seccomp_filters" {
+			n, e := strconv.Atoi(strings.TrimSpace(kv[1]))
+			if e != nil || n < 0 {
+				return 0, ErrConflict
+			}
+			return n, nil
+		}
+	}
+	return 0, errors.New("seccomp filter count unavailable")
 }

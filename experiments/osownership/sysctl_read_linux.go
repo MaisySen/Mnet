@@ -15,7 +15,7 @@ import (
 // Missing per-device IPv6 leaves produce an explicit applicability gap. No
 // missing file is converted to disabled, unsupported or safe.
 func readPolicySysctlsSource(ctx context.Context, ns *namespaceCustody, raw RawInventory) (SysctlSnapshot, error) {
-	if !kernelExecutionReleased {
+	if !kernelExecutionReleased && !readOnlyEvidenceBuild {
 		return nil, ErrExecutorUnreleased
 	}
 	out := SysctlSnapshot{}
@@ -49,7 +49,7 @@ func readPolicySysctlsSource(ctx context.Context, ns *namespaceCustody, raw RawI
 		dirfd, dirErr := openRelativeDirectory(root, []string{"ipv6", "conf", n})
 		if dirErr != nil {
 			if dirErr != unix.ENOENT {
-				return nil, dirErr
+				return nil, fmt.Errorf("ipv6 directory %s errno: %w", n, dirErr)
 			}
 			out[ipv6DirPrefix+n] = "ENOENT"
 			if applicable {

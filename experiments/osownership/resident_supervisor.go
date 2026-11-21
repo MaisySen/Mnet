@@ -18,16 +18,17 @@ const maxVerdictBytes = 64 << 10
 // Verdict is one JSON record plus EOF, never streaming arbitrary stdout. Public
 // evidence excludes credentials. Decoder/runner/cleanup failures are distinct.
 type Verdict struct {
-	Version          int       `json:"version"`
-	Stage            string    `json:"stage"`
-	Namespace        Namespace `json:"namespace"`
-	Sequence         int       `json:"sequence"`
-	Result           string    `json:"result"`
-	FailureClass     string    `json:"failure_class,omitempty"`
-	Errno            int       `json:"errno,omitempty"`
-	BaselineHash     string    `json:"baseline_hash"`
-	FinalHash        string    `json:"final_hash"`
-	CleanupConfirmed bool      `json:"cleanup_confirmed"`
+	Bootstrap        *BootstrapReadOnlyEvidence `json:"bootstrap,omitempty"`
+	Version          int                        `json:"version"`
+	Stage            string                     `json:"stage"`
+	Namespace        Namespace                  `json:"namespace"`
+	Sequence         int                        `json:"sequence"`
+	Result           string                     `json:"result"`
+	FailureClass     string                     `json:"failure_class,omitempty"`
+	Errno            int                        `json:"errno,omitempty"`
+	BaselineHash     string                     `json:"baseline_hash"`
+	FinalHash        string                     `json:"final_hash"`
+	CleanupConfirmed bool                       `json:"cleanup_confirmed"`
 }
 
 func DecodeVerdict(r io.Reader, ns Namespace) (Verdict, error) {

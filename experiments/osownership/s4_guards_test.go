@@ -161,3 +161,28 @@ func TestS4CrossNamespaceKindsRefusedEvenUnlinked(t *testing.T) {
 		}
 	}
 }
+func TestS5ApplicabilityGuardsDirect(t *testing.T) {
+	for _, name := range []string{"no-afspec", "unknown-family", "no-ipv4"} {
+		l := LinkRecord{Raw: map[uint16][]byte{26: append(attr(2, nil), attr(10, nil)...)}}
+		switch name {
+		case "no-afspec":
+			delete(l.Raw, 26)
+		case "unknown-family":
+			l.Raw[26] = append(l.Raw[26], attr(77, nil)...)
+		case "no-ipv4":
+			l.Raw[26] = attr(10, nil)
+		}
+		if _, e := LinkIPv6Applicable(l); e == nil {
+			t.Fatal("applicability guard not decisive", name)
+		}
+	}
+}
+func TestS5ZeroParentBothComponentsRefused(t *testing.T) {
+	_, r, s := fixtureBaseline(t)
+	ns := Namespace{Device: 7, Inode: 9, Isolated: true}
+	for _, parent := range []Namespace{{}, {Device: 7}, {Inode: 8}} {
+		if _, e := NewBaselineCandidate(parent, ns, r, s); e == nil {
+			t.Fatal("zero parent accepted", parent)
+		}
+	}
+}

@@ -43,6 +43,15 @@ func openRouteSocket(ns *namespaceCustody) (*routeSocket, error) {
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
 	}
+	return openRouteSocketConstruction(ns)
+}
+func openReadOnlyEvidenceSocket(ns *namespaceCustody) (*routeSocket, error) {
+	if !readOnlyEvidenceBuild {
+		return nil, ErrExecutorUnreleased
+	}
+	return openRouteSocketConstruction(ns)
+}
+func openRouteSocketConstruction(ns *namespaceCustody) (*routeSocket, error) {
 	if e := ns.checkCurrent(); e != nil {
 		return nil, e
 	}
@@ -168,10 +177,19 @@ func (s *routeSocket) Exchange(ctx context.Context, request []byte) (out []Datag
 type residentNetlink struct{ ns *namespaceCustody }
 
 func (r residentNetlink) Request(ctx context.Context, kind uint16, payload []byte, dump bool) ([][]byte, error) {
-	if !kernelExecutionReleased {
+	if !kernelExecutionReleased && !readOnlyEvidenceBuild {
 		return nil, ErrExecutorUnreleased
 	}
-	s, e := openRouteSocket(r.ns)
+	if !dump {
+		return nil, ErrConflict
+	}
+	var s *routeSocket
+	var e error
+	if readOnlyEvidenceBuild {
+		s, e = openReadOnlyEvidenceSocket(r.ns)
+	} else {
+		s, e = openRouteSocket(r.ns)
+	}
 	if e != nil {
 		return nil, e
 	}

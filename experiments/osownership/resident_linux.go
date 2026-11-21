@@ -21,7 +21,7 @@ import (
 // NEWNET and never enters another namespace. Namespace operations additionally
 // run on one locked thread and custody checks reject any TID mismatch.
 func withResidentNamespace(target int, parent Namespace, fn func(*namespaceCustody) error) error {
-	if !kernelExecutionReleased {
+	if !kernelExecutionReleased && !readOnlyEvidenceBuild {
 		return ErrExecutorUnreleased
 	}
 	runtime.LockOSThread()
@@ -89,7 +89,7 @@ func (c *residentChild) CloseCustody() error {
 	return c.closeErr
 }
 func (residentSpawner) Spawn(ctx context.Context) (ResidentProcess, error) {
-	if !kernelExecutionReleased {
+	if !kernelExecutionReleased && !readOnlyEvidenceBuild {
 		return nil, ErrExecutorUnreleased
 	}
 	type answer struct {
@@ -117,7 +117,7 @@ func (residentSpawner) Spawn(ctx context.Context) (ResidentProcess, error) {
 	return r.p, r.e
 }
 func spawnResidentPinnedSource(ctx context.Context) (process ResidentProcess, retErr error) {
-	if !kernelExecutionReleased {
+	if !kernelExecutionReleased && !readOnlyEvidenceBuild {
 		return nil, ErrExecutorUnreleased
 	}
 	exe, e := os.Executable()
@@ -238,7 +238,7 @@ func spawnResidentPinnedSource(ctx context.Context) (process ResidentProcess, re
 // Client is re-execed by the resident owner, not the outer parent. No clone or
 // setns: same namespace by exec inheritance, no TUN ExtraFiles, CLOEXEC custody.
 func startResidentClientSource(ctx context.Context, ns *namespaceCustody) (*exec.Cmd, error) {
-	if !kernelExecutionReleased {
+	if !kernelExecutionReleased && !readOnlyEvidenceBuild {
 		return nil, ErrExecutorUnreleased
 	}
 	if ns == nil {
@@ -261,7 +261,7 @@ func startResidentClientSource(ctx context.Context, ns *namespaceCustody) (*exec
 // child waits on stdin while outer verifies its nsfs/pidfd custody. Parent-death
 // SIGKILL is configured by the guarded launcher; no signal was executed.
 func residentBootstrapSource(ctx context.Context, work func(context.Context, *namespaceCustody) (Verdict, error)) error {
-	if !kernelExecutionReleased {
+	if !kernelExecutionReleased && !readOnlyEvidenceBuild {
 		return ErrExecutorUnreleased
 	}
 	unix.CloseOnExec(3)
