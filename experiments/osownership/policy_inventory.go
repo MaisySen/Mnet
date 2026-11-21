@@ -121,6 +121,11 @@ func mustJSON(v any) []byte { b, _ := json.Marshal(v); return b }
 // attribute. Origin is derived narrowly from ACK witness+exact local-route
 // shape, never solely RTPROT_KERNEL. IPv6 derived effects block this candidate.
 func (b *CapturedBaseline) Compose(raw RawInventory, s SysctlSnapshot, h *Handle, addressACK bool) (Inventory, error) {
+	return b.composeWithOwnedAF(raw, s, h, addressACK, nil)
+}
+
+// Private path admits26 only when a current ledger/pass proof is supplied.
+func (b *CapturedBaseline) composeWithOwnedAF(raw RawInventory, s SysctlSnapshot, h *Handle, addressACK bool, proof *ownedAFComposeProof) (Inventory, error) {
 	var out Inventory
 	if b == nil {
 		return out, ErrConflict
@@ -170,6 +175,9 @@ func (b *CapturedBaseline) Compose(raw RawInventory, s SysctlSnapshot, h *Handle
 	if len(remaining) == 1 {
 		l := remaining[0]
 		for k := range l.Raw {
+			if k == 26 && proof != nil && proof.matches(b, l, s, h) {
+				continue
+			}
 			if k != 3 && k != 4 && k != 18 && k != 20 {
 				return out, fmt.Errorf("unreviewed owned link attr %d", k)
 			}

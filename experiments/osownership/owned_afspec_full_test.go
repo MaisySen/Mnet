@@ -36,6 +36,14 @@ func fullAFSynthetic() (LinkRecord, SysctlSnapshot) {
 	l.Raw[18] = attr(1, []byte("tun\x00"))
 	p := "/proc/sys/net/ipv6/conf/" + l.Name + "/"
 	sys := SysctlSnapshot{ipv6DirPrefix + l.Name: "present", "/proc/sys/net/ipv4/conf/" + l.Name + "/forwarding": "0", p + "forwarding": "0", p + "force_forwarding": "0", p + "disable_ipv6": "1", p + "addr_gen_mode": "1"}
+	sys["/proc/sys/net/ipv4/ip_forward"] = "0"
+	for _, name := range []string{"all", "default"} {
+		sys["/proc/sys/net/ipv4/conf/"+name+"/forwarding"] = "0"
+		sys[ipv6DirPrefix+name] = "present"
+		for _, leaf := range []string{"forwarding", "force_forwarding", "disable_ipv6", "addr_gen_mode"} {
+			sys["/proc/sys/net/ipv6/conf/"+name+"/"+leaf] = "0"
+		}
+	}
 	return l, sys
 }
 func fullRequestClaim() ownedAFRequestClaim {
@@ -153,6 +161,7 @@ func TestFullAFRecordedShapeDiagnosticOnly(t *testing.T) {
 }
 
 type fullAFMemorySource struct {
+	extra         []LinkRecord
 	link          LinkRecord
 	sys           SysctlSnapshot
 	request       []byte
@@ -164,32 +173,36 @@ type fullAFMemorySource struct {
 func (*fullAFMemorySource) inertAFSourceOnly() {}
 func (f *fullAFMemorySource) Exchange(_ context.Context, r []byte) ([]Datagram, error) {
 	f.request = slices.Clone(r)
-	body := make([]byte, 16)
-	binary.NativeEndian.PutUint16(body[2:], f.link.Hardware)
-	binary.NativeEndian.PutUint32(body[4:], uint32(f.link.Index))
-	binary.NativeEndian.PutUint32(body[8:], f.link.Flags)
-	var keys []int
-	for k := range f.link.Raw {
-		keys = append(keys, int(k))
+	var frames []byte
+	for _, link := range append([]LinkRecord{f.link}, f.extra...) {
+		body := make([]byte, 16)
+		binary.NativeEndian.PutUint16(body[2:], link.Hardware)
+		binary.NativeEndian.PutUint32(body[4:], uint32(link.Index))
+		binary.NativeEndian.PutUint32(body[8:], link.Flags)
+		var keys []int
+		for k := range link.Raw {
+			keys = append(keys, int(k))
+		}
+		sort.Ints(keys)
+		for _, k := range keys {
+			body = append(body, attr(uint16(k), link.Raw[uint16(k)])...)
+		}
+		frame := make([]byte, 16+len(body))
+		binary.NativeEndian.PutUint32(frame, uint32(len(frame)))
+		binary.NativeEndian.PutUint16(frame[4:], 16)
+		binary.NativeEndian.PutUint16(frame[6:], 2)
+		copy(frame[8:16], r[8:16])
+		copy(frame[16:], body)
+		if f.corruptHeader {
+			frame[8]++
+		}
+		frames = append(frames, frame...)
 	}
-	sort.Ints(keys)
-	for _, k := range keys {
-		body = append(body, attr(uint16(k), f.link.Raw[uint16(k)])...)
-	}
-	frame := make([]byte, 16+len(body))
-	binary.NativeEndian.PutUint32(frame, uint32(len(frame)))
-	binary.NativeEndian.PutUint16(frame[4:], 16)
-	binary.NativeEndian.PutUint16(frame[6:], 2)
-	copy(frame[8:16], r[8:16])
-	copy(frame[16:], body)
 	done := make([]byte, 20)
 	binary.NativeEndian.PutUint32(done, 20)
 	binary.NativeEndian.PutUint16(done[4:], 3)
 	copy(done[8:16], r[8:16])
-	if f.corruptHeader {
-		frame[8]++
-	}
-	return []Datagram{{Bytes: frame}, {Bytes: done}}, nil
+	return []Datagram{{Bytes: frames}, {Bytes: done}}, nil
 }
 func (f *fullAFMemorySource) readAFWitnesses(_ context.Context, paths []string) (SysctlSnapshot, error) {
 	f.paths = slices.Clone(paths)

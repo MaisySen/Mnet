@@ -72,7 +72,13 @@ func (r *inertAFReader) read(ctx context.Context) (*afReadPass, error) {
 		return nil, afShape
 	}
 	p := &afReadPass{request: slices.Clone(w.request), replies: w.replies, sequence: r.sequence, reader: r}
-	var paths []string
+	paths := []string{"/proc/sys/net/ipv4/ip_forward"}
+	for _, name := range []string{"all", "default"} {
+		paths = append(paths, "/proc/sys/net/ipv4/conf/"+name+"/forwarding", ipv6DirPrefix+name)
+		for _, leaf := range []string{"forwarding", "force_forwarding", "disable_ipv6", "addr_gen_mode"} {
+			paths = append(paths, "/proc/sys/net/ipv6/conf/"+name+"/"+leaf)
+		}
+	}
 	for _, body := range bodies {
 		l, e := DecodeLink(body)
 		if e != nil || !safeInterfaceName(l.Name) {
@@ -154,6 +160,8 @@ type ownedAFDiagnostic struct {
 	headers []afReplyHeader
 }
 type ownedAFDisabledCandidate struct {
+	pass             *afReadPass
+	session          *adapterSession
 	diagnostic       ownedAFDiagnostic
 	uncheckedDevconf bool
 }
@@ -240,5 +248,5 @@ func (s *adapterSession) disabledAFCandidate(p *afReadPass) (ownedAFDisabledCand
 	}
 	// Unchecked IPv4 AND IPv6 devconf words are retained, not deemed safe. This
 	// candidate cannot become Inventory/active observation until policy review.
-	return ownedAFDisabledCandidate{diagnostic: d, uncheckedDevconf: true}, nil
+	return ownedAFDisabledCandidate{diagnostic: d, uncheckedDevconf: true, pass: p, session: s}, nil
 }
