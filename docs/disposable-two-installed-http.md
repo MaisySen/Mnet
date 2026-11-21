@@ -206,3 +206,33 @@ deletion. Missing/unreadable summaries carry error codes, not invented values.
 An unclassified early exit is now explicit failure with exit/signal/stderr,
 never a listener timing miss. This evidence correction cannot restore the lost
 first-attempt stderr, original journal/ledger or expiry outcome.
+
+## Separately released fresh corrected run
+
+One fresh run of native274d8aa and Multies0ad8edc passed, exit0. This is separate
+from the prior failed invocation, whose missing evidence remains missing. No
+third run or repeat was made. Last source pins: sane E-T<=16000ms DATA bound
+(15s authority plus1s save budget, NOT a lease extension), observed10152ms and
+16000/16001 boundary tests. Setup/registrar stderr records byte counts and
+exit/signal only, no content; adapter stderr is source-audited static parser/
+argument failures, retained capped if present. It was empty in this run.
+
+T1795283566370. Both saves exited T+271/807ms. Adapter native first stages were
+T+862/900ms, listener ready T+1177ms, exact challenge/HTTP body verified T+1259ms,
+with8923ms remaining to original earlier E1795283576552. EarlierE-T10182ms.
+Both local ledgers were ready/unspent before connects, then connection-reserved
+with14 spent each before cleanup and after all children joined. Journals stayed
+native-finalization-completed; native State/journal byte equality assertions
+passed. Setup owners, adapters and registrar all exited0 without a signal.
+
+B's scope cancellation was observed first, outer context still alive, at E+1ms;
+old stream/listener closure and Accept join also E+1ms. Final counters2 initial
+proofs/1 old-live proof/1 HTTP response. A's single fresh dial and old-stream I/O
+failed at scheduled E+50ms. A observed natural scope Done before cleanup with its
+outer context ended,390ms before B's later peer expiry. No causal timer, network
+key-removal or independent tunnel denial claim follows. This establishes one
+finite two-installed-owner userspace application exchange and owner retirement,
+not all-load timing, B-earlier, OS networking, duration/startup/renewal or
+production. No screen/input activated. Go1.26.6 temporary modfile, required
+Go1.26.11 and full app typecheck remain unproven. Actual browser prepared-screen
+pixels inspected; no active-network UI was added by this adapter.
