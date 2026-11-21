@@ -1,0 +1,8 @@
+{
+  "shared_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "nonce_hex": "0202020202020202020202020202020202020202020202020202020202020202",
+  "info": "mnet/enrollment-key-possession/experimental-v4/response-mac-key",
+  "prk_hex": "dd6ff97730f92be02cfd6823425e50ed546d1e88d8cb45b21bfdf51bb62f5f11",
+  "response_key_hex": "6f1bcfa1d41c254e79b0704c36553ae7aabaeca8a135a0bfabf4d3a1bd421b3e",
+  "response_mac_hex": "d9482f4b30898a88bae1d5040b74dd599fb4c34ae4a9d23e5c69c53dc93e56c2"
+}
