@@ -105,7 +105,7 @@ func protocolRig(t *testing.T) (*Transaction, *inertAdapterProtocol, *sessionFak
 		t.Fatal(e)
 	}
 	k := &sessionFake{fakeKernel: &fakeKernel{i: i}}
-	a, e := newInertAdapterProtocol(k, base, adapterIdentity{TargetID: "target", SessionID: "session", Namespace: base.ns})
+	a, e := newInertAdapterProtocol(k, base, adapterIdentity{TargetID: "target", SessionID: "session", AttemptID: "attempt", Namespace: base.ns})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -226,39 +226,6 @@ func TestExactBaselineCloneNilEmptyAndNetip(t *testing.T) {
 		}
 	}
 }
-func TestCapabilityRequiresFinalCustodyAndBoundFreshWitnesses(t *testing.T) {
-	now := time.Now()
-	ns := Namespace{Device: 7, Inode: 8, Isolated: true}
-	clean := adapterFinalState{Identity: adapterIdentity{TargetID: "target", SessionID: "session", Namespace: ns}}
-	e := networkCapabilityEvidence{Final: &clean, Now: now, TargetID: "target", SessionID: "session", Namespace: ns}
-	for _, kind := range []string{"deployment", "os-path", "transport", "authority"} {
-		e.Witnesses = append(e.Witnesses, networkCapabilityWitness{Kind: kind, TargetID: e.TargetID, SessionID: e.SessionID, Namespace: ns, ObservedAt: now.Add(-time.Second), ValidUntil: now.Add(time.Second)})
-	}
-	if !projectNetworkCapability(e).NetworkingReady {
-		t.Fatal("bound witness refused")
-	}
-	stripped := e
-	stripped.Now = now.Round(0)
-	if !reflect.DeepEqual(projectNetworkCapability(e), projectNetworkCapability(stripped)) {
-		t.Fatal("hidden monotonic changes projection")
-	}
-	e.Now = now.Add(time.Second)
-	if projectNetworkCapability(e).NetworkingReady {
-		t.Fatal("expiry accepted")
-	}
-	e.Now = now
-	for _, f := range []*adapterFinalState{nil, {CustodyUnresolved: true}, {CreateAttempted: true}, {CloseAmbiguous: true}, {RejectedHandle: &Handle{}}, {PossiblyApplied: &Operation{}}} {
-		e.Final = f
-		if projectNetworkCapability(e).NetworkingReady {
-			t.Fatal("unresolved state omitted")
-		}
-	}
-	e.Final = &clean
-	e.Witnesses[0].TargetID = "other"
-	if projectNetworkCapability(e).NetworkingReady {
-		t.Fatal("target mismatch")
-	}
-}
 func TestReadbackLagPoisonsAndCloseErrorReconciles(t *testing.T) {
 	tx, a, k := protocolRig(t)
 	k.missingACK = true
@@ -292,7 +259,7 @@ func TestReadbackLagPoisonsAndCloseErrorReconciles(t *testing.T) {
 		t.Fatal("forward resumed")
 	}
 }
-func TestResolvedPoisonFinalCanProjectBoundPath(t *testing.T) {
+func TestResolvedPoisonFinalNeverProjectsLivePath(t *testing.T) {
 	tx, a, k := protocolRig(t)
 	k.fault = "route-add-exclusive"
 	k.successOnError = true
@@ -308,18 +275,22 @@ func TestResolvedPoisonFinalCanProjectBoundPath(t *testing.T) {
 	if e != nil || !final.Poisoned || final.PossiblyApplied == nil || final.requiresCleanup() {
 		t.Fatal("resolved poisoned history mapping", final, e)
 	}
-	now := time.Now()
-	ev := networkCapabilityEvidence{Final: &final, TargetID: "target", SessionID: "session", Namespace: a.session.baseline.ns, Now: now}
-	for _, kind := range []string{"deployment", "os-path", "transport", "authority"} {
-		ev.Witnesses = append(ev.Witnesses, networkCapabilityWitness{Kind: kind, TargetID: ev.TargetID, SessionID: ev.SessionID, Namespace: ev.Namespace, ObservedAt: now.Add(-time.Second), ValidUntil: now.Add(time.Second)})
+	now := tx.clock.Now().Wall
+	final, e = a.session.reconcileObserved(raw, sys, adapterReconciliationObservation{Identity: a.session.identity, Sequence: a.session.nextObservationSequence(), ObservedAt: now})
+	if e != nil {
+		t.Fatal(e)
 	}
-	// These are fresh independent projection witnesses, not expired old authority.
-	if final.Identity != a.session.identity {
-		t.Fatal("final scope lost")
+	ev := boundEvidence(a.session.identity, now)
+	ev.Final = &final
+	ev.ObservationSequence = final.Observation.Sequence
+	if r := projectNetworkCapability(ev); r.NetworkingReady || r.State != "session-closed-clean" {
+		t.Fatal("closed-clean presented as live", r)
 	}
-	if !projectNetworkCapability(ev).NetworkingReady {
-		t.Fatal("resolved history wrongly blocks independent bound witnesses")
+	ev.Now = now.Add(24 * time.Hour)
+	if r := projectNetworkCapability(ev); r.NetworkingReady || r.State != "session-closed-clean" {
+		t.Fatal("historical proof incorrectly expired", r)
 	}
+
 }
 func TestReaddedDeleteWithoutRetrySlotRefused(t *testing.T) {
 	tx, a, k := protocolRig(t)
@@ -366,29 +337,170 @@ func TestTransactionFailedCloseStickyAcrossStops(t *testing.T) {
 	}
 }
 func TestCapabilityFinalScopeCannotCrossSessions(t *testing.T) {
-	now := time.Now()
-	ns := Namespace{Device: 7, Inode: 8, Isolated: true}
-	final := adapterFinalState{Identity: adapterIdentity{TargetID: "target-a", SessionID: "session-a", Namespace: ns}}
-	e := networkCapabilityEvidence{Final: &final, TargetID: "target-a", SessionID: "session-a", Namespace: ns, Now: now}
-	for _, kind := range []string{"deployment", "os-path", "transport", "authority"} {
-		e.Witnesses = append(e.Witnesses, networkCapabilityWitness{Kind: kind, TargetID: e.TargetID, SessionID: e.SessionID, Namespace: ns, ObservedAt: now.Add(-time.Second), ValidUntil: now.Add(time.Second)})
+	tx, a, _ := protocolRig(t)
+	if e := tx.Start(context.Background()); e != nil {
+		t.Fatal(e)
 	}
-	if !projectNetworkCapability(e).NetworkingReady {
-		t.Fatal("matching final/witness refused")
+	if e := tx.Stop(context.Background()); e != nil {
+		t.Fatal(e)
 	}
-	for _, change := range []string{"target", "session", "namespace"} {
+	raw, sys := recordedRaw(t)
+	now := tx.clock.Now().Wall
+	final, e := a.session.reconcileObserved(raw, sys, adapterReconciliationObservation{Identity: a.session.identity, Sequence: a.session.nextObservationSequence(), ObservedAt: now})
+	if e != nil {
+		t.Fatal(e)
+	}
+	ev := boundEvidence(a.session.identity, now)
+	ev.Final = &final
+	ev.ObservationSequence = final.Observation.Sequence
+	for _, change := range []string{"target", "session", "namespace", "attempt"} {
 		changed := final
 		switch change {
 		case "target":
-			changed.Identity.TargetID = "target-b"
+			changed.Identity.TargetID = "other"
 		case "session":
-			changed.Identity.SessionID = "session-b"
+			changed.Identity.SessionID = "other"
 		case "namespace":
 			changed.Identity.Namespace.Inode++
+		case "attempt":
+			changed.Identity.AttemptID = "other"
 		}
-		e.Final = &changed
-		if r := projectNetworkCapability(e); r.NetworkingReady || r.State != "final-scope-mismatch" {
-			t.Fatal("cross-scope final accepted", change, r)
+		ev.Final = &changed
+		if r := projectNetworkCapability(ev); r.NetworkingReady || r.State != "final-scope-mismatch" {
+			t.Fatal(change, r)
 		}
+	}
+}
+
+func boundEvidence(id adapterIdentity, now time.Time) networkCapabilityEvidence {
+	e := networkCapabilityEvidence{TargetID: id.TargetID, SessionID: id.SessionID, AttemptID: id.AttemptID, Namespace: id.Namespace, Now: now}
+	for _, kind := range []string{"deployment", "os-path", "transport", "authority"} {
+		e.Witnesses = append(e.Witnesses, networkCapabilityWitness{Kind: kind, TargetID: id.TargetID, SessionID: id.SessionID, AttemptID: id.AttemptID, Namespace: id.Namespace, ObservedAt: now.Add(-time.Second), ValidUntil: now.Add(time.Second)})
+	}
+	return e
+}
+
+// Independent synthetic raw records follow the reviewed schema, not live OS.
+func activeRawFixture(t *testing.T, a *inertAdapterProtocol) (RawInventory, SysctlSnapshot) {
+	t.Helper()
+	raw, sys := recordedRaw(t)
+	h := *a.session.canonical
+	raw.Links = append(raw.Links, LinkRecord{Index: h.Link.Index, Name: h.Link.Name, Alias: h.Link.Alias, MTU: h.Link.MTU, Flags: 1, Raw: map[uint16][]byte{18: attr(1, []byte("tun\x00"))}})
+	sys["/proc/sys/net/ipv6/conf/"+h.Link.Name+"/disable_ipv6"] = "1"
+	raw.Addresses = append(raw.Addresses, AddressRecord{Index: h.Link.Index, Family: 2, Prefix: 32, Flags: 0x80, Local: h.Address.Prefix.Addr(), Address: h.Address.Prefix.Addr(), Raw: map[uint16][]byte{8: u32(0x280)}})
+	raw.Routes = append(raw.Routes, RouteRecord{Family: 2, DestBits: 32, Table: 254, TableID: 254, Protocol: 242, Scope: 253, Type: 1, Dst: h.Route.Destination.Addr(), OIF: uint32(h.Link.Index), Priority: h.Route.Priority})
+	return raw, sys
+}
+func TestRawActiveObservationFailsClosedOnUnreviewedAFSpec(t *testing.T) {
+	tx, a, _ := protocolRig(t)
+	if e := tx.Start(context.Background()); e != nil {
+		t.Fatal(e)
+	}
+	raw, sys := activeRawFixture(t, a)
+	// Existing strict Compose currently requires then refuses owned attr26.
+	// This is an explicit blocked source gate, not positive readiness evidence.
+	owned := &raw.Links[len(raw.Links)-1]
+	owned.Raw[26] = append(attr(2, nil), attr(10, nil)...)
+	sys["/proc/sys/net/ipv4/conf/"+owned.Name+"/forwarding"] = "0"
+	sys[ipv6DirPrefix+owned.Name] = "present"
+	sys["/proc/sys/net/ipv6/conf/"+owned.Name+"/forwarding"] = "0"
+	sys["/proc/sys/net/ipv6/conf/"+owned.Name+"/addr_gen_mode"] = "1"
+	if obs, e := a.session.observeActive(raw, sys, tx); e == nil || obs != nil || !a.session.poisoned {
+		t.Fatal("unreviewed raw active path admitted", obs, e)
+	}
+	ev := boundEvidence(a.session.identity, tx.clock.Now().Wall)
+	if projectNetworkCapability(ev).NetworkingReady {
+		t.Fatal("blocked raw observation became readiness")
+	}
+}
+func TestTransactionOwnedDisplayEligibility(t *testing.T) {
+	for _, mode := range []string{"stop", "expiry", "wall-rollback", "mono-rollback", "different-owner"} {
+		t.Run(mode, func(t *testing.T) {
+			tx, a, _ := protocolRig(t)
+			if e := tx.Start(context.Background()); e != nil {
+				t.Fatal(e)
+			}
+			if !a.session.ownerEligible(tx) {
+				t.Fatal("completed owner eligibility refused")
+			}
+			switch mode {
+			case "stop":
+				tx.stopStarted = true
+			case "expiry":
+				tx.clock.(*fakeClock).s.Monotonic += time.Hour
+			case "wall-rollback":
+				tx.clock.(*fakeClock).s.Wall = tx.clock.Now().Wall.Add(-time.Second)
+			case "mono-rollback":
+				tx.clock.(*fakeClock).s.Monotonic = 0
+			case "different-owner":
+				copy := *tx
+				tx = &copy
+			}
+			if a.session.ownerEligible(tx) {
+				t.Fatal("owner invalidation missed", mode)
+			}
+		})
+	}
+}
+func TestObservationSequenceAndForeignPending(t *testing.T) {
+	tx, a, _ := protocolRig(t)
+	raw, sys := recordedRaw(t)
+	now := tx.clock.Now().Wall
+	o := adapterReconciliationObservation{Identity: a.session.identity, Sequence: 1, ObservedAt: now}
+	if _, e := a.session.reconcileObserved(raw, sys, o); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := a.session.reconcileObserved(raw, sys, o); e == nil {
+		t.Fatal("sequence replay")
+	}
+	o.Sequence = 2
+	o.ObservedAt = now.Add(-time.Second)
+	if _, e := a.session.reconcileObserved(raw, sys, o); e == nil {
+		t.Fatal("time rollback")
+	}
+	a.session.observationSequence = ^uint64(0)
+	if a.session.nextObservationSequence() != 0 {
+		t.Fatal("overflow")
+	}
+	ev := boundEvidence(a.session.identity, now)
+	ev.CleanupPending = true
+	ev.Final = &adapterFinalState{Identity: adapterIdentity{TargetID: "foreign"}, CustodyUnresolved: true}
+	r := projectNetworkCapability(ev)
+	if !r.CustodyUnresolved || r.State != "foreign-attempt-cleanup-unresolved" || r.NetworkingReady {
+		t.Fatal(r)
+	}
+	bad := a.session.identity
+	bad.AttemptID = ""
+	if _, e := newAdapterSession(a.session.baseline, bad); e == nil {
+		t.Fatal("empty attempt")
+	}
+}
+func TestFailedCloseEvidenceOnlyOnce(t *testing.T) {
+	tx, _, k := protocolRig(t)
+	if e := tx.Start(context.Background()); e != nil {
+		t.Fatal(e)
+	}
+	k.closeError = true
+	if e := tx.Stop(context.Background()); e == nil {
+		t.Fatal("expected close error")
+	}
+	count := len(tx.Evidence)
+	events := 0
+	for _, e := range tx.Evidence {
+		if e.Step == "close-owned-tun-fd-result" {
+			events++
+			if e.ACK || !e.Error || e.Readback != "custody-unresolved" {
+				t.Fatal(e)
+			}
+		}
+	}
+	if events != 1 {
+		t.Fatal(events)
+	}
+	if e := tx.Stop(context.Background()); e == nil {
+		t.Fatal("sticky error lost")
+	}
+	if len(tx.Evidence) != count || k.closeCount != 1 {
+		t.Fatal("fabricated repeat")
 	}
 }

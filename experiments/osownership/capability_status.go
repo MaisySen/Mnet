@@ -51,6 +51,10 @@ func projectNetworkCapability(e networkCapabilityEvidence) networkCapabilityStat
 
 	r.CustodyUnresolved = e.CleanupPending // preserved on EVERY branch, even foreign
 	id := adapterIdentity{TargetID: e.TargetID, SessionID: e.SessionID, Namespace: e.Namespace, AttemptID: e.AttemptID}
+	if e.Final != nil && e.Active != nil {
+		r.State = "conflicting-records"
+		return r
+	}
 	if e.Final != nil {
 		if e.Final.Identity != id || !id.valid() {
 			if e.Final.requiresCleanup() {

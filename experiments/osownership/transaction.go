@@ -60,6 +60,7 @@ type Transaction struct {
 	Evidence         []Evidence
 	Ready            bool
 	PendingCleanup   bool
+	stopStarted      bool
 	fdCloseAttempted bool
 	fdCloseError     error
 	baseline         *Inventory
@@ -262,6 +263,7 @@ func stepPresent(op Operation, h Handle, i Inventory) bool {
 // No new traffic is allowed. It reads back before EVERY mutation, retains
 // pending state on mismatch/unknown, and never assumes timeout means no effect.
 func (t *Transaction) Stop(ctx context.Context) error {
+	t.stopStarted = true // invalidate display authority before the first cleanup read
 	bounded, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
 	ctx = bounded

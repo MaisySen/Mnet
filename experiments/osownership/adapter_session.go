@@ -27,6 +27,10 @@ func (i adapterIdentity) valid() bool {
 type adapterSession struct {
 	identity            adapterIdentity
 	observationSequence uint64
+	owner               *Transaction
+	lastObservationTime time.Time
+	lastOwnerStamp      *Stamp
+	clockDistrusted     bool
 	baseline            *CapturedBaseline
 	createAttempted     bool
 	rejectedHandle      *Handle
@@ -377,11 +381,12 @@ func (s *adapterSession) reconcileObserved(raw RawInventory, sys SysctlSnapshot,
 		return adapterFinalState{}, ErrConflict
 	}
 	o.ObservedAt = o.ObservedAt.Round(0).UTC()
-	if o.ObservedAt.IsZero() {
+	if o.ObservedAt.IsZero() || (!s.lastObservationTime.IsZero() && o.ObservedAt.Before(s.lastObservationTime)) {
 		return adapterFinalState{}, ErrConflict
 	}
 	r, e := s.reconcile(raw, sys)
 	// Even a mismatched raw baseline gets an observation stamp, never clean state.
+	s.lastObservationTime = o.ObservedAt
 	s.observationSequence = o.Sequence
 	copy := o
 	r.Observation = &copy
@@ -410,14 +415,52 @@ func (s *adapterSession) nextObservationSequence() uint64 {
 	return s.observationSequence + 1
 }
 func (s *adapterSession) activeEligible() bool {
-	return s != nil && s.identity.valid() && s.canonical != nil && s.plan != nil && s.forwardStep == len(forwardTransitions) && !s.poisoned && !s.cleanupMode && s.pending == nil && s.cleanupPending == nil && s.cleanupRetry == nil && !s.closeAttempted && s.rejectedHandle == nil
+	return s != nil && s.identity.valid() && s.canonical != nil && s.plan != nil && s.forwardStep == len(forwardTransitions) && !s.poisoned && !s.cleanupMode && s.pending == nil && s.cleanupPending == nil && s.cleanupRetry == nil && !s.closeAttempted && s.rejectedHandle == nil && !s.clockDistrusted
 }
-func (s *adapterSession) observeActive(i Inventory, observedAt time.Time) (*adapterActiveObservation, error) {
-	observedAt = observedAt.Round(0).UTC()
-	if !s.activeEligible() || observedAt.IsZero() || !observedAt.Before(s.plan.EffectiveExpiry) || s.nextObservationSequence() == 0 {
+
+// Single-owner only. No locks/concurrent call contract. The exact Transaction
+// owns deadline/stop eligibility; an arbitrary ready boolean is never accepted.
+func (s *adapterSession) ownerEligible(t *Transaction) bool {
+	if s == nil || t == nil || t.clock == nil || !t.Ready || t.stopStarted || t.handle == nil || t.fdCloseAttempted || s.clockDistrusted {
+		return false
+	}
+	a, ok := t.k.(*inertAdapterProtocol)
+	if !ok || a.session != s || !reflect.DeepEqual(t.plan, *s.plan) || !sameSessionHandle(*t.handle, *s.canonical) {
+		return false
+	}
+	if s.owner != nil && s.owner != t {
+		return false
+	}
+	stamp := t.clock.Now()
+	if stamp.Wall.IsZero() || t.deadline.expired(stamp) {
+		return false
+	}
+	if s.lastOwnerStamp != nil && (stamp.Monotonic < s.lastOwnerStamp.Monotonic || stamp.Wall.Before(s.lastOwnerStamp.Wall)) {
+		s.clockDistrusted = true
+		s.poisoned = true
+		return false
+	}
+	copy := stamp
+	s.lastOwnerStamp = &copy
+	s.owner = t
+	return true
+}
+func (s *adapterSession) observeActive(raw RawInventory, sys SysctlSnapshot, t *Transaction) (*adapterActiveObservation, error) {
+	if !s.activeEligible() || !s.ownerEligible(t) || s.nextObservationSequence() == 0 {
 		return nil, ErrConflict
 	}
-	if e := exactHandle(*s.canonical, *s.plan, i); e != nil {
+	observedAt := s.lastOwnerStamp.Wall.Round(0).UTC()
+	if !s.lastObservationTime.IsZero() && observedAt.Before(s.lastObservationTime) {
+		s.clockDistrusted = true
+		s.poisoned = true
+		return nil, ErrConflict
+	}
+	i, e := s.compose(raw, sys)
+	if e != nil {
+		s.poisoned = true
+		return nil, e
+	}
+	if e = exactHandle(*s.canonical, *s.plan, i); e != nil {
 		s.poisoned = true
 		return nil, e
 	}
@@ -428,6 +471,7 @@ func (s *adapterSession) observeActive(i Inventory, observedAt time.Time) (*adap
 		}
 	}
 	s.observationSequence++
+	s.lastObservationTime = observedAt
 	until := observedAt.Add(provisionalActiveObservationFreshness)
 	if s.plan.EffectiveExpiry.Before(until) {
 		until = s.plan.EffectiveExpiry
@@ -435,5 +479,5 @@ func (s *adapterSession) observeActive(i Inventory, observedAt time.Time) (*adap
 	return &adapterActiveObservation{identity: s.identity, sequence: s.observationSequence, observedAt: observedAt, validUntil: until, planExpiry: s.plan.EffectiveExpiry, ledger: s}, nil
 }
 func (o *adapterActiveObservation) current() bool {
-	return o != nil && o.ledger.activeEligible() && o.identity == o.ledger.identity && o.sequence == o.ledger.observationSequence && o.planExpiry.Equal(o.ledger.plan.EffectiveExpiry)
+	return o != nil && o.ledger.activeEligible() && o.ledger.ownerEligible(o.ledger.owner) && o.identity == o.ledger.identity && o.sequence == o.ledger.observationSequence && o.planExpiry.Equal(o.ledger.plan.EffectiveExpiry)
 }
