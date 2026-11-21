@@ -110,11 +110,11 @@ func renderHomeSurface(notice string, hasLayout, hasMulties bool, focus int, inf
 	cards := [][3]string{
 		{"Mnet networking", "Your private network", "See a read-only snapshot of local network devices."},
 		{"Remote Desktop", "A screen when you need it", "Choose a device. The host approves viewing and any pointer control separately."},
-		{"Shared Desk", "One desk, across your displays", "Inspect your display layout. Keyboard and mouse pairing isn't connected here."},
+		{"Shared Desk", "One desk, across your displays", "Create, inspect and edit offline arrangement drafts. Pairing and input stay unavailable."},
 	}
 	for i, card := range cards {
 		y := 110 + i*112
-		enabled := i != 2 || hasLayout
+		enabled := true
 		heading := uint32(0x172b4d)
 		accent := uint32(0x124b9a)
 		bg := uint32(0xffffff)
@@ -128,7 +128,7 @@ func renderHomeSurface(notice string, hasLayout, hasMulties bool, focus int, inf
 		text(38, y+54, 735, 15, true, accent, card[1])
 		text(38, y+78, 790, 14, false, 0x63758c, card[2])
 		if i == 2 && !hasLayout {
-			text(38, y+97, 790, 12, false, 0x63758c, "Create a starter with desk layout-new --out NEW_FILE, or open with --layout FILE.")
+			text(38, y+97, 790, 12, false, 0x63758c, "Drafts stay local files. Saving always creates a new file; nothing is replaced.")
 		}
 		if enabled {
 			text(832, y+54, 27, 24, false, 0x2563c7, ">")

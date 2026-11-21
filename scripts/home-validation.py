@@ -44,7 +44,11 @@ try:
  env['DISPLAY']=':'+poll(lambda:(out/'display').read_text().strip(),'display')
  launch();home=poll(lambda:window('^Mnet: three tools'),'home');screenshot(home,'home');assert not server.reads
  action('windowfocus',home,'mousemove','--window',home,'200','510','click','1');time.sleep(.1);assert window('^Mnet: three tools') and not server.reads,'unconfigured review activated'
- action('windowfocus',home,'mousemove','--window',home,'100','370','click','1');time.sleep(.1);assert not server.reads and window('^Mnet: three tools'),'disabled layout activated'
+ # Shared Desk is always reachable: it opens the offline arrangements window
+ # without consulting the daemon, and Escape returns home.
+ action('windowfocus',home,'mousemove','--window',home,'100','370','click','1');arr=poll(lambda:window('^Mnet Shared Desk: arrangements'),'arrangements child');assert not server.reads
+ assert not window('^Mnet: three tools'),'home remained active behind arrangements'
+ action('windowfocus',arr,'key','Escape');home=poll(lambda:window('^Mnet: three tools'),'arrangements return');assert not server.reads
  # Every transition closes and joins the prior home. A child Escape returns a
  # fresh home; returning never repeats local API reads or reuses a selection.
  action('mousemove','--window',home,'100','140','click','1');device=poll(lambda:window('^Mnet devices: read-only \\[down\\]'),'device child');assert server.reads==['/localapi/status']
@@ -56,9 +60,14 @@ try:
  before=list(server.reads);action('windowfocus',home,'key','Tab','keydown','Return','key','Tab','keyup','Return');time.sleep(.1);assert window('^Mnet: three tools') and server.reads==before
  action('key','Escape');assert client.wait(timeout=3)==0
  launch(True);home=poll(lambda:window('^Mnet: three tools'),'layout home');screenshot(home,'layout-enabled-home');before=list(server.reads)
- action('windowfocus',home,'mousemove','--window',home,'100','370','click','1');preview=poll(lambda:window('^Mnet Shared Desk'),'actual layout child')
+ action('windowfocus',home,'mousemove','--window',home,'100','370','click','1');arr=poll(lambda:window('^Mnet Shared Desk: arrangements'),'arrangements with pinned file')
+ assert server.reads==before,'offline arrangements consulted daemon'
+ def arrtitle():return subprocess.check_output(['xdotool','getwindowname',arr],env=env,text=True).strip()
+ poll(lambda:'rows1' in arrtitle() and 'pinnedtrue' in arrtitle(),'pinned opened file row')
+ action('windowfocus',arr,'key','Return');preview=poll(lambda:window('^Mnet Shared Desk: offline layout'),'pinned inspect child')
  assert server.reads==before,'offline layout consulted daemon'
- action('windowfocus',preview,'key','Escape');home=poll(lambda:window('^Mnet: three tools'),'layout return');assert server.reads==before
+ action('windowfocus',preview,'key','Escape');arr=poll(lambda:window('^Mnet Shared Desk: arrangements'),'arrangements reopen');assert server.reads==before
+ action('windowfocus',arr,'key','Escape');home=poll(lambda:window('^Mnet: three tools'),'layout return');assert server.reads==before
  client.terminate();assert client.wait(timeout=3)==0;assert not server.bad
  # Explicit configured review is an opt-in child. Opening/closing without
  # Start must not prepare identity, open the browser or read the local API.
@@ -81,19 +90,19 @@ try:
  # Reset focus for the separate keyboard journey below.
  action('windowfocus',home,'key','Escape');assert client.wait(timeout=3)==0
  launch(origin='https://multies.example.test');home=poll(lambda:window('^Mnet: three tools'),'fresh configured home')
- action('windowfocus',home,'key','Tab','Tab','Tab','Tab')
- # No layout means Tab visits network, desktop, close, then approval review.
+ action('windowfocus',home,'key','Tab','Tab','Tab','Tab','Tab')
+ # Tab visits network, desktop, shared desk, close, then approval review.
  # The header explanation is focus 5, after review.
  action('keydown','Return','key','Tab','keyup','Return');time.sleep(.1)
  assert window('^Mnet: three tools') and server.reads==before,'pending approval action migrated'
- action('key','Tab','Tab','Tab','Tab','Return')
+ action('key','Tab','Tab','Tab','Tab','Tab','Return')
  review=poll(lambda:window('^Mnet: experimental Multies device approvals'),'configured review child')
  assert not window('^Mnet: three tools') and server.reads==before and not server.bad,'review entry made request'
  action('windowfocus',review,'key','Escape');home=poll(lambda:window('^Mnet: three tools'),'review return');screenshot(home,'review-return-home')
  assert server.reads==before and not server.bad,'review return made request'
  # The consent-map explanation is a header toggle, never a route: no daemon
  # reads, the window stays, and while open the tool routes are inert.
- action('windowfocus',home,'key','Tab','Tab','Tab','Tab','Tab','Return');time.sleep(.1)
+ action('windowfocus',home,'key','Tab','Tab','Tab','Tab','Tab','Tab','Return');time.sleep(.1)
  info=poll(lambda:window('info1'),'keyboard info panel')
  path=out/'home-info.png';subprocess.run(['import','-display',env['DISPLAY'],'-window',info,str(path)],check=True)
  image=Image.open(path).convert('RGB');assert image.size==(900,560)
@@ -110,7 +119,7 @@ try:
  action('windowfocus',home,'mousemove','--window',home,'200','510','click','1');review=poll(lambda:window('^Mnet: experimental Multies device approvals'),'mouse review child')
  client.terminate();assert client.wait(timeout=3)==0
  assert server.reads==before and not server.bad,'review cancellation made request'
- print('PASS actual home routes, info panel toggle devices/chooser/offline layout, child return without retry, zero home API reads, disabled layout, pending-key cancellation and SIGTERM join',flush=True)
+ print('PASS actual home routes, info panel toggle devices/chooser/offline arrangements, child return without retry, zero home API reads, always-enabled offline desk route, pending-key cancellation and SIGTERM join',flush=True)
 finally:
  if client is not None and client.poll() is None:client.kill();client.wait()
  if x is not None:x.terminate();x.wait(timeout=3)

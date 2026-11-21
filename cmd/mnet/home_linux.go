@@ -114,7 +114,7 @@ func chooseHome(parent context.Context, notice string, hasLayout, hasMulties boo
 		}
 	}()
 	defer func() { cancel(); c.Close(); <-done }()
-	enabledAll := [6]bool{true, true, hasLayout, true, hasMulties, true}
+	enabledAll := [6]bool{true, true, true, true, hasMulties, true}
 	enabledInfo := [6]bool{false, false, false, false, false, true}
 	info := false
 	enabled := func() []bool {
@@ -187,9 +187,7 @@ func chooseHome(parent context.Context, notice string, hasLayout, hasMulties boo
 		case 1:
 			return homeDesktop, true
 		case 2:
-			if hasLayout {
-				return homeLayout, true
-			}
+			return homeLayout, true
 		case 3:
 			return homeClose, true
 		case 4:

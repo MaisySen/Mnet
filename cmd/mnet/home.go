@@ -20,7 +20,7 @@ const (
 	homeMulties
 )
 
-type homeConfig struct{ LayoutPath, MultiesOrigin string }
+type homeConfig struct{ LayoutPath, MultiesOrigin, DeskDir string }
 
 // Fixed home notices. The order is the machine-readable note slug in the
 // window title; fixtures read outcomes from it instead of pixels.
@@ -95,14 +95,7 @@ func runHome(ctx context.Context, hc *http.Client, base string, config homeConfi
 			}
 			err = runMultiesWindow(ctx, hc, base, config.MultiesOrigin)
 		case homeLayout:
-			if config.LayoutPath == "" {
-				return errors.New("home layout route unavailable")
-			}
-			var preview *deskLayoutPreview
-			preview, err = readDeskLayoutPreviewFile(config.LayoutPath)
-			if err == nil {
-				err = showDeskLayoutPreview(ctx, preview)
-			}
+			err = runDeskHomeJourney(ctx, config.DeskDir, config.LayoutPath)
 		default:
 			return errors.New("unknown home route")
 		}

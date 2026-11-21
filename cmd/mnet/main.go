@@ -168,6 +168,7 @@ func main() {
 	case "open":
 		config, err := homeArgs(args[1:])
 		must(err)
+		config.DeskDir = deskStoreDir(stateDir)
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		must(runHome(ctx, hc, apiBase(), config))
