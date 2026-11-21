@@ -153,7 +153,7 @@ func showDeskLayoutPreview(ctx context.Context, p *deskLayoutPreview) error {
 		if er != nil {
 			return er
 		}
-		title := fmt.Sprintf("Mnet Shared Desk: offline layout details%t display%d edge%s pixel%d", details, p.selected+1, p.edge, p.along)
+		title := fmt.Sprintf("Mnet Shared Desk: offline layout details%t placeholder%t display%d edge%s pixel%d", details, starterPlaceholder(p.display()), p.selected+1, p.edge, p.along)
 		if ok {
 			title += fmt.Sprintf(" candidate=%s@%d,%d", candidate.Display, candidate.X, candidate.Y)
 		} else {

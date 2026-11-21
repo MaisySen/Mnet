@@ -62,6 +62,9 @@ try:
  # Inspect opens the read-only inspector on the selected draft.
  action('mousemove','--window',wid,'240','474','click','1')
  preview=poll(lambda:window('^Mnet Shared Desk: offline layout'),'inspect child')
+ ptitle=lambda:subprocess.check_output(['xdotool','getwindowname',preview],env=env,text=True).strip()
+ poll(lambda:'placeholdertrue' in ptitle(),'inspector marks starter placeholder labels')
+ subprocess.run(['import','-display',env['DISPLAY'],'-window',preview,str(out/'inspect-placeholder.png')],check=True)
  action('windowfocus',preview,'key','Escape')
  wid=poll(lambda:window('^Mnet Shared Desk: arrangements'),'arrangements after inspect');action('windowfocus',wid)
  # Edit opens the file-backed editor; a clean close saves nothing new.

@@ -86,3 +86,28 @@ func TestDeskArrangementsViewClampAndButtons(t *testing.T) {
 		t.Fatal("a selected row enables inspect")
 	}
 }
+
+func TestListDeskStoreFlagsPlaceholderLabels(t *testing.T) {
+	dir := t.TempDir()
+	writeStoreLayout(t, dir, "starter.json", starterDeskLayout(1024, 768))
+	custom := starterDeskLayout(1024, 768)
+	custom.Displays[0].ID = "office-left"
+	custom.Displays[0].Device = "desk-pc"
+	custom.Displays[1].ID = "office-right"
+	custom.Displays[1].Device = "laptop"
+	writeStoreLayout(t, dir, "custom.json", custom)
+	entries, err := listDeskStore(dir)
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("entries = %+v, %v", entries, err)
+	}
+	byName := map[string]deskStoreEntry{}
+	for _, e := range entries {
+		byName[e.Name] = e
+	}
+	if !byName["starter.json"].Placeholders {
+		t.Fatal("a starter-saved draft must be flagged as carrying placeholder labels")
+	}
+	if byName["custom.json"].Placeholders {
+		t.Fatal("custom labels must not be flagged as placeholders")
+	}
+}

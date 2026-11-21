@@ -86,6 +86,9 @@ func renderDeskSurface(p *deskLayoutPreview, focus int, details bool) (*image.RG
 		if r.w >= 24 && r.h >= 24 {
 			text(int(34+r.x), int(117+r.y), 20, 13, true, fg, fmt.Sprint(i+1))
 		}
+		if starterPlaceholder(p.layout.Displays[i]) && r.w >= 110 && r.h >= 44 {
+			text(int(34+r.x), int(134+r.y), int(r.w-14), 11, false, fg, "placeholder, not a device")
+		}
 	}
 	d := p.display()
 	r := rects[p.selected]
@@ -109,7 +112,11 @@ func renderDeskSurface(p *deskLayoutPreview, focus int, details bool) (*image.RG
 		return nil, err
 	}
 	text(20, 380, 860, 13, true, 0x214f90, fmt.Sprintf("Display %d of %d: %s", p.selected+1, len(p.layout.Displays), d.ID))
-	text(20, 402, 860, 13, false, 0x526780, "Device label: "+d.Device)
+	deviceLine := "Device label: " + d.Device
+	if starterPlaceholder(d) {
+		deviceLine += " (placeholder, not a verified device)"
+	}
+	text(20, 402, 860, 13, false, 0x526780, deviceLine)
 	if details {
 		lines := []string{
 			fmt.Sprintf("Layout origin (%d,%d), size %dx%d; native pixels %dx%d", d.X, d.Y, d.Width, d.Height, d.PixelWidth, d.PixelHeight),

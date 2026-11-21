@@ -5,7 +5,7 @@
 ## What the window does
 
 - Shows every validated display in a single aspect-preserving layout diagram. The selected display is blue; numbered rectangles refer to the file's display order.
-- Shows the selected display's full display and device labels, layout origin and dimensions, and native pixel dimensions. Labels are file data, not verified people or devices.
+- Shows the selected display's full display and device labels, layout origin and dimensions, and native pixel dimensions. Labels are file data, not verified people or devices. Untouched starter labels (`this-display`/`this-computer`, `next-display`/`next-computer`) are marked as placeholders in the diagram and detail text, matching the editor.
 - Lets you choose Left, Right, Top or Bottom and an exact source native-edge pixel. The yellow marker names that geometry query, not a live pointer.
 - Uses the existing exact `desk.Compiled.MapEdge` calculation for a destination candidate. Partial-edge gaps and dead corners say **NO NEIGHBOR**. Candidate coordinates are native destination pixels, not scaled preview pixels.
 - Keeps all 2 to 32 supported displays selectable, including maximum-length labels. Very thin or tiny displays can collapse into touching paint pixels. The exact details and mapping come from original geometry, never those rounded pixels; some rectangle numbers cannot fit at that scale.

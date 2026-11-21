@@ -26,9 +26,10 @@ func deskStoreDir(stateDir string) string {
 }
 
 type deskStoreEntry struct {
-	Name     string // file base name inside the store directory
-	Displays int    // validated display count; 0 when the file is not a valid draft
-	Invalid  bool   // true when the file is present but not a valid arrangement
+	Name         string // file base name inside the store directory
+	Displays     int    // validated display count; 0 when the file is not a valid draft
+	Invalid      bool   // true when the file is present but not a valid arrangement
+	Placeholders bool   // true when a valid draft still carries starter placeholder labels
 }
 
 // listDeskStore is read-only. A missing store directory is an empty list,
@@ -62,6 +63,12 @@ func listDeskStore(dir string) ([]deskStoreEntry, error) {
 			if decErr == nil {
 				if _, compErr := desk.Compile(layout); compErr == nil {
 					entry.Displays = len(layout.Displays)
+					for _, display := range layout.Displays {
+						if starterPlaceholder(display) {
+							entry.Placeholders = true
+							break
+						}
+					}
 				} else {
 					entry.Invalid = true
 				}

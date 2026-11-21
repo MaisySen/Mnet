@@ -50,7 +50,7 @@ try:
  report=json.loads(subprocess.check_output([str(out/'mnet'),'--state',str(state),'desk','layout-check',str(layout),'--edge','source-display','right','500'],env=env,text=True));assert report['offline_only'] and not report['active'] and report['candidate']==dict(display='recipient-display',device='recipient-device',x=0,y=750)
  for args in (['layout-view'],['layout-view',str(layout),'--approve'],['run',str(layout)]):
   r=subprocess.run([str(out/'mnet'),'--state',str(state),'desk',*args],env=env,capture_output=True,text=True,timeout=3);assert r.returncode!=0 and 'usage:' in r.stderr
- launch();poll(lambda:title().endswith('edgeright pixel0 no-neighbor'),'initial exact gap');capture('gap')
+ launch();poll(lambda:title().endswith('edgeright pixel0 no-neighbor'),'initial exact gap');assert 'placeholderfalse' in title(),'non-starter labels marked as placeholder';capture('gap')
  # Secondary details are explicit local disclosure, not pairing, a daemon
  # query, a file write or a new geometry selection.
  action('mousemove','--window',wid,'20','80','mousedown','1','mousemove','--window',wid,'800','77','mouseup','1')

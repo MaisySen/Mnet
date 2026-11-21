@@ -152,6 +152,9 @@ func renderDeskArrangementsSurface(v deskArrangementsView) (*image.RGBA, error) 
 					detail = "not a valid arrangement file"
 				} else {
 					detail = fmt.Sprintf("%d displays", e.Displays)
+					if e.Placeholders {
+						detail += ", placeholder labels"
+					}
 				}
 			}
 			text(44, y+21, 400, 13, true, 0x172b4d, name)
