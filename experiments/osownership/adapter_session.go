@@ -7,8 +7,11 @@ package osownership
 // promoted Handle values cannot silently widen a future adapter's authority.
 // No namespace, device, FD, sysctl, netlink or process operations here.
 import (
+	"encoding/json"
 	"errors"
+	"maps"
 	"reflect"
+	"time"
 )
 
 type adapterSession struct {
@@ -31,9 +34,31 @@ func newAdapterSession(b *CapturedBaseline) (*adapterSession, error) {
 	if b == nil || !sameNamespace(b.ns, b.ns) {
 		return nil, ErrConflict
 	}
-	return &adapterSession{baseline: b}, nil
+	data, e := json.Marshal(b.raw)
+	if e != nil {
+		return nil, e
+	}
+	var raw RawInventory
+	if e = json.Unmarshal(data, &raw); e != nil {
+		return nil, e
+	}
+	frozen := *b
+	frozen.raw = raw
+	frozen.sys = maps.Clone(b.sys)
+	return &adapterSession{baseline: &frozen}, nil
 }
 func (s *adapterSession) bindCreated(p Plan, h Handle) error {
+	if s == nil || s.baseline == nil {
+		return ErrConflict
+	}
+	i, e := s.baseline.Compose(s.baseline.raw, SysctlSnapshot(s.baseline.sys), nil, false)
+	if e != nil {
+		return e
+	}
+	expectedPlan, e := Prepare(p.Binding, i, p.EffectiveExpiry.Add(-time.Nanosecond))
+	if e != nil || !reflect.DeepEqual(expectedPlan, p) {
+		return ErrConflict
+	}
 	expected, e := AttachCreated(p, h.Link.Index, h.CreationLink.MTU)
 	if e != nil || expected != h {
 		return ErrConflict
@@ -62,7 +87,7 @@ func (s *adapterSession) begin(h Handle, op Operation) error {
 	if s == nil || s.cleanupMode || s.poisoned || s.closeAttempted || s.canonical == nil || s.pending != nil || !sameSessionHandle(h, *s.canonical) {
 		return ErrConflict
 	}
-	if s.plan == nil || s.forwardStep >= len(s.plan.Operations) || op != s.plan.Operations[s.forwardStep] {
+	if s.plan == nil || s.forwardStep >= len(forwardTransitions) || op.Kind != forwardTransitions[s.forwardStep] || op != s.plan.Operations[s.forwardStep] {
 		return ErrConflict
 	}
 	// Validate exact opaque encoder even for plans containing zero route ifindex.
@@ -118,8 +143,6 @@ func (s *adapterSession) observe(i Inventory) error {
 		s.canonical.TagConfirmed = true
 	case "address-add-exclusive":
 		s.addressConfirmed = true
-	case "address-del-exact":
-		s.addressConfirmed = false
 	}
 	s.forwardStep++
 	s.pending = nil
@@ -230,4 +253,45 @@ func (s *adapterSession) observeCleanup(i Inventory) error {
 	}
 	s.cleanupPending = nil
 	return nil
+}
+
+// Independent transition table. The copied Plan must also match Prepare, so
+// neither a caller-supplied Kind nor a malformed Plan can define this ordering.
+var forwardTransitions = [6]string{"create-nonpersistent-tun", "set-alias-mtu-exact", "disable-owned-link-ipv6", "address-add-exclusive", "link-up-exact", "route-add-exclusive"}
+
+type adapterFinalState struct {
+	Poisoned          bool
+	CleanupMode       bool
+	PossiblyApplied   *Operation
+	CleanupPending    *Operation
+	CloseAttempted    bool
+	CloseRecorded     bool
+	CloseConfirmed    bool
+	CloseAmbiguous    bool
+	RawBaselineEqual  bool
+	CustodyUnresolved bool
+}
+
+// Reconcile reads caller-supplied whole raw observations only, never closes or
+// silently upgrades a close error to success. Baseline equality after a close
+// error establishes observed network absence, NOT FD custody closure.
+func (s *adapterSession) reconcile(raw RawInventory, sys SysctlSnapshot) (adapterFinalState, error) {
+	if s == nil || s.baseline == nil {
+		return adapterFinalState{}, ErrConflict
+	}
+	r := adapterFinalState{Poisoned: s.poisoned, CleanupMode: s.cleanupMode, CloseAttempted: s.closeAttempted, CloseRecorded: s.closeRecorded, CloseConfirmed: s.closeConfirmed, CloseAmbiguous: s.closeAttempted && (!s.closeRecorded || !s.closeConfirmed)}
+	if s.pending != nil {
+		copy := *s.pending
+		r.PossiblyApplied = &copy
+	}
+	if s.cleanupPending != nil {
+		copy := *s.cleanupPending
+		r.CleanupPending = &copy
+	}
+	r.RawBaselineEqual = reflect.DeepEqual(raw, s.baseline.raw) && reflect.DeepEqual(map[string]string(sys), s.baseline.sys)
+	r.CustodyUnresolved = s.canonical != nil && (!s.closeConfirmed || !r.RawBaselineEqual)
+	if !r.RawBaselineEqual {
+		return r, ErrConflict
+	}
+	return r, nil
 }

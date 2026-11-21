@@ -52,3 +52,31 @@ cleanup, without automatic action.
 
 Existing suite/mutant ownership stays with the reviewer. No tests, compile or
 mutants were run for this source packet. No claim of passing integration.
+
+## Independent transition table and final records
+
+| State | Admitted event | Required evidence | Next |
+| --- | --- | --- | --- |
+| no handle | bind created | deep-copied baseline, exact Prepare plan and AttachCreated equality | created |
+| created | set alias/MTU | exact encoder, ACK, exact handle/readback | tagged |
+| tagged | disable IPv6 | ACK, exact readback | IPv6 disabled |
+| IPv6 disabled | add address | exact encoder, ACK/readback | addressed |
+| addressed | link up | exact encoder, ACK/readback | up |
+| up | add peer route | exact encoder, ACK/readback | configured |
+| any forward | error/uncertainty | pending operation retained as possibly applied | poisoned, no forward |
+| any bound | cleanup request | irreversible cleanup phase, fresh exact Rollback selection | cleanup only |
+| cleanup | delete route/address | exact first rollback operation, absent readback | cleanup only |
+| cleanup | close original | no pending deletion, only original handle, one attempt | recorded/ambiguous |
+| recorded/ambiguous | read-only reconcile | entire original raw/sysctl baseline equality | network absence observed |
+
+Reconcile never converts close failure into confirmed close. Final state preserves
+poison, possibly-applied forward operation, pending cleanup, attempted/recorded/
+confirmed/ambiguous close, raw baseline equality and unresolved custody separately.
+A baseline-equal result with failed close remains custody-unresolved. No retry.
+
+Inventory-based fake cleanup checks do not establish whole-raw equivalence.
+Only the separate raw reconcile/absence gate does that. A future real adapter
+must supply Compose-validated raw snapshots, not trusted model Inventories. No
+such adapter or raw supplier is wired here. Plan validation uses expiry minus
+one nanosecond solely for deterministic structural Prepare comparison, not a
+current-time authority check. Transaction still owns live deadlines.
