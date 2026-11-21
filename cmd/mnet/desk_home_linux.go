@@ -80,7 +80,7 @@ func showDeskArrangements(ctx context.Context, v *deskArrangementsView) (int, er
 	var expiryTimer *time.Timer
 	if v.armed != "" && !v.armedUntil.IsZero() {
 		if left := time.Until(v.armedUntil); left <= 0 {
-			v.armed = ""
+			v.clearArmed()
 		} else {
 			expiryTimer = time.NewTimer(left)
 			expiry = expiryTimer.C
@@ -134,7 +134,7 @@ func showDeskArrangements(ctx context.Context, v *deskArrangementsView) (int, er
 	}
 	buttonAction := []int{deskArrActStarter, deskArrActInspect, deskArrActEdit, deskArrActDuplicate, deskArrActDelete, deskArrActClose}
 	state := func() string {
-		return fmt.Sprintf("rows%d sel%d pinned%t focus%d armed%t", v.rows(), v.sel, v.pinned != "", v.focus, v.armed != "")
+		return fmt.Sprintf("rows%d sel%d pinned%t focus%d armed%t armedrow%d", v.rows(), v.sel, v.pinned != "", v.focus, v.armed != "", v.armedRow)
 	}
 	draw := func() error {
 		picture, er := renderDeskArrangementsSurface(*v)
@@ -200,7 +200,7 @@ func showDeskArrangements(ctx context.Context, v *deskArrangementsView) (int, er
 		case <-owner.Done():
 			return deskArrActClose, nil
 		case <-expiry:
-			v.armed = "" // an expired delete is no longer pending
+			v.clearArmed() // an expired delete is no longer pending
 		case ev := <-events:
 			if ev.err != nil || ev.event == nil {
 				return deskArrActClose, errors.New("arrangements display ended")
@@ -213,7 +213,7 @@ func showDeskArrangements(ctx context.Context, v *deskArrangementsView) (int, er
 				if ev.Detail == 1 {
 					if r := rowAt(ev.EventX, ev.EventY); r >= 0 {
 						v.sel, v.focus, pressed = r, r, r
-						v.armed = "" // choosing a row cancels a pending delete
+						v.clearArmed() // choosing a row cancels a pending delete
 					} else if b := buttonAt(ev.EventX, ev.EventY); b >= 0 && v.buttonEnabled(buttonAction[b]) {
 						v.focus, pressed = v.rows()+b, 100+b
 					}
@@ -253,13 +253,13 @@ func showDeskArrangements(ctx context.Context, v *deskArrangementsView) (int, er
 							v.sel = v.rows() - 1
 						}
 						v.focus = v.sel
-						v.armed = ""
+						v.clearArmed()
 					}
 				case 0xff54:
 					if v.rows() > 0 {
 						v.sel = (v.sel + 1) % v.rows()
 						v.focus = v.sel
-						v.armed = ""
+						v.clearArmed()
 					}
 				case 0xff0d, 0x20:
 					if a, ok := activate(); ok {
@@ -318,9 +318,19 @@ func showDeskArrangements(ctx context.Context, v *deskArrangementsView) (int, er
 func dedupePinnedStoreEntries(dir, layoutPath string, entries []deskStoreEntry) []deskStoreEntry {
 	pinnedName := filepath.Base(layoutPath)
 	linfo, lerr := os.Stat(layoutPath)
-	kept := entries[:0]
+	// A base name match counts only when the pinned file's directory IS the
+	// store directory, compared by identity so a symlinked spelling cannot
+	// fake or dodge it; otherwise each entry is compared to the pinned file
+	// itself. Filtering builds a fresh slice, never mutating the caller's.
+	sameDir := false
+	if dinfo, err := os.Stat(filepath.Dir(filepath.Clean(layoutPath))); err == nil {
+		if sinfo, serr := os.Stat(dir); serr == nil {
+			sameDir = os.SameFile(dinfo, sinfo)
+		}
+	}
+	var kept []deskStoreEntry
 	for _, entry := range entries {
-		same := entry.Name == pinnedName
+		same := sameDir && entry.Name == pinnedName
 		if !same && lerr == nil {
 			if einfo, err := os.Stat(filepath.Join(dir, entry.Name)); err == nil && os.SameFile(linfo, einfo) {
 				same = true
@@ -340,7 +350,8 @@ func runDeskHomeJourney(ctx context.Context, deskDir, layoutPath string) error {
 	}
 	notice := ""
 	pinned := ""
-	armed := ""
+	armed, armedDetail := "", ""
+	armedRow := -1
 	var armedID deskDraftID
 	armedAt := time.Time{}
 	selKeep := -1
@@ -355,14 +366,15 @@ func runDeskHomeJourney(ctx context.Context, deskDir, layoutPath string) error {
 		if layoutPath != "" {
 			entries = dedupePinnedStoreEntries(deskDir, layoutPath, entries)
 		}
-		v := &deskArrangementsView{pinned: pinned, entries: entries, sel: selKeep, notice: notice, armed: armed, armedUntil: armedAt.Add(15 * time.Second)}
+		v := &deskArrangementsView{pinned: pinned, entries: entries, sel: selKeep, notice: notice, armed: armed, armedDetail: armedDetail, armedRow: armedRow, armedUntil: armedAt.Add(15 * time.Second)}
 		notice = ""
 		action, err := showDeskArrangements(ctx, v)
 		if err != nil || action == deskArrActClose || ctx.Err() != nil {
 			return err
 		}
 		selKeep = v.sel
-		armed = v.armed // selection changes inside the window cancel a pending delete
+		// selection changes inside the window cancel a pending delete
+		armed, armedDetail, armedRow = v.armed, v.armedDetail, v.armedRow
 		rowPath := ""
 		if v.sel >= 0 && v.sel < v.rows() {
 			if pinned != "" && v.sel == 0 {
@@ -372,7 +384,7 @@ func runDeskHomeJourney(ctx context.Context, deskDir, layoutPath string) error {
 			}
 		}
 		if action != deskArrActDelete {
-			armed = ""
+			armed, armedDetail, armedRow = "", "", -1
 		}
 		switch action {
 		case deskArrActStarter:
@@ -456,9 +468,17 @@ func runDeskHomeJourney(ctx context.Context, deskDir, layoutPath string) error {
 					continue
 				}
 				armed, armedID, armedAt = rowName, id, time.Now()
+				armedRow = v.sel
+				armedDetail = "details unavailable"
+				for _, entry := range entries {
+					if entry.Name == rowName {
+						armedDetail = deskEntryIdentity(entry, id.size, time.Unix(id.mtime.Sec, id.mtime.Nsec))
+						break
+					}
+				}
 				continue
 			}
-			armed = ""
+			armed, armedDetail, armedRow = "", "", -1
 			if er := deleteDeskStoreEntry(deskDir, rowName, armedID); errors.Is(er, errDeskDraftChanged) {
 				notice = "That draft changed; nothing was removed."
 				continue

@@ -38,9 +38,20 @@ type deskArrangementsView struct {
 	focus   int // rows 0..rows-1, then New starter, Inspect, Edit, Duplicate, Delete, Close
 	notice  string
 	armed   string // store draft awaiting a second explicit Delete confirmation
+	// armedDetail describes the armed draft (contents, size, saved time) so
+	// the confirmation names enough of the target to decide safely.
+	armedDetail string
+	// armedRow is the row the pending delete targets, mirrored into the
+	// window title so a harness can confirm the intended target.
+	armedRow int
 	// armedUntil is when the pending delete lapses; the window clears the
 	// prompt itself so an expired delete never stays armed-looking.
 	armedUntil time.Time
+}
+
+// clearArmed drops any pending delete confirmation.
+func (v *deskArrangementsView) clearArmed() {
+	v.armed, v.armedDetail, v.armedRow = "", "", -1
 }
 
 func (v deskArrangementsView) rows() int {
@@ -51,14 +62,21 @@ func (v deskArrangementsView) rows() int {
 	return n
 }
 
-// boundDeskText truncates s to n runes so a person-supplied file name can
-// never overflow its box and fail the whole render.
+// boundDeskText shortens s to n runes so a person-supplied file name can
+// never overflow its box and fail the whole render. A shortened value keeps
+// its head and its tail around a "..." marker, so the omission is always
+// visible and names that differ only near the end stay distinguishable.
 func boundDeskText(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {
 		return s
 	}
-	return string(r[:n])
+	if n < 4 {
+		return string(r[:n])
+	}
+	tail := (n - 3) / 3
+	head := n - 3 - tail
+	return string(r[:head]) + "..." + string(r[len(r)-tail:])
 }
 
 // focusables counts every Tab stop: rows, then the six buttons.
@@ -206,7 +224,8 @@ func renderDeskArrangementsSurface(v deskArrangementsView) (*image.RGBA, error) 
 		}
 	}
 	if v.armed != "" {
-		text(20, 516, 700, 12, true, 0xb3261e, "Press Delete again to remove "+boundDeskText(v.armed, 40)+". Any other action cancels.")
+		text(20, 510, 860, 12, true, 0xb3261e, "Press Delete again to remove "+boundDeskText(v.armed, 40)+". Any other action cancels.")
+		text(20, 524, 860, 12, false, 0xb3261e, boundDeskText("Target: "+v.armedDetail, 100))
 	} else if v.notice != "" {
 		text(20, 516, 700, 12, true, 0xb3261e, v.notice)
 	}

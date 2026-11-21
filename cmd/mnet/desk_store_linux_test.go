@@ -311,17 +311,24 @@ func TestDedupePinnedStoreEntriesAlternateSpelling(t *testing.T) {
 	if err := os.Symlink(real, linkState); err != nil {
 		t.Fatal(err)
 	}
-	entries, err := listDeskStore(store)
-	if err != nil || len(entries) != 2 {
-		t.Fatalf("listing: %v %d", err, len(entries))
+	// Every case lists the store fresh: filtering must never mutate a
+	// shared backing array into a vacuous pass.
+	list := func() []deskStoreEntry {
+		t.Helper()
+		entries, err := listDeskStore(store)
+		if err != nil || len(entries) != 2 {
+			t.Fatalf("listing: %v %d", err, len(entries))
+		}
+		return entries
 	}
 	// The pinned file arrives through a symlinked state-dir spelling.
 	alt := filepath.Join(linkState, "desk-layouts", "arrangement-1.json")
-	kept := dedupePinnedStoreEntries(store, alt, entries)
+	kept := dedupePinnedStoreEntries(store, alt, list())
 	if len(kept) != 1 || kept[0].Name != "arrangement-2.json" {
 		t.Fatalf("alternate-spelling pinned file must be deduped, kept %+v", kept)
 	}
-	// A same-named file elsewhere is NOT the pinned file and stays listed.
+	// A same-named file elsewhere is NOT the pinned file: the real store
+	// draft must stay listed (basename equality alone would hide it).
 	elsewhere := filepath.Join(parent, "elsewhere")
 	if err := os.Mkdir(elsewhere, 0o700); err != nil {
 		t.Fatal(err)
@@ -329,8 +336,14 @@ func TestDedupePinnedStoreEntriesAlternateSpelling(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(elsewhere, "arrangement-1.json"), []byte(`{"displays":[]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	kept = dedupePinnedStoreEntries(store, filepath.Join(elsewhere, "arrangement-1.json"), entries)
+	kept = dedupePinnedStoreEntries(store, filepath.Join(elsewhere, "arrangement-1.json"), list())
 	if len(kept) != 2 {
 		t.Fatalf("a different file with the same name must stay listed, kept %+v", kept)
+	}
+	// Filtering must not mutate the caller's slice.
+	fresh := list()
+	_ = dedupePinnedStoreEntries(store, alt, fresh)
+	if fresh[0].Name != "arrangement-1.json" || fresh[1].Name != "arrangement-2.json" {
+		t.Fatalf("filtering mutated the caller's slice: %+v", fresh)
 	}
 }

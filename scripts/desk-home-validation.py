@@ -96,6 +96,13 @@ try:
  action('mousemove','--window',arrfresh(),'230','474','click','1');time.sleep(.15)
  poll(lambda:'could not be opened' in title(),'invalid draft refused in-window')
  assert arr() and server.calls==0,'invalid draft closed the window or consulted a daemon'
+ # A maximal-length person-supplied name is really driven: selected, armed,
+ # identified in the title by its row, and captured with its identity line.
+ action('key','Down');poll(lambda:'sel2' in title(),'long-named draft selected')
+ action('mousemove','--window',arrfresh(),'665','474','click','1')
+ poll(lambda:'armedtrue' in title() and 'armedrow2' in title(),'long-named draft armed as row 2')
+ capture('arrangements-delete-armed-longname',arrfresh())
+ action('key','Up');poll(lambda:'armedfalse' in title() and 'sel1' in title(),'selection change cancels the long-name arm')
  # Delete requires a second explicit press, selection change cancels it, and only the named draft goes.
  action('mousemove','--window',arrfresh(),'665','474','click','1')
  poll(lambda:'armedtrue' in title(),'delete armed');capture('arrangements-delete-armed',arrfresh())
@@ -136,7 +143,7 @@ try:
  assert (store/'arrangement-1.json').exists(),'pinned in-store draft removed'
  action('key','Escape');poll(lambda:window('^Mnet: three tools'),'home after in-store layout')
  client.terminate();assert client.wait(timeout=3)==0;client=None
- print('PASS actual home arrangements journey: always-enabled card, empty-store browsing creates nothing, starter creation saving one private 0600 draft, inspect/edit child windows, clean close writes nothing, invalid draft listed and refused in-window, two-press identity-pinned delete with replacement/restored-mtime cancellation and honest 15s expiry, exclusive duplicate, in-store --layout pinned once and undeletable, zero daemon calls. Synthetic same-host geometry only.',flush=True)
+ print('PASS actual home arrangements journey: always-enabled card, empty-store browsing creates nothing, starter creation saving one private 0600 draft, inspect/edit child windows, clean close writes nothing, invalid draft listed and refused in-window, two-press identity-pinned delete with replacement/restored-mtime cancellation and honest 15s expiry, exclusive duplicate, in-store --layout pinned once and undeletable, maximal-length name selected and armed with its row identity, zero daemon calls. Synthetic same-host geometry only.',flush=True)
 finally:
  if client is not None and client.poll() is None:client.terminate();client.wait(timeout=3)
  if x is not None:x.terminate();x.wait(timeout=3)

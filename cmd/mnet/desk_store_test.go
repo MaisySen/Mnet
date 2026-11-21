@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"fintex.au/mnet/internal/desk"
 )
@@ -129,6 +130,9 @@ func TestRenderDeskArrangementsLongNames(t *testing.T) {
 		sel:     1,
 		notice:  "Deleted " + long + ".",
 		armed:   long,
+		armedDetail: deskEntryIdentity(deskStoreEntry{Name: long, Invalid: true}, 1234,
+			time.Date(2026, 11, 21, 17, 33, 0, 0, time.Local)),
+		armedRow: 1,
 	}
 	if _, err := renderDeskArrangementsSurface(v); err != nil {
 		t.Fatalf("person-supplied long names must never fail the render: %v", err)
@@ -136,7 +140,33 @@ func TestRenderDeskArrangementsLongNames(t *testing.T) {
 	if got := boundDeskText(long, 40); len([]rune(got)) != 40 {
 		t.Fatalf("boundDeskText rune count = %d", len([]rune(got)))
 	}
-	if got := boundDeskText("héllo", 4); got != "héll" {
-		t.Fatalf("boundDeskText must cut on rune boundaries, got %q", got)
+	if got := boundDeskText("héllo", 4); got != "h..." {
+		t.Fatalf("boundDeskText must cut on rune boundaries and signal the omission, got %q", got)
+	}
+	if got := boundDeskText("short", 40); got != "short" {
+		t.Fatalf("boundDeskText must keep short values untouched, got %q", got)
+	}
+	// Truncation signals the omission and keeps the tail, so two names that
+	// differ only near the end never become indistinguishable.
+	shared := strings.Repeat("person-supplied-", 8)
+	one := boundDeskText(shared+"first.json", 40)
+	two := boundDeskText(shared+"other.json", 40)
+	if one == two {
+		t.Fatalf("distinct names truncated to the same text %q", one)
+	}
+	if !strings.Contains(one, "...") || !strings.HasSuffix(one, "first.json") {
+		t.Fatalf("truncation must visibly signal omission and keep the tail, got %q", one)
+	}
+}
+
+func TestDeskEntryIdentity(t *testing.T) {
+	saved := time.Date(2026, 11, 21, 17, 33, 0, 0, time.UTC)
+	got := deskEntryIdentity(deskStoreEntry{Displays: 2, Placeholders: true}, 2048, saved)
+	if got != "2 displays, placeholder labels, 2.0 KB, saved 2026-11-21 17:33" {
+		t.Fatalf("identity = %q", got)
+	}
+	got = deskEntryIdentity(deskStoreEntry{Invalid: true}, 12, saved)
+	if got != "not a valid arrangement file, 12 B, saved 2026-11-21 17:33" {
+		t.Fatalf("identity = %q", got)
 	}
 }
