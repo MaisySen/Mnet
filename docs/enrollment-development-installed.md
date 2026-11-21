@@ -187,3 +187,36 @@ refuses and the session joins. Unit checks cover bounded stall, cancellation
 and private log/error preservation. This does not guarantee every desktop
 launcher starts successfully within three seconds or terminate browser trees;
 the disposable session harness owns those browser descendants.
+
+### Authoritative completion independent of optional display
+
+Independent review found the original success path opened/wrote the result
+page before emitting completion. An optional display error could therefore
+hide a durable successful joining result. The final correction emits the
+actual joined-not-connected event first. A subsequent page write/open failure
+only reports that local display is unavailable and leaves the saved result and
+successful process exit intact. If completion output itself fails, the error
+explicitly names the saved result; no generic failure page replaces it.
+
+Actual installed system-browser controls cover an existing result file,
+root permissions refusing new HTML creation after consent, and xdg-open failing
+only for the result file. Each retains real proof/finalization/current-map
+completion, emits authoritative completion, exits successfully, rejects a late
+callback and joins its session. The existing file is byte-identical; refused
+HTML is absent; an opener failure retains the correct saved-result HTML. These
+controls do not overwrite files or claim rollback. A unit check asserts output
+precedes display and display errors do not fail completion.
+
+The root and all three explicit config files now require the effective Unix
+user's UID, in addition to existing mode, canonical-temp-root and regular-file
+checks. Unsupported owner-verification platforms fail closed. UID tests use
+actual owned-root metadata plus a synthetic different-UID metadata record; this
+is NOT an executed foreign-account/chown integration test. Additional actual
+adapter refusals cover nonprivate marker/policy/limits files. Same-UID hostile
+filesystem mutation remains outside this disposable confinement guarantee.
+
+The earlier uncertainty packet's SHA256SUMS accidentally included its own path,
+so its self-check fails. Preserve that packet as failed manifest evidence. The
+final replacement excludes SHA256SUMS, computes hashes before writing it, and
+verifies every listed entry after creating and extracting the archive. A
+manifest correction changes packaging evidence, not earlier test outcomes.

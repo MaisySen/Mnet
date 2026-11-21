@@ -29,11 +29,14 @@ Xvfb -displayfd 3 -screen 0 1280x1000x24 3>"$run/display" >"$run/xvfb.log" 2>&1 
 xpid=$!
 for i in $(seq 1 50);do if [ -s "$run/display" ];then break;fi;sleep .1;done
 launch_path=$PATH
-if [ "${MNET_DEVELOPMENT_SETUP_CASE:-}" = launcher-hang ];then
+if [ "${MNET_DEVELOPMENT_SETUP_CASE:-}" = launcher-hang ] || [ "${MNET_DEVELOPMENT_SETUP_CASE:-}" = result-open-failure ];then
  mkdir "$run/launch-bin"
  cat > "$run/launch-bin/xdg-open" <<'LAUNCHER'
 #!/bin/sh
-case "$1" in https://*) exec sleep 60 ;; esac
+case "$MNET_DEVELOPMENT_SETUP_CASE:$1" in
+ launcher-hang:https://*) exec sleep 60 ;;
+ result-open-failure:*/setup-result.html) exit 7 ;;
+esac
 exec /usr/bin/xdg-open "$@"
 LAUNCHER
  chmod 700 "$run/launch-bin/xdg-open"

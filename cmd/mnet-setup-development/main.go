@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"html/template"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -70,9 +71,7 @@ func main() {
 		}
 		if event.Stage == "joined-not-connected" {
 			saved = true
-			if err := writeStatus(true, event.Peers); err != nil {
-				return err
-			}
+			return reportDevelopmentJoined(encoder, event, func() error { return writeStatus(true, event.Peers) }, os.Stderr)
 		}
 		if err := encoder.Encode(event); err != nil {
 			return err
@@ -116,4 +115,16 @@ func runDevelopmentBrowser(ctx context.Context, target string, log *os.File) err
 		cmd.Stderr = log
 	}
 	return cmd.Run()
+}
+
+// Authoritative completion goes out before optional local presentation. A
+// display failure never converts a finalized result into a setup failure.
+func reportDevelopmentJoined(encoder *json.Encoder, event daemon.DevelopmentEnrollmentEvent, display func() error, diagnostics io.Writer) error {
+	if err := encoder.Encode(event); err != nil {
+		return fmt.Errorf("joining saved, but completion output unavailable; original result retained: %w", err)
+	}
+	if err := display(); err != nil {
+		fmt.Fprintln(diagnostics, "Joining saved. Not connected. Optional local result display unavailable; original joining result retained.")
+	}
+	return nil
 }

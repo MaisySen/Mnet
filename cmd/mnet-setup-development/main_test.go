@@ -3,9 +3,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
+	"fintex.au/mnet/internal/daemon"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -67,5 +73,35 @@ func TestDevelopmentBrowserLauncherPreservesPrivateOutputAndFailure(t *testing.T
 	info, err := os.Stat(path)
 	if err != nil || info.Mode().Perm() != 0600 {
 		t.Fatal("private launcher log permissions changed")
+	}
+}
+
+func TestDevelopmentJoinedResultPrecedesOptionalDisplay(t *testing.T) {
+	for _, mode := range []string{"write-failure", "open-failure", "preexisting-page"} {
+		t.Run(mode, func(t *testing.T) {
+			var output, diagnostics bytes.Buffer
+			event := daemon.DevelopmentEnrollmentEvent{Stage: "joined-not-connected", Peers: 0, Result: &daemon.DevelopmentEnrollmentResult{NativeStateFinalized: true}}
+			err := reportDevelopmentJoined(json.NewEncoder(&output), event, func() error {
+				var got daemon.DevelopmentEnrollmentEvent
+				if json.Unmarshal(output.Bytes(), &got) != nil || got.Stage != "joined-not-connected" || got.Result == nil || !got.Result.NativeStateFinalized {
+					t.Fatal("display ran before authoritative result")
+				}
+				return errors.New(mode)
+			}, &diagnostics)
+			if err != nil || !strings.Contains(diagnostics.String(), "Joining saved.") || strings.Contains(diagnostics.String(), "Setup did not finish") {
+				t.Fatal("optional display failed the saved result")
+			}
+		})
+	}
+}
+
+type developmentBrokenOutput struct{}
+
+func (developmentBrokenOutput) Write([]byte) (int, error) { return 0, errors.New("unavailable output") }
+func TestDevelopmentJoinedOutputFailureStillNamesSavedResult(t *testing.T) {
+	displayed := false
+	err := reportDevelopmentJoined(json.NewEncoder(developmentBrokenOutput{}), daemon.DevelopmentEnrollmentEvent{Stage: "joined-not-connected"}, func() error { displayed = true; return nil }, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "joining saved") || displayed {
+		t.Fatal("output failure lost saved outcome or attempted display")
 	}
 }

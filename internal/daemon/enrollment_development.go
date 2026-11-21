@@ -49,7 +49,7 @@ func RunDisposableEnrollment(ctx context.Context, root string, emit func(Develop
 		return fail
 	}
 	info, err := os.Lstat(root)
-	if err != nil || !info.IsDir() || info.Mode().Perm()&0077 != 0 {
+	if err != nil || !info.IsDir() || info.Mode().Perm()&0077 != 0 || !developmentOwnedByEffectiveUser(info) {
 		return fail
 	}
 	resolved, err := filepath.EvalSymlinks(root)
@@ -65,11 +65,11 @@ func RunDisposableEnrollment(ctx context.Context, root string, emit func(Develop
 		return fail
 	}
 
-	marker, err := readOwnedEnrollmentFile(filepath.Join(root, "DISPOSABLE-MNET-SETUP"), 128)
+	marker, err := readDisposableEnrollmentFile(filepath.Join(root, "DISPOSABLE-MNET-SETUP"), 128)
 	if err != nil || string(marker) != "mnet-disposable-enrollment-v1\n" {
 		return fail
 	}
-	raw, err := readOwnedEnrollmentFile(filepath.Join(root, "enrollment-policy-v2.json"), config.MaxBytes)
+	raw, err := readDisposableEnrollmentFile(filepath.Join(root, "enrollment-policy-v2.json"), config.MaxBytes)
 	if err != nil {
 		return fail
 	}
@@ -87,7 +87,7 @@ func RunDisposableEnrollment(ctx context.Context, root string, emit func(Develop
 			return fail
 		}
 	}
-	rawLimits, err := readOwnedEnrollmentFile(filepath.Join(root, "workflow-limits.json"), 4096)
+	rawLimits, err := readDisposableEnrollmentFile(filepath.Join(root, "workflow-limits.json"), 4096)
 	if err != nil {
 		return fail
 	}
@@ -217,4 +217,12 @@ func developmentExactObject(raw []byte, names []string) (map[string]json.RawMess
 		return nil, false
 	}
 	return result, true
+}
+
+func readDisposableEnrollmentFile(path string, max int) ([]byte, error) {
+	info, err := os.Lstat(path)
+	if err != nil || !developmentOwnedByEffectiveUser(info) || info.Mode().Perm()&0077 != 0 {
+		return nil, errors.New("disposable configuration owner or permissions unavailable")
+	}
+	return readOwnedEnrollmentFile(path, max)
 }

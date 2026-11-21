@@ -594,6 +594,11 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(root, "workflow-limits.json"), limitRaw, 0600); err != nil {
 			t.Fatal(err)
 		}
+		if os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") == "result-preexisting" {
+			if err := os.WriteFile(filepath.Join(root, "setup-result.html"), []byte("preserve-existing-result"), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
 		nativeCmd = exec.Command(installed, "--disposable-root", root)
 		if os.Getenv("MNET_DEVELOPMENT_SETUP_BROWSER") == "1" {
 			nativeCmd.Args = append(nativeCmd.Args, "--open-browser")
@@ -652,7 +657,9 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	var postRemovalCheckedAt time.Time
 	var postRemovalVerified bool
 	for {
-		if os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY") != "" && os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") != "" && os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") != "success" {
+		setupCase := os.Getenv("MNET_DEVELOPMENT_SETUP_CASE")
+		displayUnavailable := setupCase == "result-preexisting" || setupCase == "result-write-failure" || setupCase == "result-open-failure"
+		if os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY") != "" && setupCase != "" && setupCase != "success" && !displayUnavailable {
 			if _, err := os.Stat(filepath.Join(dir, "installed-cancel-request")); err == nil {
 				_ = nativeCmd.Process.Signal(os.Interrupt)
 			}
@@ -885,6 +892,29 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	}
 
 	if os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY") != "" {
+		setupCase := os.Getenv("MNET_DEVELOPMENT_SETUP_CASE")
+		if setupCase == "result-preexisting" || setupCase == "result-write-failure" || setupCase == "result-open-failure" {
+			root := filepath.Join(dir, "installed-setup")
+			defer os.Chmod(root, 0700)
+			if !strings.Contains(nativeOutput.String(), "Optional local result display unavailable") || strings.Contains(nativeOutput.String(), "Setup did not finish") {
+				t.Fatal("optional display failure hid authoritative completion")
+			}
+			result, err := os.ReadFile(filepath.Join(root, "setup-result.html"))
+			switch setupCase {
+			case "result-preexisting":
+				if err != nil || string(result) != "preserve-existing-result" {
+					t.Fatal("preexisting result overwritten")
+				}
+			case "result-write-failure":
+				if !os.IsNotExist(err) {
+					t.Fatal("write-refused result unexpectedly created")
+				}
+			case "result-open-failure":
+				if err != nil || !bytes.Contains(result, []byte("<h1>Joining saved.")) {
+					t.Fatal("result opener failure lost saved page")
+				}
+			}
+		}
 		nodeID := nativeOutcome.Receipt.Receipt.NodeID
 		record := s.registrarNodeLocked(nodeID)
 		if record == nil || len(s.data.Nodes) != 3 {

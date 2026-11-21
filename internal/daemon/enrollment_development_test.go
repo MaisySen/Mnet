@@ -17,7 +17,7 @@ import (
 )
 
 func TestDisposableEnrollmentRefusesBeforeCreatingNativeState(t *testing.T) {
-	for _, mode := range []string{"no-marker", "remote-source", "remote-registrar", "long-timeout", "unknown-limit", "duplicate-limit", "case-alias-limit", "duplicate-timing", "trailing-limits", "symlink-root", "existing-native", "cancelled"} {
+	for _, mode := range []string{"no-marker", "insecure-marker", "insecure-policy", "insecure-limits", "remote-source", "remote-registrar", "long-timeout", "unknown-limit", "duplicate-limit", "case-alias-limit", "duplicate-timing", "trailing-limits", "symlink-root", "existing-native", "cancelled"} {
 		t.Run(mode, func(t *testing.T) {
 			root := t.TempDir()
 			if err := os.Chmod(root, 0700); err != nil {
@@ -57,6 +57,13 @@ func TestDisposableEnrollmentRefusesBeforeCreatingNativeState(t *testing.T) {
 				}
 				if err := os.WriteFile(filepath.Join(root, name), body, 0600); err != nil {
 					t.Fatal(err)
+				}
+			}
+			for modeName, file := range map[string]string{"insecure-marker": "DISPOSABLE-MNET-SETUP", "insecure-policy": "enrollment-policy-v2.json", "insecure-limits": "workflow-limits.json"} {
+				if mode == modeName {
+					if err := os.Chmod(filepath.Join(root, file), 0644); err != nil {
+						t.Fatal(err)
+					}
 				}
 			}
 			actual := root
