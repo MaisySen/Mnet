@@ -14,11 +14,17 @@ type operation1FakeSource struct {
 	p                Plan
 	d                ownedSourceDiagnostic
 	sends, reads     int
+	diagnoseErr      error
+	diagnoseCalls    int
 	entered, release chan struct{}
 	after            func()
 }
 
 func (f *operation1FakeSource) diagnoseOperation1(context.Context) (ownedSourceDiagnostic, error) {
+	f.diagnoseCalls++
+	if f.diagnoseErr != nil {
+		return ownedSourceDiagnostic{}, f.diagnoseErr
+	}
 	held, e := heldSourceSnapshot(f.l, f.d.held.session.owner, f.d.held.session)
 	if e != nil {
 		return ownedSourceDiagnostic{}, e
@@ -133,8 +139,8 @@ func TestOperation1OwnershipLaneSerializesStopAndState(t *testing.T) {
 	if e := <-applyErr; e != nil {
 		t.Fatal(e)
 	}
-	if e := <-stopErr; e != ownedAFPolicyIncomplete {
-		t.Fatal("held Snapshot gate", e)
+	if e := <-stopErr; e != ErrConflict {
+		t.Fatal("missing attempt remains pending", e)
 	}
 	state := c.state()
 	if state.Ready || !state.Stopped || !state.PendingCleanup || state.Step != 2 || f.sends != 1 {

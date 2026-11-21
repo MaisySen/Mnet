@@ -4,6 +4,7 @@ package osownership
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -18,6 +19,8 @@ type operation1Controller struct {
 	mu      sync.Mutex
 	tx      *Transaction
 	adapter *operation1Adapter
+	attempt *originalAttempt
+	absence originalAbsenceSource
 }
 type operation1Lease struct {
 	owner  *operation1Controller
@@ -40,10 +43,28 @@ func (c *operation1Controller) withOwner(ctx context.Context, fn func(context.Co
 	return fn(context.WithValue(ctx, operation1ContextKey{}, lease))
 }
 func (c *operation1Controller) start(ctx context.Context) error {
-	return c.withOwner(ctx, func(ctx context.Context) error { return c.tx.Start(ctx) })
+	e := c.withOwner(ctx, func(ctx context.Context) error { return c.tx.Start(ctx) })
+	if e == nil || c == nil {
+		return e
+	}
+	// Even a canceled context rejected before entering Start cannot skip an
+	// already-recorded original. Serialize finalization independently of ctx.
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.attempt != nil {
+		return errors.Join(e, c.stopOwnedLocked(ctx))
+	}
+	return e
 }
 func (c *operation1Controller) stop(ctx context.Context) error {
-	return c.withOwner(ctx, func(ctx context.Context) error { return c.tx.Stop(ctx) })
+	// Cancellation while waiting must not skip original close. Do not call the
+	// withOwner early-context refusal used for forward setup.
+	if c == nil {
+		return ErrConflict
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.stopOwnedLocked(ctx)
 }
 
 type operation1State struct {

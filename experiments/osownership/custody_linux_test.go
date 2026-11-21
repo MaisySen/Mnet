@@ -32,19 +32,17 @@ func TestFileCustodyDoesNotCloseReusedDescriptor(t *testing.T) {
 		t.Fatal("reused FD closed", e)
 	}
 }
-func TestNoHandleCreationReadbackFailureClosesOriginal(t *testing.T) {
+func TestNoHandleCreationReadbackFailureRetainsOriginal(t *testing.T) {
 	b, i, n := rig()
 	p, _ := Prepare(b, i, n)
-	f, e := os.CreateTemp(t.TempDir(), "create")
-	if e != nil {
-		t.Fatal(e)
+	closer := &countOriginalCloser{}
+	attempt := &originalAttempt{plan: p, custody: &fileCustody{closer: closer}}
+	got, e := bindOriginalCustody(attempt, p, func() (Link, error) { return Link{}, ErrConflict })
+	if e == nil || got == nil || got.fd != attempt.custody || attempt.handle != nil || closer.calls != 0 {
+		t.Fatal("lost error custody", e)
 	}
-	got, e := bindOriginalFD(f, p, func() (Link, error) { return Link{}, ErrConflict })
-	if e == nil || got != nil {
-		t.Fatal("ambiguous create did not return error")
-	}
-	if _, e = f.Write([]byte("must be closed")); e == nil {
-		t.Fatal("FD leaked on no-handle return")
+	if e = attempt.closeOriginal(); e != nil || closer.calls != 1 {
+		t.Fatal("close owed", e, closer.calls)
 	}
 }
 func TestOriginalCreationHasNoAliasUntilExplicitACK(t *testing.T) {

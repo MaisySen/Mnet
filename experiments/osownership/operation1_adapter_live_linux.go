@@ -35,6 +35,9 @@ func (c *operation1Controller) bindOriginalSource(ctx context.Context, o *origin
 		if o == nil || o.owner != c.tx || o.session != c.adapter.session || o.creation == nil || o.ledger == nil || o.namespace == nil || c.adapter.source != nil {
 			return ErrConflict
 		}
+		if c.attempt == nil || c.attempt.custody != o.creation.fd || c.attempt.owner != c || c.attempt.handle == nil || *c.attempt.handle != o.creation.handle {
+			return ErrConflict
+		}
 		c.adapter.source = &operation1OriginalSource{resources: o}
 		return nil
 	})
@@ -78,4 +81,24 @@ func (s *operation1OriginalSource) applyOperation1(ctx context.Context, p Plan) 
 		return nil, ErrConflict
 	}
 	return s.resources.applyFirstStepSource(ctx, p)
+}
+
+// No caller/release. Publish the owner attempt BEFORE opening. Errors return
+// with the original retained attempt even when no validated Handle exists.
+func (c *operation1Controller) createOriginalAttemptSource(ctx context.Context, ns *namespaceCustody, p Plan, observe func() (Link, error)) (*ownedCreation, error) {
+	var creation *ownedCreation
+	e := c.withOwner(ctx, func(ctx context.Context) error {
+		if !kernelExecutionReleased {
+			return ErrExecutorUnreleased
+		}
+		if c.attempt != nil || c.tx.stopStarted {
+			return ErrConflict
+		}
+		c.attempt = &originalAttempt{owner: c, plan: p, stage: "unopened"}
+		c.tx.PendingCleanup = true
+		var e error
+		creation, e = createTUNSource(ctx, ns, p, c.attempt, observe)
+		return e
+	})
+	return creation, e
 }

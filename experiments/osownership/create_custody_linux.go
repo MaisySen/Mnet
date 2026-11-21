@@ -4,61 +4,63 @@ package osownership
 
 import (
 	"context"
-	"errors"
 	"os"
 )
 
 type ownedCreation struct {
-	handle Handle
-	fd     *fileCustody
+	handle  Handle
+	fd      *fileCustody
+	attempt *originalAttempt
 }
 
-// Binding helper never drops a newly opened FD on a no-handle return. It does
-// not set alias/MTU: that is its own explicit ACK/readback transaction step.
-// On readback failure original FD is closed exactly once before returning nil.
-func bindOriginalFD(f *os.File, p Plan, observe func() (Link, error)) (_ *ownedCreation, err error) {
-	if f == nil {
+// Bind never drops an opened original on no-handle error. The controller-owned
+// attempt remains the close obligation, separately from validated Handle state.
+func bindOriginalCustody(attempt *originalAttempt, p Plan, observe func() (Link, error)) (*ownedCreation, error) {
+	if attempt == nil || attempt.custody == nil {
 		return nil, ErrConflict
 	}
-	c := &fileCustody{file: f}
-	keep := false
-	defer func() {
-		if !keep {
-			err = errors.Join(err, c.Close())
-		}
-	}()
-	if observe == nil {
-		return nil, ErrConflict
+	c := &ownedCreation{fd: attempt.custody, attempt: attempt}
+	if attempt.closeAttempted || observe == nil {
+		return c, attempt.fail(ErrConflict)
 	}
 	l, e := observe()
 	if e != nil {
-		return nil, e
+		return c, attempt.fail(e)
 	}
 	h, e := AttachCreated(p, l.Index, l.MTU)
 	if e != nil || l != h.CreationLink {
+		return c, attempt.fail(ErrConflict)
+	}
+	attempt.handle = &h
+	attempt.stage = "original-link-validated"
+	c.handle = h
+	return c, nil
+}
+
+// Legacy value-binding seam now retains the original even when validation fails.
+// Live creation always uses an already-published controller-owned attempt below.
+func bindOriginalFD(f *os.File, p Plan, observe func() (Link, error)) (*ownedCreation, error) {
+	if f == nil {
 		return nil, ErrConflict
 	}
-	keep = true
-	return &ownedCreation{handle: h, fd: c}, nil
+	attempt := &originalAttempt{plan: p, custody: &fileCustody{file: f, closer: f}, stage: "original-open"}
+	return bindOriginalCustody(attempt, p, observe)
 }
-func createTUNSource(ctx context.Context, ns *namespaceCustody, p Plan, observe func() (Link, error)) (*ownedCreation, error) {
+func createTUNSource(ctx context.Context, ns *namespaceCustody, p Plan, attempt *originalAttempt, observe func() (Link, error)) (*ownedCreation, error) {
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
 	}
-	if e := ctx.Err(); e != nil {
-		return nil, e
-	}
-	if ns == nil {
+	if ctx == nil || ctx.Err() != nil || ns == nil || !sameNamespace(ns.identity, p.Binding.Namespace) || attempt == nil {
 		return nil, ErrConflict
 	}
-	if !sameNamespace(ns.identity, p.Binding.Namespace) {
-		return nil, ErrConflict
-	}
-	f, e := openExclusiveNonpersistentTUN(ns, p.Binding.Name)
+	_, e := openExclusiveNonpersistentTUN(ns, p.Binding.Name, attempt)
 	if e != nil {
-		return nil, e
+		if attempt.custody != nil {
+			return &ownedCreation{fd: attempt.custody, attempt: attempt}, e
+		}
+		return nil, attempt.fail(e)
 	}
-	return bindOriginalFD(f, p, observe)
+	return bindOriginalCustody(attempt, p, observe)
 }
 
 // Guard every post-creation configuration path before its first possible effect.

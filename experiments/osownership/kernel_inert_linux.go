@@ -5,6 +5,6 @@ package osownership
 import "os"
 
 func proveNamespaceFD(int, Namespace) (*namespaceCustody, error) { return nil, ErrExecutorUnreleased }
-func openExclusiveNonpersistentTUN(*namespaceCustody, string) (*os.File, error) {
+func openExclusiveNonpersistentTUN(*namespaceCustody, string, *originalAttempt) (*os.File, error) {
 	return nil, ErrExecutorUnreleased
 }

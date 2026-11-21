@@ -71,9 +71,12 @@ func proveNamespaceFD(targetFD int, parent Namespace) (*namespaceCustody, error)
 // no persistence flag. FD_CLOEXEC is set at open and verified. Alias/address/
 // routes are NOT configured here. Future executor must ACK/read back those
 // separately and hold namespaceCustody until cleanup is verified.
-func openExclusiveNonpersistentTUN(ns *namespaceCustody, name string) (*os.File, error) {
+func openExclusiveNonpersistentTUN(ns *namespaceCustody, name string, attempt *originalAttempt) (*os.File, error) {
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
+	}
+	if attempt == nil || attempt.owner == nil || attempt.owner.attempt != attempt || attempt.custody != nil || attempt.closeAttempted {
+		return nil, ErrConflict
 	}
 	if ns == nil || ns.fd < 0 {
 		return nil, errors.New("held namespace custody required")
@@ -101,30 +104,35 @@ func openExclusiveNonpersistentTUN(ns *namespaceCustody, name string) (*os.File,
 	if e != nil {
 		return nil, e
 	}
-	ok := false
-	defer func() {
-		if !ok {
-			unix.Close(fd)
+	// First post-open operation transfers the valid descriptor into original
+	// *os.File custody. No fallible checks or failure-defer raw Close precede it.
+	f := os.NewFile(uintptr(fd), "owned-nonpersistent-tun")
+	custody := &fileCustody{file: f, closer: f}
+	e = attempt.afterOpen(custody, func() error {
+		flags, e := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
+		if e != nil || flags&unix.FD_CLOEXEC == 0 {
+			return errors.New("CLOEXEC missing")
 		}
-	}()
-	flags, e := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
-	if e != nil || flags&unix.FD_CLOEXEC == 0 {
-		return nil, errors.New("CLOEXEC missing")
-	}
-	ifr, e := unix.NewIfreq(name)
+		ifr, e := unix.NewIfreq(name)
+		if e != nil {
+			return e
+		}
+		ifr.SetUint16(unix.IFF_TUN | unix.IFF_NO_PI | unix.IFF_TUN_EXCL)
+		if e = ns.checkCurrent(); e != nil {
+			return e
+		}
+		attempt.stage = "ioctl-attempted"
+		if e = unix.IoctlIfreq(fd, unix.TUNSETIFF, ifr); e != nil {
+			return e
+		}
+		if ifr.Name() != name {
+			return errors.New("unexpected kernel interface name")
+		}
+		attempt.stage = "ioctl-returned"
+		return nil
+	})
 	if e != nil {
-		return nil, e
+		return f, e
 	}
-	ifr.SetUint16(unix.IFF_TUN | unix.IFF_NO_PI | unix.IFF_TUN_EXCL)
-	if e = ns.checkCurrent(); e != nil {
-		return nil, e
-	}
-	if e = unix.IoctlIfreq(fd, unix.TUNSETIFF, ifr); e != nil {
-		return nil, e
-	}
-	if ifr.Name() != name {
-		return nil, errors.New("unexpected kernel interface name")
-	}
-	ok = true
-	return os.NewFile(uintptr(fd), "owned-nonpersistent-tun"), nil
+	return f, nil
 }

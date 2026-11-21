@@ -1,4 +1,4 @@
-//go:build linux && mnet_enrollment_development
+//go:build mnet_enrollment_development
 
 package osownership
 
@@ -8,11 +8,14 @@ import (
 	"sync"
 )
 
+type originalCloser interface{ Close() error }
+
 // *os.File Close is guarded once: never close a reused raw descriptor number.
 type fileCustody struct {
 	once    sync.Once
 	mu      sync.Mutex
 	file    *os.File
+	closer  originalCloser
 	err     error
 	lineage *heldPacketLedger
 	closed  bool
@@ -27,8 +30,14 @@ func (c *fileCustody) Close() error {
 		if lineage != nil {
 			c.err = errors.Join(c.err, lineage.invalidate("close-intent"))
 		}
-		if c.file != nil {
-			c.err = errors.Join(c.err, c.file.Close())
+		closer := c.closer
+		if closer == nil && c.file != nil {
+			closer = c.file
+		}
+		if closer == nil {
+			c.err = errors.Join(c.err, ErrConflict)
+		} else {
+			c.err = errors.Join(c.err, closer.Close())
 		}
 	})
 	return c.err
