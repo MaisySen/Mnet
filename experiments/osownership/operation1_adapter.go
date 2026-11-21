@@ -16,11 +16,13 @@ import (
 // No transaction/session pointers or mutable clock escape this controller.
 // Existing free-standing inert Transaction API is not made thread-safe by this.
 type operation1Controller struct {
-	mu      sync.Mutex
-	tx      *Transaction
-	adapter *operation1Adapter
-	attempt *originalAttempt
-	absence originalAbsenceSource
+	precreationSequence   uint64
+	precreationGeneration uint64
+	mu                    sync.Mutex
+	tx                    *Transaction
+	adapter               *operation1Adapter
+	attempt               *originalAttempt
+	absence               originalAbsenceSource
 }
 type operation1Lease struct {
 	owner  *operation1Controller
@@ -119,7 +121,21 @@ func (a *operation1Adapter) ownershipSession() *adapterSession {
 	return a.session
 }
 func (a *operation1Adapter) Snapshot(ctx context.Context) (Inventory, error) {
-	if !a.authorized(ctx) || a.source == nil {
+	if !a.authorized(ctx) {
+		return Inventory{}, ErrConflict
+	}
+	if a.controller.attempt == nil && a.session.canonical == nil && !a.session.createAttempted {
+		supplier, ok := a.creation.(operation1PrecreationSource)
+		if !ok {
+			return Inventory{}, ErrConflict
+		}
+		observation, e := supplier.observePrecreation(ctx)
+		if e != nil {
+			return Inventory{}, e
+		}
+		return consumePrecreation(a.controller, observation)
+	}
+	if a.source == nil {
 		return Inventory{}, ErrConflict
 	}
 	diagnostic, e := a.source.diagnoseOperation1(ctx)

@@ -25,14 +25,15 @@ type afReplyHeader struct {
 	Truncated           bool
 }
 type afReadPass struct {
-	request   []byte
-	replies   []Datagram
-	headers   []afReplyHeader
-	links     []LinkRecord
-	sys       SysctlSnapshot
-	sequence  uint32
-	reader    *inertAFReader
-	effective *effectiveV4Observation
+	request     []byte
+	replies     []Datagram
+	headers     []afReplyHeader
+	links       []LinkRecord
+	sys         SysctlSnapshot
+	sequence    uint32
+	reader      *inertAFReader
+	sourceOwner *afSourcePassOwner
+	effective   *effectiveV4Observation
 }
 type inertAFReader struct {
 	source   inertAFSource
@@ -143,11 +144,27 @@ func (r *inertAFReader) readPass(ctx context.Context, effective bool) (*afReadPa
 	return p, nil
 }
 func (p *afReadPass) requestClaim() (ownedAFRequestClaim, error) {
-	if p == nil || p.reader == nil || p.reader.last != p || p.sequence != p.reader.sequence || len(p.request) != 32 {
+	if p == nil || len(p.request) != 32 {
+		return ownedAFRequestClaim{}, afRequest
+	}
+	var pid uint32
+	switch {
+	case p.reader != nil && p.sourceOwner == nil:
+		if p.reader.last != p || p.sequence != p.reader.sequence {
+			return ownedAFRequestClaim{}, afRequest
+		}
+		pid = p.reader.localPID
+	case p.sourceOwner != nil && p.reader == nil:
+		o := p.sourceOwner
+		if !o.active || o.last != p || o.sequence != p.sequence || o.controller == nil {
+			return ownedAFRequestClaim{}, afRequest
+		}
+		pid = o.port
+	default:
 		return ownedAFRequestClaim{}, afRequest
 	}
 	b := p.request
-	if binary.NativeEndian.Uint32(b) != 32 || binary.NativeEndian.Uint16(b[4:]) != 18 || binary.NativeEndian.Uint16(b[6:]) != 0x301 || binary.NativeEndian.Uint32(b[8:]) != p.sequence || binary.NativeEndian.Uint32(b[12:]) != p.reader.localPID || !reflect.DeepEqual(b[16:], make([]byte, 16)) {
+	if binary.NativeEndian.Uint32(b) != 32 || binary.NativeEndian.Uint16(b[4:]) != 18 || binary.NativeEndian.Uint16(b[6:]) != 0x301 || binary.NativeEndian.Uint32(b[8:]) != p.sequence || binary.NativeEndian.Uint32(b[12:]) != pid || !reflect.DeepEqual(b[16:], make([]byte, 16)) {
 		return ownedAFRequestClaim{}, afRequest
 	}
 	return ownedAFRequestClaim{Flags: 0x301, Shape: "full-v4c33-v6c60-ip38-icmp7"}, nil

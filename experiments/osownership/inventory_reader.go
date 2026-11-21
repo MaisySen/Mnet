@@ -5,14 +5,13 @@ package osownership
 import (
 	"context"
 	"errors"
-	"reflect"
 	"time"
 )
 
 // RawInventory preserves records/attrs and rules verbatim. It is NOT converted
 // to policy-safe Inventory until rule/sysctl and kernel-origin semantics are
-// reviewed. Multiple RTNL dumps are not atomic: require two equal complete sets
-// in the exclusively owned namespace and fail if they change. Interrupted or
+// reviewed. Multiple RTNL dumps are not atomic: require two complete sets equal
+// under the pinned comparison policy in the exclusively owned namespace. Interrupted or
 // malformed dumps restart the WHOLE inventory, at most2 attempts/250ms.
 type RawInventory struct {
 	Links     []LinkRecord
@@ -43,8 +42,9 @@ func ReadStableInventory(ctx context.Context, d DumpSource, pinnedCheck func() e
 			last = e
 			continue
 		}
-		if reflect.DeepEqual(a, b) {
-			return a, nil
+		if exactSetupPostMatches(a, b) {
+			// Return ORIGINAL unmasked second observation, not comparison copies.
+			return b, nil
 		}
 		last = errors.New("inventory changed between complete dumps")
 	}

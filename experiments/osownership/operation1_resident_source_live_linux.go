@@ -11,6 +11,7 @@ import (
 // namespaceCustody's live FD/TID/current namespace. No namespace ownership is
 // transferred or released by this adapter; resident owns it through cleanup.
 type operation1ResidentSource struct {
+	afOwner  *afSourcePassOwner
 	owner    *operation1Controller
 	ns       *namespaceCustody
 	baseline *CapturedBaseline
@@ -38,7 +39,16 @@ func withOperation1ResidentSource(ctx context.Context, ns *namespaceCustody, b *
 	source := &operation1ResidentSource{owner: c, ns: ns, baseline: c.adapter.session.baseline, active: true}
 	c.adapter.creation = source
 	c.absence = source
-	defer func() { err = errors.Join(err, c.stop(ctx)); c.mu.Lock(); source.active = false; c.mu.Unlock() }()
+	defer func() {
+		err = errors.Join(err, c.stop(ctx))
+		c.mu.Lock()
+		source.active = false
+		if source.afOwner != nil {
+			source.afOwner.active = false
+			source.afOwner.last = nil
+		}
+		c.mu.Unlock()
+	}()
 	return work(c)
 }
 func (s *operation1ResidentSource) check(ctx context.Context, a *originalAttempt) error {
