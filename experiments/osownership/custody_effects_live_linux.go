@@ -15,7 +15,7 @@ import (
 // or default. O_NOFOLLOW and dir-relative fd walk prevent symlink substitution.
 // Missing IPv6 tree is NOT called disabled here: needs independent kernel
 // address-family support proof; for now it blocks rather than guessing.
-func disableOwnedIPv6(ns *namespaceCustody, l Link, verifyLink func() error) error {
+func disableOwnedIPv6(ns *namespaceCustody, c *ownedCreation, l Link, verifyLink func() error) error {
 	if !kernelExecutionReleased {
 		return ErrExecutorUnreleased
 	}
@@ -30,6 +30,12 @@ func disableOwnedIPv6(ns *namespaceCustody, l Link, verifyLink func() error) err
 	}
 	if !strings.HasPrefix(l.Name, "mno-") || strings.ContainsAny(l.Name, "/\x00") || len(l.Name) > 15 {
 		return ErrConflict
+	}
+	if c == nil || c.handle.Link != l {
+		return ErrConflict
+	}
+	if e := c.beforeEffect(c.handle, "config-intent"); e != nil {
+		return e
 	}
 	fd, e := unix.Open("/proc/sys/net/ipv6/conf", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
 	if e != nil {

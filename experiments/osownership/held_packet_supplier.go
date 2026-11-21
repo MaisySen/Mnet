@@ -46,7 +46,7 @@ func (l *heldPacketLedger) invalidate(kind string) error {
 		return ErrConflict
 	}
 	switch kind {
-	case "ioctl-intent", "duplicate-intent", "export-intent", "close-intent", "namespace-change", "custody-loss":
+	case "config-intent", "ioctl-intent", "duplicate-intent", "export-intent", "close-intent", "namespace-change", "custody-loss":
 	default:
 		return ErrConflict
 	}
@@ -65,14 +65,16 @@ func (l *heldPacketLedger) matches(v heldPacketIdentity) bool {
 }
 
 type heldPacketObservation struct {
-	reader    *heldPacketReader
-	af        *afReadPass
-	serial    uint64
-	identity  heldPacketIdentity
-	link      LinkRecord
-	framing   tunNestedFraming
-	features  ethtoolActiveFeatures
-	effective []effectiveV4Word
+	reader     *heldPacketReader
+	af         *afReadPass
+	serial     uint64
+	identity   heldPacketIdentity
+	link       LinkRecord
+	framing    tunNestedFraming
+	features   ethtoolActiveFeatures
+	names      *verifiedFeatureNames
+	compatible bool
+	effective  []effectiveV4Word
 }
 type heldPacketReader struct {
 	wire                inertHeldPacketWire
@@ -89,7 +91,7 @@ func (r *heldPacketReader) read(ctx context.Context, p *afReadPass) (*heldPacket
 		return nil, ErrConflict
 	}
 	r.last = nil
-	if ctx == nil || ctx.Err() != nil || r.wire == nil || r.ledger == nil || r.sequence == ^uint32(0) || r.serial == ^uint64(0) {
+	if ctx == nil || ctx.Err() != nil || r.wire == nil || r.ledger == nil || r.sequence >= ^uint32(0)-1 || r.serial == ^uint64(0) {
 		return nil, ErrConflict
 	}
 	before, e := r.wire.heldIdentity(ctx)
@@ -121,6 +123,20 @@ func (r *heldPacketReader) read(ctx context.Context, p *afReadPass) (*heldPacket
 	}
 	r.sequence++
 	req := ethtoolFeatureRequest{family: r.family, sequence: r.sequence, recipient: r.recipient, ifindex: uint32(link.Index), name: link.Name, profile: r.profile}
+	namesRequest, e := buildFeatureNamesRequest(req)
+	if e != nil {
+		return nil, e
+	}
+	namesDatagram, e := r.wire.heldFeatures(ctx, namesRequest)
+	if e != nil {
+		return nil, e
+	}
+	names, e := parseFeatureNames(namesDatagram, req)
+	if e != nil {
+		return nil, e
+	}
+	r.sequence++
+	req.sequence = r.sequence
 	request, e := buildEthtoolFeatureRequest(req)
 	if e != nil {
 		return nil, e
@@ -143,7 +159,7 @@ func (r *heldPacketReader) read(ctx context.Context, p *afReadPass) (*heldPacket
 	}
 	link.Raw = cloneRawAttrs(link.Raw)
 	r.serial++
-	out := &heldPacketObservation{reader: r, af: p, serial: r.serial, identity: before, link: link, framing: framing, features: features, effective: effective}
+	out := &heldPacketObservation{reader: r, af: p, serial: r.serial, identity: before, link: link, framing: framing, features: features, names: names, compatible: features.observedNamesCompatible(names), effective: effective}
 	r.last = out
 	return out, nil
 }

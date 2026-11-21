@@ -30,7 +30,7 @@ func runReadOnlyBootstrapEvidence(ctx context.Context, ns *namespaceCustody) (v 
 		}
 	}()
 	v = Verdict{Version: 1, Stage: "read-only-baseline", Namespace: ns.identity, Sequence: 1, Result: "fail", FailureClass: "runner"}
-	raw, e := ReadStableInventory(ctx, residentNetlink{ns}, ns.checkCurrent)
+	raw, e := ReadStableInventory(ctx, residentNetlink{ns: ns}, ns.checkCurrent)
 	if e != nil {
 		v.FailureClass = "decoder"
 		return v, e
@@ -69,7 +69,7 @@ func runReadOnlyBootstrapEvidence(ctx context.Context, ns *namespaceCustody) (v 
 		}
 		return v, e
 	}
-	after, e := ReadStableInventory(ctx, residentNetlink{ns}, ns.checkCurrent)
+	after, e := ReadStableInventory(ctx, residentNetlink{ns: ns}, ns.checkCurrent)
 	if e != nil {
 		v.FailureClass = "decoder"
 		return v, e

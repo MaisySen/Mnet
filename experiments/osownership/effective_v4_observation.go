@@ -81,6 +81,14 @@ func (p *afReadPass) effectiveV4(index int) ([]effectiveV4Word, error) {
 	if e != nil {
 		return nil, e
 	}
+	return effectiveV4Link(l, p.effective)
+}
+
+// Shared pure computation for a reviewed source collector and inert pass.
+func effectiveV4Link(l LinkRecord, observed *effectiveV4Observation) ([]effectiveV4Word, error) {
+	if observed == nil {
+		return nil, afPolicy
+	}
 	family, e := decodeAttributes(l.Raw[26])
 	if e != nil {
 		return nil, e
@@ -95,7 +103,7 @@ func (p *afReadPass) effectiveV4(index int) ([]effectiveV4Word, error) {
 	}
 	out := make([]effectiveV4Word, 33)
 	for n, name := range ownedTUNIPv4Words {
-		w := effectiveV4Word{Index: n, Name: name, Local: local[n], All: p.effective.all[n], Default: p.effective.defaults[n], AllObserved: p.effective.observed[n], Formula: "unresolved-consumer-semantics"}
+		w := effectiveV4Word{Index: n, Name: name, Local: local[n], All: observed.all[n], Default: observed.defaults[n], AllObserved: observed.observed[n], Formula: "unresolved-consumer-semantics"}
 		// inetdevice.h macros and route.c/arp.c explicit ORCONF consumers.
 		switch n {
 		case 0, 11, 13:

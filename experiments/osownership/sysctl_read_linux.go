@@ -25,6 +25,11 @@ func readPolicySysctlsSource(ctx context.Context, ns *namespaceCustody, raw RawI
 	}
 	defer unix.Close(root)
 	paths := []string{"ipv4/ip_forward"}
+	for _, scope := range []string{"all", "default"} {
+		for _, leaf := range effectiveV4Leaves {
+			paths = append(paths, "ipv4/conf/"+scope+"/"+leaf)
+		}
+	}
 	names := []string{"all", "default"}
 	for _, l := range raw.Links {
 		if !safeInterfaceName(l.Name) {
@@ -61,7 +66,7 @@ func readPolicySysctlsSource(ctx context.Context, ns *namespaceCustody, raw RawI
 			if !applicable {
 				return nil, fmt.Errorf("IPv6 directory present but AF_SPEC absent: %s", n)
 			}
-			for _, leaf := range []string{"forwarding", "disable_ipv6", "addr_gen_mode"} {
+			for _, leaf := range []string{"forwarding", "force_forwarding", "disable_ipv6", "addr_gen_mode"} {
 				paths = append(paths, "ipv6/conf/"+n+"/"+leaf)
 			}
 		}
@@ -108,6 +113,16 @@ func readPolicySysctlsSource(ctx context.Context, ns *namespaceCustody, raw RawI
 		out["/proc/sys/net/"+path] = strings.TrimSpace(string(b))
 		if e = ns.checkCurrent(); e != nil {
 			return nil, e
+		}
+	}
+	if _, e := parseEffectiveV4(out); e != nil {
+		return nil, e
+	}
+	for _, l := range raw.Links {
+		if strings.HasPrefix(l.Name, "mno-") {
+			if _, e := parseTUNNested(l); e != nil {
+				return nil, e
+			}
 		}
 	}
 	return out, validateForwarding(raw, out)

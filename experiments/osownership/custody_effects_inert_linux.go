@@ -2,4 +2,6 @@
 
 package osownership
 
-func disableOwnedIPv6(*namespaceCustody, Link, func() error) error { return ErrExecutorUnreleased }
+func disableOwnedIPv6(*namespaceCustody, *ownedCreation, Link, func() error) error {
+	return ErrExecutorUnreleased
+}

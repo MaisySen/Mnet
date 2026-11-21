@@ -13,11 +13,12 @@ import (
 )
 
 type routeSocket struct {
-	mu     sync.Mutex
-	ns     *namespaceCustody
-	fd     int
-	pid    uint32
-	closed bool
+	creation *ownedCreation
+	mu       sync.Mutex
+	ns       *namespaceCustody
+	fd       int
+	pid      uint32
+	closed   bool
 }
 
 func (n *namespaceCustody) checkCurrent() error {
@@ -106,6 +107,18 @@ func (s *routeSocket) Exchange(ctx context.Context, request []byte) (out []Datag
 	if len(request) < 16 || len(request) > 65536 {
 		return nil, errors.New("invalid netlink request")
 	}
+	kind := binary.NativeEndian.Uint16(request[4:])
+	if kind == 16 || kind == 20 || kind == 21 || kind == 24 || kind == 25 {
+		if !kernelExecutionReleased {
+			return nil, ErrExecutorUnreleased
+		}
+		if s.creation == nil {
+			return nil, ErrConflict
+		}
+		if e := s.creation.beforeEffect(s.creation.handle, "config-intent"); e != nil {
+			return nil, e
+		}
+	}
 	bounded, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
 	defer cancel()
 	if e := unix.Sendto(s.fd, request, 0, &unix.SockaddrNetlink{Family: unix.AF_NETLINK}); e != nil {
@@ -174,7 +187,10 @@ func (s *routeSocket) Exchange(ctx context.Context, request []byte) (out []Datag
 // Each live request has a fresh socket AND matching fresh port identity. A
 // closed per-exchange socket is never reused by ReadStableInventory retries.
 // Resident caller must be inside withResidentNamespace's locked-thread scope.
-type residentNetlink struct{ ns *namespaceCustody }
+type residentNetlink struct {
+	ns       *namespaceCustody
+	creation *ownedCreation
+}
 
 func (r residentNetlink) Request(ctx context.Context, kind uint16, payload []byte, dump bool) ([][]byte, error) {
 	if !kernelExecutionReleased && !readOnlyEvidenceBuild {
@@ -209,10 +225,13 @@ func (r residentNetlink) applyExact(ctx context.Context, m ExactMutation) error 
 	if !sameNamespace(r.ns.identity, m.identity.Namespace) {
 		return ErrConflict
 	}
-	s, e := openRouteSocket(r.ns)
-	if e != nil {
-		return e
-	}
-	defer s.Close()
-	return NewInMemoryNetlinkClient(s, s.pid).ApplyExact(ctx, m)
+	return r.creation.guardedEffect(m.identity, "config-intent", func() error {
+		s, e := openRouteSocket(r.ns)
+		if e != nil {
+			return e
+		}
+		defer s.Close()
+		s.creation = r.creation
+		return NewInMemoryNetlinkClient(s, s.pid).ApplyExact(ctx, m)
+	})
 }

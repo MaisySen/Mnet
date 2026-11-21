@@ -6,7 +6,10 @@ import "context"
 
 func (n *namespaceCustody) checkCurrent() error { return ErrExecutorUnreleased }
 
-type residentNetlink struct{ ns *namespaceCustody }
+type residentNetlink struct {
+	ns       *namespaceCustody
+	creation *ownedCreation
+}
 
 func (residentNetlink) Request(context.Context, uint16, []byte, bool) ([][]byte, error) {
 	return nil, ErrExecutorUnreleased

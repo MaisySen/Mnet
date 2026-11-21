@@ -60,3 +60,39 @@ func createTUNSource(ctx context.Context, ns *namespaceCustody, p Plan, observe 
 	}
 	return bindOriginalFD(f, p, observe)
 }
+
+// Guard every post-creation configuration path before its first possible effect.
+// Initial TUNSETIFF belongs to creation before an ownedCreation exists; subsequent
+// ioctls/dup/export have no admitted real helper here. Missing lineage refuses.
+func (c *ownedCreation) beforeEffect(h Handle, kind string) error {
+	if c == nil || c.fd == nil || c.fd.closed || c.fd.file == nil || c.fd.lineage == nil {
+		return ErrConflict
+	}
+	a, b := h, c.handle
+	a.TagConfirmed = false
+	b.TagConfirmed = false
+	if a != b {
+		return ErrConflict
+	}
+	return c.fd.lineage.invalidate(kind)
+}
+
+// No raw descriptor escape or post-creation ioctl path is exposed. Even a refused
+// request invalidates lineage before returning, so it can't leave evidence live.
+func (c *ownedCreation) refuseControlEscape(h Handle, kind string) error {
+	if e := c.beforeEffect(h, kind); e != nil {
+		return e
+	}
+	return ErrExecutorUnreleased
+}
+
+func (c *ownedCreation) guardedEffect(h Handle, kind string, effect func() error) error {
+	if effect == nil {
+		return ErrConflict
+	}
+	if e := c.beforeEffect(h, kind); e != nil {
+		return e
+	}
+	// Callback cannot restore lineage, even on success, failure or ambiguous ACK.
+	return effect()
+}

@@ -192,6 +192,9 @@ func (w *heldMemoryWire) heldLink(context.Context) (LinkRecord, error) { return 
 func (w *heldMemoryWire) heldFeatures(_ context.Context, request []byte) (Datagram, error) {
 	w.request = append([]byte(nil), request...)
 	r := ethtoolFeatureRequest{family: binary.NativeEndian.Uint16(request[4:]), sequence: binary.NativeEndian.Uint32(request[8:]), recipient: binary.NativeEndian.Uint32(request[12:]), ifindex: uint32(w.link.Index), name: w.link.Name, profile: pinnedFeaturesV617}
+	if request[16] == 1 {
+		return featureNamesReplyTest(r, pinnedFeatureNamesV617), nil
+	}
 	return featureReplyTest(r, 1<<0|1<<11|1<<14), nil
 }
 func heldSupplierRig(t *testing.T) (*heldPacketReader, *inertAFReader, *fullAFMemorySource, *heldMemoryWire) {
@@ -216,7 +219,7 @@ func TestHeldSupplierBracketsOriginalIdentityAndALLPass(t *testing.T) {
 		t.Fatal(e)
 	}
 	o, e := r.read(context.Background(), p)
-	if e != nil || !o.current() || len(o.effective) != 33 || !o.features.rawOutputCompatible() || w.calls != 2 {
+	if e != nil || !o.current() || !o.compatible || len(o.effective) != 33 || !o.features.rawOutputCompatible() || w.calls != 2 {
 		t.Fatal(o, e)
 	}
 	if w.request[16] != 11 || w.request[17] != 1 || binary.NativeEndian.Uint16(w.request[6:]) != 1 {

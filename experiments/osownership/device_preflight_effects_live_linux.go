@@ -49,7 +49,7 @@ func runDevicePreflightSource(ctx context.Context, ns *namespaceCustody) (Device
 		if e := ns.checkCurrent(); e != nil {
 			return "", e
 		}
-		raw, e := ReadStableInventory(ctx, residentNetlink{ns}, ns.checkCurrent)
+		raw, e := ReadStableInventory(ctx, residentNetlink{ns: ns}, ns.checkCurrent)
 		if e != nil {
 			return "", e
 		}
