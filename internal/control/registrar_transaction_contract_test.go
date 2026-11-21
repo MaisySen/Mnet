@@ -1,8 +1,6 @@
-//go:build registrar_transaction_contract
-
 package control
 
-// Inactive desired storage/legacy-isolation contract, not transaction or proof
+// Storage/legacy-isolation contract, not transaction or proof
 // implementation. Fixtures modify the REAL owning Store's disk image between
 // Close and Open. No fake registrar, enrollment endpoint or credential issuer.
 import (
@@ -29,6 +27,8 @@ func TestRegistrarTransactionRejectsMalformedPersistedNamespace(t *testing.T) {
 		`{"version":1,"records":{},"unexpected":true}`,
 		`{"version":1,"version":2,"records":{}}`,
 		`{"version":1,"records":{},"records":null}`,
+		`{"Version":1,"records":{}}`,
+		`{"version":1,"Records":{}}`,
 	} {
 		t.Run(raw, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "state.json")
@@ -89,9 +89,18 @@ func TestRegistrarTransactionTombstoneBlocksLegacyRejoinAfterRestart(t *testing.
 					"credential_digest": registrarContractDigest(2), "phase": phase,
 					"scope":             map[string]any{"issuer": "https://issuer.invalid", "registrar_origin": "https://registrar.invalid", "audience": "mnet-enrollment", "service_id": "fixture-service", "workspace_id": "fixture-workspace", "mapping_revision": "fixture-r1", "handoff_id": registrarContractDigest(3), "attempt_id": registrarContractDigest(4), "reserve_id": registrarContractDigest(5)},
 					"descriptor_digest": registrarContractDigest(6), "descriptor_encoding_version": 1,
-					"receipt_id": registrarContractDigest(7), "receipt_digest": registrarContractDigest(8),
+					"receipt_id": registrarContractDigest(7), "receipt_digest": registrarContractDigest(8), "receipt_encoding_version": 1,
 					"committed_at_ms": int64(1000), "access_expires_at_ms": int64(2000),
 				}
+				encoded, err := json.Marshal(record)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var receipt registrarRecord
+				if err := json.Unmarshal(encoded, &receipt); err != nil {
+					t.Fatal(err)
+				}
+				record["receipt_digest"] = registrarReceiptDigest(receipt)
 				tuple, _ := json.Marshal([]string{network.ID, pubKey})
 				if err := s.Close(); err != nil {
 					t.Fatal(err)

@@ -40,6 +40,7 @@ type ApprovalIdentity struct {
 }
 
 type storeData struct {
+	Registrar          *registrarState             `json:"registrar_state,omitempty"`
 	Memberships        map[string]NetworkMember    `json:"memberships,omitempty"`
 	ApprovalIdentities map[string]ApprovalIdentity `json:"approval_identities,omitempty"`
 	Networks           map[string]*netmap.Network  `json:"networks"`
@@ -110,10 +111,16 @@ func Open(path string) (*Store, error) {
 	if len(trimmed) == 0 || trimmed[0] != '{' {
 		return nil, fmt.Errorf("store: expected a state object; file was not changed")
 	}
+	if err := validateRegistrarEnvelope(b); err != nil {
+		return nil, err
+	}
 	if err := json.Unmarshal(b, &s.data); err != nil {
 		return nil, fmt.Errorf("store: corrupt data file: %w", err)
 	}
 	if err := s.validateLoadedShape(); err != nil {
+		return nil, err
+	}
+	if err := s.validateRegistrarState(); err != nil {
 		return nil, err
 	}
 	// Re-establish the loaded image under the retained owner before serving it.
@@ -350,6 +357,10 @@ func (s *Store) Join(req netmap.JoinRequest) (*netmap.JoinResponse, error) {
 		return nil, ErrNotFound
 	}
 
+	if s.registrarClaimLocked(network.ID, req.PubKey) != nil {
+		return nil, ErrUnauthorized
+	}
+
 	// A WireGuard public key is public metadata, not proof of ownership.
 	// Reusing a stored identity always needs its saved control credential,
 	// even when a separate network-enrollment key is supplied.
@@ -490,6 +501,9 @@ func (s *Store) AuthorizeNode(nodeID, token string) (*netmap.Node, error) {
 	if err := s.healthLocked(); err != nil {
 		return nil, err
 	}
+	if s.registrarNodeLocked(nodeID) != nil {
+		return nil, ErrUnauthorized
+	}
 	n := s.data.Nodes[nodeID]
 	if n == nil {
 		return nil, ErrNotFound
@@ -539,9 +553,23 @@ func (s *Store) ExpireNode(nodeID string) error {
 		return ErrNotFound
 	}
 	previous := n.KeyExpiry
+	claim := s.registrarNodeLocked(nodeID)
+	oldPhase := ""
+	if claim != nil {
+		oldPhase = claim.Phase
+		claim.Phase = "revoked"
+	}
 	past := time.Now().UTC().Add(-time.Minute)
+	if claim != nil && past.UnixMilli() > claim.AccessExpiresAtMS {
+		past = time.UnixMilli(claim.AccessExpiresAtMS).UTC()
+	}
 	n.KeyExpiry = &past
-	if err := s.commitLocked(func() { n.KeyExpiry = previous }); err != nil {
+	if err := s.commitLocked(func() {
+		n.KeyExpiry = previous
+		if claim != nil {
+			claim.Phase = oldPhase
+		}
+	}); err != nil {
 		return err
 	}
 	s.bumpLocked(n.NetworkID)
@@ -626,7 +654,7 @@ func (s *Store) Map(nodeID string) (*netmap.Map, error) {
 		s.mu.Unlock()
 		return nil, ErrNotFound
 	}
-	if !self.Approved || self.KeyExpired() {
+	if s.registrarAccessDeniedLocked(nodeID) || !self.Approved || self.KeyExpired() {
 		s.mu.Unlock()
 		return nil, ErrUnauthorized
 	}
@@ -640,7 +668,7 @@ func (s *Store) Map(nodeID string) (*netmap.Map, error) {
 	// subsequent HTTP encoding work on owned values outside the store lock.
 	peers := make([]netmap.Node, 0, len(s.data.Nodes))
 	for _, n := range s.data.Nodes {
-		if n.NetworkID == self.NetworkID && n.ID != self.ID && n.Approved && !n.KeyExpired() {
+		if n.NetworkID == self.NetworkID && n.ID != self.ID && n.Approved && !n.KeyExpired() && !s.registrarAccessDeniedLocked(n.ID) {
 			peers = append(peers, cloneNode(n))
 		}
 	}
@@ -741,6 +769,9 @@ func (s *Store) approveNode(nodeID string, user *string, identity *ApprovalIdent
 	if err := s.healthLocked(); err != nil {
 		return err
 	}
+	if s.registrarNodeLocked(nodeID) != nil {
+		return ErrUnauthorized
+	}
 	n := s.data.Nodes[nodeID]
 	if n == nil {
 		return ErrNotFound
@@ -787,14 +818,25 @@ func (s *Store) DeleteNode(nodeID string) error {
 	if n == nil {
 		return ErrNotFound
 	}
-	token := s.data.NodeTokens[nodeID]
+	claim := s.registrarNodeLocked(nodeID)
+	oldPhase := ""
+	if claim != nil {
+		oldPhase = claim.Phase
+		claim.Phase = "revoked"
+	}
+	token, hadToken := s.data.NodeTokens[nodeID]
 	identity, hadIdentity := s.data.ApprovalIdentities[nodeID]
 	delete(s.data.ApprovalIdentities, nodeID)
 	delete(s.data.Nodes, nodeID)
 	delete(s.data.NodeTokens, nodeID)
 	if err := s.commitLocked(func() {
 		s.data.Nodes[nodeID] = n
-		s.data.NodeTokens[nodeID] = token
+		if hadToken {
+			s.data.NodeTokens[nodeID] = token
+		}
+		if claim != nil {
+			claim.Phase = oldPhase
+		}
 		if hadIdentity {
 			s.data.ApprovalIdentities[nodeID] = identity
 		}
@@ -902,7 +944,7 @@ func (s *Store) RelayAllowed(sourceID, dstKey string) bool {
 		return false
 	}
 	source := s.data.Nodes[sourceID]
-	if source == nil || !source.Approved || source.KeyExpired() {
+	if source == nil || s.registrarAccessDeniedLocked(sourceID) || !source.Approved || source.KeyExpired() {
 		return false
 	}
 	if s.relayIndex == nil {
@@ -912,7 +954,7 @@ func (s *Store) RelayAllowed(sourceID, dstKey string) bool {
 		}
 	}
 	dst := s.data.Nodes[s.relayIndex[source.NetworkID+"\x00"+dstKey]]
-	if dst == nil || !dst.Approved || dst.KeyExpired() || dst.NetworkID != source.NetworkID {
+	if dst == nil || s.registrarAccessDeniedLocked(dst.ID) || !dst.Approved || dst.KeyExpired() || dst.NetworkID != source.NetworkID {
 		return false
 	}
 	network := s.data.Networks[source.NetworkID]

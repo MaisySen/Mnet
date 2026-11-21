@@ -1,0 +1,30 @@
+{
+  "field_count": 19,
+  "byte_length": 568,
+  "sha256_hex": "194e1b1f89311142b806268e96820211a1cf89a8fb74724bf119c49bd3cc987d",
+  "record": {
+    "network_id": "fixture-network",
+    "device_public_key": "BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ=",
+    "node_id": "node-fixture-123",
+    "credential_digest": "BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU",
+    "phase": "revoked",
+    "scope": {
+      "issuer": "https://issuer.test/path",
+      "registrar_origin": "https://registrar.test",
+      "audience": "fixture-<>&-\u00e9-\u2028-\u2029",
+      "service_id": "fixture-service",
+      "workspace_id": "fixture-workspace",
+      "mapping_revision": "fixture-r1",
+      "handoff_id": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+      "attempt_id": "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM",
+      "reserve_id": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI"
+    },
+    "descriptor_digest": "BgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgY",
+    "descriptor_encoding_version": 1,
+    "receipt_encoding_version": 1,
+    "receipt_id": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+    "receipt_digest": "GU4bH4kxEUK4BiaOloICEaHPiaj7dHJL8RnEm9PMmH0",
+    "committed_at_ms": 1795227600123,
+    "access_expires_at_ms": 1795227660456
+  }
+}

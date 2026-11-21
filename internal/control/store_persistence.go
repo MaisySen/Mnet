@@ -37,6 +37,9 @@ func (s *Store) publishLocked() (published bool, err error) {
 	if err := s.healthLocked(); err != nil {
 		return false, err
 	}
+	if err := s.validateRegistrarState(); err != nil {
+		return false, err
+	}
 	b, err := json.MarshalIndent(&s.data, "", "  ")
 	if err != nil {
 		return false, err

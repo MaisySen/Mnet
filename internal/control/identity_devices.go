@@ -38,6 +38,9 @@ func (s *Store) approvedDevicesForIdentityLocked(networkID, issuer, subject stri
 	now := time.Now()
 	var result []IdentityDevice
 	for id, identity := range s.data.ApprovalIdentities {
+		if s.registrarNodeLocked(id) != nil {
+			continue
+		}
 		if identity.Issuer != issuer || identity.Subject != subject {
 			continue
 		}
