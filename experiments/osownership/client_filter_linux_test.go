@@ -75,7 +75,7 @@ func TestClientFilterArchAndCloneBoundaries(t *testing.T) {
 	if evalEvidenceFilter(t, 0x40000000, unix.AUDIT_ARCH_X86_64, [6]uint64{}) != unix.SECCOMP_RET_KILL_PROCESS {
 		t.Fatal("x32 accepted")
 	}
-	for _, flags := range []uint64{0, 0x50f00 | unix.CLONE_NEWUSER, unix.CLONE_NEWNET, 0x50f00 | 1<<32} {
+	for _, flags := range []uint64{0, 0xd0f00 | unix.CLONE_NEWUSER, unix.CLONE_NEWNET, 0xd0f00 | 1<<32} {
 		if evalEvidenceFilter(t, unix.SYS_CLONE, unix.AUDIT_ARCH_X86_64, [6]uint64{flags}) == unix.SECCOMP_RET_ALLOW {
 			t.Fatal("unreviewed clone flags permitted")
 		}
@@ -92,7 +92,7 @@ func TestExactSecurebitsGuard(t *testing.T) {
 	}
 }
 func TestClientFilterOnlyExactRuntimeClone(t *testing.T) {
-	if evalEvidenceFilter(t, unix.SYS_CLONE, unix.AUDIT_ARCH_X86_64, [6]uint64{0x50f00}) != unix.SECCOMP_RET_ALLOW {
+	if evalEvidenceFilter(t, unix.SYS_CLONE, unix.AUDIT_ARCH_X86_64, [6]uint64{0xd0f00}) != unix.SECCOMP_RET_ALLOW {
 		t.Fatal("exact Go runtime thread mask refused")
 	}
 }
