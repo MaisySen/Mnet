@@ -391,26 +391,26 @@ func activeRawFixture(t *testing.T, a *inertAdapterProtocol) (RawInventory, Sysc
 	raw.Routes = append(raw.Routes, RouteRecord{Family: 2, DestBits: 32, Table: 254, TableID: 254, Protocol: 242, Scope: 253, Type: 1, Dst: h.Route.Destination.Addr(), OIF: uint32(h.Link.Index), Priority: h.Route.Priority})
 	return raw, sys
 }
-func TestRawActiveObservationFailsClosedOnUnreviewedAFSpec(t *testing.T) {
+func TestRawActiveObservationExactAFSpecRefusals(t *testing.T) {
 	tx, a, _ := protocolRig(t)
 	if e := tx.Start(context.Background()); e != nil {
 		t.Fatal(e)
 	}
 	raw, sys := activeRawFixture(t, a)
-	// Existing strict Compose currently requires then refuses owned attr26.
-	// This is an explicit blocked source gate, not positive readiness evidence.
 	owned := &raw.Links[len(raw.Links)-1]
+	if _, e := a.session.compose(raw, sys); e == nil || e.Error() != "link "+owned.Name+": missing AF_SPEC applicability" {
+		t.Fatal("wrong missing26 refusal", e)
+	}
 	owned.Raw[26] = append(attr(2, nil), attr(10, nil)...)
 	sys["/proc/sys/net/ipv4/conf/"+owned.Name+"/forwarding"] = "0"
 	sys[ipv6DirPrefix+owned.Name] = "present"
 	sys["/proc/sys/net/ipv6/conf/"+owned.Name+"/forwarding"] = "0"
 	sys["/proc/sys/net/ipv6/conf/"+owned.Name+"/addr_gen_mode"] = "1"
-	if obs, e := a.session.observeActive(raw, sys, tx); e == nil || obs != nil || !a.session.poisoned {
-		t.Fatal("unreviewed raw active path admitted", obs, e)
+	if _, e := a.session.compose(raw, sys); e == nil || e.Error() != "unreviewed owned link attr 26" {
+		t.Fatal("wrong present26 refusal", e)
 	}
-	ev := boundEvidence(a.session.identity, tx.clock.Now().Wall)
-	if projectNetworkCapability(ev).NetworkingReady {
-		t.Fatal("blocked raw observation became readiness")
+	if obs, e := a.session.observeActive(raw, sys, tx); e == nil || e.Error() != "unreviewed owned link attr 26" || obs != nil || !a.session.poisoned {
+		t.Fatal("wrong active refusal/poison", obs, e)
 	}
 }
 func TestTransactionOwnedDisplayEligibility(t *testing.T) {
@@ -438,6 +438,10 @@ func TestTransactionOwnedDisplayEligibility(t *testing.T) {
 			}
 			if a.session.ownerEligible(tx) {
 				t.Fatal("owner invalidation missed", mode)
+			}
+			wantPoison := mode == "wall-rollback" || mode == "mono-rollback"
+			if a.session.poisoned != wantPoison || a.session.clockDistrusted != wantPoison {
+				t.Fatal("wrong owner refusal side effect", mode, a.session.poisoned, a.session.clockDistrusted)
 			}
 		})
 	}
@@ -502,5 +506,24 @@ func TestFailedCloseEvidenceOnlyOnce(t *testing.T) {
 	}
 	if len(tx.Evidence) != count || k.closeCount != 1 {
 		t.Fatal("fabricated repeat")
+	}
+}
+
+func TestHistoricalTimeCannotPoisonActiveOwnerClock(t *testing.T) {
+	tx, a, _ := protocolRig(t)
+	if e := tx.Start(context.Background()); e != nil {
+		t.Fatal(e)
+	}
+	raw, sys := recordedRaw(t)
+	now := tx.clock.Now().Wall
+	_, _ = a.session.reconcileObserved(raw, sys, adapterReconciliationObservation{Identity: a.session.identity, Sequence: a.session.nextObservationSequence(), ObservedAt: now.Add(24 * time.Hour)})
+	if !a.session.lastObservationTime.IsZero() {
+		t.Fatal("historical caller time entered active clock")
+	}
+	if !a.session.ownerEligible(tx) || a.session.clockDistrusted || a.session.poisoned {
+		t.Fatal("future history poisoned owner")
+	}
+	if a.session.lastHistoricalTime != now.Add(24*time.Hour).Round(0).UTC() {
+		t.Fatal("historical order not isolated")
 	}
 }

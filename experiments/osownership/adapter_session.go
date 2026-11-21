@@ -29,6 +29,7 @@ type adapterSession struct {
 	observationSequence uint64
 	owner               *Transaction
 	lastObservationTime time.Time
+	lastHistoricalTime  time.Time
 	lastOwnerStamp      *Stamp
 	clockDistrusted     bool
 	baseline            *CapturedBaseline
@@ -381,12 +382,12 @@ func (s *adapterSession) reconcileObserved(raw RawInventory, sys SysctlSnapshot,
 		return adapterFinalState{}, ErrConflict
 	}
 	o.ObservedAt = o.ObservedAt.Round(0).UTC()
-	if o.ObservedAt.IsZero() || (!s.lastObservationTime.IsZero() && o.ObservedAt.Before(s.lastObservationTime)) {
+	if o.ObservedAt.IsZero() || (!s.lastHistoricalTime.IsZero() && o.ObservedAt.Before(s.lastHistoricalTime)) {
 		return adapterFinalState{}, ErrConflict
 	}
 	r, e := s.reconcile(raw, sys)
 	// Even a mismatched raw baseline gets an observation stamp, never clean state.
-	s.lastObservationTime = o.ObservedAt
+	s.lastHistoricalTime = o.ObservedAt
 	s.observationSequence = o.Sequence
 	copy := o
 	r.Observation = &copy
