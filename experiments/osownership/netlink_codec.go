@@ -2,15 +2,15 @@
 
 package osownership
 
-// Strict finite rtnetlink framing behind an in-memory transport boundary. No
-// socket is opened. Request supports EXCLUSIVE CREATE or DUMP framing only,
-// never route deletion/update. Delete serialization remains a later source gate. Attribute decoding/dump provenance is not implemented and
-// this client is NOT a usable live Kernel executor.
+// Strict finite rtnetlink framing. Pure codec plus mechanically guarded Linux
+// transport source do not constitute a live Kernel executor or kernel proof.
 import (
 	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
+	"syscall"
 )
 
 const netlinkHeader = 16
@@ -29,6 +29,7 @@ type NetlinkWire interface {
 	Exchange(context.Context, []byte) ([]Datagram, error)
 }
 type NetlinkClient struct {
+	mu       sync.Mutex
 	wire     NetlinkWire
 	sequence uint32
 	localPID uint32
@@ -38,7 +39,41 @@ func NewInMemoryNetlinkClient(w NetlinkWire, localPID uint32) *NetlinkClient {
 	return &NetlinkClient{wire: w, localPID: localPID}
 }
 func (c *NetlinkClient) Request(ctx context.Context, kind uint16, payload []byte, dump bool) ([][]byte, error) {
-	if (!dump && kind != 16 && kind != 20 && kind != 24) || (dump && kind != 18 && kind != 22 && kind != 26 && kind != 34) {
+	flags := uint16(1 | 4 | 0x200 | 0x400)
+	if dump {
+		flags = 1 | 0x300
+		header, e := DumpRequestHeader(kind)
+		if e != nil {
+			return nil, e
+		}
+		if len(payload) == 0 {
+			payload = header
+		}
+		if len(payload) != len(header) {
+			return nil, errors.New("invalid dump request header")
+		}
+		for _, v := range payload {
+			if v != 0 {
+				return nil, errors.New("only AF_UNSPEC dump allowed")
+			}
+		}
+	}
+	return c.request(ctx, kind, payload, dump, flags, false)
+}
+func (c *NetlinkClient) request(ctx context.Context, kind uint16, payload []byte, dump bool, flags uint16, mutation bool) (out [][]byte, err error) {
+	if c == nil {
+		return nil, errors.New("nil client")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	defer func() {
+		if err != nil {
+			if closer, ok := c.wire.(interface{ Close() error }); ok {
+				err = errors.Join(err, closer.Close())
+			}
+		}
+	}()
+	if !mutation && ((!dump && kind != 16 && kind != 20 && kind != 24) || (dump && kind != 18 && kind != 22 && kind != 26 && kind != 34)) {
 		return nil, errors.New("unsupported netlink operation kind")
 	}
 	if c == nil || c.wire == nil || len(payload) > 65520 || ctx.Err() != nil {
@@ -52,10 +87,7 @@ func (c *NetlinkClient) Request(ctx context.Context, kind uint16, payload []byte
 	request := make([]byte, netlinkHeader+len(payload))
 	binary.NativeEndian.PutUint32(request, uint32(len(request)))
 	binary.NativeEndian.PutUint16(request[4:], kind)
-	flags := uint16(1 | 4 | 0x200 | 0x400)
-	if dump {
-		flags = 1 | 0x300
-	}
+
 	binary.NativeEndian.PutUint16(request[6:], flags)
 	binary.NativeEndian.PutUint32(request[8:], seq)
 	binary.NativeEndian.PutUint32(request[12:], c.localPID)
@@ -93,7 +125,7 @@ func (c *NetlinkClient) Request(ctx context.Context, kind uint16, payload []byte
 			body := b[16:n]
 			switch typ {
 			case nlError:
-				if dump || len(body) < 20 {
+				if len(body) < 20 {
 					return nil, errors.New("invalid ACK")
 				}
 				if binary.NativeEndian.Uint32(body[4:]) != uint32(len(request)) || binary.NativeEndian.Uint16(body[8:]) != kind || binary.NativeEndian.Uint16(body[10:]) != flags || binary.NativeEndian.Uint32(body[12:]) != seq || binary.NativeEndian.Uint32(body[16:]) != c.localPID {
@@ -101,7 +133,10 @@ func (c *NetlinkClient) Request(ctx context.Context, kind uint16, payload []byte
 				}
 				code := int32(binary.NativeEndian.Uint32(body))
 				if code != 0 {
-					return nil, fmt.Errorf("kernel negative ACK %d", code)
+					return nil, fmt.Errorf("kernel negative ACK: %w", syscall.Errno(-int64(code)))
+				}
+				if dump {
+					return nil, errors.New("unexpected success ACK for dump")
 				}
 				terminal = true
 			case nlDone:
@@ -110,7 +145,8 @@ func (c *NetlinkClient) Request(ctx context.Context, kind uint16, payload []byte
 				}
 				terminal = true
 			default:
-				if !dump || fl&2 == 0 {
+				expected := map[uint16]uint16{18: 16, 22: 20, 26: 24, 34: 32}[kind]
+				if !dump || fl&2 == 0 || typ != expected {
 					return nil, errors.New("unexpected nonmultipart payload")
 				}
 				messages = append(messages, append([]byte(nil), body...))
@@ -131,4 +167,32 @@ func (c *NetlinkClient) Request(ctx context.Context, kind uint16, payload []byte
 		return nil, errors.New("no kernel completion ACK")
 	}
 	return messages, nil
+}
+
+// Mutation flags are operation-specific. Delete is ACK-only, never CREATE or
+// REPLACE. Link update is ACK-only. Address/route additions are exclusive.
+func (c *NetlinkClient) Mutate(ctx context.Context, kind uint16, payload []byte) error {
+	flags := uint16(1 | 4)
+	switch kind {
+	case 20, 24:
+		flags |= 0x200 | 0x400
+	case 16, 17, 21, 25:
+	default:
+		return errors.New("unsupported mutation kind")
+	}
+	_, e := c.request(ctx, kind, payload, false, flags, true)
+	return e
+}
+
+// Exact family-unspecified request structure for each dump, no guessed header.
+func DumpRequestHeader(kind uint16) ([]byte, error) {
+	switch kind {
+	case 18:
+		return make([]byte, 16), nil
+	case 22:
+		return make([]byte, 8), nil
+	case 26, 34:
+		return make([]byte, 12), nil
+	}
+	return nil, errors.New("unsupported dump header")
 }

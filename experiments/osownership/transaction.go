@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 )
 
@@ -58,6 +59,8 @@ type Transaction struct {
 	Evidence       []Evidence
 	Ready          bool
 	PendingCleanup bool
+	fdClosed       bool
+	baseline       *Inventory
 }
 
 func NewTransaction(k Kernel, c Clock, b Binding) (*Transaction, error) {
@@ -111,7 +114,10 @@ func (t *Transaction) Start(ctx context.Context) error {
 		return e
 	}
 	t.plan = p
+	copyBaseline := cloneInventory(before)
+	t.baseline = &copyBaseline
 	t.Evidence = append(t.Evidence, Evidence{Step: "create-intent"})
+	t.PendingCleanup = true
 	h, createErr := t.k.Create(ctx, p)
 	if h.Link.Index > 0 {
 		t.handle = &h
@@ -249,6 +255,9 @@ func (t *Transaction) Stop(ctx context.Context) error {
 	ctx = bounded
 	t.Ready = false
 	if t.handle == nil {
+		if t.PendingCleanup {
+			return errors.New("ambiguous creation without FD custody; cleanup pending, never adopt")
+		}
 		return nil
 	}
 	h := *t.handle
@@ -262,8 +271,11 @@ func (t *Transaction) Stop(ctx context.Context) error {
 			return e
 		}
 		if len(ops) == 0 {
-			e = t.k.CloseOriginalFD(h)
+			e = t.closeFDOnce(h)
 			if e != nil {
+				return e
+			}
+			if e = verifyAbsence(h, i, t.baseline); e != nil {
 				return e
 			}
 			t.PendingCleanup = false
@@ -273,7 +285,7 @@ func (t *Transaction) Stop(ctx context.Context) error {
 		t.Evidence = append(t.Evidence, Evidence{Step: op.Kind + "-intent"})
 		var applyErr error
 		if op.Kind == "close-owned-tun-fd" {
-			applyErr = t.k.CloseOriginalFD(h)
+			applyErr = t.closeFDOnce(h)
 		} else {
 			applyErr = t.k.Apply(ctx, h, op)
 		}
@@ -328,4 +340,66 @@ func (t *Transaction) Run(ctx context.Context) error {
 		ended = ctx.Err()
 	}
 	return errors.Join(ended, t.Stop(context.Background()))
+}
+
+func (t *Transaction) closeFDOnce(h Handle) error {
+	if t.fdClosed {
+		return nil
+	}
+	t.fdClosed = true
+	return t.k.CloseOriginalFD(h)
+}
+func cloneInventory(i Inventory) Inventory {
+	i.IPv6Disabled = maps.Clone(i.IPv6Disabled)
+	i.LinkUp = maps.Clone(i.LinkUp)
+	i.Links = append([]Link(nil), i.Links...)
+	i.Routes = append([]Route(nil), i.Routes...)
+	i.Addresses = append([]Address(nil), i.Addresses...)
+	return i
+}
+func verifyAbsence(h Handle, i Inventory, baseline *Inventory) error {
+	for _, l := range i.Links {
+		if l.Index == h.Link.Index || l.Name == h.Link.Name || l.Alias == h.Link.Alias {
+			return errors.New("original or replaced link remains")
+		}
+	}
+	for _, a := range i.Addresses {
+		if a.LinkIndex == h.Link.Index || a.Prefix == h.Address.Prefix || a.Prefix == h.Route.Destination {
+			return errors.New("owned destination address remains")
+		}
+	}
+	for _, r := range i.Routes {
+		if r.LinkIndex == h.Link.Index || r.Destination == h.Route.Destination || r.Destination == h.Address.Prefix {
+			return errors.New("owned destination route remains")
+		}
+	}
+	if baseline == nil {
+		return errors.New("baseline unavailable")
+	}
+	if !equalInventoryBaseline(*baseline, i) {
+		return errors.New("unowned baseline changed")
+	}
+	return nil
+}
+func equalInventoryBaseline(a, b Inventory) bool {
+	if a.Namespace != b.Namespace || a.ForeignPolicy != b.ForeignPolicy || a.Forwarding != b.Forwarding || len(a.Links) != len(b.Links) || len(a.Routes) != len(b.Routes) || len(a.Addresses) != len(b.Addresses) {
+		return false
+	}
+	return maps.Equal(a.IPv6Disabled, b.IPv6Disabled) && maps.Equal(a.LinkUp, b.LinkUp) && sameMultiset(a.Links, b.Links) && sameMultiset(a.Routes, b.Routes) && sameMultiset(a.Addresses, b.Addresses)
+}
+func sameMultiset[T comparable](a, b []T) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	counts := make(map[T]int)
+	for _, v := range a {
+		counts[v]++
+	}
+	for _, v := range b {
+		counts[v]--
+		if counts[v] < 0 {
+			return false
+		}
+	}
+	return true
 }

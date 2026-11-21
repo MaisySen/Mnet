@@ -91,6 +91,8 @@ func (k *fakeKernel) Apply(_ context.Context, h Handle, o Operation) error {
 }
 func (k *fakeKernel) CloseOriginalFD(h Handle) error {
 	k.calls = append(k.calls, "close-fd")
+	delete(k.i.IPv6Disabled, h.Link.Index)
+	delete(k.i.LinkUp, h.Link.Index)
 	var links []Link
 	for _, l := range k.i.Links {
 		if l != h.Link {

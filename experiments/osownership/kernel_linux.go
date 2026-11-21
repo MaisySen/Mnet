@@ -69,7 +69,7 @@ func proveNamespaceFD(targetFD, parentFD int) (*namespaceCustody, error) {
 	if e != nil || id == parent {
 		return nil, errors.New("target is initial parent namespace or parent invalid")
 	}
-	current, e := unix.Open("/proc/self/ns/net", unix.O_RDONLY|unix.O_CLOEXEC, 0)
+	current, e := unix.Open("/proc/thread-self/ns/net", unix.O_RDONLY|unix.O_CLOEXEC, 0)
 	if e != nil {
 		return nil, e
 	}
@@ -97,7 +97,7 @@ func openExclusiveNonpersistentTUN(ns *namespaceCustody, name string) (*os.File,
 	if e := unix.Fstat(ns.fd, &st); e != nil || uint64(st.Dev) != ns.identity.Device || st.Ino != ns.identity.Inode {
 		return nil, ErrConflict
 	}
-	current, e := unix.Open("/proc/self/ns/net", unix.O_RDONLY|unix.O_CLOEXEC, 0)
+	current, e := unix.Open("/proc/thread-self/ns/net", unix.O_RDONLY|unix.O_CLOEXEC, 0)
 	if e != nil {
 		return nil, e
 	}
@@ -108,6 +108,9 @@ func openExclusiveNonpersistentTUN(ns *namespaceCustody, name string) (*os.File,
 	}
 	if len(name) < 7 || len(name) > 15 {
 		return nil, errors.New("dedicated TUN name required")
+	}
+	if e := ns.checkCurrent(); e != nil {
+		return nil, e
 	}
 	fd, e := unix.Open("/dev/net/tun", unix.O_RDWR|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
 	if e != nil {
@@ -128,6 +131,9 @@ func openExclusiveNonpersistentTUN(ns *namespaceCustody, name string) (*os.File,
 		return nil, e
 	}
 	ifr.SetUint16(unix.IFF_TUN | unix.IFF_NO_PI | unix.IFF_TUN_EXCL)
+	if e = ns.checkCurrent(); e != nil {
+		return nil, e
+	}
 	if e = unix.IoctlIfreq(fd, unix.TUNSETIFF, ifr); e != nil {
 		return nil, e
 	}
