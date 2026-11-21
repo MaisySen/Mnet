@@ -20,7 +20,7 @@ func fixture(t *testing.T) ([32]byte, Binding, time.Time) {
 	var secret, public [32]byte
 	copy(secret[:], k.Bytes())
 	copy(public[:], k.PublicKey().Bytes())
-	return secret, Binding{RegistrarOrigin: "https://registrar.example.test", Audience: "mnet-enrollment", Issuer: "https://multies.example.test", Subject: "person", PersonSessionID: "current-person-session", WorkspaceID: "workspace", NetworkID: "network", AuthorizationID: "one-approved-decision", DevicePublicKey: public}, time.Date(2026, 11, 21, 0, 0, 0, 0, time.UTC)
+	return secret, Binding{RegistrarOrigin: "https://registrar.example.test", Audience: "mnet-enrollment", Issuer: "https://multies.example.test", Subject: "person", PersonSessionID: "current-person-session", WorkspaceID: "workspace", NetworkID: "network", MappingRevision: "fixture-revision", AuthorizationID: "one-approved-decision", DevicePublicKey: public}, time.Date(2026, 11, 21, 0, 0, 0, 0, time.UTC)
 }
 func TestProofOneWinnerAndNoReplay(t *testing.T) {
 	secret, b, now := fixture(t)
@@ -59,7 +59,7 @@ func TestProofWrongBindingDoesNotConsumeOriginal(t *testing.T) {
 	for _, mutate := range []func(*Challenge){
 		func(c *Challenge) { c.ID[0] ^= 1 }, func(c *Challenge) { c.Nonce[0] ^= 1 }, func(c *Challenge) { c.EphemeralPublicKey[0] ^= 1 },
 		func(c *Challenge) { c.Binding.RegistrarOrigin = "https://other.test" }, func(c *Challenge) { c.Binding.Issuer = "https://other.test" },
-		func(c *Challenge) { c.Binding.Audience += "other" }, func(c *Challenge) { c.Binding.PersonSessionID += "other" },
+		func(c *Challenge) { c.Binding.MappingRevision += "other" }, func(c *Challenge) { c.Binding.Audience += "other" }, func(c *Challenge) { c.Binding.PersonSessionID += "other" },
 		func(c *Challenge) { c.Binding.Subject += "other" }, func(c *Challenge) { c.Binding.WorkspaceID += "other" },
 		func(c *Challenge) { c.Binding.NetworkID += "other" }, func(c *Challenge) { c.Binding.AuthorizationID += "other" },
 		func(c *Challenge) { c.Binding.DevicePublicKey[0] ^= 1 }, func(c *Challenge) { c.ExpiresUnixMilli++ },
@@ -214,7 +214,7 @@ func TestCancelExpiryAndIndependentChallengeCannotRevive(t *testing.T) {
 // verified subject alone is sufficient domain/decision scope for a registrar.
 func TestEveryPermissionScopeIdentifierIsRequired(t *testing.T) {
 	_, binding, now := fixture(t)
-	for _, field := range []string{"audience", "subject", "session", "workspace", "network", "authorization"} {
+	for _, field := range []string{"audience", "subject", "session", "workspace", "network", "revision", "authorization"} {
 		for _, invalid := range []string{"", " ", "value\n", "value\x00", string([]byte{0xff})} {
 			b := binding
 			switch field {
@@ -228,6 +228,8 @@ func TestEveryPermissionScopeIdentifierIsRequired(t *testing.T) {
 				b.WorkspaceID = invalid
 			case "network":
 				b.NetworkID = invalid
+			case "revision":
+				b.MappingRevision = invalid
 			case "authorization":
 				b.AuthorizationID = invalid
 			}

@@ -90,3 +90,12 @@ a caller must still authenticate and obtain those values from trusted mapping
 and current enrollment consent. There is still no production import, route,
 registrar, durable redemption or network enrollment. It remains unreviewed for
 product use and must not be treated as an accepted cryptographic protocol.
+
+## Inactive v2 contract correction
+
+The later isolated experiment requires mapping revision, uses shared exact HTTPS
+issuer syntax with path support, and replaces Go JSON transcript bytes with a
+length-prefixed binary v2 tuple. See `enrollment-proof-v2.md` for the exact byte
+contract, independent vector, future adapter obligations and remaining design
+choices. Earlier JSON/domain descriptions above are historical, not the current
+wire contract. There is still no production import or routed use.

@@ -10,9 +10,9 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/json"
+	"encoding/binary"
 	"errors"
-	"net/url"
+	"fintex.au/mnet/internal/enrollmentidentity"
 	"strings"
 	"sync"
 	"time"
@@ -20,7 +20,7 @@ import (
 )
 
 const Lifetime = 2 * time.Minute
-const domain = "mnet/enrollment-key-possession/experimental-v1"
+const domain = "mnet/enrollment-key-possession/experimental-v2"
 
 var ErrInvalid = errors.New("key possession proof refused")
 
@@ -28,8 +28,8 @@ var ErrInvalid = errors.New("key possession proof refused")
 // decision. The experiment does not establish any of those facts. Identifiers
 // and public keys are transcript data, not credentials or membership evidence.
 type Binding struct {
-	RegistrarOrigin, Audience, Issuer, Subject, PersonSessionID, WorkspaceID, NetworkID, AuthorizationID string
-	DevicePublicKey                                                                                      [32]byte
+	RegistrarOrigin, Audience, Issuer, Subject, PersonSessionID, WorkspaceID, NetworkID, MappingRevision, AuthorizationID string
+	DevicePublicKey                                                                                                       [32]byte
 }
 
 // Challenge contains public transcript data only. It has no user authorization.
@@ -55,18 +55,11 @@ func (*Pending) MarshalJSON() ([]byte, error) {
 	return []byte(`"[private key-possession experiment]"`), nil
 }
 
-func validOrigin(raw string) bool {
-	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawPath != "" || u.Path != "" || u.Opaque != "" {
-		return false
-	}
-	return u.Scheme == "https" || (u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost"))
-}
 func validBinding(b Binding) bool {
-	if !validOrigin(b.RegistrarOrigin) || !validOrigin(b.Issuer) {
+	if !enrollmentidentity.ValidOrigin(b.RegistrarOrigin) || !enrollmentidentity.ValidIssuer(b.Issuer) {
 		return false
 	}
-	for _, s := range []string{b.Audience, b.Subject, b.PersonSessionID, b.WorkspaceID, b.NetworkID, b.AuthorizationID} {
+	for _, s := range []string{b.Audience, b.Subject, b.PersonSessionID, b.WorkspaceID, b.NetworkID, b.MappingRevision, b.AuthorizationID} {
 		if len(s) < 1 || len(s) > 256 || !utf8.ValidString(s) || strings.TrimSpace(s) != s || strings.ContainsAny(s, "\x00\r\n") {
 			return false
 		}
@@ -77,11 +70,19 @@ func validChallenge(c Challenge, expected Binding, now time.Time) bool {
 	left := time.UnixMilli(c.ExpiresUnixMilli).Sub(now)
 	return validBinding(expected) && c.Binding == expected && c.ID != [32]byte{} && c.Nonce != [32]byte{} && left > 0 && left <= Lifetime
 }
+
+// transcript encodes each field as uint32 big-endian byte length followed by
+// those exact bytes. Strings are UTF-8 without normalization or escaping. Fixed
+// byte arrays remain raw bytes; expiry is an 8-byte unsigned big-endian integer.
+// Field count/order is fixed by experimental-v2; no decoder or v1 fallback exists.
 func transcript(c Challenge) []byte {
-	// A fixed field-order tuple gives unambiguous boundaries for every string,
-	// including unusual subject identifiers. No delimiter concatenation.
-	b, _ := json.Marshal([]any{domain, c.ID, c.Nonce, c.EphemeralPublicKey, c.Binding.RegistrarOrigin, c.Binding.Audience, c.Binding.Issuer, c.Binding.Subject, c.Binding.PersonSessionID, c.Binding.WorkspaceID, c.Binding.NetworkID, c.Binding.AuthorizationID, c.Binding.DevicePublicKey, c.ExpiresUnixMilli})
-	return b
+	var out []byte
+	put := func(b []byte) { out = binary.BigEndian.AppendUint32(out, uint32(len(b))); out = append(out, b...) }
+	for _, b := range [][]byte{[]byte(domain), c.ID[:], c.Nonce[:], c.EphemeralPublicKey[:], []byte(c.Binding.RegistrarOrigin), []byte(c.Binding.Audience), []byte(c.Binding.Issuer), []byte(c.Binding.Subject), []byte(c.Binding.PersonSessionID), []byte(c.Binding.WorkspaceID), []byte(c.Binding.NetworkID), []byte(c.Binding.MappingRevision), []byte(c.Binding.AuthorizationID), c.Binding.DevicePublicKey[:]} {
+		put(b)
+	}
+	put(binary.BigEndian.AppendUint64(nil, uint64(c.ExpiresUnixMilli)))
+	return out
 }
 func authenticator(shared []byte, c Challenge) ([32]byte, error) {
 	var out [32]byte

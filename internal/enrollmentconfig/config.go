@@ -6,10 +6,10 @@ package enrollmentconfig
 
 import (
 	"errors"
-	"net/url"
-	"strconv"
+	"fintex.au/mnet/internal/enrollmentidentity"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 var ErrInvalid = errors.New("invalid enrollment operator mapping")
@@ -44,7 +44,7 @@ type Mapping struct {
 }
 
 func text(s string, max int) bool {
-	if s == "" || len(s) > max || strings.TrimSpace(s) != s {
+	if !utf8.ValidString(s) || s == "" || len(s) > max || strings.TrimSpace(s) != s {
 		return false
 	}
 	for _, r := range s {
@@ -54,28 +54,8 @@ func text(s string, max int) bool {
 	}
 	return true
 }
-func endpoint(s string, origin bool) bool {
-	if !text(s, 2048) || strings.ContainsAny(s, "?#") || strings.HasSuffix(s, ":") {
-		return false
-	}
-	u, e := url.Parse(s)
-	if e != nil || u.Scheme != "https" || u.Host == "" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" {
-		return false
-	}
-	if u.Port() != "" {
-		n, e := strconv.Atoi(u.Port())
-		if e != nil || n < 1 || n > 65535 {
-			return false
-		}
-	}
-	if origin && (u.Path != "" || u.RawPath != "") {
-		return false
-	}
-	// Require an exact operator spelling, not client normalization or redirects.
-	return u.String() == s
-}
 func Validate(c Config) (*Mapping, error) {
-	if c.Version != 1 || !text(c.Revision, 128) || !endpoint(c.MultiesOrigin, true) || !endpoint(c.RegistrarOrigin, true) || !endpoint(c.Issuer, false) || !text(c.Audience, 256) || len(c.Bindings) == 0 || len(c.Bindings) > 1024 {
+	if c.Version != 1 || !text(c.Revision, 128) || !enrollmentidentity.ValidOrigin(c.MultiesOrigin) || !enrollmentidentity.ValidOrigin(c.RegistrarOrigin) || !enrollmentidentity.ValidIssuer(c.Issuer) || !text(c.Audience, 256) || len(c.Bindings) == 0 || len(c.Bindings) > 1024 {
 		return nil, ErrInvalid
 	}
 	m := &Mapping{revision: c.Revision, multiesOrigin: c.MultiesOrigin, issuer: c.Issuer, registrarOrigin: c.RegistrarOrigin, audience: c.Audience, bindings: make(map[string]Binding, len(c.Bindings))}
