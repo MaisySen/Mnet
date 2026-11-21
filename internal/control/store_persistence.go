@@ -48,6 +48,9 @@ func (s *Store) publishGuardedLocked(guard func() error) (published bool, err er
 	if err != nil {
 		return false, err
 	}
+	if s.registrarIngress != nil && len(b) > s.registrarIngress.limits.MaxStateBytes {
+		return false, errRegistrarEnrollment
+	}
 	// Reject path mutation, final links and parent replacement before publication.
 	if s.path != s.ownedPath {
 		return false, fmt.Errorf("store path changed while owned")

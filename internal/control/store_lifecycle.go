@@ -44,6 +44,9 @@ func (s *Store) healthLocked() error {
 }
 
 func (s *Store) freezeLocked(err error) {
+	if s.registrarIngress != nil {
+		s.registrarIngress.close()
+	}
 	s.fault = err
 	if s.registrarEnrollment != nil {
 		s.registrarEnrollment.close()

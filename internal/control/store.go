@@ -52,6 +52,7 @@ type storeData struct {
 
 // Store is the whole control-plane state, persisted as one JSON file.
 type Store struct {
+	registrarIngress    *registrarIngressOwner
 	registrarSources    *registrarSourceOwner
 	registrarEnrollment *registrarEnrollmentOwner
 	mu                  sync.Mutex

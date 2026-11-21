@@ -250,6 +250,11 @@ func validateRegistrarEnvelope(b []byte) error {
 }
 
 func (s *Store) validateRegistrarState() error {
+	if s.registrarIngress != nil {
+		if err := s.registrarIngressBoundLocked(s.registrarIngress.limits); err != nil {
+			return err
+		}
+	}
 	state := s.data.Registrar
 	if state == nil {
 		return nil

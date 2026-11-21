@@ -56,7 +56,16 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	var historyCalls atomic.Int32
 	var bridgeMu sync.Mutex
 	getPeerSecret := func() string { bridgeMu.Lock(); defer bridgeMu.Unlock(); return peerSecret }
+	var ingress atomic.Pointer[registrarIngress]
 	bridge := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		g := ingress.Load()
+		if g == nil {
+			w.WriteHeader(503)
+			return
+		}
+		g.ServeHTTP(w, r)
+	}))
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		if r.URL.Path == registrar.HistoryPath {
 			historyCalls.Add(1)
@@ -204,7 +213,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		default:
 			w.WriteHeader(404)
 		}
-	}))
+	})
 	defer bridge.Close()
 	// httptest uses its standard embedded localhost certificate. Merge that with
 	// the coordinator's freshly generated source certificate before first TLS.
@@ -220,6 +229,11 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	gate, err := s.newRegistrarDevelopmentIngress(registrarIngressLimits{MaxRequests: 64, MaxConcurrent: 2, MaxBodyBytes: 16384, MaxStateBytes: 4 << 20, MaxEntries: 8, Timeout: 5 * time.Second}, inner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ingress.Store(gate)
 	private, err := ecdh.X25519().GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -356,6 +370,11 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	gate, err = s.newRegistrarDevelopmentIngress(registrarIngressLimits{MaxRequests: 64, MaxConcurrent: 2, MaxBodyBytes: 16384, MaxStateBytes: 4 << 20, MaxEntries: 8, Timeout: 5 * time.Second}, inner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ingress.Store(gate)
 	history, err := s.registrarHistoricalReceipt(c, secret)
 	if err != nil || history != result.History {
 		t.Fatal("whole real commit missing after reopen", err)
