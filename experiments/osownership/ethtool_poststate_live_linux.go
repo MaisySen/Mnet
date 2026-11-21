@@ -5,22 +5,20 @@ package osownership
 import "context"
 
 // original FD/device-netns checks and actual read-only name/feature transport
-// form a proposal for later pure poststate validation. No caller, post-evidence
-// mint or finish here; all real reads remain mechanically unreleased.
+// form a proposal used by the first-step source orchestrator. Caller holds
+// original file custody. Real reads remain mechanically unreleased.
 type originalSetupPostProposal struct {
 	before, after *originalDeviceEvidence
 	record        setupReadbackRecord
 }
 
-func (o *originalHeldPacketResources) collectSetupPostSource(ctx context.Context, t *packetSetupTransition) (*originalSetupPostProposal, error) {
+func (o *originalHeldPacketResources) collectSetupPostLockedSource(ctx context.Context, t *packetSetupTransition) (*originalSetupPostProposal, error) {
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
 	}
 	if o == nil || o.creation == nil || o.creation.fd == nil || t == nil || t.ledger != o.ledger {
 		return nil, ErrConflict
 	}
-	o.creation.fd.mu.Lock()
-	defer o.creation.fd.mu.Unlock()
 	before, e := o.verifyOriginalDeviceLockedSource(ctx)
 	if e != nil {
 		return nil, e
@@ -51,9 +49,9 @@ func (o *originalHeldPacketResources) collectSetupPostSource(ctx context.Context
 	if before.identity != after.identity || before.deviceNamespace != after.deviceNamespace || before.tunName != after.tunName {
 		return nil, ErrConflict
 	}
-	// Do not call parsePost or finish here. A future reviewed bridge must check
+	// The orchestrator checks
 	// the live token/generation, exact raw/sys/framing and observed names/ACTIVE
-	// through parsePost, then pair it with the matching ACK before finish.
+	// through parsePost, then pairs it with the matching ACK before finish.
 	record := setupReadbackRecord{before: before.identity, after: after.identity, raw: raw, sys: sys, names: names, features: features}
 	if e = ctx.Err(); e != nil {
 		return nil, e

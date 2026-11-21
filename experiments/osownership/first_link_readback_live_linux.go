@@ -6,7 +6,7 @@ import "context"
 
 // Source proposal preserves actual kernel-derived device namespace/name evidence
 // and parsed raw/ALL/TUN diagnostics. This older diagnostic-only proposal does
-// not include features. collectSetupPostSource separately preserves the actual
+// not include features. collectSetupPostLockedSource separately preserves the actual
 // STRSET+ACTIVE source record, still without post-evidence mint or setup finish.
 type originalReadbackProposal struct {
 	before, after *originalDeviceEvidence

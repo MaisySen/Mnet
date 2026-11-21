@@ -4,45 +4,38 @@ package osownership
 
 import "context"
 
-// SOURCE PROPOSAL, no caller/release. A fresh socket's exact port must already
-// have been used to construct the token. Does not create/adopt names or set UP.
-// No finish/mint here: actual same-pass feature-name readback is still missing.
-func (o *originalHeldPacketResources) sendFirstLinkUpdateSource(ctx context.Context, s *routeSocket, t *packetSetupTransition) (*setupACKEvidence, error) {
+// Private sender dependency of the source first-step orchestrator. Caller holds
+// original file custody throughout send AND subsequent collection/finish. The
+// fresh socket port is bound into the token. No adoption, CREATE or UP.
+func (o *originalHeldPacketResources) sendFirstLinkUpdateLockedSource(ctx context.Context, s *routeSocket, t *packetSetupTransition, permit *firstLinkSendPermit) (Datagram, error) {
 	if !kernelExecutionReleased {
-		return nil, ErrExecutorUnreleased
+		return Datagram{}, ErrExecutorUnreleased
 	}
-	if o == nil || o.creation == nil || o.creation.fd == nil || s == nil || t == nil || t.ledger != o.ledger || s.ns != o.namespace {
-		return nil, ErrConflict
+	if o == nil || o.creation == nil || o.creation.fd == nil || s == nil || t == nil || permit == nil || permit.token != t || t.ledger != o.ledger || s.ns != o.namespace {
+		return Datagram{}, ErrConflict
 	}
-	o.creation.fd.mu.Lock()
-	defer o.creation.fd.mu.Unlock()
 	before, e := o.verifyOriginalDeviceLockedSource(ctx)
 	if e != nil {
 		t.abandon()
-		return nil, e
+		return Datagram{}, e
 	}
 	if before.identity.generation != t.generation {
 		t.abandon()
-		return nil, ErrConflict
+		return Datagram{}, ErrConflict
 	}
-	ds, e := s.exchangeSource(ctx, t.request, &firstLinkSendPermit{token: t})
+	ds, e := s.exchangeSource(ctx, t.request, permit)
 	if e != nil {
 		t.abandon()
-		return nil, e
+		return Datagram{}, e
 	}
 	if len(ds) != 1 {
 		t.abandon()
-		return nil, ErrConflict
-	}
-	ack, e := t.parseACK(ds[0])
-	if e != nil {
-		t.abandon()
-		return nil, e
+		return Datagram{}, ErrConflict
 	}
 	after, e := o.verifyOriginalDeviceLockedSource(ctx)
 	if e != nil || after.identity.fdObject != before.identity.fdObject || after.deviceNamespace != before.deviceNamespace || after.tunName != before.tunName {
 		t.abandon()
-		return nil, ErrConflict
+		return Datagram{}, ErrConflict
 	}
-	return ack, nil
+	return ds[0], nil
 }
