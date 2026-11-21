@@ -18,6 +18,8 @@ const maxVerdictBytes = 64 << 10
 // Verdict is one JSON record plus EOF, never streaming arbitrary stdout. Public
 // evidence excludes credentials. Decoder/runner/cleanup failures are distinct.
 type Verdict struct {
+	Failure          *FailureEvidence           `json:"failure,omitempty"`
+	Lifecycle        *LifecycleEvidence         `json:"lifecycle,omitempty"`
 	Bootstrap        *BootstrapReadOnlyEvidence `json:"bootstrap,omitempty"`
 	Version          int                        `json:"version"`
 	Stage            string                     `json:"stage"`
@@ -90,14 +92,41 @@ func SuperviseResident(ctx context.Context, s ResidentSpawner) (v Verdict, err e
 	defer cancel()
 	p, e := s.Spawn(ctx)
 	if e != nil {
+		var pending *PendingResidentError
+		if errors.As(e, &pending) {
+			life := LifecycleEvidence{CustodyRetained: true}
+			if evidence, ok := pending.Process.(interface{ LifecycleSnapshot() LifecycleEvidence }); ok {
+				life = evidence.LifecycleSnapshot()
+				life.CustodyRetained = true
+			}
+			v.Lifecycle = &life
+		}
 		return v, e
+	}
+	life := &LifecycleEvidence{CustodyRetained: true}
+	v.Lifecycle = life
+	if evidence, ok := p.(interface{ LifecycleSnapshot() LifecycleEvidence }); ok {
+		*life = evidence.LifecycleSnapshot()
+		life.CustodyRetained = true
 	}
 	joined := false
 	readerDone := make(chan struct{})
 	defer func() {
+		v.Lifecycle = life
+		defer func() {
+			if evidence, ok := p.(interface{ LifecycleSnapshot() LifecycleEvidence }); ok {
+				snapshot := evidence.LifecycleSnapshot()
+				life.ExitCode = snapshot.ExitCode
+				life.Signal = snapshot.Signal
+				life.Reaped = snapshot.Reaped
+			}
+		}()
 		if !joined {
+			life.AbortAttempted = true
+			life.ReapAttempted = true
 			cleanup, stop := context.WithTimeout(context.Background(), 500*time.Millisecond)
 			reapErr := p.AbortAndReap(cleanup)
+			life.Reaped = reapErr == nil
 			defer stop()
 			if reapErr == nil {
 				select {
@@ -111,7 +140,11 @@ func SuperviseResident(ctx context.Context, s ResidentSpawner) (v Verdict, err e
 				return
 			}
 		}
-		err = errors.Join(err, p.CloseCustody())
+		life.CustodyCloseAttempted = true
+		closeErr := p.CloseCustody()
+		life.CustodyClosed = closeErr == nil
+		life.CustodyRetained = closeErr != nil
+		err = errors.Join(err, closeErr)
 	}()
 	type result struct {
 		v Verdict
@@ -137,9 +170,11 @@ func SuperviseResident(ctx context.Context, s ResidentSpawner) (v Verdict, err e
 	case <-ctx.Done():
 		return v, ctx.Err()
 	}
+	life.ReapAttempted = true
 	if e = p.Reap(ctx); e != nil {
 		return v, e
 	}
+	life.Reaped = true
 	joined = true
 	return v, nil
 }

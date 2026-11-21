@@ -36,16 +36,18 @@ func withResidentNamespace(target int, parent Namespace, fn func(*namespaceCusto
 
 type residentSpawner struct{}
 type residentChild struct {
-	cmd        *exec.Cmd
-	pidfd      int
-	nsfd       *os.File
-	reader     *os.File
-	ns         Namespace
-	wait       chan struct{}
-	waitErr    error
-	readerOnce sync.Once
-	closeOnce  sync.Once
-	closeErr   error
+	cmd              *exec.Cmd
+	pidfd            int
+	nsfd             *os.File
+	reader           *os.File
+	ns               Namespace
+	wait             chan struct{}
+	waitErr          error
+	startTicks       uint64
+	identityObserved bool
+	readerOnce       sync.Once
+	closeOnce        sync.Once
+	closeErr         error
 }
 
 func (c *residentChild) Namespace() Namespace     { return c.ns }
@@ -159,8 +161,9 @@ func spawnResidentPinnedSource(ctx context.Context) (process ResidentProcess, re
 	w.Close()
 	gateR.Close()
 	pidfd, e := unix.PidfdOpen(cmd.Process.Pid, 0)
+	ticks, identityErr := readProcessStartTicks(cmd.Process.Pid)
 	wait := make(chan struct{})
-	c := &residentChild{cmd: cmd, pidfd: pidfd, reader: r, wait: wait}
+	c := &residentChild{cmd: cmd, pidfd: pidfd, reader: r, wait: wait, startTicks: ticks, identityObserved: identityErr == nil}
 	// Child PID cannot be reused before this reaper starts: unreaped zombie
 	// keeps its PID. Pidfd acquisition is deliberately above cmd.Wait.
 	go func() { c.waitErr = cmd.Wait(); close(wait) }()
@@ -192,6 +195,9 @@ func spawnResidentPinnedSource(ctx context.Context) (process ResidentProcess, re
 			}
 		}
 	}()
+	if identityErr != nil {
+		return nil, identityErr
+	}
 	if e = pidfdAlive(pidfd); e != nil {
 		return nil, e
 	}
@@ -382,4 +388,18 @@ func parseSourceParentNamespace() (Namespace, error) {
 		return Namespace{}, ErrConflict
 	}
 	return Namespace{Device: d, Inode: i}, nil
+}
+
+func (c *residentChild) LifecycleSnapshot() LifecycleEvidence {
+	life := LifecycleEvidence{PID: c.cmd.Process.Pid, StartTicks: c.startTicks, IdentityObserved: c.identityObserved}
+	select {
+	case <-c.wait:
+		life.Reaped = true
+		life.ExitCode = c.cmd.ProcessState.ExitCode()
+		if status, ok := c.cmd.ProcessState.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+			life.Signal = int(status.Signal())
+		}
+	default:
+	}
+	return life
 }

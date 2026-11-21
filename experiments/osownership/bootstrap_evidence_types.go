@@ -14,13 +14,14 @@ type BootstrapReadOnlyEvidence struct {
 	LinkCount         int                     `json:"link_count"`
 }
 type ClientBootstrapEvidence struct {
-	FailureClass   string            `json:"failure_class,omitempty"`
-	FilterBaseline int               `json:"filter_baseline"`
-	PID            int               `json:"pid"`
-	ParentPID      int               `json:"parent_pid"`
-	UID            int               `json:"uid"`
-	Status         map[string]string `json:"status"`
-	FDs            []int             `json:"fds"`
-	Namespace      Namespace         `json:"namespace"`
-	ProbeDenied    map[string]int    `json:"probe_denied"`
+	Lifecycle      *LifecycleEvidence `json:"lifecycle,omitempty"`
+	FailureClass   string             `json:"failure_class,omitempty"`
+	FilterBaseline int                `json:"filter_baseline"`
+	PID            int                `json:"pid"`
+	ParentPID      int                `json:"parent_pid"`
+	UID            int                `json:"uid"`
+	Status         map[string]string  `json:"status"`
+	FDs            []int              `json:"fds"`
+	Namespace      Namespace          `json:"namespace"`
+	ProbeDenied    map[string]int     `json:"probe_denied"`
 }

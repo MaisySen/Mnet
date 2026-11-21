@@ -62,3 +62,22 @@ func TestReadOnlyDriverOutputCap(t *testing.T) {
 		t.Fatal("output cap ignored")
 	}
 }
+func TestReadOnlyFailureVerdictContainsBaselineAndDiagnosticSource(t *testing.T) {
+	s := sourceFunction(t, "bootstrap_evidence_linux.go", "runReadOnlyBootstrapEvidence")
+	baseline := strings.Index(s, "v.Bootstrap = &BootstrapReadOnlyEvidence")
+	client := strings.Index(s, "runReadOnlyClientAndJoin(")
+	if baseline < 0 || client < baseline {
+		t.Fatal("baseline evidence not retained before failing client")
+	}
+	for _, term := range []string{"v.Failure = &child.evidence", "v.FailureClass = child.evidence.Class"} {
+		if !strings.Contains(s, term) {
+			t.Fatal("typed failure retention missing", term)
+		}
+	}
+	s = sourceFunction(t, "bootstrap_evidence_linux.go", "runReadOnlyClientAndJoin")
+	for _, term := range []string{"failure.StdoutBytes = stdout.Len()", "failure.StdoutJSON = json.Valid(stdout.Bytes())", "failure.Reaped = c.ProcessState != nil", "readProcessStartTicks(c.Process.Pid)", "scanSanitizedStderr("} {
+		if !strings.Contains(s, term) {
+			t.Fatal("failure pin missing", term)
+		}
+	}
+}

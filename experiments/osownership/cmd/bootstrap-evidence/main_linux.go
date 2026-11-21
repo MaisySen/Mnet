@@ -3,14 +3,14 @@
 package main
 
 import (
+	"encoding/json"
 	owner "fintex.au/mnet/experiments/osownership"
-	"fmt"
 	"os"
 )
 
 func main() {
 	if e := owner.BootstrapEvidenceMain(os.Args[1:]); e != nil {
-		fmt.Fprintln(os.Stderr, e)
+		_ = json.NewEncoder(os.Stderr).Encode(owner.DiagnosticForError(e))
 		os.Exit(1)
 	}
 }

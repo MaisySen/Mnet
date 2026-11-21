@@ -81,6 +81,18 @@ func numericCurrentNamespace() (Namespace, error) {
 	return Namespace{Device: uint64(s.Dev), Inode: s.Ino}, nil
 }
 func runReadOnlyBootstrapEvidence(ctx context.Context, ns *namespaceCustody) (v Verdict, err error) {
+	defer func() {
+		if err != nil {
+			var child *childRunFailure
+			if errors.As(err, &child) {
+				v.Failure = &child.evidence
+				v.FailureClass = child.evidence.Class
+			} else {
+				d := DiagnosticForError(err)
+				v.Failure = &FailureEvidence{Operation: d.Operation, Class: d.Class, Errno: d.Errno}
+			}
+		}
+	}()
 	v = Verdict{Version: 1, Stage: "read-only-baseline", Namespace: ns.identity, Sequence: 1, Result: "fail", FailureClass: "runner"}
 	raw, e := ReadStableInventory(ctx, residentNetlink{ns}, ns.checkCurrent)
 	if e != nil {
@@ -105,6 +117,13 @@ func runReadOnlyBootstrapEvidence(ctx context.Context, ns *namespaceCustody) (v 
 		return v, e
 	}
 	v.BaselineHash = bootstrapEvidenceDigest(raw, sys)
+	dirsInitial := map[string]string{}
+	for k, val := range sys {
+		if strings.HasPrefix(k, ipv6DirPrefix) {
+			dirsInitial[strings.TrimPrefix(k, ipv6DirPrefix)] = val
+		}
+	}
+	v.Bootstrap = &BootstrapReadOnlyEvidence{IPv6Directories: dirsInitial, OwnerNamespace: ns.identity, OuterNamespace: parent, LinkCount: len(raw.Links)}
 	client, e := runReadOnlyClientAndJoin(ctx, ns)
 	if e != nil {
 		v.Stage = "client-bootstrap"
@@ -161,57 +180,100 @@ func runReadOnlyClientAndJoin(ctx context.Context, ns *namespaceCustody) (Client
 	c := exec.CommandContext(ctx, exe, "--osownership-client-capdrop-bootstrap-source")
 	c.Env = []string{"PATH=/usr/bin:/bin", "MNO_CLIENT_PARENT_PID=" + strconv.Itoa(os.Getpid())}
 	c.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
-	var stdout cappedEvidenceBuffer
+	var stdout, stderr cappedEvidenceBuffer
 	c.Stdout = &stdout
-	c.Stderr = &cappedEvidenceBuffer{}
+	c.Stderr = &stderr
 	c.WaitDelay = 250 * time.Millisecond
-	runErr := c.Run()
+	failure := FailureEvidence{Operation: "client-start", Class: "runner"}
+	if e = c.Start(); e != nil {
+		return out, &childRunFailure{failure, e}
+	}
+	failure.PID = c.Process.Pid
+	ticks, identityErr := readProcessStartTicks(c.Process.Pid)
+	failure.StartTicks = ticks
+	failure.IdentityObserved = identityErr == nil
+	runErr := c.Wait()
+	failure.Operation = "client-wait"
+	failure.Reaped = c.ProcessState != nil
+	failure.ExitObserved = c.ProcessState != nil
+	if state := c.ProcessState; state != nil {
+		failure.ExitCode = state.ExitCode()
+		if status, ok := state.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+			failure.Signal = int(status.Signal())
+		}
+	}
+	failure.StdoutBytes = stdout.Len()
+	failure.StdoutComplete = !stdout.overflow && !errors.Is(runErr, exec.ErrWaitDelay)
+	failure.StderrComplete = !stderr.overflow && !errors.Is(runErr, exec.ErrWaitDelay)
+	failure.StderrBytes, failure.StderrSHA256, failure.ChildDiagnostic = summarizedStderr(stderr.Bytes(), failure.StderrComplete)
+	failure.ChildDiagnostic, failure.Phase = scanSanitizedStderr(stderr.Bytes(), failure.StderrComplete)
+	if failure.ChildDiagnostic != nil {
+		failure.Operation = failure.ChildDiagnostic.Operation
+		failure.Class = failure.ChildDiagnostic.Class
+		failure.Errno = failure.ChildDiagnostic.Errno
+	}
+	failure.StdoutJSON = json.Valid(stdout.Bytes())
+	wrap := func(cause error) (ClientBootstrapEvidence, error) { return out, &childRunFailure{failure, cause} }
+	if runErr != nil || identityErr != nil {
+		return wrap(errors.Join(runErr, identityErr))
+	}
+	failure.Operation = "client-evidence-decode"
 	d := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
 	d.DisallowUnknownFields()
 	if e = d.Decode(&out); e != nil {
-		return out, e
+		return wrap(e)
 	}
 	var extra any
 	if d.Decode(&extra) != io.EOF {
-		return out, ErrConflict
+		return wrap(ErrConflict)
 	}
-	if out.FailureClass == "harness-fd-inventory" {
-		return out, &StageFailure{Stage: "client-bootstrap", Class: "harness", Cause: errors.Join(runErr, &FDInventoryHarnessError{})}
+	if out.FailureClass != "" {
+		failure.Class = "harness"
+		failure.Operation = "client-fd-inventory"
+		return wrap(&FDInventoryHarnessError{})
 	}
-	if runErr != nil {
-		return out, runErr
-	}
-	if out.ParentPID != os.Getpid() {
-		return out, ErrConflict
+	if out.ParentPID != os.Getpid() || out.PID != c.Process.Pid || out.Lifecycle != nil {
+		return wrap(ErrConflict)
 	}
 	if e = validateClientEvidence(out, ns.identity); e != nil {
-		return out, e
+		return wrap(e)
 	}
+	out.Lifecycle = &LifecycleEvidence{PID: c.Process.Pid, StartTicks: ticks, IdentityObserved: true, ReapAttempted: true, Reaped: true, ExitCode: 0}
 	return out, ns.checkCurrent()
 }
 
-type cappedEvidenceBuffer struct{ bytes.Buffer }
+type cappedEvidenceBuffer struct {
+	bytes.Buffer
+	overflow bool
+}
 
 func (b *cappedEvidenceBuffer) Write(p []byte) (int, error) {
 	if b.Len()+len(p) > 8192 {
+		b.overflow = true
 		return 0, errors.New("client evidence output cap")
 	}
 	return b.Buffer.Write(p)
 }
 func emitClientBootstrapEvidence() error {
+	if e := emitEvidencePhase("final-entry"); e != nil {
+		return e
+	}
 	// FIRST final-client evidence operation: raw fd enumeration before any
 	// os.ReadFile/os.Open/JSON stdout can initialize runtime poll descriptors.
 	fds, e := clientFDInventorySource()
 	if e != nil {
-		return e
+		return opFailure("client-fd-inventory", "runner", e)
 	}
 	if e = validateFDAllowlist(fds); e != nil {
 		_ = json.NewEncoder(os.Stdout).Encode(ClientBootstrapEvidence{FailureClass: "harness-fd-inventory", FDs: fds})
 		return e
 	}
+	if e := emitEvidencePhase("fd-validated"); e != nil {
+		return e
+	}
 	b, e := rawReadBounded("/proc/self/status", 16384)
 	if e != nil {
-		return e
+		return opFailure("client-status", "runner", e)
 	}
 	if e = validateClientStatus(string(b)); e != nil {
 		return e
@@ -229,7 +291,7 @@ func emitClientBootstrapEvidence() error {
 	}
 	ns, e := rawCurrentNamespace()
 	if e != nil {
-		return e
+		return opFailure("client-namespace", "runner", e)
 	}
 	finalFDs, e := clientFDInventorySource()
 	if e != nil {
@@ -243,7 +305,7 @@ func emitClientBootstrapEvidence() error {
 	}
 	filterBaseline, e := strconv.Atoi(os.Getenv("MNO_CLIENT_FILTER_BASELINE"))
 	if e != nil || filterBaseline < 0 {
-		return ErrConflict
+		return opFailure("client-filter-count", "runner", ErrConflict)
 	}
 	out := ClientBootstrapEvidence{FilterBaseline: filterBaseline, PID: os.Getpid(), ParentPID: os.Getppid(), UID: os.Getuid(), Status: status, FDs: fds, Namespace: ns, ProbeDenied: map[string]int{}}
 	// Signal0 cannot deliver any signal. EPERM proves this specific real filter
@@ -251,10 +313,10 @@ func emitClientBootstrapEvidence() error {
 	// setns, namespace creation or network mutation probes are attempted.
 	e = unix.Kill(os.Getppid(), 0)
 	if e != unix.EPERM {
-		return errors.New("owner signal0 unexpectedly permitted")
+		return opFailure("owner-signal0", "custody", errors.New("owner signal0 unexpectedly permitted"))
 	}
 	out.ProbeDenied["owner-signal0"] = int(unix.EPERM)
-	return json.NewEncoder(os.Stdout).Encode(out)
+	return opFailure("client-output", "runner", json.NewEncoder(os.Stdout).Encode(out))
 }
 func validateClientEvidence(c ClientBootstrapEvidence, target Namespace) error {
 	var status strings.Builder

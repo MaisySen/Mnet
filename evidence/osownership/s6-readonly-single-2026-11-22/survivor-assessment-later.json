@@ -1,0 +1,12 @@
+{
+  "assessment": "read-only snapshot, no signals",
+  "recorded_driver_pid": 914,
+  "recorded_driver_start_ticks": null,
+  "recorded_resident_pid": null,
+  "recorded_client_pid": null,
+  "expected_executable_sha256": "0164f1dbdaa63bd9379dfe92948089a142f4c3a389d28463f481b19c898feefd",
+  "candidate_records": [],
+  "readable_process_records": 2,
+  "exact_original_executable_candidates": [],
+  "limitation": "Original driver start ticks and resident/client PIDs/start ticks were not recorded. PID914 alone is not a lifetime identity. Current exact executable hash candidates can show presence, not complete absence of arbitrary reexec descendants. Namespace/custody lifetime remains unverified beyond original driver reap/source ordering."
+}
