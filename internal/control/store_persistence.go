@@ -33,7 +33,11 @@ func defaultStoreFilesystem() storeFilesystem {
 
 // published is true once rename succeeded. A later failure must NEVER roll the
 // live image back and continue serving authority from an older snapshot.
-func (s *Store) publishLocked() (published bool, err error) {
+func (s *Store) publishLocked() (published bool, err error) { return s.publishGuardedLocked(nil) }
+
+// Only the private registrar workflow supplies a final-boundary guard. Existing
+// callers use nil and retain their exact legacy publication path.
+func (s *Store) publishGuardedLocked(guard func() error) (published bool, err error) {
 	if err := s.healthLocked(); err != nil {
 		return false, err
 	}
@@ -98,6 +102,11 @@ func (s *Store) publishLocked() (published bool, err error) {
 	if oldErr != nil && !os.IsNotExist(oldErr) {
 		return false, oldErr
 	}
+	if guard != nil {
+		if err := guard(); err != nil {
+			return false, err
+		}
+	}
 	if err := s.fs.rename(tmp, s.path); err != nil {
 		// Even an error-returning publication operation may have replaced the
 		// destination. Only classify rollback-safe when BOTH source and old target
@@ -116,6 +125,11 @@ func (s *Store) publishLocked() (published bool, err error) {
 	}
 	if err := s.lease.check(); err != nil {
 		return true, err
+	}
+	if guard != nil {
+		if err := guard(); err != nil {
+			return true, err
+		}
 	}
 	return true, nil
 }

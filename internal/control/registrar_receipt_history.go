@@ -31,6 +31,9 @@ func (registrarReceiptHistory) GoString() string {
 func (s *Store) registrarHistoricalReceipt(pinned contract.Challenge, secret string) (registrarReceiptHistory, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.registrarHistoricalReceiptLocked(pinned, secret)
+}
+func (s *Store) registrarHistoricalReceiptLocked(pinned contract.Challenge, secret string) (registrarReceiptHistory, error) {
 	var empty registrarReceiptHistory
 	if err := s.healthLocked(); err != nil {
 		return empty, err

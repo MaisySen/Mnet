@@ -45,6 +45,9 @@ func (s *Store) healthLocked() error {
 
 func (s *Store) freezeLocked(err error) {
 	s.fault = err
+	if s.registrarEnrollment != nil {
+		s.registrarEnrollment.close()
+	}
 	if s.registrarSources != nil {
 		s.registrarSources.retired = true
 		s.registrarSources.pool.Close()
