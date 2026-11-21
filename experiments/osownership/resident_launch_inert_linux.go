@@ -19,3 +19,5 @@ func spawnResidentPinnedMode(context.Context, string) (ResidentProcess, error) {
 func startResidentClientSource(context.Context, *namespaceCustody) (*exec.Cmd, error) {
 	return nil, ErrExecutorUnreleased
 }
+
+func parseSourceParentNamespace() (Namespace, error) { return Namespace{}, ErrExecutorUnreleased }

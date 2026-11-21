@@ -51,7 +51,7 @@ func TestSourceInheritedVerdictCLOEXECNoParentNamespaceFD(t *testing.T) {
 	if strings.Count(s, "os.Getppid()") < 2 {
 		t.Fatal("parent-alive checks absent")
 	}
-	s = sourceFunction(t, "resident_linux.go", "residentCommand")
+	s = sourceFunction(t, "resident_command_linux.go", "residentCommand")
 	if !strings.Contains(s, "[]*os.File{verdict}") {
 		t.Fatal("parent netns FD inherited")
 	}

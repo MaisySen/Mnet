@@ -54,7 +54,7 @@ func TestClientEvidenceFDOrderingRawNoPollRegistration(t *testing.T) {
 			t.Fatal("missing raw custody path", need)
 		}
 	}
-	s = sourceFunction(t, "bootstrap_evidence_linux.go", "emitClientBootstrapEvidence")
+	s = sourceFunction(t, "bootstrap_observation_live_linux.go", "emitClientBootstrapEvidence")
 	a := strings.Index(s, "clientFDInventorySource()")
 	b := strings.Index(s, "rawReadBounded(")
 	if a < 0 || b < a {
