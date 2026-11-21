@@ -33,6 +33,12 @@ func (registrarCredentialReference) GoString() string {
 func (s *Store) authorizeRegistrarCredential(ref registrarCredentialReference, secret string) (*netmap.Node, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.authorizeRegistrarCredentialLocked(ref, secret)
+}
+
+// Requires Store.mu. Returned clone never substitutes for holding owner lock
+// across a subsequent protected operation.
+func (s *Store) authorizeRegistrarCredentialLocked(ref registrarCredentialReference, secret string) (*netmap.Node, error) {
 	if err := s.healthLocked(); err != nil {
 		return nil, err
 	}

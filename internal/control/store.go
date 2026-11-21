@@ -592,6 +592,12 @@ func cleanRoutes(in []string) []string {
 func (s *Store) SetEndpoints(nodeID string, eps []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.setEndpointsLocked(nodeID, eps)
+}
+
+// Requires Store.mu; owner/current-access gate belongs to caller. Legacy
+// SetEndpoints retains its exact historical behavior through this helper.
+func (s *Store) setEndpointsLocked(nodeID string, eps []string) error {
 	if err := s.healthLocked(); err != nil {
 		return err
 	}
@@ -644,25 +650,20 @@ func cloneNetwork(n *netmap.Network) netmap.Network {
 	return c
 }
 
-func (s *Store) Map(nodeID string) (*netmap.Map, error) {
-	s.mu.Lock()
+func (s *Store) mapSnapshotLocked(nodeID string) (*netmap.Map, []netmap.Node, error) {
 	if err := s.healthLocked(); err != nil {
-		s.mu.Unlock()
-		return nil, err
+		return nil, nil, err
 	}
 	self := s.data.Nodes[nodeID]
 	if self == nil {
-		s.mu.Unlock()
-		return nil, ErrNotFound
+		return nil, nil, ErrNotFound
 	}
 	if s.registrarAccessDeniedLocked(nodeID) || !self.Approved || self.KeyExpired() {
-		s.mu.Unlock()
-		return nil, ErrUnauthorized
+		return nil, nil, ErrUnauthorized
 	}
 	network := s.data.Networks[self.NetworkID]
 	if network == nil {
-		s.mu.Unlock()
-		return nil, ErrNotFound
+		return nil, nil, ErrNotFound
 	}
 	m := &netmap.Map{Version: s.version, Network: cloneNetwork(network), Self: cloneNode(self), Generated: time.Now().UTC()}
 	// Snapshot only while holding the lock. ACL evaluation, sorting and
@@ -673,7 +674,21 @@ func (s *Store) Map(nodeID string) (*netmap.Map, error) {
 			peers = append(peers, cloneNode(n))
 		}
 	}
+	return m, peers, nil
+}
+
+func (s *Store) Map(nodeID string) (*netmap.Map, error) {
+	s.mu.Lock()
+	m, peers, err := s.mapSnapshotLocked(nodeID)
 	s.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	return finishMapSnapshot(m, peers), nil
+}
+
+// Finish ACL filtering on detached values, never on owner state.
+func finishMapSnapshot(m *netmap.Map, peers []netmap.Node) *netmap.Map {
 	visible := 0
 	for i := range peers {
 		if filterPeerInPlace(m.Network.ACL, &m.Self, &peers[i]) {
@@ -686,7 +701,7 @@ func (s *Store) Map(nodeID string) (*netmap.Map, error) {
 		m.Peers = peers[:visible]
 	}
 	sort.Slice(m.Peers, func(i, j int) bool { return m.Peers[i].IPv4 < m.Peers[j].IPv4 })
-	return m, nil
+	return m
 }
 
 // Network returns one network by ID or name, or nil.
