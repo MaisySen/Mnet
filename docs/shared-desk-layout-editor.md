@@ -40,8 +40,11 @@ The destination is create-only: opened anchored to a checked private parent
 directory (owned by this user, not writable by others), `O_EXCL`/`O_NOFOLLOW`,
 mode 0600, file and directory synced before success. The source file already
 exists, so it can never be the destination. An existing destination refuses
-instead of replacing; a partial write reports that a partial new file may
-remain. After a successful save the window closes. Raw OS errors and the
+instead of replacing, with its bytes untouched. Save outcomes stay distinct: a
+destination that was never created is reported as safely absent (nothing was
+written), while a destination that was created but could not be confirmed is
+reported as created-but-unconfirmed, never silently deleted, retried over or
+claimed durable. After a successful save the window closes. Raw OS errors and the
 destination path are not rendered into the window.
 
 Closing with unsaved changes asks explicitly: **Discard changes** or

@@ -88,6 +88,16 @@ try:
  launch();action('key','Down');poll(lambda:'x-100 y1 w100 h100 pw1000 ph1000 undo1 dirtytrue validtrue' in title(),'second dirty')
  action('mousemove','--window',wid,'730','615','click','1');poll(lambda:'already exists' in title(),'existing destination refused');capture('save-exists')
  assert client.poll() is None,'failed save closed the editor'
+ # An unwritable private parent is safely absent: refused, nothing created.
+ readonly=out/'readonly';readonly.mkdir(mode=0o500)
+ action('key','Escape');poll(lambda:'confirmtrue' in title(),'close confirmation before blocked case')
+ action('mousemove','--window',wid,'100','322','click','1');assert client.wait(timeout=3)==0;client=None
+ launch(readonly/'blocked.json');action('key','Down');poll(lambda:'dirtytrue' in title(),'dirty for blocked save')
+ action('mousemove','--window',wid,'730','615','click','1');poll(lambda:'nothing was written' in title(),'safely-absent save notice')
+ assert client.poll() is None and not (readonly/'blocked.json').exists(),'blocked save created a file'
+ action('key','Escape');poll(lambda:'confirmtrue' in title(),'blocked save close confirmation')
+ action('mousemove','--window',wid,'100','322','click','1');assert client.wait(timeout=3)==0;client=None
+ launch();action('key','Down');poll(lambda:'dirtytrue' in title(),'dirty again for overlap check')
  # An overlapping arrangement is invalid; Save is disabled and explains why.
  action('key','Right')
  poll(lambda:'x-99 y1 w100 h100 pw1000 ph1000 undo2 dirtytrue validfalse' in title(),'overlap invalid');capture('overlap-invalid')
@@ -130,7 +140,7 @@ try:
  # Fail closed on child resize, without a terminal fallback.
  launch(out/'childsize.json');action('windowsize',wid,'901','730');assert client.wait(timeout=3)!=0;client=None
  assert 'unsupported resize' in (out/'client.log').read_text() and not (out/'childsize.json').exists()
- print('PASS actual offline arrangement editor: exact unit/Shift moves, undo, edge attach, native pixel edits, create-only synced save (0600, source untouched), existing-destination refusal, invalid-overlap disabled save, explicit discard confirmation, gesture/focus/Tab cancellation, immutable snapshot, SIGTERM/root-resize/child-resize teardown, zero daemon calls. Synthetic same-host geometry only.',flush=True)
+ print('PASS actual offline arrangement editor: exact unit/Shift moves, undo, edge attach, native pixel edits, create-only synced save (0600, source untouched), existing-destination refusal, invalid-overlap disabled save, explicit discard confirmation, gesture/focus/Tab cancellation, immutable snapshot, SIGTERM/root-resize/child-resize teardown, safely-absent vs created save outcomes, zero daemon calls. Synthetic same-host geometry only.',flush=True)
 finally:
  if client is not None and client.poll() is None:client.terminate();client.wait(timeout=3)
  if x is not None:x.terminate();x.wait(timeout=3)

@@ -17,10 +17,14 @@ import (
 
 // Fixed save-failure categories. Raw OS errors and destination paths are not
 // rendered into the window.
+// Save outcomes stay distinct: the destination was never created (safely
+// absent), it already existed (untouched), or it was created but durability
+// could not be confirmed (never silently deleted or retried over).
 var (
-	errDeskEditSaveExists = errors.New("save destination already exists; nothing replaced")
-	errDeskEditSaveParent = errors.New("save parent must be an existing private directory owned by you")
-	errDeskEditSaveIO     = errors.New("save failed; a partial new file may remain, remove it before retrying")
+	errDeskEditSaveExists    = errors.New("save destination already exists; nothing replaced")
+	errDeskEditSaveParent    = errors.New("save parent must be an existing private directory owned by you")
+	errDeskEditSaveCreate    = errors.New("save could not create a new file; nothing was written")
+	errDeskEditSaveUncertain = errors.New("the new file was created but the save could not be confirmed; inspect it before relying on it or deleting it")
 )
 
 // The edited arrangement can only ever create one new file: create-only,
@@ -49,17 +53,19 @@ func writeDeskEditedLayout(outPath string, data []byte) error {
 		if errors.Is(err, unix.EEXIST) {
 			return errDeskEditSaveExists
 		}
-		return errDeskEditSaveIO
+		return errDeskEditSaveCreate
 	}
+	// Once created, the partial file is never removed or written over: a later
+	// failure reports created-but-unconfirmed so a person can inspect it.
 	f := os.NewFile(uintptr(fd), base)
 	_, writeErr := f.Write(data)
 	syncErr := f.Sync()
 	closeErr := f.Close()
 	if errors.Join(writeErr, syncErr, closeErr) != nil {
-		return errDeskEditSaveIO
+		return errDeskEditSaveUncertain
 	}
 	if err = unix.Fsync(parentFD); err != nil {
-		return errDeskEditSaveIO
+		return errDeskEditSaveUncertain
 	}
 	return nil
 }
