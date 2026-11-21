@@ -94,6 +94,9 @@ func (l *heldPacketLedger) beginExactSetup(p Plan, op Operation, diagnostic owne
 			if _, e := parseTUNNested(*link); e != nil {
 				return nil, e
 			}
+			if e := predictOwnedMTU6(link, diagnostic.raw); e != nil {
+				return nil, e
+			}
 			link.Alias = h.Link.Alias
 			link.MTU = MTU
 			link.Raw[20] = append([]byte(link.Alias), 0)

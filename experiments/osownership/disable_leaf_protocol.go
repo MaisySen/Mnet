@@ -21,6 +21,9 @@ type ownedDisableLeaf interface {
 }
 
 func disableOwnedLeafOnce(f ownedDisableLeaf, check func() error) (err error) {
+	return disableOwnedLeafExpected(f, "", check)
+}
+func disableOwnedLeafExpected(f ownedDisableLeaf, expected string, check func() error) (err error) {
 	if f == nil {
 		return ErrConflict
 	}
@@ -51,6 +54,9 @@ func disableOwnedLeafOnce(f ownedDisableLeaf, check func() error) (err error) {
 	before, e := read()
 	if e != nil {
 		return e
+	}
+	if expected != "" && before != expected {
+		return ErrConflict
 	}
 	if e = check(); e != nil {
 		return e

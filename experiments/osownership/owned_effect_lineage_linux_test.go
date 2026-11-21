@@ -52,7 +52,6 @@ func TestOwnedEffectWrongHandleMissingLineageAndEscapeRefuse(t *testing.T) {
 func TestRealSourceLineageHooksPrecedeEffectsNoExecution(t *testing.T) {
 	for _, v := range []struct{ file, fn, guard, effect string }{
 		{"rtnetlink_linux.go", "applyExact", "guardedEffect", "openRouteSocket"},
-		{"custody_effects_live_linux.go", "disableOwnedIPv6", "guardedEffect", "unix.Open("},
 		{"file_custody.go", "Close", "lineage.invalidate", "closer.Close"},
 	} {
 		src := sourceFunction(t, v.file, v.fn)
@@ -61,10 +60,35 @@ func TestRealSourceLineageHooksPrecedeEffectsNoExecution(t *testing.T) {
 			t.Fatal("missing/reordered hook", v.file)
 		}
 	}
+	refused := sourceFunction(t, "custody_effects_live_linux.go", "disableOwnedIPv6")
+	if !strings.Contains(refused, "return ownedDisableDiffIncomplete") || strings.Contains(refused, "unix.Open(") || strings.Contains(refused, "guardedEffect(") {
+		t.Fatal("unknown diff no longer refuses before effect")
+	}
 	src := sourceFunction(t, "sysctl_read_linux.go", "readPolicySysctlsSource")
 	for _, needed := range []string{"effectiveV4Leaves", "parseEffectiveV4", "force_forwarding"} {
 		if !strings.Contains(src, needed) {
 			t.Fatal("reader disconnected", needed)
+		}
+	}
+}
+
+// S58 independently RED225/1 retained in review history. The old disable-body
+// hook-order oracle no longer described a body that refuses before any effect.
+// Verify the replacement real protocol, not merely absence of the old string.
+func TestOwnedDisableTransitionOrdersPredictionInvalidationIOAndReadback(t *testing.T) {
+	s := sourceFunction(t, "disable_transition.go", "finishOwnedDisable")
+	prev := -1
+	for _, term := range []string{"predictFreshDownDisable(", "l.invalidateLocked(", "deps.leaf()", "disableOwnedLeafExpected(", "deps.collect(ctx)", "exactSetupPostMatches(", "l.current.uncertain = false"} {
+		p := strings.Index(s, term)
+		if p <= prev {
+			t.Fatal("disable ordering", term, p, prev)
+		}
+		prev = p
+	}
+	live := sourceFunction(t, "disable_transition_live_linux.go", "disableFreshDownSource")
+	for _, term := range []string{"if !kernelExecutionReleased", "adapter.authorized(ctx)", "o.creation.fd.mu.Lock()", "verifyOriginalDeviceLockedSource", "finishOwnedDisable("} {
+		if !strings.Contains(live, term) {
+			t.Fatal("missing held source binding", term)
 		}
 	}
 }
