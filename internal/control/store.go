@@ -22,6 +22,8 @@ import (
 	"sync"
 	"time"
 
+	contract "fintex.au/mnet/internal/enrollmentcontract"
+	proof "fintex.au/mnet/internal/enrollmentproof"
 	"fintex.au/mnet/internal/netmap"
 	"fintex.au/mnet/internal/privatefs"
 )
@@ -41,6 +43,7 @@ type ApprovalIdentity struct {
 }
 
 type storeData struct {
+	Admission          *registrarAdmissionLedger   `json:"admission_ledger,omitempty"`
 	Registrar          *registrarState             `json:"registrar_state,omitempty"`
 	Memberships        map[string]NetworkMember    `json:"memberships,omitempty"`
 	ApprovalIdentities map[string]ApprovalIdentity `json:"approval_identities,omitempty"`
@@ -53,21 +56,25 @@ type storeData struct {
 
 // Store is the whole control-plane state, persisted as one JSON file.
 type Store struct {
-	storageCodec        storeCodec // nil preserves exact legacy bytes; no public/config setter
-	registrarIngress    *registrarIngressOwner
-	registrarSources    *registrarSourceOwner
-	registrarEnrollment *registrarEnrollmentOwner
-	mu                  sync.Mutex
-	path                string
-	ownedPath           string
-	lease               *storeLease
-	fs                  storeFilesystem
-	closed              bool
-	fault               error
-	data                storeData
-	version             int64
-	relayIndex          map[string]string                 // network+public key -> node ID, invalidated on identity changes
-	watchers            map[string]map[chan struct{}]bool // network ID -> waiters
+	// Private instance seam for observing real proof allocation in failure tests.
+	// No external selector; nil calls the existing proof.NewServer unchanged.
+	registrarProofFactory func(contract.Binding, time.Time, time.Time, time.Duration) (*proof.Server, contract.Challenge, error)
+	admissionPolicy       registrarAdmissionPolicy
+	storageCodec          storeCodec // nil preserves exact legacy bytes; no public/config setter
+	registrarIngress      *registrarIngressOwner
+	registrarSources      *registrarSourceOwner
+	registrarEnrollment   *registrarEnrollmentOwner
+	mu                    sync.Mutex
+	path                  string
+	ownedPath             string
+	lease                 *storeLease
+	fs                    storeFilesystem
+	closed                bool
+	fault                 error
+	data                  storeData
+	version               int64
+	relayIndex            map[string]string                 // network+public key -> node ID, invalidated on identity changes
+	watchers              map[string]map[chan struct{}]bool // network ID -> waiters
 }
 
 // storeCodec is a private per-instance storage-format seam. Nil is legacy.
@@ -156,6 +163,9 @@ func openStore(path string, codec storeCodec) (*Store, error) {
 	}
 	if err := json.Unmarshal(b, &s.data); err != nil {
 		return nil, fmt.Errorf("store: corrupt data file: %w", err)
+	}
+	if err := s.validateAdmissionFormat(); err != nil {
+		return nil, err
 	}
 	if err := s.validateLoadedShape(); err != nil {
 		return nil, err

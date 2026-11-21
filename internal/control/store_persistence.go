@@ -41,6 +41,9 @@ func (s *Store) publishGuardedLocked(guard func() error) (published bool, err er
 	if err := s.healthLocked(); err != nil {
 		return false, err
 	}
+	if err := s.validateAdmissionFormat(); err != nil {
+		return false, err
+	}
 	if err := s.validateRegistrarState(); err != nil {
 		return false, err
 	}

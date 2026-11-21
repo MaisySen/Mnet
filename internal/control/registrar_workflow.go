@@ -174,6 +174,12 @@ func (s *Store) beginRegistrarEnrollment(ctx context.Context, request contract.S
 		s.mu.Unlock()
 		return empty, errRegistrarEnrollment
 	}
+	if s.admissionPolicy != nil {
+		if err := s.admissionPolicy.reserve(request, o); err != nil {
+			s.mu.Unlock()
+			return empty, err
+		}
+	}
 	a := &registrarEnrollmentAttempt{requestDigest: requestDigest, started: time.Now(), state: "source-may-have-started"}
 	o.attempts[request.Launch.AttemptID] = a
 	o.live++
@@ -238,8 +244,26 @@ func (s *Store) beginRegistrarEnrollment(ctx context.Context, request contract.S
 		o.live--
 		return empty, errRegistrarEnrollment
 	}
+	if s.admissionPolicy != nil {
+		if err := s.admissionPolicy.observe(request, observed, o); err != nil {
+			a.state = "observation-debit-refused"
+			o.live--
+			return empty, err
+		}
+	}
+	// Durable observation publication can block past source freshness. Recheck
+	// before even entering the real proof/DH factory, without extending time.
+	if s.admissionPolicy != nil && contract.CheckFixtureTime(probe, time.Now().UnixMilli(), o.timing()) != nil {
+		a.state = "source-expired"
+		o.live--
+		return empty, errRegistrarEnrollment
+	}
 	for tries := 0; tries < 4; tries++ {
-		server, c, err := proof.NewServer(b, time.Now(), expires, time.Duration(o.config.ChallengeMS)*time.Millisecond)
+		factory := s.registrarProofFactory
+		if factory == nil {
+			factory = proof.NewServer
+		}
+		server, c, err := factory(b, time.Now(), expires, time.Duration(o.config.ChallengeMS)*time.Millisecond)
 		if err != nil {
 			break
 		}
@@ -271,6 +295,20 @@ func (s *Store) beginRegistrarEnrollment(ctx context.Context, request contract.S
 			a.state = "challenge-refused"
 			o.live--
 			return empty, errRegistrarEnrollment
+		}
+		if s.admissionPolicy != nil {
+			if err := s.admissionPolicy.challenge(request, c, o); err != nil {
+				server.Close()
+				a.state = "challenge-publication-refused"
+				o.live--
+				return empty, err
+			}
+			if s.registrarAttemptCurrentLocked(o, a) != nil {
+				server.Close()
+				a.state = "challenge-expired-after-publication"
+				o.live--
+				return empty, errRegistrarEnrollment
+			}
 		}
 		return c, nil
 	}
@@ -377,6 +415,12 @@ func (s *Store) submitRegistrarEnrollment(ctx context.Context, attemptID, challe
 		return empty, err
 	}
 	r := &registrarRecord{NetworkID: b.NetworkID, DevicePublicKey: node.PubKey, NodeID: nodeID, CredentialDigest: b.CredentialDigest, Phase: "active", Scope: registrarScope{Issuer: b.IssuerLabel, RegistrarOrigin: b.RegistrarOrigin, Audience: b.Audience, ServiceID: b.ServiceID, WorkspaceID: b.WorkspaceID, MappingRevision: b.MappingRevision, HandoffID: b.HandoffID, AttemptID: b.AttemptID, ReserveID: b.ReserveID}, DescriptorDigest: b.DescriptorDigest, DescriptorEncodingVersion: 1, ReceiptEncodingVersion: 2, ReceiptID: receiptID, ReceiptDigest: contract.ReceiptV2Digest(receipt), CommittedAtMS: receipt.CommittedAtMS, AccessExpiresAtMS: b.AccessUntilMS, Consumption: &registrarConsumption{Challenge: a.challenge, TranscriptDigest: registrarTranscriptDigest(a.challenge)}}
+	if s.admissionPolicy != nil {
+		if err := s.admissionPolicy.checkConfig(); err != nil {
+			restoreCursor()
+			return empty, err
+		}
+	}
 	oldRegistrar := s.data.Registrar
 	candidate := &registrarState{Version: 2, Records: map[string]*registrarRecord{}, ConsumedProofs: map[string]string{}}
 	if oldRegistrar != nil {
@@ -392,7 +436,25 @@ func (s *Store) submitRegistrarEnrollment(ctx context.Context, attemptID, challe
 	candidate.ConsumedProofs[registrarProofKey(a.challenge)] = index
 	s.data.Nodes[nodeID] = node
 	s.data.Registrar = candidate
-	rollback := func() { delete(s.data.Nodes, nodeID); s.data.Registrar = oldRegistrar; restoreCursor() }
+	var restoreAdmission func()
+	if s.admissionPolicy != nil {
+		restoreAdmission, err = s.admissionPolicy.commit(a.challenge, receipt)
+		if err != nil {
+			delete(s.data.Nodes, nodeID)
+			s.data.Registrar = oldRegistrar
+			restoreCursor()
+			return empty, err
+		}
+	}
+	rollback := func() {
+		delete(s.data.Nodes, nodeID)
+		s.data.Registrar = oldRegistrar
+		restoreCursor()
+		if restoreAdmission != nil {
+			restoreAdmission()
+		}
+	}
+
 	image, err := json.MarshalIndent(&s.data, "", "  ")
 	if err != nil || len(image) > o.config.MaxStateBytes {
 		rollback()

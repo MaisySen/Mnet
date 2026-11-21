@@ -122,6 +122,9 @@ func developmentRegistrarOnly(s *Store) (string, error) {
 // Configure is initial-only DATA installation into this disposable private root.
 // It does not prove operator authority, create grants, rotate or migrate config.
 func (d *DisposableRegistrar) Configure(sources, workflow []byte, origin string) error {
+	if d.store.admissionPolicy != nil && d.store.data.Admission != nil {
+		return errRegistrarEnrollment
+	}
 	if _, e := d.validateDevelopmentConfiguration(sources, workflow, origin); e != nil {
 		return e
 	}
@@ -138,7 +141,15 @@ func (d *DisposableRegistrar) Configure(sources, workflow []byte, origin string)
 			return e
 		}
 	}
-	return syncStoreDir(d.root)
+	if e := syncStoreDir(d.root); e != nil {
+		return e
+	}
+	if p, ok := d.store.admissionPolicy.(*developmentAdmissionV2); ok {
+		var c registrarSourceConfig
+		json.Unmarshal(sources, &c)
+		return p.publish(&registrarAdmissionLedger{Version: 2, ConfigFingerprint: admissionConfigFingerprint(sources, workflow), SourceAuthorityDigest: admissionDigest([]string{c.Sources[0].SourceOrigin, c.Sources[0].PrincipalAuthority}), PrincipalTotals: map[string]int{}, Entries: map[string]*registrarAdmissionEntry{}})
+	}
+	return nil
 }
 
 func (d *DisposableRegistrar) validateDevelopmentConfiguration(sources, workflow []byte, origin string) (registrarWorkflowConfig, error) {
@@ -201,6 +212,11 @@ func (d *DisposableRegistrar) validateDevelopmentConfiguration(sources, workflow
 // Handler retains exactly one existing finite gate. RAM counters reset on a
 // process restart: this is not durable admission, quotas, renewal or hosting.
 func (d *DisposableRegistrar) Handler() (http.Handler, error) {
+	if d.store.admissionPolicy != nil {
+		if e := d.store.admissionPolicy.checkConfig(); e != nil {
+			return nil, e
+		}
+	}
 	if _, e := developmentRegistrarOnly(d.store); e != nil {
 		return nil, e
 	}

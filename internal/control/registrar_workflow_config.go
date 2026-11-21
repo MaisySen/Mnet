@@ -69,6 +69,11 @@ func (s *Store) registrarWorkflowLocked() (*registrarEnrollmentOwner, error) {
 	if err := s.healthLocked(); err != nil {
 		return nil, err
 	}
+	if s.admissionPolicy != nil {
+		if err := s.admissionPolicy.checkConfig(); err != nil {
+			return nil, err
+		}
+	}
 	old := s.registrarEnrollment
 	if old != nil && old.retired {
 		return nil, errRegistrarSource

@@ -24,6 +24,11 @@ func (s *Store) registrarSourcesLocked() (*registrarSourceOwner, error) {
 	if err := s.healthLocked(); err != nil {
 		return nil, err
 	}
+	if s.admissionPolicy != nil {
+		if err := s.admissionPolicy.checkConfig(); err != nil {
+			return nil, err
+		}
+	}
 	previous := s.registrarSources
 	if previous != nil && previous.retired {
 		return nil, errRegistrarSource
