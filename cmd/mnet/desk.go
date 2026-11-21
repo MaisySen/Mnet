@@ -67,13 +67,15 @@ func validDeskArgs(args []string) bool {
 		return true
 	case "layout-view":
 		return len(args) == 2
+	case "layout-edit":
+		return len(args) == 4 && args[2] == "--out"
 	default:
 		return false
 	}
 }
 func runDesk(args []string) {
 	if !validDeskArgs(args) {
-		fatal("usage: mnet desk prepare REQUEST_FILE NEW_PRIVATE_DIR | mnet desk layout-check FILE [--edge DISPLAY EDGE PIXEL] | mnet desk layout-view FILE")
+		fatal("usage: mnet desk prepare REQUEST_FILE NEW_PRIVATE_DIR | mnet desk layout-check FILE [--edge DISPLAY EDGE PIXEL] | mnet desk layout-view FILE | mnet desk layout-edit FILE --out NEW_FILE")
 		return
 	}
 	if args[0] == "prepare" {
@@ -94,6 +96,26 @@ func runDesk(args []string) {
 		defer cancel()
 		if err = showDeskLayoutPreview(ctx, preview); err != nil {
 			fatal(err.Error())
+		}
+		return
+	}
+	if args[0] == "layout-edit" {
+		editor, err := readDeskLayoutEditorFile(args[1])
+		if err != nil {
+			fatal(err.Error())
+			return
+		}
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		saved, err := showDeskLayoutEditor(ctx, editor, args[3])
+		if err != nil {
+			fatal(err.Error())
+			return
+		}
+		if saved {
+			fmt.Println("Saved the edited arrangement as a new file. No pairing, approval or input was created.")
+		} else {
+			fmt.Println("No changes saved; the source file was not modified.")
 		}
 		return
 	}
