@@ -163,3 +163,12 @@ lag, immediately closed without any application read/service, and inconclusive.
 The retained old reader flags application bytes observed after E as a hard
 failure, checked before an inconclusive accept result. No second dial/accept
 attempt is introduced. Natural retirement is still required even on lag paths.
+
+Early-retirement pin: expected effective retirement is min(original self expiry,
+original peer expiry), distinct from the peer-expiry+500ms observation ceiling.
+The helper records time BEFORE join. Natural Done before that effective expiry
+is inconclusive-window even if joining takes it past expiry. A's expected
+inherited self-expiry at E is therefore not mistaken for premature retirement
+against B's later peer expiry. Missing natural Done still hard fails. No causal
+timer claim is made. Focused test covers expected A self-expiry, premature Done
+and a slow join that must not hide its early observation.

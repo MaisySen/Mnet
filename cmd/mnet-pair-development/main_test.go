@@ -186,7 +186,7 @@ func TestNaturalRetirementDoesNotForceCloseToPass(t *testing.T) {
 	out, _ := testEmitter()
 	scope := make(chan struct{})
 	joined := false
-	e := observeNaturalRetirement(nil, scope, time.Now().Add(-time.Second), out, func() { joined = true; close(scope) })
+	e := observeNaturalRetirement(nil, scope, time.Now().Add(-time.Second), time.Now().Add(-time.Second), out, func() { joined = true; close(scope) })
 	if e == nil || inconclusive(e) {
 		t.Fatal("missing natural retirement hidden")
 	}
@@ -201,11 +201,11 @@ func TestNaturalRetirementUsesPeerExpiryNotEarlierExpiry(t *testing.T) {
 	scope := make(chan struct{})
 	go func() { time.Sleep(10 * time.Millisecond); close(scope) }()
 	joined := false
-	if e := observeNaturalRetirement(nil, scope, peer, out, func() { joined = true }); e != nil || !joined {
+	if e := observeNaturalRetirement(nil, scope, peer, peer, out, func() { joined = true }); e != nil || !joined {
 		t.Fatalf("actual later peer deadline failed: %v", e)
 	}
 	scope2 := make(chan struct{})
-	if e := observeNaturalRetirement(nil, scope2, earlier, out, func() { t.Fatal("join before natural") }); e == nil {
+	if e := observeNaturalRetirement(nil, scope2, earlier, earlier, out, func() { t.Fatal("join before natural") }); e == nil {
 		t.Fatal("swapped earlier expiry passed")
 	}
 }
@@ -214,11 +214,11 @@ func TestOuterContextCannotStandInForScopeRetirement(t *testing.T) {
 	outer := make(chan struct{})
 	close(outer)
 	scope := make(chan struct{})
-	if e := observeNaturalRetirement(outer, scope, time.Now().Add(-time.Second), out, func() { t.Fatal("cleanup before natural") }); e == nil || inconclusive(e) {
+	if e := observeNaturalRetirement(outer, scope, time.Now().Add(-time.Second), time.Now().Add(-time.Second), out, func() { t.Fatal("cleanup before natural") }); e == nil || inconclusive(e) {
 		t.Fatal("outer cancellation hid missing scope retirement")
 	}
 	close(scope)
-	if e := observeNaturalRetirement(outer, scope, time.Now(), out, func() {}); e != nil {
+	if e := observeNaturalRetirement(outer, scope, time.Now(), time.Now().Add(-time.Second), out, func() {}); e != nil {
 		t.Fatal(e)
 	}
 	if !strings.Contains(log.String(), `"natural_before_cleanup":true`) || !strings.Contains(log.String(), `"outer_context_ended":true`) {
@@ -246,5 +246,19 @@ func TestRetirementPinIsPeerNotSelfOrEarlier(t *testing.T) {
 	}
 	if !peerRetirementExpiry(daemon.DevelopmentPairSnapshot{SelfExpiry: b, PeerExpiry: a}).Equal(a) {
 		t.Fatal("B retirement incorrectly pinned to self/later expiry")
+	}
+}
+func TestEarlyRetirementUsesEffectiveExpiryAndCannotBeHiddenByJoin(t *testing.T) {
+	out, _ := testEmitter()
+	done := make(chan struct{})
+	close(done)
+	now := time.Now()
+	if e := observeNaturalRetirement(nil, done, now.Add(time.Second), now.Add(-time.Second), out, func() {}); e != nil {
+		t.Fatalf("expected inherited self expiry rejected: %v", e)
+	}
+	effective := time.Now().Add(20 * time.Millisecond)
+	e := observeNaturalRetirement(nil, done, effective, effective, out, func() { time.Sleep(25 * time.Millisecond) })
+	if !inconclusive(e) {
+		t.Fatal("early retirement hidden by cleanup latency or marked safety failure")
 	}
 }

@@ -353,9 +353,9 @@ func runPair(ctx context.Context, root string, c config, out *emitter, ready io.
 			cancel()
 		}
 		if c.Role == "listen" {
-			e = runListener(ctx, scope, s, network, c, pin, peerRetirementExpiry(snapshot), out)
+			e = runListener(ctx, scope, s, network, c, pin, peerRetirementExpiry(snapshot), earlier, out)
 		} else {
-			e = runDialer(ctx, scope, s, network, c, peerRetirementExpiry(snapshot), out, ready)
+			e = runDialer(ctx, scope, s, network, c, peerRetirementExpiry(snapshot), earlier, out, ready)
 		}
 		if e == nil {
 			finished = true
@@ -374,7 +374,7 @@ func runPair(ctx context.Context, root string, c config, out *emitter, ready io.
 	}
 	return out.stage("pair-finished", map[string]any{"owners_joined": true, "slice_refunded": false})
 }
-func runListener(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *daemon.DevelopmentNetworkSession, n *proofnet.Net, c config, pin daemon.SessionPeer, peerExpiry time.Time, out *emitter) error {
+func runListener(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *daemon.DevelopmentNetworkSession, n *proofnet.Net, c config, pin daemon.SessionPeer, peerExpiry, effectiveExpiry time.Time, out *emitter) error {
 	rawListener, e := n.ListenTCPAddrPort(netip.AddrPortFrom(netip.MustParseAddr(c.SelfIP), pairPort))
 	if e != nil {
 		return e
@@ -506,7 +506,7 @@ func runListener(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *dae
 		out.stage("pair-accept-loop-joined", nil)
 	}()
 
-	if e = observeNaturalRetirement(ctx.Done(), scope.Context().Done(), peerExpiry, out, func() { scope.Close() }); e != nil {
+	if e = observeNaturalRetirement(ctx.Done(), scope.Context().Done(), peerExpiry, effectiveExpiry, out, func() { scope.Close() }); e != nil {
 		return e
 	}
 
@@ -533,7 +533,7 @@ func runListener(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *dae
 	}
 	return nil
 }
-func runDialer(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *daemon.DevelopmentNetworkSession, n *proofnet.Net, c config, peerExpiry time.Time, out *emitter, ready io.ReadCloser) error {
+func runDialer(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *daemon.DevelopmentNetworkSession, n *proofnet.Net, c config, peerExpiry, effectiveExpiry time.Time, out *emitter, ready io.ReadCloser) error {
 	wait, cancel, e := phase(ctx, c, 2*time.Second)
 	if e != nil {
 		return e
@@ -670,7 +670,7 @@ func runDialer(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *daemo
 	finalAt := time.UnixMilli(c.EarlierExpiryMS).Add(500 * time.Millisecond)
 	out.stage("pair-retirement-observation", map[string]any{"expiry_ms": c.EarlierExpiryMS, "scheduled_observation_ms": observeAt.UnixMilli(), "observed_lag_ms": time.Now().UnixMilli() - c.EarlierExpiryMS, "final_check_ms": finalAt.UnixMilli()})
 	if !time.Now().Before(finalAt) {
-		if e := observeNaturalRetirement(ctx.Done(), scope.Context().Done(), peerExpiry, out, func() { scope.Close() }); e != nil {
+		if e := observeNaturalRetirement(ctx.Done(), scope.Context().Done(), peerExpiry, effectiveExpiry, out, func() { scope.Close() }); e != nil {
 			return e
 		}
 		return fmt.Errorf("%w: observation scheduled too late", errWindow)
@@ -689,7 +689,7 @@ func runDialer(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *daemo
 		return errors.New("old stream delivered after expiry")
 	}
 	probeLate := time.Now().After(finalAt)
-	if e := observeNaturalRetirement(ctx.Done(), scope.Context().Done(), peerExpiry, out, func() { scope.Close() }); e != nil {
+	if e := observeNaturalRetirement(ctx.Done(), scope.Context().Done(), peerExpiry, effectiveExpiry, out, func() { scope.Close() }); e != nil {
 		return e
 	}
 
@@ -772,7 +772,7 @@ func (c *observedConn) Close() error {
 
 // No cleanup-induced cancellation may satisfy this check. join is invoked ONLY
 // after the natural Done signal; a missing signal remains a hard failure.
-func observeNaturalRetirement(outerDone, scopeDone <-chan struct{}, peerExpiry time.Time, out *emitter, join func()) error {
+func observeNaturalRetirement(outerDone, scopeDone <-chan struct{}, peerExpiry, effectiveExpiry time.Time, out *emitter, join func()) error {
 	final := peerExpiry.Add(500 * time.Millisecond)
 	timer := time.NewTimer(time.Until(final))
 	defer timer.Stop()
@@ -789,11 +789,15 @@ func observeNaturalRetirement(outerDone, scopeDone <-chan struct{}, peerExpiry t
 	case <-timer.C:
 		return errors.New("missing natural scope retirement by peer-expiry+500ms")
 	}
-	out.stage("pair-natural-retirement-observed", map[string]any{"peer_expiry_ms": peerExpiry.UnixMilli(), "observed_lag_ms": time.Now().UnixMilli() - peerExpiry.UnixMilli(), "first_observed_signal": cause, "outer_context_ended": channelEnded(outerDone), "natural_before_cleanup": true})
+	observedAt := time.Now()
+	out.stage("pair-natural-retirement-observed", map[string]any{"peer_expiry_ms": peerExpiry.UnixMilli(), "observed_lag_ms": time.Now().UnixMilli() - peerExpiry.UnixMilli(), "first_observed_signal": cause, "outer_context_ended": channelEnded(outerDone), "natural_before_cleanup": true, "effective_expiry_ms": effectiveExpiry.UnixMilli()})
 	if time.Now().After(final) {
 		return errors.New("natural scope retirement observed after peer-expiry+500ms")
 	}
 	join()
+	if observedAt.Before(effectiveExpiry) {
+		return fmt.Errorf("%w: natural scope ended before effective original expiry", errWindow)
+	}
 	return nil
 }
 func channelEnded(ch <-chan struct{}) bool {
