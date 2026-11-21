@@ -49,16 +49,16 @@ func nestedTunTest() []byte {
 		}
 		data = append(data, attr(n, []byte{v})...)
 	}
-	return append(attr(1, []byte{'t', 'u', 'n', 0}), attr(0x8002, data)...)
+	return append(attr(1, []byte{'t', 'u', 'n', 0}), attr(2, data)...)
 }
 func TestTUNNestedFramingExactSourceSchema(t *testing.T) {
 	valid := nestedTunTest()
 	if _, e := parseTUNNested(LinkRecord{Raw: map[uint16][]byte{18: valid}}); e != nil {
 		t.Fatal(e)
 	}
-	for _, mode := range []string{"tap", "pi", "vnet", "persist", "multi", "missing", "duplicate", "unknown", "unflagged", "netorder", "short", "padding"} {
+	for _, mode := range []string{"tap", "pi", "vnet", "persist", "multi", "missing", "duplicate", "unknown", "nested-flag", "netorder", "short", "padding"} {
 		t.Run(mode, func(t *testing.T) {
-			info, _ := schemaAttrs(valid, map[uint16]bool{1: false, 2: true})
+			info, _ := schemaAttrs(valid, map[uint16]bool{1: false, 2: false})
 			data := append([]byte(nil), info[2]...)
 			switch mode {
 			case "tap":
@@ -82,9 +82,9 @@ func TestTUNNestedFramingExactSourceSchema(t *testing.T) {
 			case "padding":
 				data[5] = 1
 			}
-			raw := append(attr(1, info[1]), attr(0x8002, data)...)
-			if mode == "unflagged" {
-				binary.NativeEndian.PutUint16(raw[10:], 2)
+			raw := append(attr(1, info[1]), attr(2, data)...)
+			if mode == "nested-flag" {
+				binary.NativeEndian.PutUint16(raw[10:], 0x8002)
 			}
 			if mode == "netorder" {
 				binary.NativeEndian.PutUint16(raw[10:], 0xc002)
@@ -297,5 +297,29 @@ func TestCorrectedBOOTPAndDirectORConsumerOperands(t *testing.T) {
 	delete(source.sys, "/proc/sys/net/ipv4/conf/all/bootp_relay")
 	if _, e = r.readEffective(context.Background()); e == nil {
 		t.Fatal("missing BOOTP operand accepted")
+	}
+}
+
+// Actual rtnl_link_fill/info_fill noflag containers, not a source execution.
+func TestTUNEmitterOuterAndDataFlagsExact(t *testing.T) {
+	for _, flags := range []uint16{0, 0x8000, 0x4000, 0xc000} {
+		body := make([]byte, 16)
+		binary.NativeEndian.PutUint16(body[2:], 65534)
+		binary.NativeEndian.PutUint32(body[4:], 11)
+		binary.NativeEndian.PutUint32(body[8:], 0x1090)
+		body = append(body, attr(3, []byte("mno-fixture\x00"))...)
+		body = append(body, attr(4, u32(1500))...)
+		body = append(body, attr(18|flags, nestedTunTest())...)
+		link, e := DecodeLink(body)
+		if flags == 0 {
+			if e != nil {
+				t.Fatal("emitter noflag outer", e)
+			}
+			if _, e = parseTUNNested(link); e != nil {
+				t.Fatal("emitter noflag data", e)
+			}
+		} else if e == nil {
+			t.Fatal("opposite outer flags admitted", flags)
+		}
 	}
 }

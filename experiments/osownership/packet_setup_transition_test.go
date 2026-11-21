@@ -133,9 +133,9 @@ func (w *setupMemoryWire) setupReadback(context.Context) (setupReadbackRecord, e
 		out.raw.Links[0].MTU = 1500
 		out.raw.Links[0].Raw[4] = u32(1500)
 	case "vnet":
-		info, _ := schemaAttrs(out.raw.Links[0].Raw[18], map[uint16]bool{1: false, 2: true})
+		info, _ := schemaAttrs(out.raw.Links[0].Raw[18], map[uint16]bool{1: false, 2: false})
 		info[2][20] = 1
-		out.raw.Links[0].Raw[18] = append(attr(1, info[1]), attr(0x8002, info[2])...)
+		out.raw.Links[0].Raw[18] = append(attr(1, info[1]), attr(2, info[2])...)
 	case "offload":
 		out.features.active = 1 << 3
 	case "names":

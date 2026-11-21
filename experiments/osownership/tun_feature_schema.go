@@ -45,11 +45,13 @@ func schemaAttrs(raw []byte, kinds map[uint16]bool) (map[uint16][]byte, error) {
 
 type tunNestedFraming struct{ typ, pi, vnet, persist, multiqueue byte }
 
+// rtnl_link_fill and rtnl_link_info_fill both use nest_start_noflag.
+// DecodeLink checks the outer LINKINFO flags; this checks INFO_DATA flags.
 // tun_fill_info, if_link.h: TYPE3/PI4/VNET5/PERSIST6/MULTI_QUEUE7.
 // Optional OWNER1/GROUP2 are u32. Queue counts8/9 unsupported for single queue.
 func parseTUNNested(link LinkRecord) (tunNestedFraming, error) {
 	var zero tunNestedFraming
-	info, e := schemaAttrs(link.Raw[18], map[uint16]bool{1: false, 2: true})
+	info, e := schemaAttrs(link.Raw[18], map[uint16]bool{1: false, 2: false})
 	if e != nil || len(info) != 2 {
 		return zero, afShape
 	}

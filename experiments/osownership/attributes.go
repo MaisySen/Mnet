@@ -24,7 +24,7 @@ func decodeAttributesWithLinkInfo(b []byte, allowLinkInfo bool) (map[uint16][]by
 		}
 		n := int(binary.NativeEndian.Uint16(b))
 		typ := binary.NativeEndian.Uint16(b[2:])
-		if n < 4 || n > len(b) || (typ&0xc000 != 0 && !(allowLinkInfo && (typ == (18|0x8000) || ((typ == (62|0x8000) || typ == (65|0x8000)) && n == 4)))) {
+		if n < 4 || n > len(b) || (typ&0xc000 != 0 && !(allowLinkInfo && ((typ == (62|0x8000) || typ == (65|0x8000)) && n == 4))) {
 			return nil, fmt.Errorf("invalid rtattr length/flags type=%d len=%d", typ, n)
 		}
 		if allowLinkInfo && typ&0x8000 != 0 {

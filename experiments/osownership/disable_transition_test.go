@@ -193,25 +193,25 @@ func TestDisableAlreadyOneNoWriteStillRequiresFullCollection(t *testing.T) {
 }
 
 func TestFreshDisableRequiresExactTUNNestingAndKind(t *testing.T) {
-	for _, mode := range []string{"plain-info-data", "missing-info-data", "wrong-kind", "unknown-info-attr", "malformed-af"} {
+	for _, mode := range []string{"nested-flag-info-data", "missing-info-data", "wrong-kind", "unknown-info-attr", "malformed-af"} {
 		t.Run(mode, func(t *testing.T) {
 			d, _ := freshDisableFixture(t)
 			l := &d.raw.Links[0]
 			switch mode {
-			case "plain-info-data":
-				info, e := schemaAttrs(l.Raw[18], map[uint16]bool{1: false, 2: true})
+			case "nested-flag-info-data":
+				info, e := schemaAttrs(l.Raw[18], map[uint16]bool{1: false, 2: false})
 				if e != nil {
 					t.Fatal(e)
 				}
-				l.Raw[18] = append(attr(1, info[1]), attr(2, info[2])...)
+				l.Raw[18] = append(attr(1, info[1]), attr(0x8002, info[2])...)
 			case "missing-info-data":
 				l.Raw[18] = attr(1, []byte("tun\x00"))
 			case "wrong-kind":
-				info, e := schemaAttrs(l.Raw[18], map[uint16]bool{1: false, 2: true})
+				info, e := schemaAttrs(l.Raw[18], map[uint16]bool{1: false, 2: false})
 				if e != nil {
 					t.Fatal(e)
 				}
-				l.Raw[18] = append(attr(1, []byte("tap\x00")), attr(0x8002, info[2])...)
+				l.Raw[18] = append(attr(1, []byte("tap\x00")), attr(2, info[2])...)
 			case "unknown-info-attr":
 				l.Raw[18] = append(l.Raw[18], attr(3, []byte{0})...)
 			case "malformed-af":
