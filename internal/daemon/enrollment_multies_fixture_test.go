@@ -140,6 +140,7 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 		FinalizeHistory         bool
 		PreparedFinalize        bool
 		PreparedHistoryFinalize bool
+		Transport               bool
 	}
 	if json.Unmarshal(raw, &f) != nil || !registrar.ValidWorkflowLimits(f.Limits) {
 		t.Fatal("invalid independent fixture config")
@@ -288,6 +289,9 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 	if reopened.cc != nil || reopened.dev != nil {
 		t.Fatal("native current map activated legacy/tunnel")
 	}
+	if f.Transport {
+		testActualEnrolledNativeTransport(t, reopened, dir)
+	}
 	afterCurrent, _ := os.ReadFile(reopened.stateOwner.path)
 	if !bytes.Equal(finalized, afterCurrent) {
 		t.Fatal("native current map rewrote sole State")
@@ -298,7 +302,8 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 		NativeProofStateUnchanged bool
 		NativeStateFinalized      bool
 		NativeCurrentPeers        int
-	}{result, true, true, true, len(current.Peers)})
+		NativeEncryptedDirect     bool
+	}{result, true, true, true, len(current.Peers), f.Transport})
 	if err := writeFixtureAtomic(dir, "native-workflow-outcome.json", out); err != nil {
 		t.Fatal(err)
 	}

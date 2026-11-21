@@ -51,6 +51,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	var historyFinalize atomic.Bool
 	var preparedFinalize atomic.Bool
 	var preparedHistoryFinalize atomic.Bool
+	var transportMode atomic.Bool
 	var workflowSubmits atomic.Int32
 	var historyCalls atomic.Int32
 	var bridgeMu sync.Mutex
@@ -280,6 +281,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	historyFinalize.Store(input.Mode == "history-finalize")
 	preparedFinalize.Store(input.Mode == "prepared-finalize" || input.Mode == "prepared-history-finalize")
 	preparedHistoryFinalize.Store(input.Mode == "prepared-history-finalize")
+	transportMode.Store(input.Mode == "direct-transport")
 	policyRaw, _ := json.Marshal(input.Workflow)
 	_, policy, err := parseRegistrarWorkflow(policyRaw)
 	if err != nil {
@@ -476,6 +478,13 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		t.Fatal("second credential did not receive first peer", err)
 	}
 
+	var transport *registrarTransportFixture
+	if transportMode.Load() {
+		transport = newRegistrarTransportFixture(t, key)
+		if err := s.setRegistrarCredentialEndpoints(ref, secret, []string{transport.endpoint()}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// Third device: separate actual daemon test process owns the retained native
 	// State/key/callback. This process never receives its private key or file
 	// credential; only the real expected registrar request presents the bearer.
@@ -491,11 +500,13 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		FinalizeHistory         bool
 		PreparedFinalize        bool
 		PreparedHistoryFinalize bool
-	}{input.Workflow.Policy, limits, recoveryMode.Load(), historyFinalize.Load(), preparedFinalize.Load(), preparedHistoryFinalize.Load()})
+		Transport               bool
+	}{input.Workflow.Policy, limits, recoveryMode.Load(), historyFinalize.Load(), preparedFinalize.Load(), preparedHistoryFinalize.Load(), transportMode.Load()})
 	if err := os.WriteFile(filepath.Join(dir, "native-workflow-config.json"), nativeConfig, 0600); err != nil {
 		t.Fatal(err)
 	}
-	nativeCmd := exec.Command(nativeBinary, "-test.run=^TestActualMultiesNativeWorkflowFixture$", "-test.v", "-test.timeout=40s")
+	nativeTimeout := "40s"
+	nativeCmd := exec.Command(nativeBinary, "-test.run=^TestActualMultiesNativeWorkflowFixture$", "-test.v", "-test.timeout="+nativeTimeout)
 	nativeCmd.Env = append(os.Environ(), "MNET_NATIVE_OWNED_WORKFLOW_DIR="+dir)
 	var nativeOutput bytes.Buffer
 	nativeCmd.Stdout = &nativeOutput
@@ -511,13 +522,98 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		}
 	}()
 	deadline = time.Now().Add(35 * time.Second)
+	var transportNativeID string
+	var transportReceivedAtRevoke int
+	var postRemovalBarrier bool
+	var postRemovalCheckedAt time.Time
+	var postRemovalVerified bool
 	for {
+		if transport != nil {
+			s.mu.Lock()
+			var n *netmap.Node
+			for _, candidate := range s.data.Nodes {
+				if candidate.ID != r.NodeID && candidate.ID != peerRecord.NodeID {
+					copy := *candidate
+					copy.Endpoints = append([]string(nil), candidate.Endpoints...)
+					n = &copy
+					break
+				}
+			}
+			s.mu.Unlock()
+			if n != nil {
+				transportNativeID = n.ID
+				if !transport.revoked {
+					firstMap, err := s.registrarCredentialMap(ref, secret)
+					if err != nil {
+						t.Fatal(err)
+					}
+					transport.tick(t, firstMap, *n)
+					if _, err := os.Stat(filepath.Join(dir, "native-transport-ready")); err == nil && transport.received > 0 && transport.sent {
+						if err := s.DeleteNode(r.NodeID); err != nil {
+							t.Fatal(err)
+						}
+						transport.revoked = true
+						transportReceivedAtRevoke = transport.received
+						// Discard only packets decrypted before the revocation
+						// marker; native removes authorization before its next send.
+						for {
+							select {
+							case <-transport.tun.Inbound:
+							default:
+								goto drainedTransport
+							}
+						}
+					drainedTransport:
+						if err := os.WriteFile(filepath.Join(dir, "transport-peer-revoked"), []byte("actual Store delete committed"), 0600); err != nil {
+							t.Fatal(err)
+						}
+					}
+				} else {
+					if !postRemovalBarrier {
+						if _, err := os.Stat(filepath.Join(dir, "native-transport-removal-ready")); err == nil {
+							for {
+								select {
+								case <-transport.tun.Inbound:
+								default:
+									goto removalDrained
+								}
+							}
+						removalDrained:
+							if err := os.WriteFile(filepath.Join(dir, "transport-post-removal-barrier"), []byte("pre-removal packets drained"), 0600); err != nil {
+								t.Fatal(err)
+							}
+							postRemovalBarrier = true
+						}
+					} else {
+						select {
+						case <-transport.tun.Inbound:
+							t.Fatal("new encrypted payload decrypted after native removed revoked peer")
+						default:
+						}
+						if _, err := os.Stat(filepath.Join(dir, "native-transport-revocation-checked")); err == nil {
+							if postRemovalCheckedAt.IsZero() {
+								postRemovalCheckedAt = time.Now()
+							}
+							if !postRemovalVerified && time.Since(postRemovalCheckedAt) >= 200*time.Millisecond {
+								if err := os.WriteFile(filepath.Join(dir, "transport-post-removal-verified"), []byte("five new packets denied after actual map removal"), 0600); err != nil {
+									t.Fatal(err)
+								}
+								postRemovalVerified = true
+							}
+						}
+					}
+				}
+			}
+		}
 		raw, err = os.ReadFile(filepath.Join(dir, "native-workflow-outcome.json"))
 		if err == nil {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("actual native process timeout")
+			nativeCmd.Process.Kill()
+			nativeCmd.Wait()
+			nativeWaited = true
+			t.Fatalf("actual native process timeout: %s", nativeOutput.String())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -534,12 +630,29 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		NativeCurrentPeers        int
 		NativeHistoryRecovered    bool
 		History                   contract.HistoryReceiptWire
+		NativeEncryptedDirect     bool
 	}
 	if json.Unmarshal(raw, &nativeOutcome) != nil || !nativeOutcome.NativeProofStateUnchanged || (!recoveryMode.Load() && !preparedFinalize.Load() && (!nativeOutcome.NativeOwnedKeyConfirmed || !nativeOutcome.NativeStateFinalized || nativeOutcome.NativeCurrentPeers != 2)) || (preparedFinalize.Load() && (!nativeOutcome.NativeHistoryRecovered || nativeOutcome.NativeOwnedKeyConfirmed || !nativeOutcome.NativeStateFinalized || nativeOutcome.NativeCurrentPeers != 2 || (historyCalls.Load() != 1 && !preparedHistoryFinalize.Load()) || (preparedHistoryFinalize.Load() && historyCalls.Load() != 2))) || (recoveryMode.Load() && (!nativeOutcome.NativeHistoryRecovered || nativeOutcome.NativeOwnedKeyConfirmed || nativeOutcome.NativeStateFinalized != historyFinalize.Load() || historyCalls.Load() != 1 || (historyFinalize.Load() && nativeOutcome.NativeCurrentPeers != 2))) {
 		t.Fatal("missing actual daemon proof result")
 	}
 
-	if recoveryMode.Load() && !historyFinalize.Load() {
+	if transportMode.Load() {
+		if transport == nil || !transport.revoked || transportReceivedAtRevoke == 0 || !nativeOutcome.NativeEncryptedDirect || !postRemovalVerified || transportNativeID == "" || len(s.data.Nodes) != 2 {
+			t.Fatal("connected encrypted direct transport/revocation evidence absent")
+		}
+		if _, err := s.registrarCredentialMap(ref, secret); err == nil {
+			t.Fatal("revoked transport credential retained current map")
+		}
+		nativeRecord := s.registrarNodeLocked(transportNativeID)
+		nativeRef := registrarCredentialReference{NodeID: nativeRecord.NodeID, NetworkID: nativeRecord.NetworkID, DevicePublicKey: nativeRecord.DevicePublicKey, Scope: nativeRecord.Scope, ReceiptID: nativeRecord.ReceiptID, ReceiptDigest: nativeRecord.ReceiptDigest, DescriptorDigest: nativeRecord.DescriptorDigest, TranscriptDigest: nativeRecord.Consumption.TranscriptDigest}
+		nativeMap, err := s.registrarCredentialMap(nativeRef, getPeerSecret())
+		if err != nil || len(nativeMap.Peers) != 1 {
+			t.Fatal("native current map retained revoked transport peer", err)
+		}
+		if err := s.DeleteNode(nativeRecord.NodeID); err != nil {
+			t.Fatal(err)
+		}
+	} else if recoveryMode.Load() && !historyFinalize.Load() {
 		if len(s.data.Nodes) != 2 || nativeOutcome.History.Receipt.NodeID == "" || time.Now().UnixMilli() < nativeOutcome.History.Receipt.AccessExpiresAtMS {
 			t.Fatal("expired deleted native history not recovered")
 		}
@@ -577,8 +690,10 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	bridgeMu.Lock()
 	peerSecret = peerSavedSecret
 	bridgeMu.Unlock()
-	if err := s.DeleteNode(r.NodeID); err != nil {
-		t.Fatal(err)
+	if !transportMode.Load() {
+		if err := s.DeleteNode(r.NodeID); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if _, err := s.registrarCredentialMap(ref, secret); err == nil {
 		t.Fatal("deleted node still usable")
@@ -597,7 +712,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	if err := s.DeleteNode(peerRecord.NodeID); err != nil {
 		t.Fatal(err)
 	}
-	out, _ := json.Marshal(map[string]any{"sourceDenied": false, "bidirectionalActualPeers": true, "nativeOwnedKeyConfirmed": !recoveryMode.Load() && !preparedFinalize.Load(), "threeActualPeers": true, "nativeProofStateUnchanged": true, "nativeStateFinalized": !recoveryMode.Load() || historyFinalize.Load(), "nativeCurrentPeers": nativeOutcome.NativeCurrentPeers, "nativeHistoryRecovered": recoveryMode.Load() || preparedFinalize.Load(), "journalWorkflowReceiptPinned": true, "nodeCreated": true, "nodeDeleted": true, "currentMapBeforeDelete": true, "legacyTokenCreated": false, "inputAuthorized": false, "receiptId": r.ReceiptID, "receiptDigest": r.ReceiptDigest, "reserveId": req.ReserveID, "descriptorDigest": descriptor, "handoffId": own.ID})
+	out, _ := json.Marshal(map[string]any{"sourceDenied": false, "bidirectionalActualPeers": true, "nativeOwnedKeyConfirmed": !recoveryMode.Load() && !preparedFinalize.Load(), "threeActualPeers": true, "nativeProofStateUnchanged": true, "nativeStateFinalized": !recoveryMode.Load() || historyFinalize.Load(), "nativeCurrentPeers": nativeOutcome.NativeCurrentPeers, "nativeHistoryRecovered": recoveryMode.Load() || preparedFinalize.Load(), "nativeEncryptedDirect": transportMode.Load(), "journalWorkflowReceiptPinned": true, "nodeCreated": true, "nodeDeleted": true, "currentMapBeforeDelete": true, "legacyTokenCreated": false, "inputAuthorized": false, "receiptId": r.ReceiptID, "receiptDigest": r.ReceiptDigest, "reserveId": req.ReserveID, "descriptorDigest": descriptor, "handoffId": own.ID})
 	if err := os.WriteFile(filepath.Join(dir, "outcome.json"), out, 0600); err != nil {
 		t.Fatal(err)
 	}
