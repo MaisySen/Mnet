@@ -17,6 +17,7 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -33,19 +34,20 @@ var ErrUncertain = errors.New("enrollment intent publication uncertain; close an
 var ErrPending = errors.New("existing enrollment intent requires explicit recovery")
 
 type record struct {
-	Policy       config.LocalConfigV2     `json:"policy"`
-	Version      int                      `json:"version"`
-	Phase        string                   `json:"phase"`
-	Launch       contract.SourceLaunch    `json:"launch"`
-	SourceOrigin string                   `json:"source_origin"`
-	Authority    string                   `json:"authority"`
-	Allowed      []contract.SourceMapping `json:"allowed"`
-	Credential   string                   `json:"credential"`
-	Verifier     string                   `json:"verifier"`
-	Code         string                   `json:"code"`
-	ExchangeJSON string                   `json:"exchange_json"`
-	CreatedMS    int64                    `json:"created_ms"`
-	ExpiresMS    int64                    `json:"expires_ms"`
+	BootstrapJSON string                   `json:"bootstrap_json,omitempty"`
+	Policy        config.LocalConfigV2     `json:"policy"`
+	Version       int                      `json:"version"`
+	Phase         string                   `json:"phase"`
+	Launch        contract.SourceLaunch    `json:"launch"`
+	SourceOrigin  string                   `json:"source_origin"`
+	Authority     string                   `json:"authority"`
+	Allowed       []contract.SourceMapping `json:"allowed"`
+	Credential    string                   `json:"credential"`
+	Verifier      string                   `json:"verifier"`
+	Code          string                   `json:"code"`
+	ExchangeJSON  string                   `json:"exchange_json"`
+	CreatedMS     int64                    `json:"created_ms"`
+	ExpiresMS     int64                    `json:"expires_ms"`
 }
 
 func (record) String() string   { return "[private native enrollment intent]" }
@@ -336,7 +338,7 @@ func token(s string) bool {
 	return false
 }
 func validRecord(r record) bool {
-	if r.Version != 2 || r.CreatedMS <= 0 || r.ExpiresMS <= r.CreatedMS || !enrollmentidentity.ValidOrigin(r.SourceOrigin) || !enrollmentidentity.ValidOrigin(r.Authority) || len(r.Allowed) == 0 || len(r.Allowed) > 20 || !token(r.Credential) || !token(r.Verifier) || r.Launch.CredentialDigest != hash(r.Credential) || r.Launch.Challenge != hash(r.Verifier) {
+	if (r.Version != 2 && r.Version != 3) || r.CreatedMS <= 0 || r.ExpiresMS <= r.CreatedMS || !enrollmentidentity.ValidOrigin(r.SourceOrigin) || !enrollmentidentity.ValidOrigin(r.Authority) || len(r.Allowed) == 0 || len(r.Allowed) > 20 || !token(r.Credential) || !token(r.Verifier) || r.Launch.CredentialDigest != hash(r.Credential) || r.Launch.Challenge != hash(r.Verifier) {
 		return false
 	}
 	policy, err := config.ValidateLocalV2(r.Policy)
@@ -355,6 +357,12 @@ func validRecord(r record) bool {
 		if _, err := contract.SourceDescriptorBytes(own, "journal-shape-check", r.Launch.AttemptID); err != nil {
 			return false
 		}
+	}
+	if r.Version == 3 {
+		return validBootstrapRecord(r, policy)
+	}
+	if r.BootstrapJSON != "" {
+		return false
 	}
 	switch r.Phase {
 	case "prepared", "declined-data":
@@ -460,7 +468,19 @@ func strictRecord(raw []byte, out *record) bool {
 	if _, err := d.Token(); err != io.EOF {
 		return false
 	}
-	return json.Unmarshal(raw, out) == nil
+	if json.Unmarshal(raw, out) != nil {
+		return false
+	}
+	if out.Version == 2 {
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(raw, &fields) != nil {
+			return false
+		}
+		if _, present := fields["bootstrap_json"]; present {
+			return false
+		}
+	}
+	return true
 }
 func shape(d *json.Decoder, t reflect.Type, depth int) bool {
 	if depth > 8 {
@@ -473,9 +493,12 @@ func shape(d *json.Decoder, t reflect.Type, depth int) bool {
 			return false
 		}
 		fields := map[string]reflect.Type{}
+		optional := map[string]bool{}
 		for i := 0; i < t.NumField(); i++ {
 			f := t.Field(i)
-			fields[f.Tag.Get("json")] = f.Type
+			parts := strings.Split(f.Tag.Get("json"), ",")
+			fields[parts[0]] = f.Type
+			optional[parts[0]] = len(parts) > 1 && parts[1] == "omitempty"
 		}
 		seen := map[string]bool{}
 		for d.More() {
@@ -494,7 +517,15 @@ func shape(d *json.Decoder, t reflect.Type, depth int) bool {
 			}
 		}
 		v, err = d.Token()
-		return err == nil && v == json.Delim('}') && len(seen) == len(fields)
+		if err != nil || v != json.Delim('}') {
+			return false
+		}
+		for name := range fields {
+			if !optional[name] && !seen[name] {
+				return false
+			}
+		}
+		return true
 	case reflect.Slice:
 		v, err := d.Token()
 		if err != nil || v != json.Delim('[') {
