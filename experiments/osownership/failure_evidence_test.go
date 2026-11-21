@@ -92,3 +92,62 @@ func TestStderrPhasesPlusTypedErrorNoRaw(t *testing.T) {
 		t.Fatal("incomplete diagnostic trusted")
 	}
 }
+
+type closeFailResident struct{ *fakeResident }
+
+func (p closeFailResident) CloseCustody() error {
+	p.calls = append(p.calls, "close-fail")
+	return errors.New("close failed")
+}
+
+type closeFailSpawn struct{ p closeFailResident }
+
+func (s closeFailSpawn) Spawn(context.Context) (ResidentProcess, error) { return s.p, nil }
+func TestCustodyCloseErrorNeverClaimsClosed(t *testing.T) {
+	v := validVerdict()
+	v.Lifecycle = &LifecycleEvidence{PID: 777, Reaped: true, CustodyClosed: true}
+	p := &fakeResident{ns: v.Namespace, r: bytes.NewReader(mustJSON(v))}
+	got, e := SuperviseResident(context.Background(), closeFailSpawn{closeFailResident{p}})
+	if e == nil || got.Lifecycle == nil || got.Lifecycle.CustodyClosed || !got.Lifecycle.CustodyRetained || !got.Lifecycle.CustodyCloseAttempted {
+		t.Fatal("failed close claimed success", e, got.Lifecycle)
+	}
+	if got.Lifecycle.PID == 777 {
+		t.Fatal("child lifecycle trusted")
+	}
+}
+func TestParentOverwritesChildLifecycle(t *testing.T) {
+	v := validVerdict()
+	v.Lifecycle = &LifecycleEvidence{PID: 777, StartTicks: 123, Reaped: false, CustodyRetained: true}
+	p := &fakeResident{ns: v.Namespace, r: bytes.NewReader(mustJSON(v))}
+	got, e := SuperviseResident(context.Background(), fakeSpawn{p})
+	if e != nil || got.Lifecycle == nil || got.Lifecycle.PID != 0 || got.Lifecycle.StartTicks != 0 || !got.Lifecycle.Reaped || !got.Lifecycle.CustodyClosed || got.Lifecycle.CustodyRetained {
+		t.Fatal("child lifecycle not overwritten", e, got.Lifecycle)
+	}
+}
+func TestClientLifecycleClaimRejected(t *testing.T) {
+	if e := rejectClientLifecycleClaim(ClientBootstrapEvidence{}); e != nil {
+		t.Fatal(e)
+	}
+	if e := rejectClientLifecycleClaim(ClientBootstrapEvidence{Lifecycle: &LifecycleEvidence{Reaped: true, CustodyClosed: true}}); e == nil {
+		t.Fatal("client self-attested lifecycle accepted")
+	}
+}
+func TestStderrCompletenessOverflowAndWaitDelayDirect(t *testing.T) {
+	for _, v := range []struct{ over, delay, want bool }{{false, false, true}, {true, false, false}, {false, true, false}, {true, true, false}} {
+		if pipeEvidenceComplete(v.over, v.delay) != v.want {
+			t.Fatal("incomplete pipe called complete", v)
+		}
+	}
+}
+func TestIdentityReadFailureNeverIgnored(t *testing.T) {
+	identity := errors.New("identity unavailable")
+	if !errors.Is(validateClientWaitEvidence(identity, nil, true), identity) {
+		t.Fatal("identityErr ignored")
+	}
+	if validateClientWaitEvidence(nil, nil, false) == nil {
+		t.Fatal("unobserved Wait accepted")
+	}
+	if e := validateClientWaitEvidence(nil, nil, true); e != nil {
+		t.Fatal(e)
+	}
+}

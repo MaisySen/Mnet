@@ -203,8 +203,8 @@ func runReadOnlyClientAndJoin(ctx context.Context, ns *namespaceCustody) (Client
 		}
 	}
 	failure.StdoutBytes = stdout.Len()
-	failure.StdoutComplete = !stdout.overflow && !errors.Is(runErr, exec.ErrWaitDelay)
-	failure.StderrComplete = !stderr.overflow && !errors.Is(runErr, exec.ErrWaitDelay)
+	failure.StdoutComplete = pipeEvidenceComplete(stdout.overflow, errors.Is(runErr, exec.ErrWaitDelay))
+	failure.StderrComplete = pipeEvidenceComplete(stderr.overflow, errors.Is(runErr, exec.ErrWaitDelay))
 	failure.StderrBytes, failure.StderrSHA256, failure.ChildDiagnostic = summarizedStderr(stderr.Bytes(), failure.StderrComplete)
 	failure.ChildDiagnostic, failure.Phase = scanSanitizedStderr(stderr.Bytes(), failure.StderrComplete)
 	if failure.ChildDiagnostic != nil {
@@ -214,8 +214,8 @@ func runReadOnlyClientAndJoin(ctx context.Context, ns *namespaceCustody) (Client
 	}
 	failure.StdoutJSON = json.Valid(stdout.Bytes())
 	wrap := func(cause error) (ClientBootstrapEvidence, error) { return out, &childRunFailure{failure, cause} }
-	if runErr != nil || identityErr != nil {
-		return wrap(errors.Join(runErr, identityErr))
+	if e = validateClientWaitEvidence(identityErr, runErr, failure.ExitObserved); e != nil {
+		return wrap(e)
 	}
 	failure.Operation = "client-evidence-decode"
 	d := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
@@ -232,8 +232,11 @@ func runReadOnlyClientAndJoin(ctx context.Context, ns *namespaceCustody) (Client
 		failure.Operation = "client-fd-inventory"
 		return wrap(&FDInventoryHarnessError{})
 	}
-	if out.ParentPID != os.Getpid() || out.PID != c.Process.Pid || out.Lifecycle != nil {
+	if out.ParentPID != os.Getpid() || out.PID != c.Process.Pid {
 		return wrap(ErrConflict)
+	}
+	if e = rejectClientLifecycleClaim(out); e != nil {
+		return wrap(e)
 	}
 	if e = validateClientEvidence(out, ns.identity); e != nil {
 		return wrap(e)

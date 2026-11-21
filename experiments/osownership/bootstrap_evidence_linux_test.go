@@ -81,3 +81,11 @@ func TestReadOnlyFailureVerdictContainsBaselineAndDiagnosticSource(t *testing.T)
 		}
 	}
 }
+func TestEvidencePathActuallyUsesHonestyGuards(t *testing.T) {
+	s := sourceFunction(t, "bootstrap_evidence_linux.go", "runReadOnlyClientAndJoin")
+	for _, term := range []string{"rejectClientLifecycleClaim(out)", "validateClientWaitEvidence(identityErr, runErr, failure.ExitObserved)", "failure.StderrComplete = pipeEvidenceComplete(stderr.overflow, errors.Is(runErr, exec.ErrWaitDelay))"} {
+		if !strings.Contains(s, term) {
+			t.Fatal("honesty guard detached from evidence path", term)
+		}
+	}
+}

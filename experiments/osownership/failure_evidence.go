@@ -190,3 +190,20 @@ func scanSanitizedStderr(b []byte, complete bool) (*ChildDiagnostic, string) {
 	}
 	return diagnostic, phase
 }
+
+func pipeEvidenceComplete(overflow, waitDelay bool) bool { return !overflow && !waitDelay }
+func validateClientWaitEvidence(identityErr, runErr error, observed bool) error {
+	if identityErr != nil || runErr != nil {
+		return errors.Join(identityErr, runErr)
+	}
+	if !observed {
+		return errors.New("client Wait unobserved")
+	}
+	return nil
+}
+func rejectClientLifecycleClaim(c ClientBootstrapEvidence) error {
+	if c.Lifecycle != nil {
+		return ErrConflict
+	}
+	return nil
+}
