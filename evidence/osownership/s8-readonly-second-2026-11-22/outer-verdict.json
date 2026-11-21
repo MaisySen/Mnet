@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "source": "eb53b4e8bf07b764b06b675d8b1154cb42a7059a",
+  "binary_sha256": "ae7b255a13321edb25aec8b93ef37b25d458c9170ef8bf461f54556d5fa031e8",
+  "outer_uid": 1000,
+  "wrapper": {
+    "pid": 1295,
+    "ppid": 1294,
+    "start_ticks": 9562,
+    "state": "R",
+    "exe": "/usr/bin/python3.10"
+  },
+  "outer_initial": {
+    "device": 7,
+    "inode": 4026531833
+  },
+  "invocations": 1,
+  "driver_pid": 1297,
+  "driver_initial": {
+    "pid": 1297,
+    "ppid": 1295,
+    "start_ticks": 9565,
+    "state": "R",
+    "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+  },
+  "last_before_reap": [],
+  "exit_code": 1,
+  "driver_reaped": true,
+  "elapsed_ms": 13.448971,
+  "outer_final": {
+    "device": 7,
+    "inode": 4026531833
+  },
+  "outer_unchanged": true,
+  "recorded_lifetimes": [
+    {
+      "pid": 1297,
+      "ppid": 1295,
+      "start_ticks": 9565,
+      "state": "R",
+      "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+    },
+    {
+      "pid": 1312,
+      "ppid": 1297,
+      "start_ticks": 9565,
+      "state": "S",
+      "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+    },
+    {
+      "pid": 1329,
+      "ppid": 1312,
+      "start_ticks": 9566,
+      "state": "S",
+      "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+    }
+  ],
+  "post_exact_lifetime_checks": [
+    {
+      "recorded": {
+        "pid": 1297,
+        "ppid": 1295,
+        "start_ticks": 9565,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      },
+      "current": null,
+      "same_lifetime": false
+    },
+    {
+      "recorded": {
+        "pid": 1312,
+        "ppid": 1297,
+        "start_ticks": 9565,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      },
+      "current": null,
+      "same_lifetime": false
+    },
+    {
+      "recorded": {
+        "pid": 1329,
+        "ppid": 1312,
+        "start_ticks": 9566,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      },
+      "current": null,
+      "same_lifetime": false
+    }
+  ],
+  "exact_lifetime_survivors": [],
+  "tree_sampling_note": "1ms owned-tree snapshots may miss short-lived children; bounded verdict identities supplement. No name cleanup or signals except timeout safeguard if it fired."
+}

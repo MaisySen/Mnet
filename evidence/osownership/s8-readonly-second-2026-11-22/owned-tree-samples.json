@@ -1,0 +1,196 @@
+[
+  {
+    "elapsed_ms": 0.628233,
+    "processes": [
+      {
+        "pid": 1297,
+        "ppid": 1295,
+        "start_ticks": 9565,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 2.228265,
+    "processes": [
+      {
+        "pid": 1297,
+        "ppid": 1295,
+        "start_ticks": 9565,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 3.421404,
+    "processes": [
+      {
+        "pid": 1297,
+        "ppid": 1295,
+        "start_ticks": 9565,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1312,
+        "ppid": 1297,
+        "start_ticks": 9565,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 4.797661,
+    "processes": [
+      {
+        "pid": 1297,
+        "ppid": 1295,
+        "start_ticks": 9565,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1312,
+        "ppid": 1297,
+        "start_ticks": 9565,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 6.136771,
+    "processes": [
+      {
+        "pid": 1297,
+        "ppid": 1295,
+        "start_ticks": 9565,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1312,
+        "ppid": 1297,
+        "start_ticks": 9565,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 7.299922,
+    "processes": [
+      {
+        "pid": 1297,
+        "ppid": 1295,
+        "start_ticks": 9565,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1312,
+        "ppid": 1297,
+        "start_ticks": 9565,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 8.511633,
+    "processes": [
+      {
+        "pid": 1297,
+        "ppid": 1295,
+        "start_ticks": 9565,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1312,
+        "ppid": 1297,
+        "start_ticks": 9565,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1329,
+        "ppid": 1312,
+        "start_ticks": 9566,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 9.705436,
+    "processes": [
+      {
+        "pid": 1297,
+        "ppid": 1295,
+        "start_ticks": 9565,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1312,
+        "ppid": 1297,
+        "start_ticks": 9565,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1329,
+        "ppid": 1312,
+        "start_ticks": 9566,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 10.889736,
+    "processes": [
+      {
+        "pid": 1297,
+        "ppid": 1295,
+        "start_ticks": 9565,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1312,
+        "ppid": 1297,
+        "start_ticks": 9565,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1329,
+        "ppid": 1312,
+        "start_ticks": 9566,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 12.242119,
+    "processes": [
+      {
+        "pid": 1297,
+        "ppid": 1295,
+        "start_ticks": 9565,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S8-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 13.376855,
+    "processes": []
+  }
+]
