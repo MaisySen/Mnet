@@ -281,6 +281,9 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 	}
 
 	currentLimits := controlclient.RegistrarLimits{Timeout: 3 * time.Second, MaxConcurrent: 1, MaxRequests: 8}
+	if os.Getenv("MNET_DEVELOPMENT_NETWORK_SESSION") == "1" {
+		currentLimits.MaxRequests = 16
+	}
 	if f.RelayTransport {
 		currentLimits.MaxConcurrent = 2
 		currentLimits.MaxRequests = 16

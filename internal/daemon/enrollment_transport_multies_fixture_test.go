@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"fintex.au/mnet/internal/controlclient"
 	"fmt"
+	"golang.zx2c4.com/wireguard/tun"
 	"golang.zx2c4.com/wireguard/tun/tuntest"
 	"net/netip"
 	"os"
@@ -20,6 +21,8 @@ import (
 	"testing"
 	"time"
 )
+
+var developmentTransportStart func(*testing.T, *Daemon, tun.Device) (func(), func() error)
 
 func testActualEnrolledNativeTransport(t *testing.T, d *Daemon, dir string, relayMode bool) {
 	t.Helper()
@@ -55,11 +58,18 @@ func testActualEnrolledNativeTransport(t *testing.T, d *Daemon, dir string, rela
 		}
 	}()
 	defer func() { close(stopDrain); <-drainDone }()
-	d.cfg.TUN = tun.TUN()
-	if err := d.startDevice(); err != nil {
-		t.Fatal("actual retained-key WireGuard device", err)
+	var refreshDevelopment func() error
+	if developmentTransportStart != nil && !relayMode && os.Getenv("MNET_DEVELOPMENT_NETWORK_SESSION") == "1" {
+		stop, refresh := developmentTransportStart(t, d, tun.TUN())
+		refreshDevelopment = refresh
+		defer stop()
+	} else {
+		d.cfg.TUN = tun.TUN()
+		if err := d.startDevice(); err != nil {
+			t.Fatal("actual retained-key WireGuard device", err)
+		}
+		defer d.stopDevice()
 	}
-	defer d.stopDevice()
 	if d.bind.Port() == 0 {
 		t.Fatal("real WireGuard UDP bind absent")
 	}
@@ -216,6 +226,11 @@ func testActualEnrolledNativeTransport(t *testing.T, d *Daemon, dir string, rela
 			}
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	if refreshDevelopment != nil {
+		if err := refreshDevelopment(); err != nil {
+			t.Fatal("explicit development map refresh", err)
+		}
 	}
 	revoked, err := d.nativeCurrentMap(context.Background(), limits)
 	if err != nil {

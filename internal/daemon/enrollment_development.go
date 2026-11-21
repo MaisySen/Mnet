@@ -44,6 +44,19 @@ type DevelopmentEnrollmentResult struct {
 // No tunnel, endpoint publication, relay, screen or input access is started.
 // An interrupted/failed attempt is retained. No retry/reset or key replacement.
 func RunDisposableEnrollment(ctx context.Context, root string, emit func(DevelopmentEnrollmentEvent) error) error {
+	return runDisposableEnrollment(ctx, root, emit, nil)
+}
+
+// RunDisposableEnrollmentNetwork adds only an explicitly supplied finite local
+// network session after the authoritative enrollment result. No OS device is created.
+func RunDisposableEnrollmentNetwork(ctx context.Context, root string, emit func(DevelopmentEnrollmentEvent) error, options DevelopmentNetworkOptions) error {
+	if !validDevelopmentNetworkOptions(&options) {
+		return errEnrollmentContextStale
+	}
+	return runDisposableEnrollment(ctx, root, emit, &options)
+}
+
+func runDisposableEnrollment(ctx context.Context, root string, emit func(DevelopmentEnrollmentEvent) error, network *DevelopmentNetworkOptions) error {
 	fail := errors.New("disposable setup unavailable; original local attempt is retained")
 	if ctx == nil || ctx.Err() != nil || emit == nil || !filepath.IsAbs(root) || filepath.Clean(root) != root {
 		return fail
@@ -100,6 +113,9 @@ func RunDisposableEnrollment(ctx context.Context, root string, emit func(Develop
 	}
 	var limits registrar.WorkflowLimits
 	if json.Unmarshal(rawLimits, &limits) != nil || !registrar.ValidWorkflowLimits(limits) || limits.Timeout > 3*time.Second {
+		return fail
+	}
+	if network != nil && network.Limits.Timeout != limits.Timeout {
 		return fail
 	}
 	stateDir := filepath.Join(root, "native")
@@ -177,11 +193,21 @@ func RunDisposableEnrollment(ctx context.Context, root string, emit func(Develop
 	if err := d.reconcileNativeFinalization(); err != nil {
 		return fail
 	}
-	current, err := d.nativeCurrentMap(bounded, controlclient.RegistrarLimits{Timeout: limits.Timeout, MaxConcurrent: 1, MaxRequests: 2})
+	currentLimits := controlclient.RegistrarLimits{Timeout: limits.Timeout, MaxConcurrent: 1, MaxRequests: 2}
+	if network != nil {
+		currentLimits = network.Limits
+	}
+	current, err := d.nativeCurrentMap(bounded, currentLimits)
 	if err != nil || !current.Self.Approved || d.dev != nil || d.cc != nil {
 		return fail
 	}
-	return emit(DevelopmentEnrollmentEvent{Stage: "joined-not-connected", Peers: len(current.Peers), Result: &DevelopmentEnrollmentResult{Receipt: proofResult, NativeOwnedKeyConfirmed: true, NativeProofStateUnchanged: true, NativeStateFinalized: true, NativeCurrentPeers: len(current.Peers)}})
+	if err := emit(DevelopmentEnrollmentEvent{Stage: "joined-not-connected", Peers: len(current.Peers), Result: &DevelopmentEnrollmentResult{Receipt: proofResult, NativeOwnedKeyConfirmed: true, NativeProofStateUnchanged: true, NativeStateFinalized: true, NativeCurrentPeers: len(current.Peers)}}); err != nil {
+		return err
+	}
+	if network != nil {
+		return d.runDevelopmentNetwork(bounded, current, network)
+	}
+	return nil
 }
 
 // A local configuration typo must fail before creating identity or a callback.

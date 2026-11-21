@@ -953,7 +953,12 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		nativeRecord := s.registrarNodeLocked(transportNativeID)
 		nativeRef := registrarCredentialReference{NodeID: nativeRecord.NodeID, NetworkID: nativeRecord.NetworkID, DevicePublicKey: nativeRecord.DevicePublicKey, Scope: nativeRecord.Scope, ReceiptID: nativeRecord.ReceiptID, ReceiptDigest: nativeRecord.ReceiptDigest, DescriptorDigest: nativeRecord.DescriptorDigest, TranscriptDigest: nativeRecord.Consumption.TranscriptDigest}
 		nativeMap, err := s.registrarCredentialMap(nativeRef, getPeerSecret())
-		if err != nil || len(nativeMap.Peers) != 1 {
+		leaseEnded := os.Getenv("MNET_DEVELOPMENT_NETWORK_SESSION") == "1" && os.Getenv("MNET_DEVELOPMENT_NETWORK_SESSION_CASE") == "expiry"
+		if leaseEnded {
+			if err == nil || time.Now().UnixMilli() < nativeOutcome.Receipt.Receipt.AccessExpiresAtMS {
+				t.Fatal("expired disposable session regained current map")
+			}
+		} else if err != nil || len(nativeMap.Peers) != 1 {
 			t.Fatal("native current map retained revoked transport peer", err)
 		}
 		if err := s.DeleteNode(nativeRecord.NodeID); err != nil {
@@ -1009,9 +1014,9 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		t.Fatal("delete erased history", err)
 	}
 	peerMap, err = s.registrarCredentialMap(peerRef, getPeerSecret())
-	if recoveryMode.Load() && !historyFinalize.Load() {
+	if recoveryMode.Load() && !historyFinalize.Load() || os.Getenv("MNET_DEVELOPMENT_NETWORK_SESSION") == "1" && os.Getenv("MNET_DEVELOPMENT_NETWORK_SESSION_CASE") == "expiry" {
 		if err == nil {
-			t.Fatal("history revived expired second credential")
+			t.Fatal("history/session revived expired second credential")
 		}
 	} else if err != nil || len(peerMap.Peers) != 0 {
 		t.Fatal("deleted peer remained in second map", err)
