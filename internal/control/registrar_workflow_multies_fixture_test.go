@@ -566,7 +566,9 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 
 	var transport *registrarTransportFixture
 	if transportMode.Load() {
-		if os.Getenv("MNET_DEVELOPMENT_NETWORK_TCP") == "1" {
+		if os.Getenv("MNET_DEVELOPMENT_ATTENDED_FIXTURE") == "1" {
+			transport = newRegistrarAttendedTransportFixture(t, key, current.Self.IPv4)
+		} else if os.Getenv("MNET_DEVELOPMENT_NETWORK_TCP") == "1" {
 			transport = newRegistrarTCPTransportFixture(t, key, current.Self.IPv4)
 		} else {
 			transport = newRegistrarTransportFixture(t, key)
@@ -617,7 +619,11 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	nativeTimeout := "40s"
-	nativeCmd := exec.Command(nativeBinary, "-test.run=^TestActualMultiesNativeWorkflowFixture$", "-test.v", "-test.timeout="+nativeTimeout)
+	nativeTest := "^TestActualMultiesNativeWorkflowFixture$"
+	if os.Getenv("MNET_DEVELOPMENT_ATTENDED_FIXTURE") == "1" {
+		nativeTest = "^TestActualMultiesAttendedNativeWorkflowFixture$"
+	}
+	nativeCmd := exec.Command(nativeBinary, "-test.run="+nativeTest, "-test.v", "-test.timeout="+nativeTimeout)
 
 	if installed := os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY"); installed != "" {
 		if earlyInstalled != nil {
@@ -645,6 +651,14 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 			nativeCmd.Wait()
 		}
 	}()
+	if os.Getenv("MNET_DEVELOPMENT_ATTENDED_FIXTURE") == "1" {
+		if input.Mode != "direct-transport" || transport == nil || transport.attended == nil || os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY") != "" {
+			t.Fatal("attended fixture requires explicit independent native test and direct enrolled transport")
+		}
+		runRegistrarAttendedFixture(t, s, transport, dir, nativeCmd, &nativeOutput, func() (*netmap.Map, error) { return s.registrarCredentialMap(ref, secret) }, r.NodeID, peerRecord.NodeID, getPeerSecret)
+		nativeWaited = true
+		return
+	}
 	deadline = time.Now().Add(35 * time.Second)
 	var transportNativeID string
 	var transportReceivedAtRevoke int

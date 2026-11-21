@@ -26,6 +26,7 @@ import (
 )
 
 type registrarTransportFixture struct {
+	attended       *registrarAttendedFixture
 	tcp            *registrarTCPFixture
 	tun            *tuntest.ChannelTUN
 	bind           *bind.Bind
@@ -90,6 +91,9 @@ func (f *registrarTransportFixture) tick(t *testing.T, m *netmap.Map, native net
 			t.Fatal(err)
 		}
 		f.lastKey = native.PubKey
+	}
+	if f.attended != nil {
+		return
 	}
 	if f.tcp != nil {
 		select {
