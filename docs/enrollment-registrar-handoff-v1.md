@@ -82,7 +82,15 @@ complete immutable consent tuple. Displayed tuple mismatch refuses.
 
 After approval the browser receives only a short-lived one-use authorization
 code through the loopback redirect. Native checks exact state, callback owner,
-origin and attempt, then exchanges code+verifier directly with Multies. Wrong,
+origin and attempt, then exchanges only its saved original public launch tuple
+plus code+verifier directly with Multies. Workspace/displayed mapping selected
+in the browser is not required in that request and extra fields refuse. The
+code-bound journal row supplies that selection and returns its exact binding
+with the ticket. Native must validate that result against independently trusted
+current operator configuration before any next protocol action; the response
+cannot select a new registrar origin or silently remap a saved intent. The
+allowed mapping versus final selection semantics need a native design before
+an adapter exists. Wrong,
 repeated, expired, canceled or scope-mismatched exchange refuses without
 consuming the intended owner's still-valid code. An enrollment-specific native
 result is not a node credential and is never accepted by List/view/input APIs.
@@ -143,7 +151,9 @@ Browser/native Multies surface:
 - `POST /api/mnet-enrollment-v1/authorizations`: displayed tuple guard and fresh
   session-bound pending decision.
 - `POST /api/mnet-enrollment-v1/authorizations/:id/decision`: one winner.
-- `POST /api/mnet-enrollment-v1/exchange`: exact code+PKCE+public tuple, cookie/
+- `POST /api/mnet-enrollment-v1/exchange`: exact code+PKCE+native launch tuple,
+  no browser-selected workspace/displayed fields; return only the validated
+  code-bound mapping with the ticket for native current-config validation. Cookie/
   Origin rejected; enrollment ticket only, never node authority.
 
 Registrar-to-Multies surface:
