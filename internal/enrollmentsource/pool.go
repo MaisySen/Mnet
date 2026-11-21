@@ -199,6 +199,34 @@ func canonicalBudgetOrigin(origin string) bool {
 		}
 		return true
 	}
+	// inet_aton-style resolver paths can treat dotted/all-numeric or 0x
+	// components as IPv4 aliases. Canonical IPs already returned above. Refuse
+	// any all-numeric/hex component tuple without resolving ordinary DNS names.
+	numericParts := true
+	for _, part := range strings.Split(host, ".") {
+		digits := part
+		base := byte(10)
+		if strings.HasPrefix(part, "0x") {
+			digits = part[2:]
+			base = 16
+		}
+		if digits == "" {
+			numericParts = false
+			break
+		}
+		for _, c := range digits {
+			if !(c >= '0' && c <= '9') && !(base == 16 && c >= 'a' && c <= 'f') {
+				numericParts = false
+				break
+			}
+		}
+		if !numericParts {
+			break
+		}
+	}
+	if numericParts {
+		return false
+	}
 	if strings.Contains(host, ":") || len(host) > 253 {
 		return false
 	}

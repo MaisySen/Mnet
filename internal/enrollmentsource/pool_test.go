@@ -297,7 +297,7 @@ func TestPoolRejectsSourceOriginBudgetAliasesWithoutRewritingIdentity(t *testing
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { t.Error("config validation performed HTTP") }))
 	defer server.Close()
 	entry := poolConfig(t, server, "fixture")
-	for _, origin := range []string{"https://SOURCE.test", "https://source.test:443", "https://source.test:0444", "https://source.test.", "https://source.test.:444", "https://[0:0:0:0:0:0:0:1]", "https://[::ffff:127.0.0.1]", "https://127.000.0.1", "https://2130706433", "https://é.test"} {
+	for _, origin := range []string{"https://SOURCE.test", "https://source.test:443", "https://source.test:0444", "https://source.test.", "https://source.test.:444", "https://[0:0:0:0:0:0:0:1]", "https://[::ffff:127.0.0.1]", "https://127.000.0.1", "https://2130706433", "https://0x7f.0.0.1", "https://1.2.3.0x4", "https://0x7f000001", "https://0177.0.0.1", "https://0X7F.0.0.1", "https://é.test"} {
 		t.Run(origin, func(t *testing.T) {
 			copyEntry := entry
 			copyEntry.Scope.SourceOrigin = origin
