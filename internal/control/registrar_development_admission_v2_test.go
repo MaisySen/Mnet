@@ -317,9 +317,28 @@ func admissionV2FaultStages(t *testing.T) {
 				}
 				real := d.store.fs
 				publication := 0
+				started := time.Now()
+				var stageElapsed []time.Duration
+				defer func() {
+					phase := "none"
+					var ageMS, remainingMS int64
+					if l := d.store.data.Admission; l != nil {
+						if entry := l.Entries[f.request.Launch.AttemptID]; entry != nil {
+							phase = entry.Phase
+							if entry.CheckedAtMS > 0 {
+								ageMS = time.Now().UnixMilli() - entry.CheckedAtMS
+							}
+							if entry.ChallengeExpiresAtMS > 0 {
+								remainingMS = entry.ChallengeExpiresAtMS - time.Now().UnixMilli()
+							}
+						}
+					}
+					t.Logf("fault-diagnostics target=%d boundary=%s reached=%d elapsed=%s publications=%v source_calls=%d proof_factory_calls=%d phase=%s observation_age_ms=%d original_challenge_remaining_ms=%d failed=%v", target, fault, publication, time.Since(started), stageElapsed, calls-beforeCalls, allocations, phase, ageMS, remainingMS, t.Failed())
+				}()
 				var previous []byte
 				d.store.fs.createTemp = func(dir string) (storeTemp, error) {
 					publication++
+					stageElapsed = append(stageElapsed, time.Since(started))
 					if publication == target {
 						previous, _ = os.ReadFile(d.store.path)
 						if fault == "create-temp" {
@@ -665,5 +684,21 @@ func admissionV2CommittedCorrelation(t *testing.T, d *DisposableRegistrar) {
 	d.store.data.Admission = &restored
 	if e := d.store.admissionPolicy.(*developmentAdmissionV2).validate(); e != nil {
 		t.Fatal(e)
+	}
+}
+
+// Explicit test-only entry keeps the real TLS/source/proof/publication fault
+// matrix intact while permitting isolated orchestration and bounded diagnostics.
+func TestAdmissionV2FaultMatrixOnly(t *testing.T) {
+	if os.Getenv("MNET_TEST_V2_FAULT_MATRIX_ONLY") == "1" {
+		admissionV2FaultStages(t)
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestAdmissionV2FaultMatrixOnly$", "-test.v", "-test.timeout=60s")
+	cmd.Env = append(os.Environ(), "MNET_TEST_V2_FAULT_MATRIX_ONLY=1")
+	out, e := cmd.CombinedOutput()
+	t.Logf("isolated real-stage child output:\n%s", out)
+	if e != nil {
+		t.Fatalf("isolated fault matrix child: %v", e)
 	}
 }
