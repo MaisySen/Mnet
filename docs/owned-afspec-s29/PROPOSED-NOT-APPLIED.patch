@@ -1,0 +1,23 @@
+--- a/experiments/osownership/policy_inventory.go
++++ b/experiments/osownership/policy_inventory.go
+@@ -85,6 +85,7 @@
+ 		if underlay, e := attrUint(l.Raw, 5, false); e != nil || underlay != 0 {
+ 			return nil, errors.New("baseline has underlay linkage")
+ 		}
++		if e:=validateOwnedAFSpecV612Proposal(l,s);e!=nil{return out,e}
+ 		kind, e := linkKind(l)
+ 		if e != nil {
+ 			return nil, e
+@@ -170,10 +171,11 @@
+ 	if len(remaining) == 1 {
+ 		l := remaining[0]
+ 		for k := range l.Raw {
+-			if k != 3 && k != 4 && k != 18 && k != 20 {
++			if k != 3 && k != 4 && k != 18 && k != 20 && k != 26 {
+ 				return out, fmt.Errorf("unreviewed owned link attr %d", k)
+ 			}
+ 		}
++		if e:=validateOwnedAFSpecV612Proposal(l,s);e!=nil{return out,e}
+ 		kind, e := linkKind(l)
+ 		if e != nil {
+ 			return out, e
