@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	config "fintex.au/mnet/internal/enrollmentconfig"
 	pending "fintex.au/mnet/internal/enrollmentpending"
@@ -21,12 +22,13 @@ import (
 // DevelopmentRecoveryInspection is historical local data, not a live map or
 // recovered authority. Inspection never contacts a service or starts a device.
 type DevelopmentRecoveryInspection struct {
-	Phase              string `json:"phase"`
-	Recovery           string `json:"recovery"`
-	BookkeepingPending bool   `json:"bookkeepingPending"`
-	JoiningSaved       bool   `json:"joiningSaved"`
-	NetworkVerified    bool   `json:"networkVerified"`
-	OriginalLeaseEnded bool   `json:"originalLeaseEnded"`
+	LocalConnectionPhase string `json:"localConnectionPhase,omitempty"`
+	Phase                string `json:"phase"`
+	Recovery             string `json:"recovery"`
+	BookkeepingPending   bool   `json:"bookkeepingPending"`
+	JoiningSaved         bool   `json:"joiningSaved"`
+	NetworkVerified      bool   `json:"networkVerified"`
+	OriginalLeaseEnded   bool   `json:"originalLeaseEnded"`
 }
 
 type developmentInspectionBinding struct{ state, policy, journal [32]byte }
@@ -151,6 +153,25 @@ func inspectDisposableEnrollment(root string, binding *developmentInspectionBind
 			out.Recovery = "saved-bookkeeping-pending"
 		}
 		out.OriginalLeaseEnded = time.Now().UnixMilli() >= state.native.Document.Receipt.AccessExpiresAtMS
+	}
+	// Optional new-workflow ledger is historical local accounting, never quota
+	// from the receipt and never a live-network claim. Missing means old root.
+	if connectionRaw, e := readDisposableEnrollmentFile(filepath.Join(dir, developmentConnectionRecordName), 4096); e == nil {
+		if !out.JoiningSaved || out.BookkeepingPending {
+			return empty, errEnrollmentContextStale
+		}
+		var record developmentConnectionRecord
+		if json.Unmarshal(connectionRaw, &record) != nil {
+			return empty, errEnrollmentContextStale
+		}
+		canonical, _ := json.Marshal(record)
+		expected := developmentConnectionRecord{Version: 1, Kind: developmentConnectionLimitKind, Phase: record.Phase, State: hex.EncodeToString(sha256Sum(raw)), Policy: hex.EncodeToString(sha256Sum(nativePolicy)), Journal: hex.EncodeToString(sha256Sum(pendingRaw)), Limits: hex.EncodeToString(sha256Sum(limitsRaw)), Total: 16, Setup: 2, Connection: record.Connection}
+		if !bytes.Equal(canonical, connectionRaw) || record != expected || !developmentConnectionPhaseValid(record) {
+			return empty, errEnrollmentContextStale
+		}
+		out.LocalConnectionPhase = record.Phase
+	} else if _, statErr := os.Lstat(filepath.Join(dir, developmentConnectionRecordName)); !os.IsNotExist(statErr) {
+		return empty, errEnrollmentContextStale
 	}
 	if owner.Check() != nil || journalOwner.Check() != nil {
 		return empty, errEnrollmentContextStale

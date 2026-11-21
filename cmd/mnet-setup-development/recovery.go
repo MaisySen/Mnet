@@ -32,6 +32,14 @@ func writeDevelopmentRecoveryPage(root string, i daemon.DevelopmentRecoveryInspe
 		title = "Original bookkeeping completed. Not connected."
 		body = "Only completion bookkeeping for the exact already-saved joining document was finished. The original State, key, receipt and expiry were unchanged. No service was contacted and no network was verified or started."
 	}
+	switch i.LocalConnectionPhase {
+	case "setup-reserved":
+		body += " The local development setup slice was reserved but no ready result was confirmed. Inspection only, no retry or connection is allowed."
+	case "ready":
+		body += " This new-setup-only local development workflow has one unspent connection slice. Limits are total 16, setup reserves 2, later one-shot 14, not receipt quota. Explicit --connect-existing-once is required and only works within the unchanged original interval."
+	case "connection-reserved":
+		body += " The entire 14-request local development connection slice was spent. This does not prove any network started or stopped. No retry, refund or crash resume is allowed."
+	}
 	if i.OriginalLeaseEnded {
 		body += " The original approved interval has ended. There are no network controls."
 	}

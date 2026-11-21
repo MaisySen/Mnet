@@ -29,7 +29,13 @@ func main() {
 	recover := flag.Bool("recover-retained", false, "explicit bounded same-attempt authenticated history/prepared recovery, never network activation")
 	dashboard := flag.Bool("disposable-network-dashboard", false, "explicit finite in-memory network with local capability-protected status and Stop; no screen/input")
 	networkTCP := flag.Bool("disposable-network-tcp", false, "explicit finite in-memory loopback-only network TCP proof after joining; no OS device or screen/input")
+	saveConnection := flag.Bool("save-one-shot-connection", false, "NEW disposable setup only: local workflow total 16, setup 2, later one-shot 14, original expiry unchanged")
+	connectExisting := flag.Bool("connect-existing-once", false, "explicit finite in-memory TCP/dashboard from eligible new save-only root; consumes entire local14 slice, no retry/refund")
 	flag.Parse()
+	if (*saveConnection && (*connectExisting || *dashboard || *networkTCP || *inspect || *recover)) || (*connectExisting && (*dashboard || *networkTCP || *inspect || *recover)) {
+		fmt.Fprintln(os.Stderr, "choose exactly one explicit disposable workflow")
+		os.Exit(2)
+	}
 	if flag.NArg() != 0 || *root == "" || (*dashboard && *networkTCP) || ((*inspect || *recover) && (*dashboard || *networkTCP)) || (*inspect && *recover) {
 		fmt.Fprintln(os.Stderr, "an explicit disposable setup root is required")
 		os.Exit(2)
@@ -81,6 +87,9 @@ func main() {
 			title = "Joining saved. Not connected."
 			body = fmt.Sprintf("Mnet verified this computer and saved its joining result. The current map checked during setup contained %d live peers. This is a historical setup result, not a live connection indicator. No tunnel, screen, keyboard or mouse access was started.", peers)
 		}
+		if joined && *saveConnection {
+			body += " This new-setup-only workflow has one unspent finite connection slice. Before the original interval ends, explicitly run the same command with --connect-existing-once instead of --save-one-shot-connection. Local development request limits are total 16, setup reserves 2, later connection reserves 14. These are not receipt quota. Stop, failure or crash never refunds a spent slice."
+		}
 		file, err := os.OpenFile(filepath.Join(*root, "setup-result.html"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 		if err != nil {
 			return err
@@ -100,6 +109,12 @@ func main() {
 		return nil
 	}
 	emit := func(event daemon.DevelopmentEnrollmentEvent) error {
+		if event.Stage == "local-development-one-shot-ready-not-connected" {
+			fmt.Fprintln(os.Stderr, "Joining is not connected. One local development connection slice remains: total 16, setup reserves 2, one-shot 14. These are local workflow limits, not receipt quota. Original expiry unchanged. Explicit --connect-existing-once required.")
+		}
+		if event.Stage == "local-development-connection-slice-spent" {
+			fmt.Fprintln(os.Stderr, "Entire 14-request local development slice spent. No retry/refund/resume, including after crash. Current network is not yet verified.")
+		}
 		if event.Stage == "waiting-for-browser" {
 			ownedAttempt = true
 		}
@@ -136,7 +151,11 @@ func main() {
 		return nil
 	}
 	var err error
-	if *dashboard {
+	if *connectExisting {
+		err = runDisposableNetworkTCPEntry(ctx, *root, *open, emit, true, true)
+	} else if *saveConnection {
+		err = daemon.RunDisposableEnrollmentSaveConnection(ctx, *root, emit)
+	} else if *dashboard {
 		err = runDisposableNetworkTCPMode(ctx, *root, *open, emit, true)
 	} else if *networkTCP {
 		err = runDisposableNetworkTCP(ctx, *root, *open, emit)

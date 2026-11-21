@@ -62,6 +62,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	var workflowSubmits atomic.Int32
 	var historyCalls atomic.Int32
 	var bookkeepingHTTP atomic.Int32
+	var connectionSetupHTTP, connectionActiveHTTP, connectionForbiddenHTTP atomic.Int32
 	var mapResponseRefusals atomic.Int32
 	var bridgeMu sync.Mutex
 	getPeerSecret := func() string { bridgeMu.Lock(); defer bridgeMu.Unlock(); return peerSecret }
@@ -86,6 +87,14 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		}
 		g.ServeHTTP(w, r)
 	}))
+	if os.Getenv("MNET_CONNECT_EXISTING_FIXTURE") == "1" {
+		t.Cleanup(func() {
+			t.Logf("LOCAL WORKFLOW OBSERVED setup=%d/2 connection=%d/14 forbidden=%d", connectionSetupHTTP.Load(), connectionActiveHTTP.Load(), connectionForbiddenHTTP.Load())
+			if connectionSetupHTTP.Load() != 1 || connectionActiveHTTP.Load() > 14 || connectionForbiddenHTTP.Load() != 0 {
+				t.Error("local workflow request reservation violated")
+			}
+		})
+	}
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		if r.URL.Path == registrar.HistoryPath {
@@ -139,6 +148,32 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 				w.WriteHeader(400)
 				return
 			}
+			if os.Getenv("MNET_CONNECT_EXISTING_FIXTURE") == "1" {
+				root := filepath.Join(dir, "installed-setup")
+				var image struct {
+					PublicKey string `json:"public_key"`
+				}
+				state, _ := os.ReadFile(filepath.Join(root, "native", "state.json"))
+				json.Unmarshal(state, &image)
+				if image.PublicKey != "" && image.PublicKey == req.Receipt.DevicePublicKey {
+					if _, e := os.Stat(filepath.Join(root, "no-http-window")); e == nil {
+						connectionForbiddenHTTP.Add(1)
+					}
+					var ledger struct {
+						Phase string `json:"phase"`
+					}
+					raw, _ := os.ReadFile(filepath.Join(root, "native", "local-development-connection-v1.json"))
+					json.Unmarshal(raw, &ledger)
+					switch ledger.Phase {
+					case "setup-reserved":
+						connectionSetupHTTP.Add(1)
+					case "connection-reserved":
+						connectionActiveHTTP.Add(1)
+					default:
+						connectionForbiddenHTTP.Add(1)
+					}
+				}
+			}
 			s.mu.Lock()
 			record := s.registrarNodeLocked(req.Receipt.NodeID)
 			if record == nil || record.ReceiptID != req.Receipt.ReceiptID || record.ReceiptDigest != req.ReceiptDigest {
@@ -164,6 +199,9 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 				return
 			}
 			m, err := s.registrarCredentialMap(ref, nativeSecret)
+			if os.Getenv("MNET_CONNECT_EXISTING_FIXTURE") == "1" {
+				t.Logf("LOCAL WORKFLOW map result err=%v originalRemainingMS=%d", err, req.Receipt.AccessExpiresAtMS-time.Now().UnixMilli())
+			}
 			if err != nil {
 				w.WriteHeader(403)
 				return
@@ -659,6 +697,35 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	var postRemovalVerified bool
 	for {
 		setupCase := os.Getenv("MNET_DEVELOPMENT_SETUP_CASE")
+		if os.Getenv("MNET_CONNECT_EXISTING_CRASH") == "1" {
+			if _, e := os.Stat(filepath.Join(dir, "installed-output-ended")); e == nil {
+				if e := nativeCmd.Wait(); e != nil {
+					t.Fatal("actual crash orchestration", nativeOutput.String(), e)
+				}
+				nativeWaited = true
+				root := filepath.Join(dir, "installed-setup")
+				if _, e := os.Stat(filepath.Join(root, "crash-inspected")); e != nil {
+					t.Fatal("crash did not reach original API reservation", nativeOutput.String())
+				}
+				if connectionActiveHTTP.Load() != 0 || connectionForbiddenHTTP.Load() != 0 {
+					t.Fatal("HTTP before killed reserved process/retry")
+				}
+				if _, e := os.Stat(filepath.Join(dir, "native-transport-ready")); !os.IsNotExist(e) {
+					t.Fatal("crash fixture falsely verified network")
+				}
+				transport.tcp.Close()
+				select {
+				case <-transport.tcp.exited:
+				case <-time.After(time.Second):
+					t.Fatal("counterpart did not join")
+				}
+				outcome, _ := json.Marshal(map[string]any{"developmentInstalled": true, "connectionReservedCrash": true, "networkVerified": false, "networkStarted": false, "inputAuthorized": false})
+				if e := writeRegistrarFixtureAtomic(dir, "outcome.json", outcome); e != nil {
+					t.Fatal(e)
+				}
+				return
+			}
+		}
 		if setupCase == "network-tcp-cancel" || setupCase == "network-tcp-expiry" {
 			if _, err := os.Stat(filepath.Join(dir, "native-transport-ready")); err == nil && setupCase == "network-tcp-cancel" && os.Getenv("MNET_DEVELOPMENT_DASHBOARD") != "1" {
 				_ = nativeCmd.Process.Signal(os.Interrupt)
@@ -673,6 +740,24 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 					t.Fatalf("network stopped before actual TCP proof: %s", nativeOutput.String())
 				}
 				root := filepath.Join(dir, "installed-setup")
+				if os.Getenv("MNET_CONNECT_EXISTING_FIXTURE") == "1" {
+					recordPath := filepath.Join(root, "native", "local-development-connection-v1.json")
+					before, e := os.ReadFile(recordPath)
+					if e != nil {
+						t.Fatal(e)
+					}
+					repeat := exec.Command(os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY"), "--disposable-root", root, "--connect-existing-once")
+					if e := repeat.Run(); e == nil {
+						t.Fatal("spent slice reused")
+					}
+					after, e := os.ReadFile(recordPath)
+					if e != nil || !bytes.Equal(before, after) {
+						t.Fatal("terminal slice changed/refunded")
+					}
+					if e := exec.Command("sha256sum", "-c", filepath.Join(root, "connection-original.sha256")).Run(); e != nil {
+						t.Fatal("original authority changed")
+					}
+				}
 				state, err := os.ReadFile(filepath.Join(root, "native", "state.json"))
 				if err != nil {
 					t.Fatal(err)
@@ -1231,6 +1316,38 @@ func newInstalledDevelopmentFixtureCmd(t *testing.T, dir, installed string, poli
 	if os.Getenv("MNET_DEVELOPMENT_SETUP_BROWSER") == "1" {
 		nativeCmd.Args = append(nativeCmd.Args, "--open-browser")
 	}
+	if os.Getenv("MNET_CONNECT_EXISTING_FIXTURE") == "1" {
+		// Real separate setup process must EXIT before explicit second process.
+		// Fixed script, positional arguments only. No product startup hook.
+		nativeCmd = exec.Command("bash", "-c", `set -e
+"$1" --disposable-root "$2" --save-one-shot-connection --open-browser
+ledger="$2/native/local-development-connection-v1.json"
+sha256sum "$2/native/state.json" "$2/native/enrollment-policy-v2.json" "$2/native/enrollment-pending/enrollment-pending-v1.json" "$2/workflow-limits.json" > "$2/connection-original.sha256"
+# Old-root behavior: hide ONLY the optional new ledger, never State/journal.
+mv "$ledger" "$2/saved-ledger"
+touch "$2/no-http-window"
+if "$1" --disposable-root "$2" --connect-existing-once; then exit 81; fi
+test ! -e "$ledger"
+mv "$2/saved-ledger" "$ledger"
+sha256sum -c "$2/connection-original.sha256"
+rm "$2/no-http-window"
+if [ "${MNET_CONNECT_EXISTING_CRASH:-}" = 1 ];then
+ touch "$2/no-http-window"
+ MNET_TEST_ACTUAL_CONNECTION_ROOT="$2" "$MNET_NATIVE_WORKFLOW_BINARY" -test.run=^TestActualDevelopmentConnectionReservedCrash$ &
+ child=$!
+ for i in $(seq 1 200);do test ! -e "$2/actual-reserved-before-http" || break;sleep .01;done
+ test -e "$2/actual-reserved-before-http"
+ kill -KILL "$child"
+ if wait "$child";then exit 82;fi
+ if "$1" --disposable-root "$2" --connect-existing-once;then exit 83;fi
+ sha256sum -c "$2/connection-original.sha256"
+ "$1" --disposable-root "$2" --inspect-retained --open-browser
+ touch "$2/crash-inspected"
+ exit 0
+fi
+exec "$1" --disposable-root "$2" --connect-existing-once --open-browser
+`, "disposable-save-then-connect", installed, root)
+	}
 	pipe, err := nativeCmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -1257,6 +1374,16 @@ func newInstalledDevelopmentFixtureCmd(t *testing.T, dir, installed string, poli
 				}
 			}
 			networkCase := strings.HasPrefix(os.Getenv("MNET_DEVELOPMENT_SETUP_CASE"), "network-tcp")
+			if os.Getenv("MNET_CONNECT_EXISTING_FIXTURE") == "1" && event.Stage == "local-development-connection-slice-spent" {
+				// Original process holds native ownership before publishing this event.
+				extra := exec.Command(installed, "--disposable-root", root, "--connect-existing-once")
+				if e := extra.Run(); e == nil {
+					t.Error("concurrent second public caller admitted")
+				}
+				if e := exec.Command("sha256sum", "-c", filepath.Join(root, "connection-original.sha256")).Run(); e != nil {
+					t.Error("original authority mutated", e)
+				}
+			}
 			if event.Stage == "joined-not-connected" && len(event.Result) > 0 {
 				savedResult = append(json.RawMessage(nil), event.Result...)
 				if !networkCase {

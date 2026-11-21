@@ -27,6 +27,9 @@ func runDisposableNetworkTCP(ctx context.Context, root string, open bool, emit f
 	return runDisposableNetworkTCPMode(ctx, root, open, emit, false)
 }
 func runDisposableNetworkTCPMode(ctx context.Context, root string, open bool, emit func(daemon.DevelopmentEnrollmentEvent) error, dashboard bool) error {
+	return runDisposableNetworkTCPEntry(ctx, root, open, emit, dashboard, false)
+}
+func runDisposableNetworkTCPEntry(ctx context.Context, root string, open bool, emit func(daemon.DevelopmentEnrollmentEvent) error, dashboard, existing bool) error {
 	var display *developmentDashboard
 	var network *proofnet.Net
 	verified, retired := false, false
@@ -141,7 +144,13 @@ func runDisposableNetworkTCPMode(ctx context.Context, root string, open bool, em
 			}
 		}
 	}}
-	runErr := daemon.RunDisposableEnrollmentNetwork(ctx, root, emit, options)
+	var runErr error
+	if existing {
+		options.Limits.MaxRequests = 14
+		runErr = daemon.ConnectDisposableEnrollment(ctx, root, emit, options)
+	} else {
+		runErr = daemon.RunDisposableEnrollmentNetwork(ctx, root, emit, options)
+	}
 	if display != nil {
 		reason := "This finite network run stopped and its owners joined. Joining remains saved."
 		if retirementReason == "peer-expired" {

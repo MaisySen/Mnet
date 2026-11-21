@@ -57,7 +57,14 @@ func RunDisposableEnrollmentNetwork(ctx context.Context, root string, emit func(
 }
 
 func runDisposableEnrollment(ctx context.Context, root string, emit func(DevelopmentEnrollmentEvent) error, network *DevelopmentNetworkOptions) error {
+	return runDisposableEnrollmentMode(ctx, root, emit, network, false)
+}
+
+func runDisposableEnrollmentMode(ctx context.Context, root string, emit func(DevelopmentEnrollmentEvent) error, network *DevelopmentNetworkOptions, saveConnection bool) error {
 	fail := errors.New("disposable setup unavailable; original local attempt is retained")
+	if saveConnection && network != nil {
+		return fail
+	}
 	if ctx == nil || ctx.Err() != nil || emit == nil || !filepath.IsAbs(root) || filepath.Clean(root) != root {
 		return fail
 	}
@@ -197,9 +204,24 @@ func runDisposableEnrollment(ctx context.Context, root string, emit func(Develop
 	if network != nil {
 		currentLimits = network.Limits
 	}
+	var connection *developmentConnectionOwner
+	if saveConnection {
+		connection, err = newDevelopmentConnectionRecord(d, root)
+		if err != nil {
+			return err
+		}
+	}
 	current, err := d.nativeCurrentMap(bounded, currentLimits)
 	if err != nil || !current.Self.Approved || d.dev != nil || d.cc != nil {
 		return fail
+	}
+	if connection != nil {
+		if err := connection.transition("setup-reserved", "ready"); err != nil {
+			return err
+		}
+		if err := emit(DevelopmentEnrollmentEvent{Stage: "local-development-one-shot-ready-not-connected"}); err != nil {
+			return err
+		}
 	}
 	if err := emit(DevelopmentEnrollmentEvent{Stage: "joined-not-connected", Peers: len(current.Peers), Result: &DevelopmentEnrollmentResult{Receipt: proofResult, NativeOwnedKeyConfirmed: true, NativeProofStateUnchanged: true, NativeStateFinalized: true, NativeCurrentPeers: len(current.Peers)}}); err != nil {
 		return err
