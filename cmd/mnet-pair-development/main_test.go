@@ -178,3 +178,73 @@ func TestOutcomeClassificationDoesNotHideSafetyFailure(t *testing.T) {
 		}
 	}
 }
+func testEmitter() (*emitter, *bytes.Buffer) {
+	b := &bytes.Buffer{}
+	return &emitter{enc: json.NewEncoder(b)}, b
+}
+func TestNaturalRetirementDoesNotForceCloseToPass(t *testing.T) {
+	out, _ := testEmitter()
+	scope := make(chan struct{})
+	joined := false
+	e := observeNaturalRetirement(nil, scope, time.Now().Add(-time.Second), out, func() { joined = true; close(scope) })
+	if e == nil || inconclusive(e) {
+		t.Fatal("missing natural retirement hidden")
+	}
+	if joined {
+		t.Fatal("forced Close manufactured retirement")
+	}
+}
+func TestNaturalRetirementUsesPeerExpiryNotEarlierExpiry(t *testing.T) {
+	out, _ := testEmitter()
+	earlier := time.Now().Add(-time.Second)
+	peer := time.Now().Add(-400 * time.Millisecond)
+	scope := make(chan struct{})
+	go func() { time.Sleep(10 * time.Millisecond); close(scope) }()
+	joined := false
+	if e := observeNaturalRetirement(nil, scope, peer, out, func() { joined = true }); e != nil || !joined {
+		t.Fatalf("actual later peer deadline failed: %v", e)
+	}
+	scope2 := make(chan struct{})
+	if e := observeNaturalRetirement(nil, scope2, earlier, out, func() { t.Fatal("join before natural") }); e == nil {
+		t.Fatal("swapped earlier expiry passed")
+	}
+}
+func TestOuterContextCannotStandInForScopeRetirement(t *testing.T) {
+	out, log := testEmitter()
+	outer := make(chan struct{})
+	close(outer)
+	scope := make(chan struct{})
+	if e := observeNaturalRetirement(outer, scope, time.Now().Add(-time.Second), out, func() { t.Fatal("cleanup before natural") }); e == nil || inconclusive(e) {
+		t.Fatal("outer cancellation hid missing scope retirement")
+	}
+	close(scope)
+	if e := observeNaturalRetirement(outer, scope, time.Now(), out, func() {}); e != nil {
+		t.Fatal(e)
+	}
+	if !strings.Contains(log.String(), `"natural_before_cleanup":true`) || !strings.Contains(log.String(), `"outer_context_ended":true`) {
+		t.Fatal("signal provenance missing")
+	}
+}
+func TestExtraAcceptClassificationBoundaries(t *testing.T) {
+	e := time.Now()
+	for _, at := range []time.Time{e, e.Add(50 * time.Millisecond), e.Add(500 * time.Millisecond)} {
+		if !inconclusive(classifyExtraAccept(at, e)) {
+			t.Fatal("declared lag marked safety failure")
+		}
+	}
+	for _, at := range []time.Time{e.Add(-time.Nanosecond), e.Add(500*time.Millisecond + time.Nanosecond)} {
+		if inconclusive(classifyExtraAccept(at, e)) {
+			t.Fatal("unexpected accept hidden as timing")
+		}
+	}
+}
+func TestRetirementPinIsPeerNotSelfOrEarlier(t *testing.T) {
+	a := time.UnixMilli(1000)
+	b := time.UnixMilli(1800)
+	if !peerRetirementExpiry(daemon.DevelopmentPairSnapshot{SelfExpiry: a, PeerExpiry: b}).Equal(b) {
+		t.Fatal("A retirement incorrectly pinned to self/earlier expiry")
+	}
+	if !peerRetirementExpiry(daemon.DevelopmentPairSnapshot{SelfExpiry: b, PeerExpiry: a}).Equal(a) {
+		t.Fatal("B retirement incorrectly pinned to self/later expiry")
+	}
+}

@@ -133,3 +133,33 @@ and every native stage timestamp plus spawn-to-stage interval. Race compile and
 unit tests are separate evidence. A commits first and has the earlier expiry;
 receipt ordering is asserted. B-earlier behavior is NOT covered. Required
 Go1.26.11 remains unproven, and no app-graph typecheck is claimed.
+
+## Natural-retirement correction
+
+The final owner check never calls Close to manufacture its own success. It first
+waits for the scope's natural Done signal and only then calls Close to join. If
+that signal is absent at the actual PEER expiry+500ms, it is a hard failure,
+including when an outer context has ended. An earlier probe timeout/late window
+cannot mask that missing natural-retirement failure. Deferred cleanup still runs
+on failure but is not counted as proof. The log distinguishes the first observed
+scope/outer-context signal and whether the outer context has also ended. It does
+not claim an exact causal ordering for simultaneous cancellation.
+
+A's peer is B, so A's final scope-observation bound is B's later expiry+500ms;
+B's peer is A, so B's bound is A's earlier expiry+500ms. The same original expiry
+values come from the authenticated snapshot, never a new lease. Parent/self
+context cancellation can also naturally cancel a scope, so observing scope Done
+with outer_context_ended=true is not evidence of independent peer-deadline
+retirement. In particular A's own original receipt ends at E and can cancel it
+before its B-peer deadline. No time here extends that receipt or enables service.
+The probes still run once at E+50ms with final E+500ms I/O deadline. A failed dial
+can reflect B listener closure, local A closure, or both; it cannot isolate either
+side or tunnel enforcement. B's old reader has deadline E even independently of
+tunnel state. A valid post-expiry acknowledgement remains a hard failure.
+
+Third accept classification is identical on both ends: before E or after
+E+500ms is a hard failure; within inclusive [E,E+500ms] it is logged as closure
+lag, immediately closed without any application read/service, and inconclusive.
+The retained old reader flags application bytes observed after E as a hard
+failure, checked before an inconclusive accept result. No second dial/accept
+attempt is introduced. Natural retirement is still required even on lag paths.

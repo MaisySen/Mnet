@@ -353,9 +353,9 @@ func runPair(ctx context.Context, root string, c config, out *emitter, ready io.
 			cancel()
 		}
 		if c.Role == "listen" {
-			e = runListener(ctx, scope, s, network, c, pin, out)
+			e = runListener(ctx, scope, s, network, c, pin, peerRetirementExpiry(snapshot), out)
 		} else {
-			e = runDialer(ctx, scope, s, network, c, out, ready)
+			e = runDialer(ctx, scope, s, network, c, peerRetirementExpiry(snapshot), out, ready)
 		}
 		if e == nil {
 			finished = true
@@ -374,7 +374,7 @@ func runPair(ctx context.Context, root string, c config, out *emitter, ready io.
 	}
 	return out.stage("pair-finished", map[string]any{"owners_joined": true, "slice_refunded": false})
 }
-func runListener(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *daemon.DevelopmentNetworkSession, n *proofnet.Net, c config, pin daemon.SessionPeer, out *emitter) error {
+func runListener(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *daemon.DevelopmentNetworkSession, n *proofnet.Net, c config, pin daemon.SessionPeer, peerExpiry time.Time, out *emitter) error {
 	rawListener, e := n.ListenTCPAddrPort(netip.AddrPortFrom(netip.MustParseAddr(c.SelfIP), pairPort))
 	if e != nil {
 		return e
@@ -398,6 +398,7 @@ func runListener(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *dae
 	joined := make(chan struct{})
 	var oldDone chan struct{}
 	var oldProofs atomic.Int32
+	var oldSafety atomic.Bool
 	defer func() {
 		scope.Close()
 		<-joined
@@ -470,7 +471,11 @@ func runListener(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *dae
 				go func() {
 					defer close(oldDone)
 					for {
-						if e := answer(conn, time.UnixMilli(c.EarlierExpiryMS)); e != nil {
+						if e := answerRetained(conn, time.UnixMilli(c.EarlierExpiryMS)); e != nil {
+							if errors.Is(e, errPostExpiryBytes) {
+								oldSafety.Store(true)
+								out.stage("pair-application-after-expiry", map[string]any{"classification": "failed-safety-or-contract"})
+							}
 							return
 						}
 						count := oldProofs.Add(1)
@@ -485,7 +490,13 @@ func runListener(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *dae
 		extra, err := l.Accept()
 		if err == nil {
 			extra.Close()
-			r.err = errors.New("unexpected extra connection")
+			r.err = classifyExtraAccept(time.Now(), time.UnixMilli(c.EarlierExpiryMS))
+			out.stage("pair-extra-accept-observed", map[string]any{"observed_lag_ms": time.Now().UnixMilli() - c.EarlierExpiryMS, "application_serviced": false, "classification": func() string {
+				if inconclusive(r.err) {
+					return "inconclusive"
+				}
+				return "failed-safety-or-contract"
+			}()})
 			return
 		}
 		if scope.Context().Err() == nil {
@@ -494,22 +505,22 @@ func runListener(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *dae
 		}
 		out.stage("pair-accept-loop-joined", nil)
 	}()
-	select {
-	case <-ctx.Done():
-	case <-scope.Context().Done():
+
+	if e = observeNaturalRetirement(ctx.Done(), scope.Context().Done(), peerExpiry, out, func() { scope.Close() }); e != nil {
+		return e
 	}
-	if time.Now().UnixMilli() < c.EarlierExpiryMS {
-		return fmt.Errorf("%w: session stopped before expiry oracle", errWindow)
-	}
-	// Scope closes listener and both accepted connections; join accept/application owner.
-	scope.Close()
+
+	// Natural scope cancellation already observed, then cleanup joined.
 	select {
 	case r := <-done:
-		if r.err != nil {
-			return r.err
-		}
 		if oldDone != nil {
 			<-oldDone
+		}
+		if oldSafety.Load() {
+			return errPostExpiryBytes
+		}
+		if r.err != nil {
+			return r.err
 		}
 		if r.proofs != 2 || r.http != 1 || oldProofs.Load() != 1 {
 			return errors.New("incomplete application proof")
@@ -517,12 +528,12 @@ func runListener(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *dae
 		if e := out.stage("pair-listener-closed", map[string]any{"proof_count": r.proofs, "http_count": r.http, "old_live_proof_count": oldProofs.Load()}); e != nil {
 			return e
 		}
-	case <-time.After(time.Until(time.UnixMilli(c.EarlierExpiryMS).Add(500 * time.Millisecond))):
+	case <-time.After(time.Until(peerExpiry.Add(500 * time.Millisecond))):
 		return errors.New("listener did not join by expiry+500ms")
 	}
 	return nil
 }
-func runDialer(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *daemon.DevelopmentNetworkSession, n *proofnet.Net, c config, out *emitter, ready io.ReadCloser) error {
+func runDialer(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *daemon.DevelopmentNetworkSession, n *proofnet.Net, c config, peerExpiry time.Time, out *emitter, ready io.ReadCloser) error {
 	wait, cancel, e := phase(ctx, c, 2*time.Second)
 	if e != nil {
 		return e
@@ -659,6 +670,9 @@ func runDialer(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *daemo
 	finalAt := time.UnixMilli(c.EarlierExpiryMS).Add(500 * time.Millisecond)
 	out.stage("pair-retirement-observation", map[string]any{"expiry_ms": c.EarlierExpiryMS, "scheduled_observation_ms": observeAt.UnixMilli(), "observed_lag_ms": time.Now().UnixMilli() - c.EarlierExpiryMS, "final_check_ms": finalAt.UnixMilli()})
 	if !time.Now().Before(finalAt) {
+		if e := observeNaturalRetirement(ctx.Done(), scope.Context().Done(), peerExpiry, out, func() { scope.Close() }); e != nil {
+			return e
+		}
 		return fmt.Errorf("%w: observation scheduled too late", errWindow)
 	}
 	probe, probeCancel := context.WithDeadline(context.Background(), finalAt)
@@ -674,17 +688,14 @@ func runDialer(ctx context.Context, scope *daemon.DevelopmentPeerScope, s *daemo
 	if oldErr == nil {
 		return errors.New("old stream delivered after expiry")
 	}
-	if time.Now().After(finalAt) {
+	probeLate := time.Now().After(finalAt)
+	if e := observeNaturalRetirement(ctx.Done(), scope.Context().Done(), peerExpiry, out, func() { scope.Close() }); e != nil {
+		return e
+	}
+
+	if probeLate {
 		return fmt.Errorf("%w: retirement check completed after expiry+500ms", errWindow)
 	}
-	closed := make(chan struct{})
-	go func() { scope.Close(); close(closed) }()
-	select {
-	case <-closed:
-	case <-time.After(time.Until(finalAt)):
-		return errors.New("owner scope not retired by expiry+500ms")
-	}
-	out.stage("pair-owner-final-check", map[string]any{"observed_lag_ms": time.Now().UnixMilli() - c.EarlierExpiryMS, "final_check_ms": finalAt.UnixMilli()})
 	if dialErr == nil {
 		return fmt.Errorf("%w: initial+50ms dial observed closure lag; no retry permitted", errWindow)
 	}
@@ -758,3 +769,65 @@ func (c *observedConn) Close() error {
 	})
 	return e
 }
+
+// No cleanup-induced cancellation may satisfy this check. join is invoked ONLY
+// after the natural Done signal; a missing signal remains a hard failure.
+func observeNaturalRetirement(outerDone, scopeDone <-chan struct{}, peerExpiry time.Time, out *emitter, join func()) error {
+	final := peerExpiry.Add(500 * time.Millisecond)
+	timer := time.NewTimer(time.Until(final))
+	defer timer.Stop()
+	cause := "scope-done-first"
+	select {
+	case <-scopeDone:
+	case <-outerDone:
+		cause = "outer-context-first"
+		select {
+		case <-scopeDone:
+		case <-timer.C:
+			return errors.New("missing natural scope retirement by peer-expiry+500ms")
+		}
+	case <-timer.C:
+		return errors.New("missing natural scope retirement by peer-expiry+500ms")
+	}
+	out.stage("pair-natural-retirement-observed", map[string]any{"peer_expiry_ms": peerExpiry.UnixMilli(), "observed_lag_ms": time.Now().UnixMilli() - peerExpiry.UnixMilli(), "first_observed_signal": cause, "outer_context_ended": channelEnded(outerDone), "natural_before_cleanup": true})
+	if time.Now().After(final) {
+		return errors.New("natural scope retirement observed after peer-expiry+500ms")
+	}
+	join()
+	return nil
+}
+func channelEnded(ch <-chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
+}
+func classifyExtraAccept(at, expiry time.Time) error {
+	if !at.Before(expiry) && !at.After(expiry.Add(500*time.Millisecond)) {
+		return fmt.Errorf("%w: extra accept during declared closure-lag window, no payload serviced", errWindow)
+	}
+	return errors.New("extra accept outside declared closure-lag window")
+}
+
+var errPostExpiryBytes = errors.New("application bytes observed after original expiry")
+
+func answerRetained(conn net.Conn, expiry time.Time) error {
+	if e := conn.SetDeadline(expiry); e != nil {
+		return e
+	}
+	var b [32]byte
+	n, e := io.ReadFull(conn, b[:])
+	if n > 0 && !time.Now().Before(expiry) {
+		return errPostExpiryBytes
+	}
+	if e != nil {
+		return e
+	}
+	sum := sha256.Sum256(b[:])
+	_, e = conn.Write(sum[:])
+	return e
+}
+
+func peerRetirementExpiry(s daemon.DevelopmentPairSnapshot) time.Time { return s.PeerExpiry }
