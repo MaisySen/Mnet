@@ -12,14 +12,20 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	contract "fintex.au/mnet/internal/enrollmentcontract"
+	pending "fintex.au/mnet/internal/enrollmentpending"
 	proof "fintex.au/mnet/internal/enrollmentproof"
+	registrar "fintex.au/mnet/internal/enrollmentregistrar"
 	source "fintex.au/mnet/internal/enrollmentsource"
 )
 
@@ -33,6 +39,65 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { s.Close() }()
+	// Unregistered TEST bridge drives actual journal-owned exact-origin channel.
+	var peerSecret string
+	bridge := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		secret := strings.TrimPrefix(r.Header.Get("Authorization"), registrar.WorkflowScheme)
+		if secret == r.Header.Get("Authorization") {
+			w.WriteHeader(403)
+			return
+		}
+		raw, err := io.ReadAll(io.LimitReader(r.Body, contract.ProofWireMaxBytes+1))
+		if err != nil {
+			w.WriteHeader(400)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		switch r.URL.Path {
+		case registrar.WorkflowPrefix + "begin":
+			input, err := contract.DecodeWorkflowBeginWire(raw, "fixture-registrar")
+			if err != nil {
+				w.WriteHeader(400)
+				return
+			}
+			c, err := s.beginRegistrarEnrollment(r.Context(), input.Request, secret)
+			if err != nil {
+				w.WriteHeader(403)
+				return
+			}
+			peerSecret = secret
+			json.NewEncoder(w).Encode(contract.ChallengeWire{Version: 4, Challenge: c})
+		case registrar.WorkflowPrefix + "submit":
+			input, err := contract.DecodeWorkflowSubmitWire(raw)
+			if err != nil {
+				w.WriteHeader(400)
+				return
+			}
+			mac, _ := base64.RawURLEncoding.DecodeString(input.ResponseMAC)
+			var response [32]byte
+			copy(response[:], mac)
+			result, err := s.submitRegistrarEnrollment(r.Context(), input.AttemptID, input.ChallengeID, secret, response)
+			if err != nil {
+				w.WriteHeader(403)
+				return
+			}
+			json.NewEncoder(w).Encode(contract.WorkflowReceiptWire{Version: 1, Receipt: result.History.Receipt, ReceiptDigest: result.History.Digest, ConfirmationMAC: base64.RawURLEncoding.EncodeToString(result.Confirmation[:])})
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer bridge.Close()
+	// httptest uses its standard embedded localhost certificate. Merge that with
+	// the coordinator's freshly generated source certificate before first TLS.
+	roots, err := os.ReadFile(os.Getenv("SSL_CERT_FILE"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots = append(roots, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: bridge.Certificate().Raw})...)
+	combined := filepath.Join(dir, "combined-fixture-roots.pem")
+	os.WriteFile(combined, roots, 0600)
+	t.Setenv("SSL_CERT_FILE", combined)
 	network, err := s.CreateNetwork("development-workflow")
 	if err != nil {
 		t.Fatal(err)
@@ -66,9 +131,10 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	public, _ := json.Marshal(struct {
-		Launch    contract.SourceLaunch `json:"launch"`
-		NetworkID string                `json:"networkId"`
-	}{launch, network.ID})
+		Launch          contract.SourceLaunch `json:"launch"`
+		NetworkID       string                `json:"networkId"`
+		RegistrarOrigin string                `json:"registrarOrigin"`
+	}{launch, network.ID, bridge.URL})
 	if err := os.WriteFile(filepath.Join(dir, "launch.json"), public, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -189,18 +255,13 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	var peerKey [32]byte
 	copy(peerKey[:], peerPrivate.Bytes())
 	defer clear(peerKey[:])
-	peerSecret, peerVerifier := opaque(), opaque()
-	peerLaunch := launch
-	peerLaunch.AttemptID = opaque()
-	peerLaunch.State = opaque()
-	peerLaunch.DevicePublicKey = base64.RawURLEncoding.EncodeToString(peerPrivate.PublicKey().Bytes())
-	peerLaunch.CredentialDigest = hash(peerSecret)
-	peerLaunch.Challenge = hash(peerVerifier)
-	peerPresaved, _ := json.Marshal(struct {
-		Secret, Verifier string
-		Private          [32]byte
-	}{peerSecret, peerVerifier, peerKey})
-	if err := writeWorkflowFixturePrivate(filepath.Join(dir, "peer-presaved-test-only.json"), peerPresaved); err != nil {
+	peerJournal, err := pending.Open(filepath.Join(dir, "peer-pending"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peerJournal.Close()
+	peerLaunch, err := peerJournal.Begin(base64.RawURLEncoding.EncodeToString(peerPrivate.PublicKey().Bytes()), "linux", "http://127.0.0.1:34567/mnet/enrollment/callback", policy, time.Now(), time.Now().Add(time.Minute))
+	if err != nil {
 		t.Fatal(err)
 	}
 	peerPublic, _ := json.Marshal(peerLaunch)
@@ -224,37 +285,42 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	if json.Unmarshal(raw, &peerInput) != nil {
 		t.Fatal("invalid peer callback")
 	}
-	if err := writeWorkflowFixturePrivate(filepath.Join(dir, "peer-exchange-may-have-started"), []byte("test-only same peer marker")); err != nil {
+	if err := peerJournal.RecordCallback(peerLaunch.AttemptID, peerLaunch.State, peerInput.Code, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	peerOwn, err := native.Exchange(context.Background(), peerLaunch, input.Workflow.Policy.SourceOrigin, input.Workflow.Policy.PrincipalAuthority, peerInput.Code, peerVerifier, policy.SourceMappings(), policy.SourceMappings(), time.Now())
-	if err != nil {
-		t.Fatal("actual second device ownPKCE", err)
+	currentConfig, ok := pending.SourceConfigFor(policy)
+	if !ok {
+		t.Fatal("missing peer current policy")
 	}
-	peerReq := contract.SourceReserveRequest{Ticket: peerOwn.Ticket, HandoffID: peerOwn.ID, ReserveID: opaque(), Launch: peerLaunch, Mapping: peerOwn.Mapping}
-	peerChallenge, err := s.beginRegistrarEnrollment(context.Background(), peerReq, peerSecret)
+	currentPeer := func() pending.SourceConfig { return currentConfig }
+	peerOwn, err := peerJournal.ExchangeSaved(context.Background(), currentPeer, time.Now, source.Limits{Timeout: 3 * time.Second, MaxConnections: 1})
 	if err != nil {
-		t.Fatal("actual second device challenge", err)
+		t.Fatal("real peer journal own exchange", err)
 	}
-	peerDescriptor, _ := contract.SourceDescriptorDigest(peerOwn, input.Workflow.Policy.ServiceID, peerReq.ReserveID)
+	limits := registrar.WorkflowLimits{Timeout: 3 * time.Second, MaxChallengeLifetime: time.Duration(input.Workflow.ChallengeMS) * time.Millisecond, MaxReserveLifetime: time.Minute, Timing: contract.FixtureTiming{MaxObservationAgeMS: int64(input.Workflow.MaxObservationAgeMS), MaxLeaseMS: int64(input.Workflow.MaxLeaseMS), ClockUncertaintyMS: int64(input.Workflow.ClockUncertaintyMS)}}
+	peerChallenge, err := peerJournal.BeginWorkflowDATA(context.Background(), currentPeer, limits)
+	if err != nil {
+		t.Fatal("journal exact-origin begin", err)
+	}
 	peerExpected := expected
 	peerExpected.PrincipalAuthority = peerOwn.Provenance.PrincipalAuthority
 	peerExpected.PrincipalNamespace = peerOwn.Provenance.PrincipalNamespace
 	peerExpected.PrincipalID = peerOwn.Provenance.PrincipalID
 	peerExpected.SessionBinding = peerOwn.Provenance.SessionBinding
 	peerExpected.HandoffID = peerOwn.ID
-	peerExpected.AttemptID = peerLaunch.AttemptID
-	peerExpected.DevicePublicKey = peerLaunch.DevicePublicKey
-	peerExpected.CredentialDigest = peerLaunch.CredentialDigest
-	peerExpected.ReserveID = peerReq.ReserveID
-	peerExpected.DescriptorDigest = peerDescriptor
+	peerExpected.AttemptID = peerOwn.Launch.AttemptID
+	peerExpected.DevicePublicKey = peerOwn.Launch.DevicePublicKey
+	peerExpected.CredentialDigest = peerOwn.Launch.CredentialDigest
+	peerExpected.ReserveID = peerChallenge.Binding.ReserveID
+	peerExpected.DescriptorDigest, _ = contract.SourceDescriptorDigest(peerOwn, input.Workflow.Policy.ServiceID, peerExpected.ReserveID)
 	peerExpected.CheckedAtMS = peerChallenge.Binding.CheckedAtMS
 	peerExpected.ReserveDeadlineMS = peerChallenge.Binding.ReserveDeadlineMS
 	peerExpected.AccessUntilMS = peerChallenge.Binding.AccessUntilMS
-	if peerOwn.Mapping != own.Mapping || peerChallenge.Binding != peerExpected || contract.CheckFixtureTime(peerChallenge, time.Now().UnixMilli(), contract.FixtureTiming{MaxObservationAgeMS: int64(input.Workflow.MaxObservationAgeMS), MaxLeaseMS: int64(input.Workflow.MaxLeaseMS), ClockUncertaintyMS: int64(input.Workflow.ClockUncertaintyMS)}) != nil {
-		t.Fatal("second challenge outside own independently checked source")
+	// independently validate via own source/config helper, not response echo.
+	if peerOwn.Mapping != own.Mapping || registrar.CheckWorkflowChallenge(peerChallenge, peerOwn, input.Workflow.Policy.ServiceID, peerExpected.ReserveID, limits, time.Now()) != nil {
+		t.Fatal("peer independently checked source differs")
 	}
-	peerNative, err := proof.Respond(peerKey, peerChallenge, peerExpected, time.Now(), time.Duration(input.Workflow.ChallengeMS)*time.Millisecond)
+	peerNative, err := proof.Respond(peerKey, peerChallenge, peerExpected, time.Now(), limits.MaxChallengeLifetime)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,10 +329,21 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	peerResult, err := s.submitRegistrarEnrollment(context.Background(), peerLaunch.AttemptID, peerChallenge.ID, peerSecret, peerResponse)
-	if err != nil || peerNative.Confirm(peerResult.Confirmation, time.Now()) != nil {
-		t.Fatal("actual second atomic commit", err)
+	peerWire, err := peerJournal.SubmitWorkflowDATA(context.Background(), peerChallenge.ID, peerResponse, currentPeer)
+	if err != nil {
+		t.Fatal("journal exact-origin commit delivery", err)
 	}
+	confirmationRaw, _ := base64.RawURLEncoding.DecodeString(peerWire.ConfirmationMAC)
+	var peerConfirmation [32]byte
+	copy(peerConfirmation[:], confirmationRaw)
+	if peerNative.Confirm(peerConfirmation, time.Now()) != nil {
+		t.Fatal("peer confirmation mismatch")
+	}
+	phase, err := peerJournal.Status()
+	if err != nil || phase != "workflow-receipt-data" {
+		t.Fatal("receipt returned without durable pin", err)
+	}
+	peerResult := registrarEnrollmentResult{History: registrarReceiptHistory{Receipt: peerWire.Receipt, Digest: peerWire.ReceiptDigest}, Confirmation: peerConfirmation}
 	peerRecord := s.registrarNodeLocked(peerResult.History.Receipt.NodeID)
 	peerRef := registrarCredentialReference{NodeID: peerRecord.NodeID, NetworkID: peerRecord.NetworkID, DevicePublicKey: peerRecord.DevicePublicKey, Scope: peerRecord.Scope, ReceiptID: peerRecord.ReceiptID, ReceiptDigest: peerRecord.ReceiptDigest, DescriptorDigest: peerRecord.DescriptorDigest, TranscriptDigest: peerRecord.Consumption.TranscriptDigest}
 	current, err = s.registrarCredentialMap(ref, secret)
@@ -293,7 +370,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	if err := s.DeleteNode(peerRecord.NodeID); err != nil {
 		t.Fatal(err)
 	}
-	out, _ := json.Marshal(map[string]any{"sourceDenied": false, "bidirectionalActualPeers": true, "nodeCreated": true, "nodeDeleted": true, "currentMapBeforeDelete": true, "legacyTokenCreated": false, "inputAuthorized": false, "receiptId": r.ReceiptID, "receiptDigest": r.ReceiptDigest, "reserveId": req.ReserveID, "descriptorDigest": descriptor, "handoffId": own.ID})
+	out, _ := json.Marshal(map[string]any{"sourceDenied": false, "bidirectionalActualPeers": true, "journalWorkflowReceiptPinned": true, "nodeCreated": true, "nodeDeleted": true, "currentMapBeforeDelete": true, "legacyTokenCreated": false, "inputAuthorized": false, "receiptId": r.ReceiptID, "receiptDigest": r.ReceiptDigest, "reserveId": req.ReserveID, "descriptorDigest": descriptor, "handoffId": own.ID})
 	if err := os.WriteFile(filepath.Join(dir, "outcome.json"), out, 0600); err != nil {
 		t.Fatal(err)
 	}

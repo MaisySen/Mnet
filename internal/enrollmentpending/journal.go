@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	config "fintex.au/mnet/internal/enrollmentconfig"
+	registrar "fintex.au/mnet/internal/enrollmentregistrar"
 	"io"
 	"os"
 	"reflect"
@@ -34,6 +35,7 @@ var ErrUncertain = errors.New("enrollment intent publication uncertain; close an
 var ErrPending = errors.New("existing enrollment intent requires explicit recovery")
 
 type record struct {
+	WorkflowJSON  string                   `json:"workflow_json,omitempty"`
 	BootstrapJSON string                   `json:"bootstrap_json,omitempty"`
 	Policy        config.LocalConfigV2     `json:"policy"`
 	Version       int                      `json:"version"`
@@ -76,6 +78,7 @@ type journal struct {
 	closed   bool
 	fault    bool
 	reopened bool
+	workflow *registrar.WorkflowClient
 	cancel   context.CancelFunc
 	callback *Callback
 	send     exchangeSender
@@ -190,6 +193,10 @@ func (j *Journal) Close() error {
 	if j.cancel != nil {
 		j.cancel()
 		j.cancel = nil
+	}
+	if j.workflow != nil {
+		j.workflow.Close()
+		j.workflow = nil
 	}
 	j.data = nil
 	return j.owner.Close()
@@ -338,7 +345,7 @@ func token(s string) bool {
 	return false
 }
 func validRecord(r record) bool {
-	if (r.Version != 2 && r.Version != 3) || r.CreatedMS <= 0 || r.ExpiresMS <= r.CreatedMS || !enrollmentidentity.ValidOrigin(r.SourceOrigin) || !enrollmentidentity.ValidOrigin(r.Authority) || len(r.Allowed) == 0 || len(r.Allowed) > 20 || !token(r.Credential) || !token(r.Verifier) || r.Launch.CredentialDigest != hash(r.Credential) || r.Launch.Challenge != hash(r.Verifier) {
+	if (r.Version != 2 && r.Version != 3 && r.Version != 4) || r.CreatedMS <= 0 || r.ExpiresMS <= r.CreatedMS || !enrollmentidentity.ValidOrigin(r.SourceOrigin) || !enrollmentidentity.ValidOrigin(r.Authority) || len(r.Allowed) == 0 || len(r.Allowed) > 20 || !token(r.Credential) || !token(r.Verifier) || r.Launch.CredentialDigest != hash(r.Credential) || r.Launch.Challenge != hash(r.Verifier) {
 		return false
 	}
 	policy, err := config.ValidateLocalV2(r.Policy)
@@ -357,6 +364,12 @@ func validRecord(r record) bool {
 		if _, err := contract.SourceDescriptorBytes(own, "journal-shape-check", r.Launch.AttemptID); err != nil {
 			return false
 		}
+	}
+	if r.Version == 4 {
+		return r.BootstrapJSON == "" && validWorkflowRecord(r, policy)
+	}
+	if r.WorkflowJSON != "" {
+		return false
 	}
 	if r.Version == 3 {
 		return validBootstrapRecord(r, policy)
@@ -470,6 +483,24 @@ func strictRecord(raw []byte, out *record) bool {
 	}
 	if json.Unmarshal(raw, out) != nil {
 		return false
+	}
+	if out.Version == 4 {
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(raw, &fields) != nil {
+			return false
+		}
+		if _, present := fields["bootstrap_json"]; present {
+			return false
+		}
+	}
+	if out.Version == 2 || out.Version == 3 {
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(raw, &fields) != nil {
+			return false
+		}
+		if _, present := fields["workflow_json"]; present {
+			return false
+		}
 	}
 	if out.Version == 2 {
 		var fields map[string]json.RawMessage
