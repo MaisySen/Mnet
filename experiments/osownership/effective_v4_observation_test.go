@@ -94,16 +94,16 @@ func TestEffectiveALLFormulasAndExactTablePaths(t *testing.T) {
 	if len(words) != 33 || !words[5].Computed || words[5].Value != 1 || words[5].Default != 99 || words[8].Value != 0 || words[7].Value != 2 || words[3].Value != 1 || words[13].Value != -1 {
 		t.Fatal("OR/AND/MAX/redirect/signed/default", words)
 	}
-	for _, index := range []int{9, 16, 26, 27} {
+	for _, index := range []int{16, 26, 27} {
 		if words[index].Computed {
 			t.Fatal("invented effective proof", index)
 		}
 	}
-	if words[9].AllObserved {
-		t.Fatal("invented bootp read")
+	if !words[9].AllObserved || !words[9].Computed || words[9].Formula != "ALL&&LOCAL" {
+		t.Fatal("BOOTP operand missing")
 	}
 	for _, path := range source.paths {
-		if strings.Contains(path, "bootp_relay") || strings.Contains(path, "src_vmark") || strings.Contains(path, "/noxfrm") {
+		if strings.Contains(path, "src_vmark") || strings.Contains(path, "/noxfrm") {
 			t.Fatal("invented sysctl path", path)
 		}
 	}

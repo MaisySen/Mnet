@@ -8,9 +8,9 @@ import (
 	"strconv"
 )
 
-// Exact v6.17 devinet.c table spelling. BOOTP_RELAY has a vector slot and
-// IN_DEV_ANDCONF macro but NO sysctl table entry, so index9 is not invented.
-var effectiveV4Leaves = [...]string{"forwarding", "mc_forwarding", "proxy_arp", "accept_redirects", "secure_redirects", "send_redirects", "shared_media", "rp_filter", "accept_source_route", "", "log_martians", "tag", "arp_filter", "medium_id", "disable_xfrm", "disable_policy", "force_igmp_version", "arp_announce", "arp_ignore", "promote_secondaries", "arp_accept", "arp_notify", "accept_local", "src_valid_mark", "proxy_arp_pvlan", "route_localnet", "igmpv2_unsolicited_report_interval", "igmpv3_unsolicited_report_interval", "ignore_routes_with_linkdown", "drop_unicast_in_l2_multicast", "drop_gratuitous_arp", "bc_forwarding", "arp_evict_nocarrier"}
+// Exact v6.17 devinet.c table spelling, including BOOTP_RELAY at index9.
+// The S40 missing-leaf claim was wrong; the complete pinned table includes it.
+var effectiveV4Leaves = [...]string{"forwarding", "mc_forwarding", "proxy_arp", "accept_redirects", "secure_redirects", "send_redirects", "shared_media", "rp_filter", "accept_source_route", "bootp_relay", "log_martians", "tag", "arp_filter", "medium_id", "disable_xfrm", "disable_policy", "force_igmp_version", "arp_announce", "arp_ignore", "promote_secondaries", "arp_accept", "arp_notify", "accept_local", "src_valid_mark", "proxy_arp_pvlan", "route_localnet", "igmpv2_unsolicited_report_interval", "igmpv3_unsolicited_report_interval", "ignore_routes_with_linkdown", "drop_unicast_in_l2_multicast", "drop_gratuitous_arp", "bc_forwarding", "arp_evict_nocarrier"}
 
 type effectiveV4Observation struct {
 	all, defaults [33]int32
@@ -100,7 +100,7 @@ func (p *afReadPass) effectiveV4(index int) ([]effectiveV4Word, error) {
 		switch n {
 		case 0, 11, 13:
 			w.Formula = "LOCAL"
-		case 1, 8, 31, 32:
+		case 1, 8, 9, 31, 32:
 			w.Formula = "ALL&&LOCAL"
 		case 2, 4, 5, 6, 10, 12, 14, 15, 19, 22, 23, 24, 25, 28, 29, 30:
 			w.Formula = "ALL||LOCAL"
@@ -108,8 +108,6 @@ func (p *afReadPass) effectiveV4(index int) ([]effectiveV4Word, error) {
 			w.Formula = "MAX(ALL,LOCAL)"
 		case 3:
 			w.Formula = "LOCAL_FORWARD?ALL&&LOCAL:ALL||LOCAL"
-		case 9:
-			w.Formula = "unresolved-ALL-not-exposed-by-sysctl"
 		case 16:
 			w.Formula = "unresolved-IGMP-version-plus-timer-state"
 		case 26, 27:
