@@ -1,6 +1,6 @@
 //go:build windows
 
-package control
+package stateowner
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func singleLink(path string, _ os.FileInfo) error {
+func SingleLink(path string, _ os.FileInfo) error {
 	p, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return err
@@ -30,7 +30,7 @@ func singleLink(path string, _ os.FileInfo) error {
 	return nil
 }
 
-func lockStoreFile(path string) (*os.File, error) {
+func lockFile(path string) (*os.File, error) {
 	p, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return nil, err
@@ -49,7 +49,7 @@ func lockStoreFile(path string) (*os.File, error) {
 	if !info.Mode().IsRegular() {
 		return fail(fmt.Errorf("store lock must be regular"))
 	}
-	if err := singleLink(path, info); err != nil {
+	if err := SingleLink(path, info); err != nil {
 		return fail(err)
 	}
 	var overlapped windows.Overlapped
@@ -62,7 +62,7 @@ func lockStoreFile(path string) (*os.File, error) {
 	return file, nil
 }
 
-func renameStoreFile(from, to string) error {
+func Rename(from, to string) error {
 	a, err := windows.UTF16PtrFromString(from)
 	if err != nil {
 		return err
@@ -78,7 +78,7 @@ func renameStoreFile(from, to string) error {
 // directory fsync. This is not a claim of identical power-loss guarantees.
 // Verify the resulting parent remains present; native Windows execution is
 // required in addition to cross-compilation before this isolated code ships.
-func syncStoreDir(path string) error {
+func SyncDir(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		return err

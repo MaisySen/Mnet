@@ -74,7 +74,7 @@ func Open(path string) (*Store, error) {
 	ok := false
 	defer func() {
 		if !ok {
-			lease.file.Close()
+			lease.owner.Close()
 		}
 	}()
 	s := &Store{
