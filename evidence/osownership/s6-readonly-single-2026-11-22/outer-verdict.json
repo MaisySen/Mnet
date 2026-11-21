@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "source": "3fbe01ed298c7fc77681f0f99e4e303a56610aed",
+  "binary_sha256": "0164f1dbdaa63bd9379dfe92948089a142f4c3a389d28463f481b19c898feefd",
+  "outer_uid": 1000,
+  "outer_pid": 912,
+  "outer_initial": {
+    "device": 7,
+    "inode": 4026531833
+  },
+  "invocations": 1,
+  "driver_pid": 914,
+  "exit_code": 1,
+  "reaped": true,
+  "elapsed_ms": 16.164408,
+  "outer_final": {
+    "device": 7,
+    "inode": 4026531833
+  },
+  "outer_unchanged": true
+}
