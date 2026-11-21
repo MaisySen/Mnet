@@ -25,7 +25,7 @@ const kernelExecutionReleased = false
 // type, compares original parent/current target. Does not setns or open a path
 // supplied by the caller. Exclusive ancestry/userns containment still needs
 // supervisor proof before this check can ever be enabled.
-func proveNamespaceFD(targetFD, parentFD int) (*namespaceCustody, error) {
+func proveNamespaceFD(targetFD int, parent Namespace) (*namespaceCustody, error) {
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
 	}
@@ -61,14 +61,8 @@ func proveNamespaceFD(targetFD, parentFD int) (*namespaceCustody, error) {
 	if e != nil {
 		return nil, e
 	}
-	parentCopy, e := unix.FcntlInt(uintptr(parentFD), unix.F_DUPFD_CLOEXEC, 0)
-	if e != nil {
-		return nil, e
-	}
-	defer unix.Close(parentCopy)
-	parent, e := inspect(parentCopy)
-	if e != nil || id == parent {
-		return nil, errors.New("target is initial parent namespace or parent invalid")
+	if parent.Device == 0 || parent.Inode == 0 || id.Device == parent.Device && id.Inode == parent.Inode {
+		return nil, errors.New("target equals invalid/initial parent namespace")
 	}
 	current, e := unix.Open("/proc/thread-self/ns/net", unix.O_RDONLY|unix.O_CLOEXEC, 0)
 	if e != nil {

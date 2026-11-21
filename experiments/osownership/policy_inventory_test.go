@@ -77,6 +77,20 @@ func recordedRaw(t *testing.T) (RawInventory, SysctlSnapshot) {
 	if e = json.Unmarshal(v, &obj); e != nil {
 		t.Fatal(e)
 	}
+	for _, name := range append([]string{"all", "default"}, fixtureLinkNames(raw)...) {
+		prefix := "/proc/sys/net/ipv6/conf/" + name + "/"
+		present := false
+		for k := range obj.Sysctl {
+			if strings.HasPrefix(k, prefix) {
+				present = true
+			}
+		}
+		if present {
+			obj.Sysctl[ipv6DirPrefix+name] = "present"
+		} else {
+			obj.Sysctl[ipv6DirPrefix+name] = "ENOENT"
+		}
+	}
 	return raw, obj.Sysctl
 }
 func TestRecordedReadOnlyKernelBaselineCandidate(t *testing.T) {
@@ -85,14 +99,7 @@ func TestRecordedReadOnlyKernelBaselineCandidate(t *testing.T) {
 		t.Fatal("recorded inventory counts differ")
 	}
 	ns := Namespace{Device: 7, Inode: 4026532293, Isolated: true}
-	b, e := NewBaselineCandidate(ns, raw, sys)
-	if e == nil || !strings.Contains(e.Error(), "missing/invalid IPv6 readback") {
-		t.Fatal("incomplete real sysctl capture not blocked", e)
-	}
-	_ = b
-	// Synthetic completion below tests candidate mechanics, NOT live applicability.
-	sys = syntheticCompleteSysctl(raw, sys)
-	b, e = NewBaselineCandidate(ns, raw, sys)
+	b, e := NewBaselineCandidate(Namespace{Device: 7, Inode: 4026531833}, ns, raw, sys)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -176,7 +183,7 @@ func TestBaselineForwardingUpAndUnknownStateRefused(t *testing.T) {
 		case "crossns":
 			raw.Links[1].Raw[37] = u32(1)
 		}
-		if _, e := NewBaselineCandidate(ns, raw, sys); e == nil {
+		if _, e := NewBaselineCandidate(Namespace{Device: 7, Inode: 4026531833}, ns, raw, sys); e == nil {
 			t.Fatal("unsafe baseline accepted", mode)
 		}
 	}
@@ -197,8 +204,8 @@ func TestNestedEmpty62And65OnlyNoBroadTolerance(t *testing.T) {
 func TestBaselineDeepCopyIncludesRawAttrsAndSysctl(t *testing.T) {
 	r, s := recordedRaw(t)
 	ns := Namespace{Device: 7, Inode: 4026532293, Isolated: true}
-	s = syntheticCompleteSysctl(r, s)
-	b, e := NewBaselineCandidate(ns, r, s)
+
+	b, e := NewBaselineCandidate(Namespace{Device: 7, Inode: 4026531833}, ns, r, s)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -210,22 +217,6 @@ func TestBaselineDeepCopyIncludesRawAttrsAndSysctl(t *testing.T) {
 	}
 }
 
-// Deliberately synthetic applicability. Never saved over captured JSON.
-func syntheticCompleteSysctl(raw RawInventory, s SysctlSnapshot) SysctlSnapshot {
-	out := SysctlSnapshot{}
-	for k, v := range s {
-		out[k] = v
-	}
-	for _, l := range raw.Links {
-		for _, leaf := range []string{"disable_ipv6", "addr_gen_mode", "forwarding"} {
-			k := "/proc/sys/net/ipv6/conf/" + l.Name + "/" + leaf
-			if _, ok := out[k]; !ok {
-				out[k] = "0"
-			}
-		}
-	}
-	return out
-}
 func TestOriginRequiresExactLocalShapeAndAddressWitness(t *testing.T) {
 	b, i, n := rig()
 	p, _ := Prepare(b, i, n)
@@ -264,4 +255,12 @@ func TestOriginRequiresExactLocalShapeAndAddressWitness(t *testing.T) {
 			t.Fatal("foreign route assigned origin", field)
 		}
 	}
+}
+
+func fixtureLinkNames(r RawInventory) []string {
+	var out []string
+	for _, l := range r.Links {
+		out = append(out, l.Name)
+	}
+	return out
 }

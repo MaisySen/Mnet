@@ -20,7 +20,7 @@ import (
 // Resident source has no setns/unshare calls. A fresh exec is born in NEWUSER|
 // NEWNET and never enters another namespace. Namespace operations additionally
 // run on one locked thread and custody checks reject any TID mismatch.
-func withResidentNamespace(target, parent int, fn func(*namespaceCustody) error) error {
+func withResidentNamespace(target int, parent Namespace, fn func(*namespaceCustody) error) error {
 	if !kernelExecutionReleased {
 		return ErrExecutorUnreleased
 	}
@@ -88,7 +88,35 @@ func (c *residentChild) CloseCustody() error {
 	})
 	return c.closeErr
 }
-func (residentSpawner) Spawn(ctx context.Context) (process ResidentProcess, retErr error) {
+func (residentSpawner) Spawn(ctx context.Context) (ResidentProcess, error) {
+	if !kernelExecutionReleased {
+		return nil, ErrExecutorUnreleased
+	}
+	type answer struct {
+		p ResidentProcess
+		e error
+	}
+	ch := make(chan answer, 1)
+	go func() {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		p, e := spawnResidentPinnedSource(ctx)
+		ch <- answer{p, e}
+		if child, ok := p.(*residentChild); ok {
+			<-child.wait
+		} else {
+			var pending *PendingResidentError
+			if errors.As(e, &pending) {
+				if child, ok := pending.Process.(*residentChild); ok {
+					<-child.wait
+				}
+			}
+		}
+	}()
+	r := <-ch
+	return r.p, r.e
+}
+func spawnResidentPinnedSource(ctx context.Context) (process ResidentProcess, retErr error) {
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
 	}
@@ -115,7 +143,14 @@ func (residentSpawner) Spawn(ctx context.Context) (process ResidentProcess, retE
 		return nil, e
 	}
 	defer parentNS.Close()
-	cmd := residentCommand(exe, os.Getuid(), os.Getgid(), w, parentNS, gateR)
+	var outerStat unix.Stat_t
+	if e = unix.Fstat(int(parentNS.Fd()), &outerStat); e != nil {
+		r.Close()
+		w.Close()
+		return nil, e
+	}
+	outerIdentity := Namespace{Device: uint64(outerStat.Dev), Inode: outerStat.Ino}
+	cmd := residentCommand(exe, os.Getuid(), os.Getgid(), w, outerIdentity, os.Getpid(), gateR)
 	if e = cmd.Start(); e != nil {
 		r.Close()
 		w.Close()
@@ -123,11 +158,14 @@ func (residentSpawner) Spawn(ctx context.Context) (process ResidentProcess, retE
 	}
 	w.Close()
 	gateR.Close()
-	wait := make(chan struct{})
-	c := &residentChild{cmd: cmd, pidfd: -1, reader: r, wait: wait}
-	go func() { c.waitErr = cmd.Wait(); close(wait) }()
 	pidfd, e := unix.PidfdOpen(cmd.Process.Pid, 0)
+	wait := make(chan struct{})
+	c := &residentChild{cmd: cmd, pidfd: pidfd, reader: r, wait: wait}
+	// Child PID cannot be reused before this reaper starts: unreaped zombie
+	// keeps its PID. Pidfd acquisition is deliberately above cmd.Wait.
+	go func() { c.waitErr = cmd.Wait(); close(wait) }()
 	if e != nil {
+		c.pidfd = -1
 		cleanup, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 		defer cancel()
 		if stopErr := c.AbortAndReap(cleanup); stopErr != nil {
@@ -199,16 +237,22 @@ func (residentSpawner) Spawn(ctx context.Context) (process ResidentProcess, retE
 
 // Client is re-execed by the resident owner, not the outer parent. No clone or
 // setns: same namespace by exec inheritance, no TUN ExtraFiles, CLOEXEC custody.
-func startResidentClientSource(ctx context.Context) (*exec.Cmd, error) {
+func startResidentClientSource(ctx context.Context, ns *namespaceCustody) (*exec.Cmd, error) {
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
+	}
+	if ns == nil {
+		return nil, ErrConflict
+	}
+	if e := ns.checkCurrent(); e != nil {
+		return nil, e
 	}
 	exe, e := os.Executable()
 	if e != nil {
 		return nil, e
 	}
-	c := exec.CommandContext(ctx, exe, "--osownership-client-no-tun-source")
-	c.Env = []string{"PATH=/usr/bin:/bin"}
+	c := exec.CommandContext(ctx, exe, "--osownership-client-capdrop-bootstrap-source")
+	c.Env = []string{"PATH=/usr/bin:/bin", "MNO_CLIENT_PARENT_PID=" + strconv.Itoa(os.Getpid())}
 	c.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
 	return c, c.Start()
 }
@@ -220,9 +264,19 @@ func residentBootstrapSource(ctx context.Context, work func(context.Context, *na
 	if !kernelExecutionReleased {
 		return ErrExecutorUnreleased
 	}
+	unix.CloseOnExec(3)
+	unix.CloseOnExec(0)
+	if os.Getppid() != parseSourceParentPID() {
+		return ErrConflict
+	}
 	var start [1]byte
 	if _, e := io.ReadFull(os.Stdin, start[:]); e != nil || start[0] != 1 {
 		return ErrConflict
+	}
+	// Parent has acquired its nsfd before releasing gate. Becoming
+	// nondumpable earlier would deny that /proc namespace custody access.
+	if e := unix.Prctl(unix.PR_SET_DUMPABLE, 0, 0, 0, 0); e != nil {
+		return e
 	}
 	self, e := os.Open("/proc/thread-self/ns/net")
 	if e != nil {
@@ -236,12 +290,14 @@ func residentBootstrapSource(ctx context.Context, work func(context.Context, *na
 	defer pipe.Close()
 	bounded, cancel := context.WithTimeout(ctx, 4500*time.Millisecond)
 	defer cancel()
-	parentNS := os.NewFile(4, "initial-parent-netns")
-	if parentNS == nil {
+	parentIdentity, e := parseSourceParentNamespace()
+	if e != nil {
+		return e
+	}
+	if os.Getppid() != parseSourceParentPID() {
 		return ErrConflict
 	}
-	defer parentNS.Close()
-	return withResidentNamespace(int(self.Fd()), int(parentNS.Fd()), func(ns *namespaceCustody) error {
+	return withResidentNamespace(int(self.Fd()), parentIdentity, func(ns *namespaceCustody) error {
 		v, workErr := work(bounded, ns)
 		if workErr != nil {
 			v.Version = 1
@@ -301,11 +357,29 @@ func proveChildUserNamespace(pid, netfd, pidfd int) error {
 	return pidfdAlive(pidfd)
 }
 
-func residentCommand(exe string, uid, gid int, verdict, parentNamespace, gate *os.File) *exec.Cmd {
+func residentCommand(exe string, uid, gid int, verdict *os.File, parent Namespace, parentPID int, gate *os.File) *exec.Cmd {
 	cmd := exec.Command(exe, "--osownership-resident-no-tun-source")
 	cmd.Stdin = gate
-	cmd.Env = []string{"PATH=/usr/bin:/bin"}
-	cmd.ExtraFiles = []*os.File{verdict, parentNamespace}
+	cmd.Env = []string{"PATH=/usr/bin:/bin", "MNO_PARENT_DEV=" + strconv.FormatUint(parent.Device, 10), "MNO_PARENT_INO=" + strconv.FormatUint(parent.Inode, 10), "MNO_PARENT_PID=" + strconv.Itoa(parentPID)}
+	cmd.ExtraFiles = []*os.File{verdict}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWUSER | unix.CLONE_NEWNET, UidMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: uid, Size: 1}}, GidMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: gid, Size: 1}}, GidMappingsEnableSetgroups: false, Pdeathsig: syscall.SIGKILL}
 	return cmd
+}
+func parseSourceParentPID() int {
+	v, e := strconv.Atoi(os.Getenv("MNO_PARENT_PID"))
+	if e != nil || v <= 1 {
+		return -1
+	}
+	return v
+}
+func parseSourceParentNamespace() (Namespace, error) {
+	d, e := strconv.ParseUint(os.Getenv("MNO_PARENT_DEV"), 10, 64)
+	if e != nil {
+		return Namespace{}, e
+	}
+	i, e := strconv.ParseUint(os.Getenv("MNO_PARENT_INO"), 10, 64)
+	if e != nil || d == 0 || i == 0 {
+		return Namespace{}, ErrConflict
+	}
+	return Namespace{Device: d, Inode: i}, nil
 }

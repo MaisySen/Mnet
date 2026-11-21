@@ -65,9 +65,9 @@ func TestOriginalCreationHasNoAliasUntilExplicitACK(t *testing.T) {
 	}
 }
 func TestResidentCommandPlacementSourceNoExecution(t *testing.T) {
-	cmd := residentCommand("/fixed/source", 1000, 1000, nil, nil, nil)
+	cmd := residentCommand("/fixed/source", 1000, 1000, nil, Namespace{Device: 7, Inode: 9}, 123, nil)
 	s := cmd.SysProcAttr
-	if s.Cloneflags != 0x10000000|0x40000000 || s.GidMappingsEnableSetgroups || s.UidMappings[0].HostID != 1000 || s.GidMappings[0].HostID != 1000 || len(cmd.ExtraFiles) != 2 {
+	if s.Cloneflags != 0x10000000|0x40000000 || s.GidMappingsEnableSetgroups || s.UidMappings[0].HostID != 1000 || s.GidMappings[0].HostID != 1000 || len(cmd.ExtraFiles) != 1 {
 		t.Fatal("resident placement changed")
 	}
 	if len(cmd.Args) != 2 || cmd.Args[1] != "--osownership-resident-no-tun-source" {

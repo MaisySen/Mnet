@@ -28,22 +28,22 @@ func validateForwarding(raw RawInventory, s SysctlSnapshot) error {
 	expected := map[string]bool{"/proc/sys/net/ipv4/ip_forward": true}
 	names := []string{"all", "default"}
 	for _, l := range raw.Links {
-		names = append(names, l.Name)
-	}
-	for _, name := range names {
-		if !safeInterfaceName(name) {
+		if !safeInterfaceName(l.Name) {
 			return ErrConflict
 		}
-		for _, family := range []string{"ipv4", "ipv6"} {
-			k := "/proc/sys/net/" + family + "/conf/" + name + "/forwarding"
-			expected[k] = true
+		expected["/proc/sys/net/ipv4/conf/"+l.Name+"/forwarding"] = true
+		yes, e := LinkIPv6Applicable(l)
+		if e != nil {
+			return e
 		}
-		for _, leaf := range []string{"disable_ipv6", "addr_gen_mode"} {
-			k := "/proc/sys/net/ipv6/conf/" + name + "/" + leaf
-			v, ok := s[k]
-			if !ok || v != "0" && v != "1" && !(leaf == "addr_gen_mode" && (v == "2" || v == "3")) {
-				return fmt.Errorf("missing/invalid IPv6 readback %s", k)
-			}
+		if e = validateIPv6Directory(l.Name, yes, s); e != nil {
+			return fmt.Errorf("link %s: %w", l.Name, e)
+		}
+	}
+	for _, name := range names {
+		expected["/proc/sys/net/ipv4/conf/"+name+"/forwarding"] = true
+		if e := validateIPv6Directory(name, true, s); e != nil {
+			return e
 		}
 	}
 	for k := range expected {
@@ -64,8 +64,8 @@ func safeInterfaceName(s string) bool {
 	}
 	return s != "." && s != ".."
 }
-func NewBaselineCandidate(ns Namespace, raw RawInventory, s SysctlSnapshot) (*CapturedBaseline, error) {
-	if !sameNamespace(ns, ns) || len(raw.Links) == 0 || len(raw.Addresses) != 0 || len(raw.Routes) != 0 {
+func NewBaselineCandidate(parent, ns Namespace, raw RawInventory, s SysctlSnapshot) (*CapturedBaseline, error) {
+	if parent.Device == 0 || parent.Inode == 0 || parent.Device == ns.Device && parent.Inode == ns.Inode || !sameNamespace(ns, ns) || len(raw.Links) == 0 || len(raw.Addresses) != 0 || len(raw.Routes) != 0 {
 		return nil, errors.New("baseline must be distinct, all down, unaddressed, unrouted")
 	}
 	if e := ValidateDefaultRules(raw.Rules); e != nil {
@@ -82,6 +82,17 @@ func NewBaselineCandidate(ns Namespace, raw RawInventory, s SysctlSnapshot) (*Ca
 		}
 		seen[l.Index] = true
 		names[l.Name] = true
+		if underlay, e := attrUint(l.Raw, 5, false); e != nil || underlay != 0 {
+			return nil, errors.New("baseline has underlay linkage")
+		}
+		kind, e := linkKind(l)
+		if e != nil {
+			return nil, e
+		}
+		switch kind {
+		case "veth", "vxlan", "ipvlan", "macvlan", "macvtap", "geneve":
+			return nil, errors.New("cross-namespace-capable baseline link refused")
+		}
 		if _, yes := l.Raw[10]; yes {
 			return nil, errors.New("baseline has master")
 		}
@@ -176,17 +187,8 @@ func (b *CapturedBaseline) Compose(raw RawInventory, s SysctlSnapshot, h *Handle
 		out.IPv6Disabled[l.Index] = s["/proc/sys/net/ipv6/conf/"+l.Name+"/disable_ipv6"] == "1"
 	}
 	for _, a := range raw.Addresses {
-		if h == nil || a.Index != h.Link.Index || a.Family != 2 || a.Prefix != 32 || a.Local != h.Address.Prefix.Addr() || a.Address != a.Local || a.Scope != 0 {
-			return out, ErrConflict
-		}
-		flags, e := attrUint(a.Raw, 8, true)
-		if e != nil || flags != 0x280 || a.Flags != 0x80 {
-			return out, errors.New("owned address lacks no-prefix-route")
-		}
-		for k := range a.Raw {
-			if k != 1 && k != 2 && k != 8 {
-				return out, fmt.Errorf("unreviewed address attr %d", k)
-			}
+		if e := validateOwnedAddress(h, a); e != nil {
+			return out, e
 		}
 		out.Addresses = append(out.Addresses, h.Address)
 	}
@@ -234,4 +236,20 @@ func composeRoute(h Handle, r RouteRecord, addressACK bool) (Route, error) {
 		return Route{Destination: netip.PrefixFrom(r.Dst, 32), LinkIndex: h.Link.Index, Protocol: 2, Table: 255, Scope: "host", Type: "local", KernelOrigin: true}, nil
 	}
 	return Route{}, ErrConflict
+}
+
+func validateOwnedAddress(h *Handle, a AddressRecord) error {
+	if h == nil || a.Index != h.Link.Index || a.Family != 2 || a.Prefix != 32 || a.Local != h.Address.Prefix.Addr() || a.Address != a.Local || a.Scope != 0 {
+		return ErrConflict
+	}
+	flags, e := attrUint(a.Raw, 8, true)
+	if e != nil || flags != 0x280 || a.Flags != 0x80 {
+		return errors.New("owned address lacks no-prefix-route")
+	}
+	for k := range a.Raw {
+		if k != 1 && k != 2 && k != 8 {
+			return fmt.Errorf("unreviewed address attr %d", k)
+		}
+	}
+	return nil
 }

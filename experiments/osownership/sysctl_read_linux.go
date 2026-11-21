@@ -34,8 +34,39 @@ func readPolicySysctlsSource(ctx context.Context, ns *namespaceCustody, raw RawI
 	}
 	for _, n := range names {
 		paths = append(paths, "ipv4/conf/"+n+"/forwarding")
-		for _, leaf := range []string{"forwarding", "disable_ipv6", "addr_gen_mode"} {
-			paths = append(paths, "ipv6/conf/"+n+"/"+leaf)
+		applicable := true
+		for _, l := range raw.Links {
+			if l.Name == n {
+				applicable, e = LinkIPv6Applicable(l)
+				if e != nil {
+					return nil, e
+				}
+			}
+		}
+		if e = ns.checkCurrent(); e != nil {
+			return nil, e
+		}
+		dirfd, dirErr := openRelativeDirectory(root, []string{"ipv6", "conf", n})
+		if dirErr != nil {
+			if dirErr != unix.ENOENT {
+				return nil, dirErr
+			}
+			out[ipv6DirPrefix+n] = "ENOENT"
+			if applicable {
+				return nil, fmt.Errorf("IPv6 AF_SPEC present but directory absent: %s", n)
+			}
+		} else {
+			unix.Close(dirfd)
+			out[ipv6DirPrefix+n] = "present"
+			if !applicable {
+				return nil, fmt.Errorf("IPv6 directory present but AF_SPEC absent: %s", n)
+			}
+			for _, leaf := range []string{"forwarding", "disable_ipv6", "addr_gen_mode"} {
+				paths = append(paths, "ipv6/conf/"+n+"/"+leaf)
+			}
+		}
+		if e = ns.checkCurrent(); e != nil {
+			return nil, e
 		}
 	}
 	for _, path := range paths {
@@ -46,7 +77,7 @@ func readPolicySysctlsSource(ctx context.Context, ns *namespaceCustody, raw RawI
 			return nil, e
 		}
 		parts := strings.Split(path, "/")
-		fd, e := unix.Dup(root)
+		fd, e := unix.FcntlInt(uintptr(root), unix.F_DUPFD_CLOEXEC, 0)
 		if e != nil {
 			return nil, e
 		}
@@ -80,4 +111,22 @@ func readPolicySysctlsSource(ctx context.Context, ns *namespaceCustody, raw RawI
 		}
 	}
 	return out, validateForwarding(raw, out)
+}
+
+// Resolve from trusted root without symlink traversal. ENOENT is returned as
+// the actual syscall result; EPERM/ELOOP/etc are never absence evidence.
+func openRelativeDirectory(root int, parts []string) (int, error) {
+	fd, e := unix.FcntlInt(uintptr(root), unix.F_DUPFD_CLOEXEC, 0)
+	if e != nil {
+		return -1, e
+	}
+	for _, part := range parts {
+		next, e := unix.Openat(fd, part, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+		unix.Close(fd)
+		if e != nil {
+			return -1, e
+		}
+		fd = next
+	}
+	return fd, nil
 }
