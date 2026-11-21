@@ -305,7 +305,19 @@ func (p *DevelopmentPeerScope) closeResources() {
 		_ = resources[i].Close()
 	}
 }
-func (p *DevelopmentPeerScope) Reason() string { p.mu.Lock(); defer p.mu.Unlock(); return p.reason }
+func (p *DevelopmentPeerScope) Reason() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	// Context cancellation is observable before the cleanup goroutine runs.
+	if p.reason == "" && p.ctx.Err() != nil {
+		if !p.peerDeadline.IsZero() && !time.Now().Before(p.peerDeadline) {
+			p.reason = "peer-expired"
+		} else {
+			p.reason = "session-ended"
+		}
+	}
+	return p.reason
+}
 
 func (s *DevelopmentNetworkSession) BindPeer(peer SessionPeer) (*DevelopmentPeerScope, error) {
 	peers, err := s.CurrentSessionPeers()
@@ -394,7 +406,11 @@ func (s *DevelopmentNetworkSession) retireChangedPeerScopes() {
 		if !developmentExactPeerPresent(peers, scope.peer) || !sameDeadline {
 			scope.mu.Lock()
 			if scope.reason == "" {
-				scope.reason = "authorization-changed"
+				if !time.Now().Before(scope.peerDeadline) {
+					scope.reason = "peer-expired"
+				} else {
+					scope.reason = "authorization-changed"
+				}
 			}
 			scope.mu.Unlock()
 			_ = scope.Close()

@@ -177,3 +177,12 @@ func TestDevelopmentPeerOriginalDeadlineClosesWithoutAnotherMapCheck(t *testing.
 		t.Fatal("original deadline did not independently cancel/close peer scope")
 	}
 }
+
+func TestDevelopmentPeerExpiryReasonDoesNotWaitForCleanupGoroutine(t *testing.T) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Millisecond))
+	defer cancel()
+	scope := &DevelopmentPeerScope{ctx: ctx, cancel: cancel, peerDeadline: time.Now().Add(-time.Millisecond)}
+	if scope.Reason() != "peer-expired" {
+		t.Fatal("expired context exposed an empty or source-withdrawal reason before cleanup")
+	}
+}
