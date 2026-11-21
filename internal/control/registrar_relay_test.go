@@ -1,13 +1,18 @@
 package control
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -288,6 +293,165 @@ func TestRegistrarRelayTwoNodeDestinationDenialMatrix(t *testing.T) {
 			if _, packet, err := destWS.ReadMessage(); err == nil {
 				t.Fatalf("destination %s received forbidden frame %q", mode, packet[32:])
 			}
+		})
+	}
+}
+
+// Blocks a real destination socket write only after its queued authority check
+// has run. This is test-owned socket plumbing, not a production auth hook.
+type registrarQueuedConn struct {
+	net.Conn
+	armed            atomic.Bool
+	entered, release chan struct{}
+}
+
+func (c *registrarQueuedConn) Write(p []byte) (int, error) {
+	if c.armed.CompareAndSwap(true, false) {
+		close(c.entered)
+		<-c.release
+	}
+	return c.Conn.Write(p)
+}
+
+type registrarQueuedWriter struct {
+	http.ResponseWriter
+	conn chan *registrarQueuedConn
+}
+
+func (w registrarQueuedWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	c, b, err := w.ResponseWriter.(http.Hijacker).Hijack()
+	if err != nil {
+		return nil, nil, err
+	}
+	gate := &registrarQueuedConn{Conn: c, entered: make(chan struct{}), release: make(chan struct{})}
+	w.conn <- gate
+	return gate, b, nil
+}
+
+func TestRegistrarRelayActualHandlerQueuedRevocationWiring(t *testing.T) {
+	for _, mode := range []string{"source-expired", "destination-unapproved", "acl-pair"} {
+		t.Run(mode, func(t *testing.T) {
+			s, ref, secret := registrarCredentialFixture(t)
+			auth, err := s.CreateAuthKey(ref.NetworkID, "queued destination fixture", false, time.Minute)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dstKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{72}, 32))
+			dst, err := s.Join(netmap.JoinRequest{Network: ref.NetworkID, Name: "destination", PubKey: dstKey, AuthKey: auth.Key})
+			if err != nil || !dst.Approved {
+				t.Fatal("destination join", err)
+			}
+			hub := relay.NewHub()
+			g, err := s.newRegistrarDevelopmentIngress(registrarIngressLimits{MaxRequests: 16, MaxConcurrent: 2, MaxBodyBytes: 16384, MaxStateBytes: 4 << 20, MaxEntries: 8, Timeout: 3 * time.Second}, http.NotFoundHandler())
+			if err != nil {
+				t.Fatal(err)
+			}
+			handler, err := s.newRegistrarDevelopmentRelayIngress(g, hub, 32)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sourceServer := httptest.NewTLSServer(handler)
+			defer sourceServer.Close()
+			record := s.registrarNodeLocked(ref.NodeID)
+			receipt, err := contract.ReceiptV2ForChallenge(record.Consumption.Challenge, record.NodeID, record.ReceiptID, record.CommittedAtMS)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, _ := json.Marshal(contract.HistoryReceiptWire{Version: 1, Receipt: receipt, ReceiptDigest: record.ReceiptDigest})
+			headers := http.Header{}
+			headers.Set("Authorization", registrarRelayScheme+secret)
+			headers.Set(registrarRelayReferenceHeader, base64.RawURLEncoding.EncodeToString(raw))
+			sourceWS, _, err := dialRegistrarRelayFixture(t, sourceServer, headers)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer sourceWS.Close()
+			// Test-owned destination attachment is deliberately separate from the real
+			// registrar source handler under test. All tested forwarding and queued
+			// callbacks must originate from that actual handler, never this fixture.
+			conns := make(chan *registrarQueuedConn, 1)
+			done := make(chan struct{})
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			destServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				ws, err := (&websocket.Upgrader{}).Upgrade(registrarQueuedWriter{w, conns}, r, nil)
+				if err != nil {
+					return
+				}
+				defer close(done)
+				hub.AttachScopedBounded(ctx, 16, dst.NodeID, ref.NetworkID, dstKey, ws, func(src, target string, payload []byte) { hub.ForwardScoped(ref.NetworkID, src, target, payload) })
+			}))
+			defer destServer.Close()
+			destWS, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(destServer.URL, "http"), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer destWS.Close()
+			gate := <-conns
+			release := sync.OnceFunc(func() { close(gate.release) })
+			defer release()
+			send := func(target, body string) {
+				key, err := base64.StdEncoding.DecodeString(target)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := sourceWS.WriteMessage(websocket.BinaryMessage, append(key, []byte(body)...)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// Destination attachment barrier is observed on its actual unblocked socket.
+			key, _ := base64.StdEncoding.DecodeString(dstKey)
+			if err := destWS.WriteMessage(websocket.BinaryMessage, append(key, []byte("destination-ready")...)); err != nil {
+				t.Fatal(err)
+			}
+			destWS.SetReadDeadline(time.Now().Add(time.Second))
+			if _, _, err := destWS.ReadMessage(); err != nil {
+				t.Fatal("destination ready", err)
+			}
+			gate.armed.Store(true)
+			send(dstKey, "first-authorized-before-revoke")
+			select {
+			case <-gate.entered:
+			case <-time.After(time.Second):
+				t.Fatal("first actual handler destination write did not block")
+			}
+			send(dstKey, "second-handler-queued-before-revoke")
+			// Same source socket is processed FIFO. Receiving the next self-targeted
+			// frame proves the prior destination frame completed its real handler
+			// admission and enqueue before we revoke. Destination remains blocked.
+			sourceKey := s.data.Nodes[ref.NodeID].PubKey
+			send(sourceKey, "source-fifo-enqueue-barrier")
+			sourceWS.SetReadDeadline(time.Now().Add(time.Second))
+			_, barrier, err := sourceWS.ReadMessage()
+			if err != nil || len(barrier) < 32 || string(barrier[32:]) != "source-fifo-enqueue-barrier" {
+				t.Fatal("source FIFO enqueue barrier", err)
+			}
+			switch mode {
+			case "source-expired":
+				err = s.ExpireNode(ref.NodeID)
+			case "destination-unapproved":
+				s.mu.Lock()
+				s.data.Nodes[dst.NodeID].Approved = false
+				err = s.saveLocked()
+				s.mu.Unlock()
+			case "acl-pair":
+				err = s.SetACL(ref.NetworkID, &netmap.ACLPolicy{Rules: []netmap.ACLRule{{Src: "fixture", Dst: "fixture"}}})
+			}
+			if err != nil {
+				t.Fatal("revoke before queued drain", err)
+			}
+			release()
+			destWS.SetReadDeadline(time.Now().Add(time.Second))
+			_, first, err := destWS.ReadMessage()
+			if err != nil || len(first) < 32 || string(first[32:]) != "first-authorized-before-revoke" {
+				t.Fatal("already authorized write did not finish", err)
+			}
+			destWS.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+			if _, second, err := destWS.ReadMessage(); err == nil {
+				t.Fatalf("actual handler omitted queued authority delivered %q", second[32:])
+			}
+			cancel()
+			<-done
 		})
 	}
 }

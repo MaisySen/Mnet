@@ -157,3 +157,23 @@ frame may drain. Removing ONLY the queued writer's p.permitted check makes the
 second queued-before-revoke frame arrive and fails that exact assertion. Admission
 is deliberately independent in this test, so a source admission refusal cannot
 manufacture its pass. This check does not revoke a write already in progress.
+
+### Actual handler queued-callback wiring
+
+The separate Hub queued test did not cover omission of the control handler's
+ForwardScopedChecked callback argument. The actual-handler regression now holds
+the first destination socket write, sends a second destination frame through the
+real credential-authenticated TLS handler, then sends a FIFO source-self barrier.
+Receiving that barrier proves the second frame has passed real handler admission
+and enqueue while permission remains valid. Only then does the test expire the
+source, unapprove the destination, or withdraw the ACL pair, before releasing the
+destination write. The already-authorized first write completes, but the second
+queued frame must not arrive. Destination attachment is explicitly test-owned
+Hub plumbing; it does not substitute a test callback for the handler's source
+forwarding or queued authorization. A mutant replacing ONLY the handler's queued
+callback argument with nil fails all three cases on second-frame delivery.
+
+Mutant results are specific to their exact edits. Our earlier destination mutant
+bypasses the entire allowed callback and fails all five destination modes. The
+independent review used a different destination-check bypass, with three state
+failures plus a credential case. Those counts are not equivalent evidence.
