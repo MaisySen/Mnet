@@ -62,6 +62,9 @@ func TestHTTPSOwnExchangeExactWireNoAmbientAuthOrCookies(t *testing.T) {
 	var calls atomic.Int64
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
+		if r.ProtoMajor != 1 {
+			t.Error("one-shot transport negotiated unexpected multiplexed protocol")
+		}
 		if r.Method != "POST" || r.URL.Path != "/api/mnet-enrollment-v1/exchange-v2" || r.URL.RawQuery != "" {
 			t.Error("wrong endpoint")
 		}
@@ -106,7 +109,7 @@ func TestHTTPSOwnExchangeExactWireNoAmbientAuthOrCookies(t *testing.T) {
 	if calls.Load() != 2 {
 		t.Fatal("unexpected retry")
 	}
-	if n.http.Jar != nil || n.transport.Proxy != nil || n.transport.TLSClientConfig.InsecureSkipVerify {
+	if n.http.Jar != nil || n.transport.Proxy != nil || n.transport.TLSClientConfig.InsecureSkipVerify || !n.transport.DisableKeepAlives || n.transport.ForceAttemptHTTP2 || len(n.transport.TLSNextProto) != 0 || len(n.transport.TLSClientConfig.NextProtos) != 1 || n.transport.TLSClientConfig.NextProtos[0] != "http/1.1" {
 		t.Fatal("ambient transport/TLS bypass")
 	}
 }

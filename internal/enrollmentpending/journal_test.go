@@ -514,3 +514,18 @@ func TestConcurrentCloseAndCallbackLeavesWholeReopenableImage(t *testing.T) {
 		t.Fatal("Close race returned invalid phase", err)
 	}
 }
+
+func TestCopiedJournalHandleSharesLifecycleAndPendingImage(t *testing.T) {
+	j, l, now, _ := prepared(t)
+	copyHandle := *j
+	if err := copyHandle.RecordCallback(l.AttemptID, l.State, code(), now); err != nil {
+		t.Fatal(err)
+	}
+	if phase, err := j.Status(); err != nil || phase != "callback-recorded" {
+		t.Fatal("copied handle diverged image", err)
+	}
+	copyHandle.Close()
+	if _, err := j.Status(); !errors.Is(err, ErrClosed) {
+		t.Fatal("copied handle bypassed closed owner", err)
+	}
+}

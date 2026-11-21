@@ -1,10 +1,12 @@
 // Package enrollmentpending is a disconnected native pending-intent journal.
 // It owns only its own file, not the daemon identity or loopback listener. No
-// browser, HTTP, credential installation, tunnel or authority permit exists.
+// browser, credential installation, tunnel or authority permit exists. The
+// disconnected ExchangeSaved adapter owns one explicit source HTTP request.
 package enrollmentpending
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -57,7 +59,10 @@ type filesystem struct {
 	rename  func(string, string) error
 	syncDir func(string) error
 }
-type Journal struct {
+
+// Journal is a copy-safe handle; copies share one lifecycle and pending image.
+type Journal struct{ *journal }
+type journal struct {
 	mu       *sync.Mutex
 	owner    *stateowner.Lease
 	path     string
@@ -66,6 +71,8 @@ type Journal struct {
 	closed   bool
 	fault    bool
 	reopened bool
+	cancel   context.CancelFunc
+	send     exchangeSender
 }
 
 func (Journal) String() string   { return "[private native enrollment journal]" }
@@ -88,7 +95,7 @@ func Open(dir string) (*Journal, error) {
 			owner.Close()
 		}
 	}()
-	j := &Journal{mu: &sync.Mutex{}, owner: owner, path: path, fs: filesystem{create: func(dir string) (tempFile, error) { return os.CreateTemp(dir, ".mnet-enrollment-*") }, rename: stateowner.Rename, syncDir: stateowner.SyncDir}}
+	j := &Journal{journal: &journal{send: sendNativeExchange, mu: &sync.Mutex{}, owner: owner, path: path, fs: filesystem{create: func(dir string) (tempFile, error) { return os.CreateTemp(dir, ".mnet-enrollment-*") }, rename: stateowner.Rename, syncDir: stateowner.SyncDir}}}
 	info, err := os.Lstat(path)
 	if os.IsNotExist(err) {
 		ok = true
@@ -155,6 +162,10 @@ func (j *Journal) Close() error {
 		return nil
 	}
 	j.closed = true
+	if j.cancel != nil {
+		j.cancel()
+		j.cancel = nil
+	}
 	j.data = nil
 	return j.owner.Close()
 }
@@ -256,7 +267,7 @@ func (j *Journal) RecordExchange(raw []byte, currentAllowed []contract.SourceMap
 	if err := j.health(); err != nil {
 		return err
 	}
-	if j.data == nil || j.data.Phase != "exchange-may-have-started" || !live(*j.data, now) {
+	if j.cancel != nil || j.data == nil || j.data.Phase != "exchange-may-have-started" || !live(*j.data, now) {
 		return ErrInvalid
 	}
 	r := *j.data

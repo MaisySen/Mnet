@@ -45,7 +45,7 @@ func NewNative(origin, principalAuthority string, limits Limits) (*Native, error
 	}
 	// Construct independently: no DefaultTransport/DefaultClient/ProxyFromEnvironment,
 	// caller RoundTripper, cookie jar, ambient browser authentication or TLS bypass.
-	tr := &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: limits.Timeout, KeepAlive: 30 * time.Second}).DialContext, ForceAttemptHTTP2: true, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}, TLSHandshakeTimeout: limits.Timeout, ResponseHeaderTimeout: limits.Timeout, MaxResponseHeaderBytes: 16 * 1024, MaxConnsPerHost: limits.MaxConnections, MaxIdleConnsPerHost: limits.MaxConnections, IdleConnTimeout: 30 * time.Second, DisableCompression: true}
+	tr := &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: limits.Timeout, KeepAlive: 30 * time.Second}).DialContext, ForceAttemptHTTP2: false, TLSNextProto: map[string]func(string, *tls.Conn) http.RoundTripper{}, DisableKeepAlives: true, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, NextProtos: []string{"http/1.1"}}, TLSHandshakeTimeout: limits.Timeout, ResponseHeaderTimeout: limits.Timeout, MaxResponseHeaderBytes: 16 * 1024, MaxConnsPerHost: limits.MaxConnections, MaxIdleConnsPerHost: limits.MaxConnections, IdleConnTimeout: 30 * time.Second, DisableCompression: true}
 	h := &http.Client{Transport: tr, Timeout: limits.Timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	return &Native{origin: origin, authority: principalAuthority, http: h, transport: tr}, nil
 }
@@ -123,6 +123,9 @@ func (n *Native) Exchange(ctx context.Context, saved contract.SourceLaunch, save
 	if err != nil {
 		return contract.SourceExchange{}, ErrInvalid
 	}
+	// Pin fresh HTTP/1.1 connections and no body rewind for this one-shot
+	// client. No pooled stale-connection or HTTP/2 stream retry path.
+	req.GetBody = nil
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Cache-Control", "no-store")
