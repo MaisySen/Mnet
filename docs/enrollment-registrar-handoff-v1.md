@@ -54,7 +54,11 @@ password, URL parameter, browser field or printed diagnostic. A failed save
 creates no browser/network request. Existing enrollment cannot be overwritten;
 conflicting pending attempts refuse or require explicit local cancellation.
 
-This is not a second independent state store. It is a versioned field in the
+This is not a second independent state store. On restart, current operator
+configuration is authoritative: compare saved origin, issuer, registrar, audience,
+revision and network against the current exact tuple before any retry or browser
+opening. Missing or changed configuration fails closed, never silently remaps.
+It is a versioned field in the
 existing daemon private state, written through the same lifecycle owner. Its
 scope is one pending intent, with explicit restart validation and fail-closed
 migration. No node-control client becomes usable until the committed receipt
@@ -103,9 +107,10 @@ Proposed fields:
 
 No plaintext credential/verifier/private key. Code/ticket plaintext is emitted
 only at its own one-use delivery point; dropped responses do not cause fresh
-secret delivery from a stored hash. Lost code/ticket before reservation requires
-a new local intent and fresh consent, or an explicitly reviewed retry protocol.
-Do not mutate a prior ticket back to issued.
+secret delivery from a stored hash. Both decision-code delivery and exchange
+are one-shot. Lost code/ticket response requires a new local attempt and fresh
+consent. Neither endpoint redelivers a secret from its hash or rotates it on a
+retry. Do not mutate a prior ticket back to issued.
 
 State transitions, enforced by conditional updates with exact bindings:
 
@@ -119,7 +124,8 @@ State transitions, enforced by conditional updates with exact bindings:
 | reserved | matching committed receipt acknowledgement | consumed | Store receipt ID/digest, no return to issued |
 | pending/approved/issued | expiry/withdrawal/current authority loss | terminal | No positive reuse |
 | reserved | timeout or ambiguous status | uncertain | No new enrollment; status-only reconciliation |
-| consumed/uncertain | authenticated status reconciliation | same terminal identity | Never reissue consent or create another reserve |
+| uncertain | verified exact receipt ack/status match | consumed | Record already-completed commit only, no new authority |
+| consumed | verified identical receipt ack/status match | consumed | Idempotent same receipt, never reissue or reserve |
 
 If an unused issued ticket expires, its secret cannot enroll later. If an
 already reserved ticket becomes uncertain, retry cannot obtain a new reservation
@@ -204,9 +210,21 @@ only then may it construct a usable client. Connect remains a separate action.
 ## Status and recovery without secret redelivery
 
 After timeout/restart, daemon uses its saved attempt/key/credential and exact
-configured registrar. Receipt-status access is authenticated by its pre-saved
-credential (verified against the committed digest) and an operation-specific
-fresh proof if the reviewed protocol requires it. Public attempt/key alone
+configured registrar. Recovery authentication is not implemented or selected.
+A possible bearer design sends the secret over authenticated TLS and checks its
+SHA256 digest, so the registrar sees that secret during authenticated use even
+though storage remains hash-only. Do not claim only its digest ever leaves the
+device. A verifier storing only SHA256(secret) cannot verify HMAC keyed by secret;
+keying HMAC with the digest instead makes a digest leak usable authority. A
+separate asymmetric recovery credential could avoid bearer disclosure but would
+require a new descriptor, protocol and review, not an undocumented substitution.
+The journal/PKCE slice must not implement any of these status protocols.
+
+Exact digest binding constrains an honest validating registrar and in-transit or
+caller substitution. It does not stop a malicious registrar that controls node
+commit/storage from ignoring the descriptor. The registrar remains a trusted
+authority in this design; independent enforcement would require a separate design.
+Public attempt/key alone
 returns no private result. No new node, token rotation or new enrollment occurs
 for a lost commit response.
 
@@ -229,7 +247,7 @@ If both key and state are lost, it is a new device, not identity recovery.
 | --- | --- |
 | Native intent save fails | No browser/open/enrollment request |
 | Browser canceled / wrong callback | No ticket exchange; intent incomplete |
-| Code exchange response lost | No hash-to-secret recreation; fresh consent or reviewed exact retry |
+| Code exchange response lost | No hash-to-secret recreation or retry issuance; new attempt and fresh consent |
 | Service reserve response lost | Same descriptor retry/status only; never new reservation |
 | Registrar proof fails | No node or consumed-only commit |
 | Registrar save/fsync/rename fails before publish | No live node/receipt mutation; sticky remote reservation not reset |
