@@ -71,6 +71,9 @@ func recoverDisposableEnrollment(ctx context.Context, root string, historyOut *c
 		if err != nil {
 			return out, err
 		}
+		if ctx.Err() != nil {
+			return out, ctx.Err()
+		}
 		if err := d.reconcileNativeFinalization(); err != nil {
 			return out, err
 		}

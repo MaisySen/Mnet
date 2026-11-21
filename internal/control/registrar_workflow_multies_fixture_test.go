@@ -61,11 +61,15 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	relayHub := relay.NewHub()
 	var workflowSubmits atomic.Int32
 	var historyCalls atomic.Int32
+	var bookkeepingHTTP atomic.Int32
 	var mapResponseRefusals atomic.Int32
 	var bridgeMu sync.Mutex
 	getPeerSecret := func() string { bridgeMu.Lock(); defer bridgeMu.Unlock(); return peerSecret }
 	var ingress atomic.Pointer[registrarIngress]
 	bridge := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, e := os.Stat(filepath.Join(dir, "bookkeeping-only-window")); e == nil {
+			bookkeepingHTTP.Add(1)
+		}
 		if r.URL.Path == registrarRelayPath {
 			h := relayIngress.Load()
 			if h == nil {
@@ -340,11 +344,12 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	}
 
 	networkCase := strings.HasPrefix(os.Getenv("MNET_DEVELOPMENT_SETUP_CASE"), "network-tcp")
+	anchorInstalledPeers := networkCase || os.Getenv("MNET_RETAINED_BROWSER") == "1"
 	var earlyInstalled *exec.Cmd
 	var nativeOutput bytes.Buffer
 	nativeWaited := false
 	limits := registrar.WorkflowLimits{Timeout: 3 * time.Second, MaxChallengeLifetime: time.Duration(input.Workflow.ChallengeMS) * time.Millisecond, MaxReserveLifetime: time.Minute, Timing: contract.FixtureTiming{MaxObservationAgeMS: int64(input.Workflow.MaxObservationAgeMS), MaxLeaseMS: int64(input.Workflow.MaxLeaseMS), ClockUncertaintyMS: int64(input.Workflow.ClockUncertaintyMS)}}
-	if networkCase {
+	if anchorInstalledPeers {
 		installed := os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY")
 		if installed == "" {
 			t.Fatal("installed network binary required")
@@ -593,7 +598,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	// Third device: separate actual daemon test process owns the retained native
 	// State/key/callback. This process never receives its private key or file
 	// credential; only the real expected registrar request presents the bearer.
-	if networkCase {
+	if anchorInstalledPeers {
 		timing, _ := json.Marshal(map[string]int64{"committedAtMS": r.CommittedAtMS, "accessExpiresAtMS": r.AccessExpiresAtMS, "readyAtMS": time.Now().UnixMilli()})
 		if err := writeRegistrarFixtureAtomic(dir, "installed-peers-ready", timing); err != nil {
 			t.Fatal(err)
@@ -956,10 +961,40 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		NativeEncryptedDirect     bool
 		NativeEncryptedRelay      bool
 	}
+	if os.Getenv("MNET_DEVELOPMENT_BOOKKEEPING_FIXTURE") == "1" && os.Getenv("MNET_BOOKKEEPING_EXPIRED") == "1" {
+		var result struct {
+			Receipt                                                                                      contract.WorkflowReceiptWire
+			BookkeepingExpired, NativeOwnedKeyConfirmed, NativeProofStateUnchanged, NativeStateFinalized bool
+		}
+		if json.Unmarshal(raw, &result) != nil || !result.BookkeepingExpired || !result.NativeOwnedKeyConfirmed || !result.NativeProofStateUnchanged || !result.NativeStateFinalized || historyCalls.Load() != 0 || bookkeepingHTTP.Load() != 0 || time.Now().UnixMilli() < result.Receipt.Receipt.AccessExpiresAtMS {
+			t.Fatal("expired bookkeeping evidence invalid")
+		}
+		record := s.registrarNodeLocked(result.Receipt.Receipt.NodeID)
+		if record == nil || len(s.data.Nodes) != 3 || record.ReceiptDigest != result.Receipt.ReceiptDigest {
+			t.Fatal("expired bookkeeping changed original registrar receipt")
+		}
+		expiredRef := registrarCredentialReference{NodeID: record.NodeID, NetworkID: record.NetworkID, DevicePublicKey: record.DevicePublicKey, Scope: record.Scope, ReceiptID: record.ReceiptID, ReceiptDigest: record.ReceiptDigest, DescriptorDigest: record.DescriptorDigest, TranscriptDigest: record.Consumption.TranscriptDigest}
+		if _, e := s.registrarCredentialMap(expiredRef, getPeerSecret()); e == nil {
+			t.Fatal("bookkeeping renewed current authority")
+		}
+		for id := range s.data.Nodes {
+			if e := s.DeleteNode(id); e != nil {
+				t.Fatal(e)
+			}
+		}
+		outcome, _ := json.Marshal(map[string]any{"bookkeepingExpired": true, "bookkeepingCompleted": true, "historyRequests": historyCalls.Load(), "networkVerified": false, "nodeDeleted": true, "inputAuthorized": false})
+		if e := writeRegistrarFixtureAtomic(dir, "outcome.json", outcome); e != nil {
+			t.Fatal(e)
+		}
+		return
+	}
 	if json.Unmarshal(raw, &nativeOutcome) != nil || !nativeOutcome.NativeProofStateUnchanged || (!recoveryMode.Load() && !preparedFinalize.Load() && (!nativeOutcome.NativeOwnedKeyConfirmed || !nativeOutcome.NativeStateFinalized || nativeOutcome.NativeCurrentPeers != 2 && os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY") == "")) || (preparedFinalize.Load() && (!nativeOutcome.NativeHistoryRecovered || nativeOutcome.NativeOwnedKeyConfirmed || !nativeOutcome.NativeStateFinalized || nativeOutcome.NativeCurrentPeers != 2 || (historyCalls.Load() != 1 && !preparedHistoryFinalize.Load()) || (preparedHistoryFinalize.Load() && historyCalls.Load() != 2))) || (recoveryMode.Load() && (!nativeOutcome.NativeHistoryRecovered || nativeOutcome.NativeOwnedKeyConfirmed || nativeOutcome.NativeStateFinalized != historyFinalize.Load() || historyCalls.Load() != 1 || (historyFinalize.Load() && nativeOutcome.NativeCurrentPeers != 2))) {
 		t.Fatalf("missing actual daemon proof result owned=%v unchanged=%v finalized=%v peers=%d receipt=%v", nativeOutcome.NativeOwnedKeyConfirmed, nativeOutcome.NativeProofStateUnchanged, nativeOutcome.NativeStateFinalized, nativeOutcome.NativeCurrentPeers, nativeOutcome.Receipt.Receipt.NodeID != "")
 	}
 
+	if os.Getenv("MNET_DEVELOPMENT_BOOKKEEPING_FIXTURE") == "1" && (historyCalls.Load() != 0 || bookkeepingHTTP.Load() != 0) {
+		t.Fatal("bookkeeping-only performed history HTTP", historyCalls.Load())
+	}
 	if os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY") != "" && !networkCase {
 		setupCase := os.Getenv("MNET_DEVELOPMENT_SETUP_CASE")
 		if setupCase == "result-preexisting" || setupCase == "result-write-failure" || setupCase == "result-open-failure" {
@@ -992,7 +1027,11 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		installedRef := registrarCredentialReference{NodeID: record.NodeID, NetworkID: record.NetworkID, DevicePublicKey: record.DevicePublicKey, Scope: record.Scope, ReceiptID: record.ReceiptID, ReceiptDigest: record.ReceiptDigest, DescriptorDigest: record.DescriptorDigest, TranscriptDigest: record.Consumption.TranscriptDigest}
 		current, err := s.registrarCredentialMap(installedRef, getPeerSecret())
 		if err != nil || len(current.Peers) != nativeOutcome.NativeCurrentPeers {
-			t.Fatal("installed native current map not source grounded", err)
+			peers := -1
+			if current != nil {
+				peers = len(current.Peers)
+			}
+			t.Fatalf("installed native current map not source grounded: error=%v now=%d originalPeerExpiry=%d historicalPeers=%d currentPeers=%d", err, time.Now().UnixMilli(), r.AccessExpiresAtMS, nativeOutcome.NativeCurrentPeers, peers)
 		}
 		ids := []string{}
 		for id := range s.data.Nodes {

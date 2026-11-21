@@ -127,6 +127,7 @@ func writeFixtureAtomic(dir, name string, raw []byte) error {
 var developmentRecoveryFixtureSetup func(*testing.T, string, config.LocalConfigV2, registrar.WorkflowLimits) string
 var developmentRecoveryFixtureRun func(*testing.T, string, string, []byte) bool
 var developmentPreparedRecoveryFixture func(*testing.T, string)
+var developmentBookkeepingFixture func(*testing.T, *Daemon) *Daemon
 
 func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 	dir := os.Getenv("MNET_NATIVE_OWNED_WORKFLOW_DIR")
@@ -270,10 +271,26 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 	}
 	// Actual private sole-State finalization from SAME confirmed runtime, not
 	// a returned-document installer. Then owner Close/reopen and dedicated map.
-	if err := d.finalizeNativeEnrollment(context.Background()); err != nil {
+	if os.Getenv("MNET_DEVELOPMENT_BOOKKEEPING_FIXTURE") == "1" {
+		if developmentBookkeepingFixture == nil {
+			t.Fatal("bookkeeping hook missing")
+		}
+		d = developmentBookkeepingFixture(t, d)
+		defer d.Close()
+	} else if err := d.finalizeNativeEnrollment(context.Background()); err != nil {
 		t.Fatal("actual native finalization", err)
 	}
-	phase, err = d.enrollmentPreparation.journal.Status()
+	phase, err = func() (string, error) {
+		if d.enrollmentPreparation == nil {
+			raw, e := os.ReadFile(filepath.Join(d.stateOwner.lease.Parent(), "enrollment-pending", "enrollment-pending-v1.json"))
+			var p struct{ Phase string }
+			if e == nil {
+				e = json.Unmarshal(raw, &p)
+			}
+			return p.Phase, e
+		}
+		return d.enrollmentPreparation.journal.Status()
+	}()
 	if err != nil || phase != "native-finalization-completed" {
 		t.Fatal("native finalization correlation", err)
 	}
@@ -297,6 +314,19 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 		t.Fatal("actual owning native finalization reopen", err)
 	}
 
+	if os.Getenv("MNET_BOOKKEEPING_EXPIRED") == "1" && os.Getenv("MNET_DEVELOPMENT_BOOKKEEPING_FIXTURE") == "1" {
+		if time.Now().UnixMilli() < result.Receipt.AccessExpiresAtMS {
+			t.Fatal("expired bookkeeping fixture still live")
+		}
+		if reopened.cc != nil || reopened.dev != nil {
+			t.Fatal("bookkeeping activated network")
+		}
+		raw, _ := json.Marshal(map[string]any{"Receipt": result, "BookkeepingExpired": true, "NativeOwnedKeyConfirmed": true, "NativeProofStateUnchanged": true, "NativeStateFinalized": true})
+		if e := writeFixtureAtomic(dir, "native-workflow-outcome.json", raw); e != nil {
+			t.Fatal(e)
+		}
+		return
+	}
 	currentLimits := controlclient.RegistrarLimits{Timeout: 3 * time.Second, MaxConcurrent: 1, MaxRequests: 8}
 	if os.Getenv("MNET_DEVELOPMENT_NETWORK_SESSION") == "1" {
 		currentLimits.MaxRequests = 16

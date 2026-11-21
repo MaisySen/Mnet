@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -149,5 +150,177 @@ func checkDevelopmentRecoveryCLI(t *testing.T, root string) {
 	var status DevelopmentRecoveryInspection
 	if json.Unmarshal(raw, &status) != nil || status.NetworkVerified || status.JoiningSaved {
 		t.Fatal("actual retained inspection CLI misrepresented State")
+	}
+}
+
+func init() {
+	developmentBookkeepingFixture = func(t *testing.T, d *Daemon) *Daemon {
+		t.Helper()
+		dir := d.stateOwner.lease.Parent()
+		root := filepath.Dir(dir)
+		originalRename := d.stateOwner.fs.rename
+		d.stateOwner.fs.rename = func(a, b string) error {
+			if e := originalRename(a, b); e != nil {
+				return e
+			}
+			return errNativeInjected
+		}
+		if e := d.finalizeNativeEnrollment(context.Background()); e == nil {
+			t.Fatal("post-rename fault did not interrupt finalization")
+		}
+		stateBefore, e := os.ReadFile(d.stateOwner.path)
+		if e != nil {
+			t.Fatal(e)
+		}
+		var image State
+		if unmarshalOwnedState(stateBefore, &image) != nil || image.native == nil {
+			t.Fatal("actual post-rename sole State missing")
+		}
+		originalDoc := image.native.Document
+		stateInfoBefore, _ := os.Stat(d.stateOwner.path)
+		d.Close()
+		window := filepath.Join(os.Getenv("MNET_WORKFLOW_FIXTURE_DIR"), "bookkeeping-only-window")
+		if e := os.WriteFile(window, []byte("explicit local inspect/recover window"), 0600); e != nil {
+			t.Fatal(e)
+		}
+		defer os.Remove(window)
+		pendingBefore, e := os.ReadFile(filepath.Join(dir, "enrollment-pending", "enrollment-pending-v1.json"))
+		if e != nil {
+			t.Fatal(e)
+		}
+		status, e := InspectDisposableEnrollment(root)
+		if e != nil || !status.JoiningSaved || !status.BookkeepingPending || status.NetworkVerified || status.Recovery != "saved-bookkeeping-pending" {
+			t.Fatal("post-rename inspection", status, e)
+		}
+		stateAfter, _ := os.ReadFile(filepath.Join(dir, "state.json"))
+		pendingAfter, _ := os.ReadFile(filepath.Join(dir, "enrollment-pending", "enrollment-pending-v1.json"))
+		if !bytes.Equal(stateBefore, stateAfter) || !bytes.Equal(pendingBefore, pendingAfter) {
+			t.Fatal("post-rename inspection mutated images")
+		}
+
+		// Invalid variants of the actual crash image must fail without repair.
+		for _, name := range []string{"state.json", "enrollment-pending/enrollment-pending-v1.json"} {
+			path := filepath.Join(dir, name)
+			original, e := os.ReadFile(path)
+			if e != nil {
+				t.Fatal(e)
+			}
+			for _, remove := range []bool{false, true} {
+				if remove {
+					os.Remove(path)
+				} else {
+					os.WriteFile(path, []byte("{}"), 0600)
+				}
+				if _, e := InspectDisposableEnrollment(root); e == nil {
+					t.Fatal("invalid crash image inspected", name, remove)
+				}
+				if _, e := RecoverDisposableEnrollment(context.Background(), root); e == nil {
+					t.Fatal("invalid crash image repaired", name, remove)
+				}
+				if remove {
+					if _, e := os.Stat(path); !os.IsNotExist(e) {
+						t.Fatal("missing crash image recreated")
+					}
+				} else {
+					raw, _ := os.ReadFile(path)
+					if !bytes.Equal(raw, []byte("{}")) {
+						t.Fatal("invalid crash image changed")
+					}
+				}
+				os.WriteFile(path, original, 0600)
+			}
+		}
+
+		originalRevision := image.native.OriginalStateRevision
+		image.native.OriginalStateRevision = base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+		bad, _ := marshalOwnedState(&image)
+		os.WriteFile(filepath.Join(dir, "state.json"), bad, 0600)
+		if _, e := InspectDisposableEnrollment(root); e == nil {
+			t.Fatal("mismatched saved-prepared revision accepted")
+		}
+		if _, e := RecoverDisposableEnrollment(context.Background(), root); e == nil {
+			t.Fatal("mismatched saved-prepared revision repaired")
+		}
+		observed, _ := os.ReadFile(filepath.Join(dir, "state.json"))
+		if !bytes.Equal(observed, bad) {
+			t.Fatal("mismatched revision mutated")
+		}
+		image.native.OriginalStateRevision = originalRevision
+		os.WriteFile(filepath.Join(dir, "state.json"), stateBefore, 0600)
+		// Capture metadata after test-only deliberate invalid-image edits/restoration.
+		stateInfoBefore, _ = os.Stat(filepath.Join(dir, "state.json"))
+		if os.Getenv("MNET_BOOKKEEPING_EXPIRED") == "1" {
+			wait := time.Until(time.UnixMilli(originalDoc.Receipt.AccessExpiresAtMS)) + 10*time.Millisecond
+			if wait > 0 {
+				time.Sleep(wait)
+			}
+		}
+		if os.Getenv("MNET_BOOKKEEPING_BROWSER") == "1" {
+			binary := os.Getenv("MNET_RETAINED_CLI_BINARY")
+			if _, e := exec.Command(binary, "--disposable-root", root, "--inspect-retained", "--open-browser").Output(); e != nil {
+				t.Fatal("bookkeeping pending CLI page", e)
+			}
+		}
+		var result DevelopmentRecoveryResult
+		if binary := os.Getenv("MNET_RETAINED_CLI_BINARY"); binary != "" {
+			args := []string{"--disposable-root", root, "--recover-retained"}
+			if os.Getenv("MNET_BOOKKEEPING_BROWSER") == "1" {
+				args = append(args, "--open-browser")
+			}
+			raw, e := exec.Command(binary, args...).Output()
+			if e != nil {
+				t.Fatal("bookkeeping CLI", e)
+			}
+			if json.Unmarshal(raw, &result) != nil {
+				t.Fatal("bookkeeping CLI output")
+			}
+		} else {
+			result, e = RecoverDisposableEnrollment(context.Background(), root)
+			if e != nil {
+				t.Fatal(e)
+			}
+		}
+		if os.Getenv("MNET_BOOKKEEPING_EXPIRED") == "1" && !result.Inspection.OriginalLeaseEnded {
+			t.Fatal("expired bookkeeping renewed interval")
+		}
+		if !result.BookkeepingCompleted || result.HistoricalRecovered || result.JoiningFinalized || result.NetworkVerified || result.Inspection.BookkeepingPending || !result.Inspection.JoiningSaved {
+			t.Fatal("bookkeeping result misrepresented", result)
+		}
+		stateAfter, _ = os.ReadFile(filepath.Join(dir, "state.json"))
+		if !bytes.Equal(stateBefore, stateAfter) {
+			t.Fatal("bookkeeping rewrote State")
+		}
+
+		stateInfoAfter, _ := os.Stat(filepath.Join(dir, "state.json"))
+		if !os.SameFile(stateInfoBefore, stateInfoAfter) || stateInfoBefore.Mode() != stateInfoAfter.Mode() || !stateInfoBefore.ModTime().Equal(stateInfoAfter.ModTime()) {
+			t.Fatal("bookkeeping changed sole-State metadata")
+		}
+		pendingFinal, _ := os.ReadFile(filepath.Join(dir, "enrollment-pending", "enrollment-pending-v1.json"))
+		var beforeFields, afterFields map[string]json.RawMessage
+		if json.Unmarshal(pendingBefore, &beforeFields) != nil || json.Unmarshal(pendingFinal, &afterFields) != nil {
+			t.Fatal("bookkeeping journal shape")
+		}
+		if string(afterFields["phase"]) != `"native-finalization-completed"` {
+			t.Fatal("bookkeeping did not complete phase")
+		}
+		delete(beforeFields, "phase")
+		delete(afterFields, "phase")
+		if !reflect.DeepEqual(beforeFields, afterFields) {
+			t.Fatal("bookkeeping changed more than completion phase")
+		}
+		var after State
+		if unmarshalOwnedState(stateAfter, &after) != nil || after.native == nil || after.native.Document != originalDoc {
+			t.Fatal("bookkeeping replaced receipt/key/expiry")
+		}
+		repeat, e := RecoverDisposableEnrollment(context.Background(), root)
+		if e != nil || repeat.BookkeepingCompleted || repeat.HistoricalRecovered || repeat.JoiningFinalized || repeat.NetworkVerified {
+			t.Fatal("bookkeeping repeat", repeat, e)
+		}
+		reopened, e := New(Config{StateDir: dir})
+		if e != nil {
+			t.Fatal(e)
+		}
+		t.Log("actual post-rename sole State preserved; explicit bookkeeping-only CLI completed exact journal, no lookup/new authority")
+		return reopened
 	}
 }

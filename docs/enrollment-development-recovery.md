@@ -80,9 +80,66 @@ budget retention, ownership and failure transitions of the reused recovery core.
 No consumer-ready, full-repository race, broad TypeScript, production account,
 service, release or deployment claim follows from these selected tests.
 
-Current boundary: inspection requires a completed exact journal for an already
-saved native credential. A crash image with published State but incomplete
-finalization bookkeeping is refused by this wrapper, not silently repaired.
-The underlying recovery core has broader crash tests, but that does not make
-this new wrapper a complete crash-repair UI. There is no new physical-device,
-normal installer or normal-startup connection path.
+## Exact already-saved bookkeeping recovery
+
+The preceding immutable6fb14ff checkpoint refused published-State/prepared-
+bookkeeping images. This separate increment admits ONLY the exact already-saved
+native document matching its original prepared journal, original-State revision,
+current policy revision and device key. Inspection is still nonmutating and
+reports `joiningSaved:true`, `bookkeepingPending:true` and
+`recovery:saved-bookkeeping-pending`, never a verified network.
+
+Explicit `--recover-retained` reacquires/binds the same existing State/policy/
+journal image and calls the EXISTING exact `reconcileNativeFinalization` /
+`CorrelateFinalization` bookkeeping transition. It does not construct authority,
+publish State, contact source/registrar, fetch a map or renew access. Output is
+`bookkeepingCompleted:true` distinctly from `joiningFinalized:false` and
+`historicalRecovered:false`, always `networkVerified:false`. Expired documents
+may complete bookkeeping only; their original expiry and current-access refusal
+remain unchanged. A second call is a saved historical no-op, not another repair.
+No other corrupt/incomplete image or normal-startup auto-repair is admitted.
+
+New actual fixture injects a failure only AFTER the real State rename, closes
+the original owner, inspects that crash image without writes, invokes the real
+CLI, checks byte-identical State/key/document/receipt/expiry, and checks exact
+prepared-to-completed bookkeeping plus idempotence. During a marker-delimited
+inspection/recovery window the independent real registrar and source HTTP
+handlers count requests and must both see zero. Normal proof/source traffic
+outside that window remains expected; this is not a claim of zero setup traffic.
+Malformed/missing State/journal variants are refused without repair.
+
+Run real unexpired post-rename composition from the companion repository:
+
+```
+MNET_NATIVE_REPO=/path/to/mnet MNET_RETAINED_CLI_BINARY=/tmp/mnet-retained-cli \
+MNET_DEVELOPMENT_RECOVERY_FIXTURE=1 MNET_DEVELOPMENT_BOOKKEEPING_FIXTURE=1 \
+node node_modules/vitest/vitest.mjs run tests/mnet-registrar-workflow-cross-app.test.ts \
+  -t 'workflow success$'
+```
+
+Add `MNET_BOOKKEEPING_EXPIRED=1` for the explicit expired variant. That variant
+waits the ORIGINAL deadline, checks the real registrar still refuses current
+access, and uses a distinct expired-bookkeeping outcome, not a live-peer claim.
+For actual CLI/system-browser pending and completed expired pages:
+
+```
+MNET_BOOKKEEPING_EXPIRED=1 bash tests/mnet-bookkeeping-validation.sh /path/to/mnet /path/to/multies
+```
+
+The isolated integration also includes the separately reviewed27eb931 dashboard
+correction. Its exact product diff is a cherry-pick, not a new authority path.
+Combined six exact-client and three real recovery cases, actual Stop/expiry and
+saved historical-page regression are separate evidence, not sibling assumptions.
+No physical-device, installer, startup or complete general crash-repair claim.
+
+The first integrated retained-browser rerun failed before retained CLI work: the
+coordinator refused a current-peer count differing from the historical setup
+count. That failed run lacked detailed receipt clocks; timing is a plausible
+cause, not a conclusively measured attribution. The opt-in retained-browser
+fixture now uses the reviewed dashboard's readiness anchoring too, without
+changing any lease. The failed log is retained alongside the subsequent pass.
+The integrated candidate has affected-package full race/vet/defaultbuild passes,
+not a fresh full30-default-package race claim for this newer bookkeeping head.
+The earlier corrected-only27eb931 full30-package evidence stays separately scoped.
+Broad TypeScript remains unverified after a resource-related SIGKILL with no
+source diagnostics; this is not a typecheck pass.
