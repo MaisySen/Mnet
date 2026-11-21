@@ -52,17 +52,18 @@ type storeData struct {
 
 // Store is the whole control-plane state, persisted as one JSON file.
 type Store struct {
-	mu         sync.Mutex
-	path       string
-	ownedPath  string
-	lease      *storeLease
-	fs         storeFilesystem
-	closed     bool
-	fault      error
-	data       storeData
-	version    int64
-	relayIndex map[string]string                 // network+public key -> node ID, invalidated on identity changes
-	watchers   map[string]map[chan struct{}]bool // network ID -> waiters
+	registrarSources *registrarSourceOwner
+	mu               sync.Mutex
+	path             string
+	ownedPath        string
+	lease            *storeLease
+	fs               storeFilesystem
+	closed           bool
+	fault            error
+	data             storeData
+	version          int64
+	relayIndex       map[string]string                 // network+public key -> node ID, invalidated on identity changes
+	watchers         map[string]map[chan struct{}]bool // network ID -> waiters
 }
 
 // Open loads or creates the store at path.

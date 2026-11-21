@@ -45,6 +45,10 @@ func (s *Store) healthLocked() error {
 
 func (s *Store) freezeLocked(err error) {
 	s.fault = err
+	if s.registrarSources != nil {
+		s.registrarSources.retired = true
+		s.registrarSources.pool.Close()
+	}
 	s.relayIndex = nil
 	for _, waiters := range s.watchers {
 		for ch := range waiters {
