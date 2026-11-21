@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"fintex.au/mnet/internal/desk"
@@ -117,5 +118,25 @@ func TestListDeskStoreFlagsPlaceholderLabels(t *testing.T) {
 	}
 	if byName["custom.json"].Placeholders {
 		t.Fatal("custom labels must not be flagged as placeholders")
+	}
+}
+
+func TestRenderDeskArrangementsLongNames(t *testing.T) {
+	long := strings.Repeat("verylongdraftname-", 12) + ".json"
+	v := deskArrangementsView{
+		pinned:  long,
+		entries: []deskStoreEntry{{Name: long, Invalid: true}, {Name: "arrangement-1.json", Displays: 2}},
+		sel:     1,
+		notice:  "Deleted " + long + ".",
+		armed:   long,
+	}
+	if _, err := renderDeskArrangementsSurface(v); err != nil {
+		t.Fatalf("person-supplied long names must never fail the render: %v", err)
+	}
+	if got := boundDeskText(long, 40); len([]rune(got)) != 40 {
+		t.Fatalf("boundDeskText rune count = %d", len([]rune(got)))
+	}
+	if got := boundDeskText("héllo", 4); got != "héll" {
+		t.Fatalf("boundDeskText must cut on rune boundaries, got %q", got)
 	}
 }

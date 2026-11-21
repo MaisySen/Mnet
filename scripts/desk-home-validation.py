@@ -85,12 +85,12 @@ try:
  assert server.calls==0
  client.terminate();assert client.wait(timeout=3)==0;client=None
  # An invalid draft is listed honestly and refused with an in-window notice.
- store.mkdir(exist_ok=True);(store/'broken.json').write_text('{not json')
+ store.mkdir(exist_ok=True);(store/'broken.json').write_text('{not json');(store/('person-supplied-'+'x'*120+'.json')).write_text('{also not json')
  with (out/'client.log').open('w') as log:client=subprocess.Popen([str(out/'mnet'),'--state',str(state),'open'],env=env,stdout=log,stderr=log)
  home=poll(lambda:window('^Mnet: three tools'),'home with invalid draft')
  action('windowfocus',home,'mousemove','--window',home,'100','370','click','1')
  wid=poll(lambda:window('^Mnet Shared Desk: arrangements'),'arrangements with invalid draft');action('windowfocus',wid)
- poll(lambda:'rows2' in title(),'invalid draft listed')
+ poll(lambda:'rows3' in title(),'invalid and long-named drafts listed without render failure')
  action('key','Down')  # select broken.json (sorted after arrangement-1.json)
  poll(lambda:'sel1' in title(),'invalid draft selected');capture('arrangements-invalid',arrfresh())
  action('mousemove','--window',arrfresh(),'230','474','click','1');time.sleep(.15)
@@ -110,13 +110,14 @@ try:
  poll(lambda:'nothing was removed' in title(),'replacement cancels confirm');capture('arrangements-delete-cancelled',arrfresh());assert (store/'broken.json').exists(),'replacement was removed'
  action('mousemove','--window',arrfresh(),'665','474','click','1');poll(lambda:'armedtrue' in title(),'delete armed after replacement')
  action('mousemove','--window',arrfresh(),'665','474','click','1')
- poll(lambda:'rows1' in title() and 'Deleted broken.json' in title(),'invalid draft deleted after confirm')
+ poll(lambda:'rows2' in title() and 'Deleted broken.json' in title(),'invalid draft deleted after confirm')
  assert not (store/'broken.json').exists() and (store/'arrangement-1.json').exists(),'delete removed the wrong files'
  capture('arrangements-deleted',arrfresh())
  assert server.calls==0,'delete consulted a daemon'
  # Duplicate copies the selected draft into one new private file, never replacing.
+ action('key','Up');poll(lambda:'sel0' in title(),'arrangement-1 selected for duplicate')
  action('mousemove','--window',arrfresh(),'520','474','click','1')
- poll(lambda:'rows2' in title() and 'Duplicated arrangement-1.json as arrangement-2.json' in title(),'draft duplicated')
+ poll(lambda:'rows3' in title() and 'Duplicated arrangement-1.json as arrangement-2.json' in title(),'draft duplicated')
  copy=store/'arrangement-2.json'
  assert copy.exists() and stat.S_IMODE(copy.stat().st_mode)==0o600,'duplicate missing or not owner-only'
  assert copy.read_bytes()==(store/'arrangement-1.json').read_bytes(),'duplicate content differs'
@@ -128,7 +129,7 @@ try:
  with (out/'client.log').open('w') as log:client=subprocess.Popen([str(out/'mnet'),'--state',str(state),'open','--layout',str(store/'arrangement-1.json')],env=env,stdout=log,stderr=log)
  home=poll(lambda:window('^Mnet: three tools'),'home with in-store layout')
  action('windowfocus',home,'mousemove','--window',home,'100','370','click','1')
- poll(lambda:'rows2' in title() and 'pinnedtrue' in title(),'in-store layout pinned once')
+ poll(lambda:'rows3' in title() and 'pinnedtrue' in title(),'in-store layout pinned once')
  capture('arrangements-pinned-in-store',arrfresh())
  action('mousemove','--window',arrfresh(),'665','474','click','1');time.sleep(.2)
  poll(lambda:'armedfalse' in title(),'pinned in-store row refuses delete')

@@ -46,7 +46,6 @@ func deskStoreOutPath(dir string, entries []deskStoreEntry, extra ...string) (st
 	return filepath.Join(dir, name), nil
 }
 
-
 // openDeskStoreDir pins the real store directory for fd-relative operations:
 // a swapped or symlinked path can never redirect a source read, a
 // destination create or a cleanup outside the directory opened here.

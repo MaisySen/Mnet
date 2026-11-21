@@ -303,7 +303,7 @@ func showDeskArrangements(ctx context.Context, v *deskArrangementsView) (int, er
 		}
 		if expose || fmt.Sprintf("%s notice[%s]", state(), v.notice) != before {
 			if err = draw(); err != nil {
-					return deskArrActClose, err
+				return deskArrActClose, err
 			}
 		}
 	}
@@ -344,17 +344,15 @@ func runDeskHomeJourney(ctx context.Context, deskDir, layoutPath string) error {
 	var armedID deskDraftID
 	armedAt := time.Time{}
 	selKeep := -1
-	pinnedInStore := false
 	if layoutPath != "" {
 		pinned = filepath.Base(layoutPath)
-		pinnedInStore = filepath.Dir(filepath.Clean(layoutPath)) == filepath.Clean(deskDir)
 	}
 	for ctx.Err() == nil {
 		entries, err := listDeskStore(deskDir)
 		if err != nil {
 			return err
 		}
-		if pinnedInStore {
+		if layoutPath != "" {
 			entries = dedupePinnedStoreEntries(deskDir, layoutPath, entries)
 		}
 		v := &deskArrangementsView{pinned: pinned, entries: entries, sel: selKeep, notice: notice, armed: armed, armedUntil: armedAt.Add(15 * time.Second)}
@@ -441,7 +439,7 @@ func runDeskHomeJourney(ctx context.Context, deskDir, layoutPath string) error {
 				notice = "That draft could not be duplicated. Nothing was written."
 				continue
 			}
-			notice = "Duplicated " + rowName + " as " + newName + "."
+			notice = "Duplicated " + boundDeskText(rowName, 40) + " as " + boundDeskText(newName, 40) + "."
 		case deskArrActDelete:
 			rowName := ""
 			if rowPath != "" && !(pinned != "" && v.sel == 0) {
@@ -468,7 +466,7 @@ func runDeskHomeJourney(ctx context.Context, deskDir, layoutPath string) error {
 				notice = "That draft could not be deleted. Nothing was removed."
 				continue
 			}
-			notice = "Deleted " + rowName + "."
+			notice = "Deleted " + boundDeskText(rowName, 60) + "."
 		}
 	}
 	return nil

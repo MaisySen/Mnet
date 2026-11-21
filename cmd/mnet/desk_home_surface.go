@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 	"image"
-	"time"
 	"image/color"
 	"image/draw"
+	"time"
 
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/gobold"
@@ -49,6 +49,16 @@ func (v deskArrangementsView) rows() int {
 		n++
 	}
 	return n
+}
+
+// boundDeskText truncates s to n runes so a person-supplied file name can
+// never overflow its box and fail the whole render.
+func boundDeskText(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
 }
 
 // focusables counts every Tab stop: rows, then the six buttons.
@@ -170,8 +180,8 @@ func renderDeskArrangementsSurface(v deskArrangementsView) (*image.RGBA, error) 
 					}
 				}
 			}
-			text(44, y+21, 400, 13, true, 0x172b4d, name)
-			text(460, y+21, 390, 12, false, 0x63758c, detail)
+			text(44, y+21, 400, 13, true, 0x172b4d, boundDeskText(name, 50))
+			text(460, y+21, 390, 12, false, 0x63758c, boundDeskText(detail, 58))
 			if v.focus == i {
 				rect(28, y, 4, 32, 0x2563c7)
 			}
@@ -196,11 +206,7 @@ func renderDeskArrangementsSurface(v deskArrangementsView) (*image.RGBA, error) 
 		}
 	}
 	if v.armed != "" {
-		name := v.armed
-		if len(name) > 40 {
-			name = name[:40]
-		}
-		text(20, 516, 700, 12, true, 0xb3261e, "Press Delete again to remove "+name+". Any other action cancels.")
+		text(20, 516, 700, 12, true, 0xb3261e, "Press Delete again to remove "+boundDeskText(v.armed, 40)+". Any other action cancels.")
 	} else if v.notice != "" {
 		text(20, 516, 700, 12, true, 0xb3261e, v.notice)
 	}

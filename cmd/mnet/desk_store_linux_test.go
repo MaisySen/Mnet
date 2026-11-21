@@ -291,3 +291,46 @@ func TestDedupePinnedStoreEntries(t *testing.T) {
 		t.Fatalf("external pinned file must not hide store drafts, kept %+v", kept)
 	}
 }
+
+func TestDedupePinnedStoreEntriesAlternateSpelling(t *testing.T) {
+	parent := t.TempDir()
+	real := filepath.Join(parent, "real-state")
+	store := filepath.Join(real, "desk-layouts")
+	if err := os.MkdirAll(store, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(store, name), []byte(`{"displays":[]}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("arrangement-1.json")
+	write("arrangement-2.json")
+	linkState := filepath.Join(parent, "link-state")
+	if err := os.Symlink(real, linkState); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := listDeskStore(store)
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("listing: %v %d", err, len(entries))
+	}
+	// The pinned file arrives through a symlinked state-dir spelling.
+	alt := filepath.Join(linkState, "desk-layouts", "arrangement-1.json")
+	kept := dedupePinnedStoreEntries(store, alt, entries)
+	if len(kept) != 1 || kept[0].Name != "arrangement-2.json" {
+		t.Fatalf("alternate-spelling pinned file must be deduped, kept %+v", kept)
+	}
+	// A same-named file elsewhere is NOT the pinned file and stays listed.
+	elsewhere := filepath.Join(parent, "elsewhere")
+	if err := os.Mkdir(elsewhere, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(elsewhere, "arrangement-1.json"), []byte(`{"displays":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	kept = dedupePinnedStoreEntries(store, filepath.Join(elsewhere, "arrangement-1.json"), entries)
+	if len(kept) != 2 {
+		t.Fatalf("a different file with the same name must stay listed, kept %+v", kept)
+	}
+}
