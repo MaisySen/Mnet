@@ -41,7 +41,10 @@ func TestNoDirectRealEffectsFromUnitTests(t *testing.T) {
 				name = im.Name.Name
 			}
 			imported[name] = path
-			if path == "os/exec" || path == "syscall" {
+			if path == "syscall" && im.Name != nil {
+				t.Error("syscall exception forbids explicit aliases including dot/blank", file)
+			}
+			if path == "os/exec" {
 				t.Error("forbidden test import path", file, path)
 			}
 			if path == "golang.org/x/sys/unix" && (name != "unix") {
@@ -54,6 +57,18 @@ func TestNoDirectRealEffectsFromUnitTests(t *testing.T) {
 			if id, ok := n.(*ast.Ident); ok && forbiddenTypes[id.Name] {
 				t.Error("forbidden concrete effect type reference", file, id.Name)
 			}
+
+			// Inspect EVERY syscall selector, not only direct calls. This also
+			// rejects taking a callable address then invoking via local alias.
+			if sel, ok := n.(*ast.SelectorExpr); ok {
+				if id, ok := sel.X.(*ast.Ident); ok && imported[id.Name] == "syscall" {
+					switch sel.Sel.Name {
+					case "EPERM", "EEXIST", "EBUSY", "ENODEV", "Errno":
+					default:
+						t.Error("syscall errno exception exceeded", file, sel.Sel.Name)
+					}
+				}
+			}
 			c, ok := n.(*ast.CallExpr)
 			if !ok {
 				return true
@@ -62,6 +77,12 @@ func TestNoDirectRealEffectsFromUnitTests(t *testing.T) {
 				t.Error("test references real effect function", file, id.Name)
 			}
 			if s, ok := c.Fun.(*ast.SelectorExpr); ok {
+				if id, ok := s.X.(*ast.Ident); ok && imported[id.Name] == "syscall" {
+					if s.Sel.Name != "Errno" || len(c.Args) != 1 || c.Ellipsis.IsValid() {
+						t.Error("only unary syscall.Errno conversion allowed", file)
+					}
+				}
+
 				if s.Sel.Name == "Start" || s.Sel.Name == "Run" {
 					// Transaction Start/Run is the one pure explicit exception in known tests.
 					id, ok := s.X.(*ast.Ident)
