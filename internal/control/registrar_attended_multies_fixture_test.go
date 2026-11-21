@@ -44,6 +44,9 @@ type attendedFixtureCoordinates struct {
 	Viewer  daemon.SessionPeer `json:"viewer"`
 }
 type attendedFixtureOutcome struct {
+	UIKind            string `json:"ui_kind"`
+	DialogClosed      *bool  `json:"dialogClosedWithoutAllow"`
+	AllowAttempts     int    `json:"allowAttempts"`
 	PromptCancelled   *bool  `json:"promptCancelled,omitempty"`
 	ChallengeVerified bool   `json:"challengeVerified"`
 	Version           int    `json:"version"`
@@ -120,10 +123,11 @@ func runRegistrarAttendedFixture(t *testing.T, s *Store, f *registrarTransportFi
 	if caseName == "" {
 		caseName = "deny"
 	}
-	if caseName != "deny" && caseName != "withdraw-pending" {
+	if caseName != "deny" && caseName != "withdraw-pending" && caseName != "deny-real-dialog" {
 		t.Fatal("unknown attended case")
 	}
 	withdraw := caseName == "withdraw-pending"
+	real := caseName == "deny-real-dialog"
 	var pin attendedFixtureCoordinates
 	var nativeID string
 	for {
@@ -162,7 +166,7 @@ func runRegistrarAttendedFixture(t *testing.T, s *Store, f *registrarTransportFi
 					attendedFixtureCoordinates
 					FakeUI bool `json:"fake_ui"`
 				}
-				if json.Unmarshal(raw, &ready) != nil || ready.attendedFixtureCoordinates != pin || !ready.FakeUI {
+				if json.Unmarshal(raw, &ready) != nil || ready.attendedFixtureCoordinates != pin || ready.FakeUI != !real {
 					t.Fatal("native listening coordinates not current enrolled map")
 				}
 				break
@@ -325,7 +329,7 @@ func runRegistrarAttendedFixture(t *testing.T, s *Store, f *registrarTransportFi
 	}
 	conn.Close()
 	if !withdraw {
-		refused, _ := json.Marshal(map[string]any{"version": 1, "fake_ui": true, "protocolRefused": true, "actualFarIP": far.IP.String(), "acceptedReplyVerifierCalled": false, "joined": true})
+		refused, _ := json.Marshal(map[string]any{"version": 1, "fake_ui": !real, "protocolRefused": true, "actualFarIP": far.IP.String(), "acceptedReplyVerifierCalled": false, "joined": true})
 		if err := writeRegistrarFixtureAtomic(dir, "peer-attended-refused.json", refused); err != nil {
 			t.Fatal(err)
 		}
@@ -354,8 +358,11 @@ func runRegistrarAttendedFixture(t *testing.T, s *Store, f *registrarTransportFi
 		time.Sleep(5 * time.Millisecond)
 	}
 	var outcome attendedFixtureOutcome
-	if json.Unmarshal(raw, &outcome) != nil || outcome.Version != 1 || !outcome.ChallengeVerified || !outcome.FakeUI || !outcome.ListenerClosed || !outcome.ConnClosed || outcome.MuxClosed != nil || !outcome.LateOwnDenied || outcome.ScopeReason == "" || outcome.Case != caseName || outcome.AdmissionCalls != 1 || outcome.UIAsks != 1 || outcome.Approved != 0 || outcome.Muxes != 0 || outcome.CaptureCalls != 0 || outcome.InputCreates != 0 || !outcome.Joined {
+	if json.Unmarshal(raw, &outcome) != nil || outcome.Version != 1 || !outcome.ChallengeVerified || outcome.FakeUI != !real || !outcome.ListenerClosed || !outcome.ConnClosed || outcome.MuxClosed != nil || !outcome.LateOwnDenied || outcome.ScopeReason == "" || outcome.Case != caseName || outcome.AdmissionCalls != 1 || outcome.UIAsks != 1 || outcome.Approved != 0 || outcome.Muxes != 0 || outcome.CaptureCalls != 0 || outcome.InputCreates != 0 || !outcome.Joined {
 		t.Fatalf("invalid actual host denial counters: %s", raw)
+	}
+	if real && (outcome.UIKind != "real-zenity" || outcome.DialogClosed == nil || !*outcome.DialogClosed || outcome.AllowAttempts != 0) {
+		t.Fatal("real dialog was not declined without Allow")
 	}
 	if withdraw && (outcome.PromptCancelled == nil || !*outcome.PromptCancelled || outcome.ScopeReason != "authorization-changed") {
 		t.Fatal("withdrawal did not cancel actual pending prompt via map authority")
@@ -404,7 +411,13 @@ func runRegistrarAttendedFixture(t *testing.T, s *Store, f *registrarTransportFi
 	if _, err := s.registrarCredentialMap(ref, nativeSecret()); err == nil {
 		t.Fatal("deleted native credential still authorized")
 	}
-	finalFields := map[string]any{"version": 1, "fake_ui": true, "attendedDenied": true, "actualEnrolledPeers": true, "joined": true, "inputAuthorized": false}
+	finalFields := map[string]any{"version": 1, "fake_ui": !real, "attendedDenied": true, "actualEnrolledPeers": true, "joined": true, "inputAuthorized": false}
+	if real {
+		finalFields["case"] = caseName
+		finalFields["ui_kind"] = "real-zenity"
+		finalFields["dialogClosedWithoutAllow"] = true
+		finalFields["allowAttempts"] = 0
+	}
 	if withdraw {
 		finalFields["case"] = caseName
 		finalFields["promptCancelled"] = true

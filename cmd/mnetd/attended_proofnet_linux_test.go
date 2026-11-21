@@ -213,7 +213,8 @@ type nativeCoordinates struct {
 
 type nativeListening struct {
 	nativeCoordinates
-	FakeUI bool `json:"fake_ui"`
+	FakeUI bool   `json:"fake_ui"`
+	UIKind string `json:"ui_kind,omitempty"`
 }
 
 type nativePeerRefused struct {
@@ -229,6 +230,9 @@ type nativeAttendedOutcome struct {
 	Version           int    `json:"version"`
 	Case              string `json:"case"`
 	FakeUI            bool   `json:"fake_ui"`
+	UIKind            string `json:"ui_kind"`
+	DialogClosed      *bool  `json:"dialogClosedWithoutAllow,omitempty"`
+	AllowAttempts     int32  `json:"allowAttempts"`
 	ChallengeVerified bool   `json:"challengeVerified"`
 	AdmissionCalls    int32  `json:"admissionCalls"`
 	UIAsks            int32  `json:"uiAsks"`
@@ -248,6 +252,7 @@ type nativeAttendedOutcome struct {
 type nativeFailed struct {
 	Version    int    `json:"version"`
 	FakeUI     bool   `json:"fake_ui"`
+	UIKind     string `json:"ui_kind"`
 	Stage      string `json:"stage"`
 	ErrorClass string `json:"errorClass"`
 }
@@ -386,16 +391,55 @@ func TestActualMultiesAttendedWithdrawNativeWorkflowFixture(t *testing.T) {
 	runNativeAttendedCase(t, "withdraw-pending")
 }
 
+// Real dialog negative case: the REAL zenity UI on an isolated Xvfb display,
+// never a physical one. An "Allow" answer is never honoured here (this case
+// proves default decline only); it is counted and fails the case.
+func TestActualMultiesAttendedRealDialogNativeWorkflowFixture(t *testing.T) {
+	runNativeAttendedCase(t, "deny-real-dialog")
+}
+
+const nativeRealDialogBound = 20 * time.Second
+
 // nativeCaseUI is the FAKE UI: deny answers at once, withdraw blocks until
 // its context is cancelled and records that it was cancelled.
 type nativeCaseUI struct {
 	asks      atomic.Int32
 	cancelled atomic.Bool
 	wait      bool
+	// Real dialog mode (inner != nil).
+	inner         attendedUI
+	allowAttempts atomic.Int32
+	timedOut      atomic.Bool
+	closed        atomic.Bool // zenity ended without Allow before the bound
+	badKind       atomic.Int32
 }
 
-func (u *nativeCaseUI) Ask(ctx context.Context, _ attendedPrompt) (string, error) {
+func (u *nativeCaseUI) Ask(ctx context.Context, p attendedPrompt) (string, error) {
 	u.asks.Add(1)
+	if u.inner != nil {
+		if _, ok := ctx.Deadline(); !ok {
+			ctx2, cancel := context.WithTimeout(ctx, nativeRealDialogBound)
+			defer cancel()
+			ctx = ctx2
+		}
+		if p.Kind != "view" {
+			u.badKind.Add(1)
+			return "", errors.New("unexpected prompt kind")
+		}
+		ans, err := u.inner.Ask(ctx, p)
+		switch {
+		case err == nil && strings.EqualFold(ans, "allow"):
+			u.allowAttempts.Add(1)
+			return "", errors.New("allow not honoured in the negative case")
+		case ctx.Err() == context.DeadlineExceeded:
+			u.timedOut.Store(true)
+		case ctx.Err() != nil:
+			u.cancelled.Store(true)
+		default:
+			u.closed.Store(true)
+		}
+		return "", errors.New("dialog not allowed")
+	}
 	if !u.wait {
 		return "deny", nil
 	}
@@ -409,10 +453,15 @@ func runNativeAttendedCase(t *testing.T, caseName string) {
 	if dir == "" {
 		t.Skip("MNET_NATIVE_OWNED_WORKFLOW_DIR not set")
 	}
+	real := caseName == "deny-real-dialog"
+	uiKind := "fake"
+	if real {
+		uiKind = "real-zenity"
+	}
 	stage := "config"
 	fail := func(class string) {
 		t.Helper()
-		_ = publishNativeResult(dir, nil, &nativeFailed{Version: 1, FakeUI: true, Stage: stage, ErrorClass: class})
+		_ = publishNativeResult(dir, nil, &nativeFailed{Version: 1, FakeUI: !real, UIKind: uiKind, Stage: stage, ErrorClass: class})
 		t.Fatalf("attended native fixture failed at %s (%s)", stage, class)
 	}
 	raw, err := os.ReadFile(filepath.Join(dir, "native-workflow-config.json"))
@@ -425,6 +474,21 @@ func runNativeAttendedCase(t *testing.T, caseName string) {
 	}
 	if _, err := config.ValidateLocalV2(cfg.Policy); err != nil {
 		fail("policy-invalid")
+	}
+	var realUI attendedUI
+	if real {
+		// Never inherit a physical display: the driver must name the isolated
+		// one explicitly and DISPLAY must equal it.
+		stage = "display-isolation"
+		iso := os.Getenv("MNET_ISOLATED_X11_DISPLAY")
+		if iso == "" || os.Getenv("DISPLAY") != iso || os.Getenv("WAYLAND_DISPLAY") != "" {
+			fail("display-not-isolated")
+		}
+		var err error
+		if realUI, err = newAttendedUI(); err != nil {
+			fail("real-ui-unavailable")
+		}
+		stage = "config"
 	}
 	root := filepath.Join(dir, "attended-setup")
 	if err := ensureNativeRoot(root, cfg); err != nil {
@@ -441,8 +505,8 @@ func runNativeAttendedCase(t *testing.T, caseName string) {
 		ranOK                         bool
 	)
 	withdraw := caseName == "withdraw-pending"
-	ui := &nativeCaseUI{wait: withdraw}
-	out = nativeAttendedOutcome{Version: 1, Case: caseName, FakeUI: true}
+	ui := &nativeCaseUI{wait: withdraw, inner: realUI}
+	out = nativeAttendedOutcome{Version: 1, Case: caseName, FakeUI: !real, UIKind: uiKind}
 
 	emit := func(ev daemon.DevelopmentEnrollmentEvent) error {
 		switch ev.Stage {
@@ -582,14 +646,14 @@ func runNativeAttendedCase(t *testing.T, caseName string) {
 				return errors.New("coordinates differ from native endpoint or current unique peer")
 			}
 			stage = "listening"
-			rawReady, _ := json.Marshal(nativeListening{nativeCoordinates: coords, FakeUI: true})
+			rawReady, _ := json.Marshal(nativeListening{nativeCoordinates: coords, FakeUI: !real, UIKind: uiKind})
 			if err := writeNativeFile(dir, "native-attended-listening.json", rawReady, false); err != nil {
 				return err
 			}
 
 			stage = "admission"
 			var withdrawDone chan error
-			if withdraw {
+			if withdraw || real {
 				withdrawDone = make(chan error, 1)
 				go func() {
 					// Only after the callback is inside the fake ask.
@@ -601,9 +665,13 @@ func runNativeAttendedCase(t *testing.T, caseName string) {
 						case <-time.After(5 * time.Millisecond):
 						}
 					}
-					pending, _ := json.Marshal(map[string]any{"version": 1, "fake_ui": true, "case": caseName, "admissionCalls": decisions.Load(), "uiAsks": ui.asks.Load(), "host": coords.Host, "viewer": coords.Viewer})
+					pending, _ := json.Marshal(map[string]any{"version": 1, "fake_ui": !real, "ui_kind": uiKind, "case": caseName, "admissionCalls": decisions.Load(), "uiAsks": ui.asks.Load(), "host": coords.Host, "viewer": coords.Viewer})
 					if err := writeNativeFile(dir, "native-attended-pending.json", pending, false); err != nil {
 						withdrawDone <- err
+						return
+					}
+					if !withdraw {
+						withdrawDone <- nil // real dialog: pending marker only
 						return
 					}
 					rawW, err := waitNativeFile(ctx, filepath.Join(dir, "peer-attended-withdrawn.json"), 30*time.Second)
@@ -665,6 +733,27 @@ func runNativeAttendedCase(t *testing.T, caseName string) {
 			case <-ctx.Done():
 				return ctx.Err()
 			}
+			if real {
+				stage = "dialog-result"
+				select {
+				case err := <-withdrawDone:
+					if err != nil {
+						return err
+					}
+				case <-time.After(5 * time.Second):
+					return errors.New("pending marker goroutine not joined")
+				}
+				if ui.badKind.Load() != 0 || ui.timedOut.Load() || ui.cancelled.Load() || !ui.closed.Load() && ui.allowAttempts.Load() == 0 {
+					return errors.New("real dialog did not end by a decline or close")
+				}
+				closed := ui.closed.Load()
+				out.DialogClosed = &closed
+				out.AllowAttempts = ui.allowAttempts.Load()
+				if out.AllowAttempts != 0 {
+					return errors.New("real dialog was allowed; not honoured, case fails")
+				}
+				stage = "admission"
+			}
 			out.AdmissionCalls, out.UIAsks, out.Approved = decisions.Load(), ui.asks.Load(), approved.Load()
 			if out.AdmissionCalls != 1 || out.UIAsks != 1 || out.Approved != 0 || out.Muxes != 0 {
 				return errors.New("admission counters differ from one refused attempt")
@@ -697,7 +786,7 @@ func runNativeAttendedCase(t *testing.T, caseName string) {
 				var peerRefused nativePeerRefused
 				dec := json.NewDecoder(bytes.NewReader(rawPeer))
 				dec.DisallowUnknownFields()
-				if dec.Decode(&peerRefused) != nil || peerRefused.Version != 1 || !peerRefused.FakeUI || !peerRefused.ProtocolRefused ||
+				if dec.Decode(&peerRefused) != nil || peerRefused.Version != 1 || peerRefused.FakeUI != !real || !peerRefused.ProtocolRefused ||
 					peerRefused.AcceptedReplyVerifierCalled || !peerRefused.Joined || peerRefused.ActualFarIP != selfIP {
 					return errors.New("counterpart did not report an explicit protocol refusal from the host address")
 				}
@@ -773,5 +862,36 @@ func TestSameNativeKeyRepresentations(t *testing.T) {
 	other[31] ^= 1
 	if sameNativeKey(std, base64.RawURLEncoding.EncodeToString(other)) || sameNativeKey(url, url) || sameNativeKey(std, std) || sameNativeKey(std, "") {
 		t.Fatal("different, wrong-alphabet or empty key accepted")
+	}
+}
+
+type nativeStubUI struct {
+	ans string
+	err error
+}
+
+func (u nativeStubUI) Ask(context.Context, attendedPrompt) (string, error) { return u.ans, u.err }
+
+// The real-dialog wrapper never honours Allow and classifies other ends.
+func TestNativeRealDialogWrapperNeverHonoursAllow(t *testing.T) {
+	ctx := context.Background()
+	view := attendedPrompt{Kind: "view", Peer: "p"}
+	u := &nativeCaseUI{inner: nativeStubUI{ans: "allow"}}
+	if a, err := u.Ask(ctx, view); a != "" || err == nil || u.allowAttempts.Load() != 1 || u.closed.Load() {
+		t.Fatal("allow was honoured or not counted")
+	}
+	u = &nativeCaseUI{inner: nativeStubUI{err: errors.New("local dialog closed or unavailable")}}
+	if a, err := u.Ask(ctx, view); a != "" || err == nil || !u.closed.Load() || u.allowAttempts.Load() != 0 {
+		t.Fatal("close not classified")
+	}
+	u = &nativeCaseUI{inner: nativeStubUI{ans: "allow"}}
+	if _, err := u.Ask(ctx, attendedPrompt{Kind: "control"}); err == nil || u.badKind.Load() != 1 || u.allowAttempts.Load() != 0 {
+		t.Fatal("non-view prompt not refused")
+	}
+	cctx, cancel := context.WithCancel(ctx)
+	cancel()
+	u = &nativeCaseUI{inner: nativeStubUI{err: errors.New("x")}}
+	if _, err := u.Ask(cctx, view); err == nil || !u.cancelled.Load() || u.closed.Load() {
+		t.Fatal("scope cancel not classified apart from close")
 	}
 }

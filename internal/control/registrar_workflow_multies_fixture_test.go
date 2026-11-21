@@ -622,6 +622,9 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	nativeTest := "^TestActualMultiesNativeWorkflowFixture$"
 	if os.Getenv("MNET_DEVELOPMENT_ATTENDED_FIXTURE") == "1" {
 		nativeTest = "^TestActualMultiesAttendedNativeWorkflowFixture$"
+		if os.Getenv("MNET_DEVELOPMENT_ATTENDED_CASE") == "deny-real-dialog" {
+			nativeTest = "^TestActualMultiesAttendedRealDialogNativeWorkflowFixture$"
+		}
 		if os.Getenv("MNET_DEVELOPMENT_ATTENDED_CASE") == "withdraw-pending" {
 			nativeTest = "^TestActualMultiesAttendedWithdrawNativeWorkflowFixture$"
 		}
