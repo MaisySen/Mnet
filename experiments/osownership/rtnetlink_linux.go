@@ -1,4 +1,4 @@
-//go:build linux && mnet_enrollment_development
+//go:build linux && mnet_enrollment_development && mnet_os_process_launch
 
 package osownership
 

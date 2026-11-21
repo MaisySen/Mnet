@@ -48,7 +48,7 @@ func TestReadOnlyDriverCannotReleaseMutationConstruction(t *testing.T) {
 	if !strings.Contains(s, "if !kernelExecutionReleased {") {
 		t.Fatal("TUN guard widened")
 	}
-	s = sourceFunction(t, "custody_linux.go", "disableOwnedIPv6")
+	s = sourceFunction(t, "custody_effects_live_linux.go", "disableOwnedIPv6")
 	if !strings.Contains(s, "if !kernelExecutionReleased {") {
 		t.Fatal("sysctl write guard widened")
 	}

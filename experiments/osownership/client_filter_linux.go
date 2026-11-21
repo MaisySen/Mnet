@@ -6,7 +6,6 @@ import (
 	"errors"
 	"golang.org/x/sys/unix"
 	"runtime"
-	"unsafe"
 )
 
 // Fixed read-only evidence client barrier, not a general hostile-app sandbox.
@@ -34,14 +33,6 @@ func evidenceClientFilter(pid int) ([]unix.SockFilter, error) {
 	f = append(f, unix.SockFilter{Code: jeq, K: unix.SYS_CLONE, Jf: 8}, unix.SockFilter{Code: ld, K: 20}, unix.SockFilter{Code: jeq, K: 0, Jf: 4}, unix.SockFilter{Code: ld, K: 16}, unix.SockFilter{Code: jeq, K: 0xd0f00, Jf: 1}, unix.SockFilter{Code: ret, K: allow}, unix.SockFilter{Code: ret, K: deny}, unix.SockFilter{Code: ret, K: deny}, unix.SockFilter{Code: ret, K: deny})
 	f = append(f, unix.SockFilter{Code: jeq, K: unix.SYS_TGKILL, Jf: 8}, unix.SockFilter{Code: ld, K: 20}, unix.SockFilter{Code: jeq, K: 0, Jf: 5}, unix.SockFilter{Code: ld, K: 16}, unix.SockFilter{Code: jeq, K: uint32(pid), Jf: 3}, unix.SockFilter{Code: ld, K: 32}, unix.SockFilter{Code: jeq, K: uint32(unix.SIGURG), Jf: 1}, unix.SockFilter{Code: ret, K: allow}, unix.SockFilter{Code: ret, K: deny}, unix.SockFilter{Code: ret, K: allow})
 	return f, nil
-}
-func installEvidenceClientFilter(pid int) error {
-	f, e := evidenceClientFilter(pid)
-	if e != nil {
-		return e
-	}
-	p := unix.SockFprog{Len: uint16(len(f)), Filter: &f[0]}
-	return unix.Prctl(unix.PR_SET_SECCOMP, unix.SECCOMP_MODE_FILTER, uintptr(unsafe.Pointer(&p)), 0, 0)
 }
 
 const clientSecurebits = 1 | 2 | 4 | 8 | 32

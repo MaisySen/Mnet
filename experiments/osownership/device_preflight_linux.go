@@ -5,7 +5,6 @@ package osownership
 // Inert owner-side work function, deliberately not dispatched by the existing
 // evidence binary. Extra tag is isolation, never execution authorization.
 import (
-	"context"
 	"errors"
 	"golang.org/x/sys/unix"
 	"reflect"
@@ -146,61 +145,6 @@ func captureDevicePreflight(ops devicePreflightOps, namespace Namespace) (r Devi
 	}
 	r.Outcome = "opened-closed"
 	return
-}
-
-type residentDevicePreflight struct{ ns *namespaceCustody }
-
-func (o residentDevicePreflight) CheckNamespace() error { return o.ns.checkCurrent() }
-func metadataFromStat(s unix.Stat_t) DeviceMetadata {
-	return DeviceMetadata{uint64(s.Dev), s.Ino, uint64(s.Rdev), s.Mode, s.Uid, s.Gid}
-}
-func (o residentDevicePreflight) Metadata() (DeviceMetadata, error) {
-	var s unix.Stat_t
-	e := unix.Lstat(preflightDevicePath, &s)
-	return metadataFromStat(s), e
-}
-func (o residentDevicePreflight) Open() (int, error) {
-	return unix.Open(preflightDevicePath, preflightOpenFlags, 0)
-}
-func (o residentDevicePreflight) Fstat(fd int) (DeviceMetadata, error) {
-	var s unix.Stat_t
-	e := unix.Fstat(fd, &s)
-	return metadataFromStat(s), e
-}
-func (o residentDevicePreflight) FDFlags(fd int) (int, error) {
-	return unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
-}
-func (o residentDevicePreflight) StatusFlags(fd int) (int, error) {
-	return unix.FcntlInt(uintptr(fd), unix.F_GETFL, 0)
-}
-func (o residentDevicePreflight) Close(fd int) error        { return unix.Close(fd) }
-func (o residentDevicePreflight) Inventory() ([]int, error) { return clientFDInventorySource() }
-
-// Only receives held fresh namespace custody established by reviewed supervisor.
-// No launcher/dispatch added. An outer caller must separately capture unchanged
-// outer namespace and Wait/custody evidence before any execution can be reviewed.
-func runDevicePreflightSource(ctx context.Context, ns *namespaceCustody) (DevicePreflightEvidence, error) {
-	if ns == nil {
-		return DevicePreflightEvidence{}, ErrConflict
-	}
-	snapshot := func() (string, error) {
-		if e := ctx.Err(); e != nil {
-			return "", e
-		}
-		if e := ns.checkCurrent(); e != nil {
-			return "", e
-		}
-		raw, e := ReadStableInventory(ctx, residentNetlink{ns}, ns.checkCurrent)
-		if e != nil {
-			return "", e
-		}
-		sys, e := readPolicySysctlsSource(ctx, ns, raw)
-		if e != nil {
-			return "", e
-		}
-		return bootstrapEvidenceDigest(raw, sys), nil
-	}
-	return runDevicePreflightBoundedSource(ns.identity, residentDevicePreflight{ns}, snapshot)
 }
 
 // Injected seam exercises unchanged same-run comparison and isolated refusal

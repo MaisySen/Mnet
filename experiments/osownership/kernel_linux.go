@@ -1,4 +1,4 @@
-//go:build linux && mnet_enrollment_development
+//go:build linux && mnet_enrollment_development && mnet_os_process_launch
 
 package osownership
 
@@ -10,16 +10,6 @@ import (
 
 	"golang.org/x/sys/unix"
 )
-
-var ErrExecutorUnreleased = errors.New("OS executor not released")
-
-type namespaceCustody struct {
-	fd       int
-	identity Namespace
-	threadID int
-}
-
-const kernelExecutionReleased = false
 
 // proveNamespaceFD duplicates caller-owned FD, checks nsfs and network-namespace
 // type, compares original parent/current target. Does not setns or open a path

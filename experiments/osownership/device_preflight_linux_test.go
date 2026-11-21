@@ -193,7 +193,11 @@ func TestDevicePreflightNoMutationSurface(t *testing.T) {
 		}
 		return true
 	})
-	if !strings.Contains(string(b), "unix.Lstat(preflightDevicePath") || !strings.Contains(string(b), "unix.Open(preflightDevicePath, preflightOpenFlags, 0)") {
+	liveBytes, readErr := os.ReadFile("device_preflight_effects_live_linux.go")
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !strings.Contains(string(liveBytes), "unix.Lstat(preflightDevicePath") || !strings.Contains(string(liveBytes), "unix.Open(preflightDevicePath, preflightOpenFlags, 0)") {
 		t.Fatal("path/open policy changed")
 	}
 	if kernelExecutionReleased {
@@ -205,11 +209,11 @@ func TestDevicePreflightNoMutationSurface(t *testing.T) {
 }
 
 func TestDevicePreflightRealNamespaceAndFlagWiring(t *testing.T) {
-	if !strings.Contains(sourceFunction(t, "device_preflight_linux.go", "CheckNamespace"), "o.ns.checkCurrent()") {
+	if !strings.Contains(sourceFunction(t, "device_preflight_effects_live_linux.go", "CheckNamespace"), "o.ns.checkCurrent()") {
 		t.Fatal("held namespace bypass")
 	}
 	for _, tc := range [][2]string{{"Metadata", "unix.Lstat(preflightDevicePath"}, {"Fstat", "unix.Fstat(fd"}, {"FDFlags", "unix.F_GETFD"}, {"StatusFlags", "unix.F_GETFL"}, {"Close", "unix.Close(fd)"}} {
-		if !strings.Contains(sourceFunction(t, "device_preflight_linux.go", tc[0]), tc[1]) {
+		if !strings.Contains(sourceFunction(t, "device_preflight_effects_live_linux.go", tc[0]), tc[1]) {
 			t.Fatal("real operation wiring changed", tc[0])
 		}
 	}
@@ -317,7 +321,7 @@ func TestDevicePreflightIsolatedAndBaselineSeam(t *testing.T) {
 			t.Fatal("false baseline success", r)
 		}
 	}
-	s := sourceFunction(t, "device_preflight_linux.go", "runDevicePreflightSource")
+	s := sourceFunction(t, "device_preflight_effects_live_linux.go", "runDevicePreflightSource")
 	if !strings.Contains(s, "runDevicePreflightBoundedSource(ns.identity, residentDevicePreflight{ns}, snapshot)") {
 		t.Fatal("real seam detached")
 	}
