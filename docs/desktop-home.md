@@ -152,3 +152,29 @@ Unrelated desktop notification/keyring helpers reported no-display warnings;
 the system-browser, login, native List and return checks passed independently.
 This is a local installed integration test, not a production deployment, normal
 installed first-run enrollment or two-physical-device acceptance.
+
+## Exact installed attended session and honest observation order
+
+The native pointer/home harness can now use an explicitly supplied private
+installed prefix. It verifies the installation's source commit, unchanged binary
+hashes and clean matching source before using the installed CLI and daemon.
+Only the test harness is compiled with the race detector in this mode. Normal
+source-mode acceptance still builds race-enabled binaries.
+
+The first default-size installed attempt reached the fresh home before the
+independent host's status window disappeared. Its immediate cross-display
+assertion failed; a separate larger-host run passed. The owner source closes the
+local viewer/transport synchronously, while the host observes that closure and
+joins its UI independently. The fixture now requires remote-window absence
+within its existing readiness bound, not in the first cross-display read. It
+still requires all three native injector owners joined, exactly two native
+clicks, one scroll, zero native keys and no held button. This is an observation
+ordering correction, not a new remote cleanup acknowledgement or a claim that
+home return proves remote release.
+
+Visual inspection also caught an old acceptance weakness: a broad blue-pixel
+predicate could count the loading panel as received host pixels. The fixture
+now requires the independently painted native target color in both a known
+content pixel and a substantial region. Waiting panels cannot satisfy it. The
+old screenshot remains evidence of that false-positive fixture, not a received
+first screen. This correction changes no product timeout, transport or consent.

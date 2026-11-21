@@ -80,7 +80,10 @@ try:
  def actual_screen():
   capture(displays[1],viewer,'allowed')
   image=Image.open(out/'allowed.png').convert('RGB')
-  return sum(n for n,c in (image.getcolors(960*672) or []) if c[2]>c[0]+30 and c[1]>c[0]+10)>10000
+  # The loading panel is blue too. Require the independently painted native
+  # target color, not a broad blue-family test that can accept waiting UI.
+  target=lambda c: all(abs(a-b)<=8 for a,b in zip(c,(65,111,168)))
+  return target(image.getpixel((120,580))) and sum(n for n,c in (image.getcolors(960*672) or []) if target(c))>10000
  poll(actual_screen,'actual host desktop pixels before pointer approval')
  capture(displays[1],viewer,'viewing-before-control')
  action(displays[1],'windowfocus',viewer,'mousemove','--window',viewer,'120','580','click','1','key','a')
