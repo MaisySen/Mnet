@@ -110,3 +110,39 @@ func TestRegistrarRelayDedicatedHeaderLifecycle(t *testing.T) {
 		})
 	}
 }
+
+func TestRegistrarRelayUnavailableDoesNotPermanentlyDenyClient(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			w.WriteHeader(503)
+			return
+		}
+		ws, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.Close()
+		for {
+			if _, _, err := ws.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+	defer server.Close()
+	client := registrarTrusted(t, server, registrarFixture(t, server.URL), RegistrarLimits{Timeout: time.Second, MaxConcurrent: 1, MaxRequests: 2})
+	if r, err := client.DialRegistrarRelay(context.Background(), 4, func(string, []byte) {}); err != ErrRegistrarUnavailable || r != nil {
+		t.Fatal("transient service classification", err)
+	}
+	r, err := client.DialRegistrarRelay(context.Background(), 4, func(string, []byte) {})
+	if err != nil {
+		t.Fatal("transient denial permanently retired client", err)
+	}
+	r.Close()
+	<-r.Done()
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	if client.denied || client.used != 2 || client.inflight != 0 {
+		t.Fatal("transient path reset budget or permanently denied")
+	}
+}

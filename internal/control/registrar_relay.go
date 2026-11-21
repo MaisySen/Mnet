@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -15,6 +16,8 @@ import (
 	"fintex.au/mnet/internal/relay"
 	"github.com/gorilla/websocket"
 )
+
+var errRegistrarRelayUnavailable = errors.New("private registrar relay temporarily unavailable")
 
 const registrarRelayPath = "/api/mnet-node-relay-experimental-v1/ws"
 const registrarRelayScheme = "Mnet-Node-Relay-V1 "
@@ -73,7 +76,11 @@ func (s *Store) newRegistrarDevelopmentRelayIngress(g *registrarIngress, hub *re
 		}
 		ref, node, err := s.registrarRelayReference(raw, secret)
 		if err != nil {
-			refuse(403)
+			if errors.Is(err, errRegistrarRelayUnavailable) {
+				refuse(503)
+			} else {
+				refuse(403)
+			}
 			return
 		}
 		expiry := time.UnixMilli(node.KeyExpiry.UnixMilli())
@@ -125,12 +132,15 @@ func (s *Store) registrarRelayReference(raw []byte, secret string) (registrarCre
 	// Untrusted NodeID only selects a retained record. Strict full-wire equality
 	// against that record's ORIGINAL challenge follows before any authorization.
 	var hint contract.HistoryReceiptWire
-	if json.Unmarshal(raw, &hint) != nil || !s.mu.TryLock() {
+	if json.Unmarshal(raw, &hint) != nil {
 		return zero, nil, ErrUnauthorized
+	}
+	if !s.mu.TryLock() {
+		return zero, nil, errRegistrarRelayUnavailable
 	}
 	defer s.mu.Unlock()
 	if s.registrarIngress == nil || s.healthLocked() != nil || s.registrarIngressBoundLocked(s.registrarIngress.limits) != nil {
-		return zero, nil, ErrUnauthorized
+		return zero, nil, errRegistrarRelayUnavailable
 	}
 	record := s.registrarNodeLocked(hint.Receipt.NodeID)
 	if record == nil || record.Consumption == nil {

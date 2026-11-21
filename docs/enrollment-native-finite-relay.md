@@ -131,3 +131,29 @@ This is a test topology restriction, not a general startup fix. Diagnostic
 counters/logging were removed from final code; their logs/source are retained.
 Explicit socket/map-ready and first-peer-configured barriers keep early synthetic
 fixture endpoint publication from being mistaken for the zero-endpoint phase.
+
+## Focused review corrections
+
+Transient valid Store admission contention was incorrectly returned as403,
+which permanently denies the retained client. It now returns503 through a private
+service-unavailable sentinel. It still spends an admitted finite request, and
+neither failure nor continuation refunds budget. A valid dial under held Store.mu
+refuses without queuing, then succeeds after unlock. A client receiving503 can
+successfully dial again with the same retained client and correct spent budget;
+real401/403 still permanently denies. Gate/Store state-capacity unavailability
+also uses503 rather than falsely declaring a secret invalid.
+
+A true two-node destination matrix keeps the registrar-native source valid and
+uses an explicitly legacy-joined/approved second fixture destination. A real
+baseline socket frame succeeds; destination unapproval/expiry/deletion/network
+move/ACL-pair withdrawal each denies the new frame. This is cross-type pair
+authorization evidence, not a claim of a second finalized native owner. A fresh
+pair-check bypass mutant fails all five cases on forbidden delivery.
+
+Queued-only sensitivity uses a real local WebSocket with a test-owned connection
+wrapper: hold the first already-authorized destination write, enqueue a second
+frame while allowed, revoke permission, then release the writer. Only the first
+frame may drain. Removing ONLY the queued writer's p.permitted check makes the
+second queued-before-revoke frame arrive and fails that exact assertion. Admission
+is deliberately independent in this test, so a source admission refusal cannot
+manufacture its pass. This check does not revoke a write already in progress.

@@ -1,10 +1,12 @@
 package control
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -149,6 +151,142 @@ func TestRegistrarRelayEnvelopeAndRetainedReferenceRefusals(t *testing.T) {
 			}
 			if err == nil {
 				t.Fatal("untrusted relay envelope attached")
+			}
+		})
+	}
+}
+
+func TestRegistrarRelayBusyValidDialIsUnavailableNotCredentialDenied(t *testing.T) {
+	s, server, h := registrarRelayFixture(t)
+	s.mu.Lock()
+	done := make(chan int, 1)
+	go func() {
+		ws, resp, err := dialRegistrarRelayFixture(t, server, h)
+		if ws != nil {
+			ws.Close()
+		}
+		if err == nil || resp == nil {
+			done <- 0
+			return
+		}
+		resp.Body.Close()
+		done <- resp.StatusCode
+	}()
+	select {
+	case status := <-done:
+		s.mu.Unlock()
+		if status != 503 {
+			t.Fatal("valid Store contention misclassified", status)
+		}
+	case <-time.After(time.Second):
+		s.mu.Unlock()
+		t.Fatal("busy valid dial queued")
+	}
+	ws, _, err := dialRegistrarRelayFixture(t, server, h)
+	if err != nil {
+		t.Fatal("valid credential did not survive transient admission", err)
+	}
+	ws.Close()
+}
+
+func TestRegistrarRelayTwoNodeDestinationDenialMatrix(t *testing.T) {
+	for _, mode := range []string{"unapproved", "expired", "deleted", "cross-network", "acl-pair"} {
+		t.Run(mode, func(t *testing.T) {
+			s, ref, secret := registrarCredentialFixture(t)
+			auth, err := s.CreateAuthKey(ref.NetworkID, "destination fixture", false, time.Minute)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dstKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{71}, 32))
+			dst, err := s.Join(netmap.JoinRequest{Network: ref.NetworkID, Name: "destination", PubKey: dstKey, AuthKey: auth.Key})
+			if err != nil || !dst.Approved {
+				t.Fatal("actual destination join", err)
+			}
+			hub := relay.NewHub()
+			g, err := s.newRegistrarDevelopmentIngress(registrarIngressLimits{MaxRequests: 16, MaxConcurrent: 2, MaxBodyBytes: 16384, MaxStateBytes: 4 << 20, MaxEntries: 8, Timeout: 2 * time.Second}, http.NotFoundHandler())
+			if err != nil {
+				t.Fatal(err)
+			}
+			h, err := s.newRegistrarDevelopmentRelayIngress(g, hub, 32)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sourceServer := httptest.NewTLSServer(h)
+			defer sourceServer.Close()
+			legacy, _, err := NewServer(s, hub, "http://localhost", "test-only-admin")
+			if err != nil {
+				t.Fatal(err)
+			}
+			destServer := httptest.NewServer(legacy.Handler())
+			defer destServer.Close()
+			destWS, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(destServer.URL, "http")+"/api/relay/ws?"+url.Values{"node_id": {dst.NodeID}, "token": {dst.NodeToken}}.Encode(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer destWS.Close()
+			rawDst, _ := base64.StdEncoding.DecodeString(dstKey)
+			destWS.SetReadDeadline(time.Now().Add(time.Second))
+			if err := destWS.WriteMessage(websocket.BinaryMessage, append(append([]byte{}, rawDst...), []byte("destination-attach-barrier")...)); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := destWS.ReadMessage(); err != nil {
+				t.Fatal("destination attachment", err)
+			}
+			record := s.registrarNodeLocked(ref.NodeID)
+			receipt, err := contract.ReceiptV2ForChallenge(record.Consumption.Challenge, record.NodeID, record.ReceiptID, record.CommittedAtMS)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wire, _ := json.Marshal(contract.HistoryReceiptWire{Version: 1, Receipt: receipt, ReceiptDigest: record.ReceiptDigest})
+			headers := http.Header{}
+			headers.Set("Authorization", registrarRelayScheme+secret)
+			headers.Set(registrarRelayReferenceHeader, base64.RawURLEncoding.EncodeToString(wire))
+			sourceWS, _, err := dialRegistrarRelayFixture(t, sourceServer, headers)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer sourceWS.Close()
+			send := func(body string) {
+				if err := sourceWS.WriteMessage(websocket.BinaryMessage, append(append([]byte{}, rawDst...), []byte(body)...)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			send("baseline-allowed")
+			destWS.SetReadDeadline(time.Now().Add(time.Second))
+			_, first, err := destWS.ReadMessage()
+			if err != nil || len(first) < 32 || string(first[32:]) != "baseline-allowed" {
+				t.Fatal("two-node baseline", err)
+			}
+			switch mode {
+			case "unapproved":
+				s.mu.Lock()
+				s.data.Nodes[dst.NodeID].Approved = false
+				err = s.saveLocked()
+				s.mu.Unlock()
+			case "expired":
+				err = s.ExpireNode(dst.NodeID)
+			case "deleted":
+				err = s.DeleteNode(dst.NodeID)
+			case "cross-network":
+				var other *netmap.Network
+				other, err = s.CreateNetwork("other")
+				if err == nil {
+					s.mu.Lock()
+					s.data.Nodes[dst.NodeID].NetworkID = other.ID
+					s.relayIndex = nil
+					err = s.saveLocked()
+					s.mu.Unlock()
+				}
+			case "acl-pair":
+				err = s.SetACL(ref.NetworkID, &netmap.ACLPolicy{Rules: []netmap.ACLRule{{Src: "fixture", Dst: "fixture"}}})
+			}
+			if err != nil {
+				t.Fatal("destination deny transition", err)
+			}
+			send("new-forbidden-destination-frame")
+			destWS.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+			if _, packet, err := destWS.ReadMessage(); err == nil {
+				t.Fatalf("destination %s received forbidden frame %q", mode, packet[32:])
 			}
 		})
 	}
