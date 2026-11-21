@@ -11,16 +11,18 @@ import (
 // reserve. This is JavaScript JSON.stringify string-array encoding, NOT Go's
 // HTML-escaped JSON or the separate length-prefixed possession transcript.
 func SourceDescriptorBytes(own SourceExchange, serviceID, reserveID string) ([]byte, error) {
-	if !validSourceLaunch(own.Launch) || !validSourceMapping(own.Mapping) || !sourceID.MatchString(serviceID) {
+	return sourceDescriptorBytes(own.ID, own.Launch, own.Mapping, serviceID, reserveID)
+}
+func sourceDescriptorBytes(handoffID string, l SourceLaunch, m SourceMapping, serviceID, reserveID string) ([]byte, error) {
+	if !validSourceLaunch(l) || !validSourceMapping(m) || !sourceID.MatchString(serviceID) {
 		return nil, ErrInvalid
 	}
-	for _, s := range []string{own.ID, reserveID} {
+	for _, s := range []string{handoffID, reserveID} {
 		if _, err := digest(s); err != nil {
 			return nil, err
 		}
 	}
-	l, m := own.Launch, own.Mapping
-	prefix := []string{"mnet-reserve-descriptor-v1", serviceID, own.ID, reserveID}
+	prefix := []string{"mnet-reserve-descriptor-v1", serviceID, handoffID, reserveID}
 	suffix := []string{l.Purpose, l.AttemptID, l.DevicePublicKey, l.CredentialDigest, l.Challenge, l.State, l.RedirectURI, l.Platform, m.WorkspaceID, m.Issuer, m.RegistrarOrigin, m.Audience, m.MappingRevision, m.NetworkID}
 	out := []byte{'['}
 	for _, s := range prefix {

@@ -262,3 +262,6 @@ func sourceShape(d *json.Decoder, t reflect.Type, depth int) bool {
 	}
 	return false
 }
+
+func (SourceReserve) String() string   { return "[private untrusted source reserve DATA]" }
+func (SourceReserve) GoString() string { return "[private untrusted source reserve DATA]" }

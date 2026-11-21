@@ -1,6 +1,6 @@
-// Package enrollmentsource implements the explicit-origin native exchange
-// transport only. It has no runtime caller, journal access, authority permit,
-// service credential, browser, redirect or automatic retry/reconsent path.
+// Package enrollmentsource provides explicit-origin native exchange and service
+// reserve transports. It has no native key/journal access, authority permit,
+// browser, redirects or automatic retry/reconsent. No daemon/control activation.
 package enrollmentsource
 
 import (
@@ -22,7 +22,7 @@ import (
 	"fintex.au/mnet/internal/enrollmentidentity"
 )
 
-var ErrUnavailable = errors.New("enrollment exchange unavailable; remote outcome may be unknown")
+var ErrUnavailable = errors.New("enrollment source request unavailable; remote outcome may be unknown")
 var ErrInvalid = errors.New("invalid enrollment exchange request")
 
 // Limits are explicit engineering transport bounds, not an authority lifetime,
@@ -43,14 +43,11 @@ func NewNative(origin, principalAuthority string, limits Limits) (*Native, error
 	if !enrollmentidentity.ValidOrigin(origin) || !enrollmentidentity.ValidOrigin(principalAuthority) || limits.Timeout <= 0 || limits.Timeout > time.Minute || limits.MaxConnections < 1 || limits.MaxConnections > 16 {
 		return nil, ErrInvalid
 	}
-	// Construct independently: no DefaultTransport/DefaultClient/ProxyFromEnvironment,
-	// caller RoundTripper, cookie jar, ambient browser authentication or TLS bypass.
-	tr := &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: limits.Timeout, KeepAlive: 30 * time.Second}).DialContext, ForceAttemptHTTP2: false, TLSNextProto: map[string]func(string, *tls.Conn) http.RoundTripper{}, DisableKeepAlives: true, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, NextProtos: []string{"http/1.1"}}, TLSHandshakeTimeout: limits.Timeout, ResponseHeaderTimeout: limits.Timeout, MaxResponseHeaderBytes: 16 * 1024, MaxConnsPerHost: limits.MaxConnections, MaxIdleConnsPerHost: limits.MaxConnections, IdleConnTimeout: 30 * time.Second, DisableCompression: true}
-	h := &http.Client{Transport: tr, Timeout: limits.Timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	h, tr := newSourceHTTP(limits)
 	return &Native{origin: origin, authority: principalAuthority, http: h, transport: tr}, nil
 }
 
-// CloseIdleConnections releases pooled connections, not pending journal state.
+// CloseIdleConnections releases idle transport state, not pending journal data.
 func (n *Native) CloseIdleConnections() {
 	if n != nil && n.transport != nil {
 		n.transport.CloseIdleConnections()
@@ -136,28 +133,44 @@ func (n *Native) Exchange(ctx context.Context, saved contract.SourceLaunch, save
 		return contract.SourceExchange{}, ErrUnavailable
 	}
 	defer response.Body.Close()
-	// Never surface a server error body, Location, raw url.Error or response data.
-	// No body drain/retry on errors: data may contain private tokens or instructions.
-	if response.StatusCode != http.StatusOK || response.ContentLength > 65536 || response.Header.Get("Content-Encoding") != "" {
-		return contract.SourceExchange{}, ErrUnavailable
-	}
-	if len(response.Header.Values("Content-Type")) != 1 || len(response.Header.Values("Cache-Control")) != 1 {
-		return contract.SourceExchange{}, ErrUnavailable
-	}
-	typ, params, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
-	if err != nil || typ != "application/json" || len(params) > 1 || (len(params) == 1 && params["charset"] != "utf-8") {
-		return contract.SourceExchange{}, ErrUnavailable
-	}
-	if response.Header.Get("Cache-Control") != "no-store" {
-		return contract.SourceExchange{}, ErrUnavailable
-	}
-	body, err := io.ReadAll(io.LimitReader(response.Body, 65537))
-	if err != nil || len(body) > 65536 {
-		return contract.SourceExchange{}, ErrUnavailable
+	body, err := readSourceJSON(response)
+	if err != nil {
+		return contract.SourceExchange{}, err
 	}
 	data, err := contract.DecodeSourceExchange(body, saved, n.authority, savedAllowed, currentAllowed, now.Add(time.Since(started)))
 	if err != nil {
 		return contract.SourceExchange{}, ErrUnavailable
 	}
 	return data, nil
+}
+
+func newSourceHTTP(limits Limits) (*http.Client, *http.Transport) {
+	// Construct independently: no DefaultTransport/DefaultClient/ProxyFromEnvironment,
+	// caller RoundTripper, cookie jar, ambient browser authentication or TLS bypass.
+	tr := &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: limits.Timeout, KeepAlive: 30 * time.Second}).DialContext, ForceAttemptHTTP2: false, TLSNextProto: map[string]func(string, *tls.Conn) http.RoundTripper{}, DisableKeepAlives: true, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, NextProtos: []string{"http/1.1"}}, TLSHandshakeTimeout: limits.Timeout, ResponseHeaderTimeout: limits.Timeout, MaxResponseHeaderBytes: 16 * 1024, MaxConnsPerHost: limits.MaxConnections, MaxIdleConnsPerHost: limits.MaxConnections, IdleConnTimeout: 30 * time.Second, DisableCompression: true}
+	h := &http.Client{Transport: tr, Timeout: limits.Timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	return h, tr
+}
+
+func readSourceJSON(response *http.Response) ([]byte, error) {
+	// Never surface a server error body, Location, raw url.Error or response data.
+	// No body drain/retry on errors: data may contain private tokens or instructions.
+	if response.StatusCode != http.StatusOK || response.ContentLength > 65536 || response.Header.Get("Content-Encoding") != "" {
+		return nil, ErrUnavailable
+	}
+	if len(response.Header.Values("Content-Type")) != 1 || len(response.Header.Values("Cache-Control")) != 1 {
+		return nil, ErrUnavailable
+	}
+	typ, params, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
+	if err != nil || typ != "application/json" || len(params) > 1 || (len(params) == 1 && params["charset"] != "utf-8") {
+		return nil, ErrUnavailable
+	}
+	if response.Header.Get("Cache-Control") != "no-store" {
+		return nil, ErrUnavailable
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, 65537))
+	if err != nil || len(body) > 65536 {
+		return nil, ErrUnavailable
+	}
+	return body, nil
 }
