@@ -260,7 +260,7 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 	go func() { exited <- cmd.Wait() }()
 	select {
 	case err = <-exited:
-		cleanExit := mode == "local-end" || mode == "pointer" || mode == "pointer-decline-first" || mode == "live-terminate" || mode == "first-screen-stall" && os.Getenv("MNET_VIEWER_HOME") == "1"
+		cleanExit := mode == "local-end" || mode == "pointer" || mode == "pointer-decline-first" || mode == "live-terminate" || (mode == "first-screen-stall" || mode == "host-end") && os.Getenv("MNET_VIEWER_HOME") == "1"
 		if cleanExit && err != nil {
 			t.Fatal(err)
 		}

@@ -26,15 +26,15 @@ type homeConfig struct{ LayoutPath, MultiesOrigin string }
 // window title; fixtures read outcomes from it instead of pixels.
 const (
 	homeNoticeStart        = "Choose a tool to begin."
-	homeNoticeNoScreen     = "No screen arrived. The session ended. Choose Remote Desktop to try again."
+	homeNoticeNoScreen     = "No screen arrived. The viewing session ended. Choose Remote Desktop to try again."
 	homeNoticeReviewClosed = "Approval review closed. Network setup is still not connected."
 	homeNoticeReviewFailed = "Approval review was unavailable. Network setup is still not connected."
 	homeNoticeFailed       = "The tool could not finish. Choose it again to try a fresh attempt."
 	homeNoticeClosed       = "Tool closed. You can choose another tool."
-	homeNoticeViewed       = "Viewing ended. Nothing remains connected. Choose a tool to continue."
-	homeNoticeDeclined     = "The host did not allow viewing. Nothing was shared. Choose Remote Desktop to ask again."
-	homeNoticeChanged      = "The device changed before connecting. Nothing was shared. Choose Remote Desktop to review it again."
-	homeNoticeHostEnded    = "The host or the connection ended the viewing session. Nothing remains connected."
+	homeNoticeViewed       = "Viewing ended. The viewing session and any pointer control are closed. Choose a tool to continue."
+	homeNoticeDeclined     = "The host did not allow viewing. No screen or input was shared. Choose Remote Desktop to ask again."
+	homeNoticeChanged      = "The device changed before connecting. No screen or input was shared. Choose Remote Desktop to review it again."
+	homeNoticeHostEnded    = "The host or the connection ended the viewing session. No viewing session or shared input remains."
 )
 
 var homeNotices = []string{homeNoticeStart, homeNoticeNoScreen, homeNoticeReviewClosed, homeNoticeReviewFailed, homeNoticeFailed, homeNoticeClosed, homeNoticeViewed, homeNoticeDeclined, homeNoticeChanged, homeNoticeHostEnded}
