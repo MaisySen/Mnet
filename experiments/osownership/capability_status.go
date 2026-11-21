@@ -8,6 +8,7 @@ import "time"
 // OS itself. A witness is scoped to one target/session/namespace and interval.
 // The caller's clock must be trusted; expiry enforcement stays in Transaction.
 type networkCapabilityWitness struct {
+	AttemptID  string
 	Kind       string
 	TargetID   string
 	SessionID  string
@@ -16,16 +17,20 @@ type networkCapabilityWitness struct {
 	ValidUntil time.Time
 }
 type networkCapabilityEvidence struct {
-	Final             *adapterFinalState
-	RunnerObservation string
-	TargetID          string
-	SessionID         string
-	Namespace         Namespace
-	Now               time.Time
-	Witnesses         []networkCapabilityWitness
-	CleanupPending    bool
+	AttemptID           string
+	ObservationSequence uint64
+	Final               *adapterFinalState
+	RunnerObservation   string
+	TargetID            string
+	SessionID           string
+	Namespace           Namespace
+	Now                 time.Time
+	Witnesses           []networkCapabilityWitness
+	CleanupPending      bool
 }
 type networkCapabilityStatus struct {
+	AttemptID         string    `json:"attempt_id"`
+	CustodyUnresolved bool      `json:"custody_unresolved"`
 	State             string    `json:"state"`
 	RunnerObservation string    `json:"runner_observation"`
 	UserDeployment    string    `json:"user_deployment"`
@@ -40,20 +45,45 @@ type networkCapabilityStatus struct {
 func projectNetworkCapability(e networkCapabilityEvidence) networkCapabilityStatus {
 	e.Now = e.Now.Round(0).UTC() // compare explicit wall intervals, not hidden monotonic stamps
 	r := networkCapabilityStatus{State: "not-verified", RunnerObservation: e.RunnerObservation, UserDeployment: "unknown", TargetID: e.TargetID, SessionID: e.SessionID, AsOf: e.Now}
-	if e.Final == nil || e.CleanupPending || e.Final.requiresCleanup() {
+
+	r.AttemptID = e.AttemptID
+	if e.Final == nil {
+		r.State = "custody-unverified"
+		r.CustodyUnresolved = true
+		return r
+	}
+	scopeMatches := e.Final.Identity.valid() && e.Final.Identity.TargetID == e.TargetID && e.Final.Identity.SessionID == e.SessionID && sameNamespace(e.Final.Identity.Namespace, e.Namespace) && e.AttemptID != "" && e.Final.Identity.AttemptID == e.AttemptID
+	if !scopeMatches {
+		if e.Final.requiresCleanup() {
+			r.State = "foreign-attempt-cleanup-unresolved"
+		} else {
+			r.State = "final-scope-mismatch"
+		}
+		// A foreign cleanup record is not this target's custody report, but still
+		// cannot establish readiness. Do not relabel it as local cleanup.
+		return r
+	}
+	r.CustodyUnresolved = e.Final.requiresCleanup()
+	if r.CustodyUnresolved {
+		r.State = "custody-unresolved"
+		return r
+	}
+	if e.CleanupPending {
 		r.State = "cleanup-pending"
 		return r
 	}
-	if !e.Final.Identity.valid() || e.Final.Identity.TargetID != e.TargetID || e.Final.Identity.SessionID != e.SessionID || !sameNamespace(e.Final.Identity.Namespace, e.Namespace) {
-		r.State = "final-scope-mismatch"
+	o := e.Final.Observation
+	if o == nil || o.Identity != e.Final.Identity || e.ObservationSequence == 0 || o.Sequence != e.ObservationSequence || o.ObservedAt.IsZero() || e.Now.Before(o.ObservedAt.Round(0).UTC()) || !e.Now.Before(o.ValidUntil.Round(0).UTC()) || o.ValidUntil.Sub(o.ObservedAt) > time.Second || !o.ValidUntil.After(o.ObservedAt) {
+		r.State = "reconciliation-stale-or-unbound"
 		return r
 	}
+	r.ValidUntil = o.ValidUntil.Round(0).UTC()
 	kinds := map[string]bool{}
 	if e.TargetID != "" && e.SessionID != "" && !e.Now.IsZero() && sameNamespace(e.Namespace, e.Namespace) {
 		for _, w := range e.Witnesses {
 			w.ObservedAt = w.ObservedAt.Round(0).UTC()
 			w.ValidUntil = w.ValidUntil.Round(0).UTC()
-			if w.TargetID != e.TargetID || w.SessionID != e.SessionID || !sameNamespace(w.Namespace, e.Namespace) || w.ObservedAt.IsZero() || e.Now.Before(w.ObservedAt) || !e.Now.Before(w.ValidUntil) {
+			if w.AttemptID != e.AttemptID || w.TargetID != e.TargetID || w.SessionID != e.SessionID || !sameNamespace(w.Namespace, e.Namespace) || w.ObservedAt.IsZero() || e.Now.Before(w.ObservedAt) || !e.Now.Before(w.ValidUntil) {
 				continue
 			}
 			switch w.Kind {

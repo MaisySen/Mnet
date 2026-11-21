@@ -16,6 +16,7 @@ import (
 type adapterIdentity struct {
 	TargetID  string
 	SessionID string
+	AttemptID string
 	Namespace Namespace
 }
 
@@ -24,25 +25,26 @@ func (i adapterIdentity) valid() bool {
 }
 
 type adapterSession struct {
-	identity         adapterIdentity
-	baseline         *CapturedBaseline
-	createAttempted  bool
-	rejectedHandle   *Handle
-	plan             *Plan
-	forwardStep      int
-	cleanupMode      bool
-	cleanupPending   *Operation
-	cleanupAttempts  map[Operation]int
-	cleanupRetry     *Operation
-	cleanupHistory   []cleanupObservation
-	closeRecorded    bool
-	canonical        *Handle
-	pending          *Operation
-	pendingACK       bool
-	poisoned         bool
-	addressConfirmed bool
-	closeAttempted   bool
-	closeConfirmed   bool
+	identity            adapterIdentity
+	observationSequence uint64
+	baseline            *CapturedBaseline
+	createAttempted     bool
+	rejectedHandle      *Handle
+	plan                *Plan
+	forwardStep         int
+	cleanupMode         bool
+	cleanupPending      *Operation
+	cleanupAttempts     map[Operation]int
+	cleanupRetry        *Operation
+	cleanupHistory      []cleanupObservation
+	closeRecorded       bool
+	canonical           *Handle
+	pending             *Operation
+	pendingACK          bool
+	poisoned            bool
+	addressConfirmed    bool
+	closeAttempted      bool
+	closeConfirmed      bool
 }
 
 func newAdapterSession(b *CapturedBaseline, id adapterIdentity) (*adapterSession, error) {
@@ -292,6 +294,7 @@ func (s *adapterSession) observeCleanup(i Inventory) error {
 var forwardTransitions = [6]string{"create-nonpersistent-tun", "set-alias-mtu-exact", "disable-owned-link-ipv6", "address-add-exclusive", "link-up-exact", "route-add-exclusive"}
 
 type adapterFinalState struct {
+	Observation       *adapterReconciliationObservation
 	Identity          adapterIdentity
 	Poisoned          bool
 	CleanupMode       bool
@@ -357,4 +360,34 @@ func (s *adapterSession) recordCleanup(err error) error {
 	}
 	s.cleanupHistory = append(s.cleanupHistory, cleanupObservation{Operation: *s.cleanupPending, Attempt: s.cleanupAttempts[*s.cleanupPending], CallRecorded: true, CallError: err != nil})
 	return err
+}
+
+// Caller supplied correlation, never authenticated identity or hardware proof.
+// AttemptID must be minted once by the owner for a unique attempt, not reused.
+// No allocator/journal/restart recovery exists here. Legacy reconcile returns
+// undated evidence and cannot make a capability projection ready.
+type adapterReconciliationObservation struct {
+	Identity   adapterIdentity
+	Sequence   uint64
+	ObservedAt time.Time
+	ValidUntil time.Time
+}
+
+func (s *adapterSession) reconcileObserved(raw RawInventory, sys SysctlSnapshot, o adapterReconciliationObservation) (adapterFinalState, error) {
+	if s == nil || s.identity.AttemptID == "" || o.Identity != s.identity || o.Sequence == 0 || o.Sequence <= s.observationSequence {
+		return adapterFinalState{}, ErrConflict
+	}
+	o.ObservedAt = o.ObservedAt.Round(0).UTC()
+	o.ValidUntil = o.ValidUntil.Round(0).UTC()
+	// At most one second of display freshness, not an authority extension. The
+	// supplied clock must be trusted. Forward expiry still belongs to Transaction.
+	if o.ObservedAt.IsZero() || !o.ValidUntil.After(o.ObservedAt) || o.ValidUntil.Sub(o.ObservedAt) > time.Second {
+		return adapterFinalState{}, ErrConflict
+	}
+	r, e := s.reconcile(raw, sys)
+	// Even a mismatched raw baseline gets an observation stamp, never clean state.
+	s.observationSequence = o.Sequence
+	copy := o
+	r.Observation = &copy
+	return r, e
 }

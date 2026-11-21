@@ -368,6 +368,10 @@ func (t *Transaction) closeFDOnce(h Handle) error {
 	}
 	t.fdCloseAttempted = true
 	t.fdCloseError = t.k.CloseOriginalFD(h)
+	if t.fdCloseError != nil {
+		t.PendingCleanup = true
+		t.Evidence = append(t.Evidence, Evidence{Step: "close-owned-tun-fd-result", ACK: false, Readback: "custody-unresolved", Error: true})
+	}
 	return t.fdCloseError
 }
 func cloneInventory(i Inventory) Inventory {
