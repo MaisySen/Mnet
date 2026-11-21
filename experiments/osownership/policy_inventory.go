@@ -104,10 +104,9 @@ func NewBaselineCandidate(parent, ns Namespace, raw RawInventory, s SysctlSnapsh
 	if e != nil {
 		return nil, e
 	}
-	var frozen RawInventory
-	if e = json.Unmarshal(b, &frozen); e != nil {
-		return nil, e
-	}
+	// Structural clone also retains private original ordered dump evidence,
+	// which JSON intentionally does not expose. Hash format is unchanged.
+	frozen := cloneRawExact(raw)
 	sys := map[string]string{}
 	for k, v := range s {
 		sys[k] = v

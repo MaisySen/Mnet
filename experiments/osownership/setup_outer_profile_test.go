@@ -282,9 +282,14 @@ func TestFullOuterPADRecordsRetainedButNamedComparisonIgnoresLayout(t *testing.T
 	if e := validateSetupOuter(other); e != nil {
 		t.Fatal(e)
 	}
-	// No generic duplicate relaxation, even for PAD.
-	if _, e := DecodeLink(different); e == nil {
-		t.Fatal("owned policy leaked into generic decoder")
+	// Generic dump now shares only encoding PAD policy. Requests and nested
+	// duplicate decoding still reject the repeated PAD representation.
+	generic, e := DecodeLink(different)
+	if e != nil || generic.setupOuter == nil {
+		t.Fatal("dump PAD not retained", e)
+	}
+	if _, e := decodeAttributes(different[16:]); e == nil {
+		t.Fatal("nested/request duplicate policy widened")
 	}
 }
 

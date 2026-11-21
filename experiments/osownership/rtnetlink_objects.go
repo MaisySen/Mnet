@@ -45,11 +45,20 @@ func DecodeLink(b []byte) (LinkRecord, error) {
 	if r.Index <= 0 {
 		return r, errors.New("invalid ifindex")
 	}
-	a, e := decodeAttributesWithLinkInfo(b[16:], true)
+	// Dump-only PAD policy. Requests/nested decoders retain strict duplicate
+	// handling. Preserve original ordered body only when PAD was present.
+	attrs, hadPAD, e := dumpAttrsWithoutPAD(b[16:])
+	if e != nil {
+		return r, e
+	}
+	a, e := decodeAttributesWithLinkInfo(attrs, true)
 	if e != nil {
 		return r, e
 	}
 	r.Raw = a
+	if hadPAD {
+		r.setupOuter = &setupOuterRecord{body: append([]byte(nil), b...)}
+	}
 	if r.Name, e = attrText(a, 3, true); e != nil {
 		return r, e
 	}

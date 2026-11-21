@@ -277,3 +277,49 @@ func setupSelectionName(body []byte) (string, error) {
 	}
 	return name, nil
 }
+
+// Dump-only supported encoding policy, shared by baseline/foreign dump records.
+// This is NOT helper/config-specific alignment proof. Only zero-payload plain
+// PAD immediately before STATS64 or MAP is supported. Named singleton/flag
+// validation still happens in the strict dump decoder after this scan.
+func dumpAttrsWithoutPAD(raw []byte) (out []byte, hadPAD bool, err error) {
+	if len(raw) > 16384 {
+		return nil, false, afShape
+	}
+	pending := false
+	for len(raw) > 0 {
+		if len(raw) < 4 {
+			return nil, false, afShape
+		}
+		n := int(binary.NativeEndian.Uint16(raw))
+		typ := binary.NativeEndian.Uint16(raw[2:])
+		aligned := (n + 3) &^ 3
+		if n < 4 || n > len(raw) || aligned > len(raw) {
+			return nil, false, afShape
+		}
+		for _, v := range raw[n:aligned] {
+			if v != 0 {
+				return nil, false, afShape
+			}
+		}
+		if typ == 42 {
+			if n != 4 || pending {
+				return nil, false, afShape
+			}
+			pending = true
+			hadPAD = true
+			raw = raw[aligned:]
+			continue
+		}
+		if pending && typ != 23 && typ != 14 {
+			return nil, false, afShape
+		}
+		pending = false
+		out = append(out, raw[:aligned]...)
+		raw = raw[aligned:]
+	}
+	if pending {
+		return nil, false, afShape
+	}
+	return out, hadPAD, nil
+}

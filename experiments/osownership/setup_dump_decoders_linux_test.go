@@ -88,3 +88,82 @@ func TestActualSetupDumpDecoderSelectionOwnedForeignAndNames(t *testing.T) {
 		t.Fatal("owned index foreign name")
 	}
 }
+
+func TestActualSetupDecodersDumpPADForeignFlagsAndOwnedTwoSites(t *testing.T) {
+	_, f := fullSetupRunRig(t, "0")
+	creation := creationSetupDump{name: f.h.Link.Name}
+	owned := ownedSetupDump{handle: f.h}
+	for _, hardware := range []uint16{65534, 772} {
+		body := make([]byte, 16)
+		binary.NativeEndian.PutUint16(body[2:], hardware)
+		binary.NativeEndian.PutUint32(body[4:], 999)
+		binary.NativeEndian.PutUint32(body[8:], 0xabcdef01)
+		body = append(body, attr(3, []byte("foreign0\x00"))...)
+		body = append(body, attr(4, u32(1500))...)
+		body = append(body, attr(42, nil)...)
+		body = append(body, attr(23, make([]byte, 200))...)
+		body = append(body, attr(42, nil)...)
+		body = append(body, attr(14, make([]byte, 32))...)
+		want, e := DecodeLink(body)
+		if e != nil || want.setupOuter == nil {
+			t.Fatal("foreign generic PAD", e)
+		}
+		for _, decoder := range []setupLinkDumpDecoder{creation, owned} {
+			got, e := decoder.decodeOwnedSetupLink(body)
+			if e != nil || !reflect.DeepEqual(got, want) || got.Flags != 0xabcdef01 {
+				t.Fatal("foreign got owned flags/profile", hardware, e)
+			}
+			if !reflect.DeepEqual(got.setupOuter.body, body) {
+				t.Fatal("foreign wire evidence lost")
+			}
+			for _, bad := range [][]byte{append(append([]byte(nil), body...), attr(3, []byte("foreign0\x00"))...), append(append([]byte(nil), body...), attr(3|0x8000, []byte("foreign0\x00"))...), append(append([]byte(nil), body...), attr(42, nil)...), append(append([]byte(nil), body...), attr(42|0x8000, nil)...)} {
+				if _, e := decoder.decodeOwnedSetupLink(bad); e == nil {
+					t.Fatal("foreign name/PAD strictness lost")
+				}
+			}
+		}
+	}
+	// Test the two actual production decoder types with two supported PAD sites
+	// on the owned body. These positions are policy, not a kernel alignment oracle.
+	body := fullSetupBodyTest(*f.owned(), "")
+	named, _, e := dumpAttrsWithoutPAD(body[16:])
+	if e != nil {
+		t.Fatal(e)
+	}
+	two := append([]byte(nil), body[:16]...)
+	for raw := named; len(raw) > 0; {
+		n := int(binary.NativeEndian.Uint16(raw))
+		aligned := (n + 3) &^ 3
+		typ := binary.NativeEndian.Uint16(raw[2:])
+		if typ == 14 || typ == 23 {
+			two = append(two, attr(42, nil)...)
+		}
+		two = append(two, raw[:aligned]...)
+		raw = raw[aligned:]
+	}
+	for _, decoder := range []setupLinkDumpDecoder{creation, owned} {
+		r, e := decoder.decodeOwnedSetupLink(two)
+		if e != nil || r.setupOuter == nil {
+			t.Fatal("owned twoPAD", e)
+		}
+		if e = validateSetupOuter(r); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if _, e := decodeAttributes(two[16:]); e == nil {
+		t.Fatal("nested singleton decoder widened")
+	}
+	// Name routing cannot authorize ownership: a different-index same-name is
+	// parsed only as a candidate. Original custody/index verification is later.
+	collision := append([]byte(nil), two...)
+	binary.NativeEndian.PutUint32(collision[4:], 999)
+	got, e := creation.decodeOwnedSetupLink(collision)
+	if e != nil || got.Name != f.h.Link.Name {
+		t.Fatal("name routing unexpected", e)
+	}
+	// Creation decoder deliberately parses a candidate only. The later exclusive
+	// create handle/index/device verifier grants custody, not this name scan.
+	if got.Index == f.h.Link.Index {
+		t.Fatal("parser adopted original index")
+	}
+}
