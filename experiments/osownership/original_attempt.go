@@ -88,10 +88,27 @@ type originalAbsenceEvidence struct {
 	custody *fileCustody
 }
 
+// Shared pre-open/post-close baseline comparison. Only the already-reviewed
+// pinned comparison-copy counter/timestamp policy applies. Target name must be
+// absent in both snapshots, even if an invalid baseline had included it.
+func originalBaselineMatches(p Plan, b *CapturedBaseline, raw RawInventory, sys SysctlSnapshot) bool {
+	if b == nil || !sameNamespace(p.Binding.Namespace, b.ns) || p.Binding.Name == "" {
+		return false
+	}
+	for _, snapshot := range []RawInventory{b.raw, raw} {
+		for _, link := range snapshot.Links {
+			if link.Name == p.Binding.Name {
+				return false
+			}
+		}
+	}
+	return exactSetupPostMatches(raw, b.raw) && reflect.DeepEqual(map[string]string(sys), b.sys)
+}
+
 // Pure equality/correlation seam. Calling it alone does not establish source
 // provenance; only resident source checks lifetime/ns before and after reads.
 func parseOriginalAbsence(a *originalAttempt, ticket *originalAbsenceTicket, b *CapturedBaseline, raw RawInventory, sys SysctlSnapshot) (*originalAbsenceEvidence, error) {
-	if a == nil || ticket == nil || b == nil || a.owner == nil || a.owner.adapter == nil || a.owner.adapter.session == nil || a.owner.adapter.session.baseline != b || a.absenceTicket != ticket || !ticket.active || ticket.used || ticket.attempt != a || ticket.owner != a.owner || ticket.sequence != a.absenceSequence || !a.closeAttempted || a.custody == nil || !sameNamespace(a.plan.Binding.Namespace, b.ns) || !reflect.DeepEqual(raw, b.raw) || !reflect.DeepEqual(map[string]string(sys), b.sys) {
+	if a == nil || ticket == nil || b == nil || a.owner == nil || a.owner.adapter == nil || a.owner.adapter.session == nil || a.owner.adapter.session.baseline != b || a.absenceTicket != ticket || !ticket.active || ticket.used || ticket.attempt != a || ticket.owner != a.owner || ticket.sequence != a.absenceSequence || !a.closeAttempted || a.custody == nil || !sameNamespace(a.plan.Binding.Namespace, b.ns) || !originalBaselineMatches(a.plan, b, raw, sys) {
 		return nil, ErrConflict
 	}
 	return &originalAbsenceEvidence{ticket: ticket, attempt: a, custody: a.custody}, nil

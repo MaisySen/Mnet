@@ -5,7 +5,6 @@ package osownership
 import (
 	"context"
 	"errors"
-	"reflect"
 )
 
 // Created only for one resident callback. Every source call checks active plus
@@ -55,8 +54,8 @@ func (s *operation1ResidentSource) createOriginal(ctx context.Context, p Plan, a
 	if e := s.check(ctx, a); e != nil {
 		return Handle{}, e
 	}
-	// Same source baseline must still exist before any original open. Full raw
-	// equality deliberately refuses counter drift, not a generic tolerant diff.
+	// Same source baseline must still exist before any original open. Only the
+	// existing pinned comparison-copy counter/timestamp policy may differ.
 	raw, e := ReadStableInventory(ctx, residentNetlink{ns: s.ns}, s.ns.checkCurrent)
 	if e != nil {
 		return Handle{}, e
@@ -65,7 +64,7 @@ func (s *operation1ResidentSource) createOriginal(ctx context.Context, p Plan, a
 	if e != nil {
 		return Handle{}, e
 	}
-	if !reflect.DeepEqual(raw, s.baseline.raw) || !reflect.DeepEqual(map[string]string(sys), s.baseline.sys) {
+	if !originalBaselineMatches(p, s.baseline, raw, sys) {
 		return Handle{}, ErrConflict
 	}
 	created, e := createTUNSource(ctx, s.ns, p, a, func() (Link, error) {
@@ -167,7 +166,7 @@ func (s *operation1ResidentSource) observeOriginalAbsence(ctx context.Context, a
 	if e = s.check(ctx, a); e != nil {
 		return nil, e
 	}
-	if a.absenceTicket != ticket || !ticket.active || ticket.used || !reflect.DeepEqual(raw, s.baseline.raw) || !reflect.DeepEqual(map[string]string(sys), s.baseline.sys) {
+	if a.absenceTicket != ticket || !ticket.active || ticket.used || !originalBaselineMatches(a.plan, s.baseline, raw, sys) {
 		return nil, ErrConflict
 	}
 	// No operational Inventory. Pure parser rechecks ticket/correlation/raw equality.

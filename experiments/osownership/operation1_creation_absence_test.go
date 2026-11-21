@@ -146,3 +146,52 @@ func TestScopedAbsenceExactEqualityAndTicketReplay(t *testing.T) {
 		})
 	}
 }
+
+// Same comparison seam is called by pre-open source and post-close parser.
+// Foreign baseline means not the owned target, not adopted as owned state.
+func TestOriginalBaselinePinnedCountersOnlyAndTargetAbsence(t *testing.T) {
+	for _, mode := range []string{"foreign-counters", "foreign-safety", "target-persists", "invalid-baseline-target", "counter-shape", "sys-safety"} {
+		t.Run(mode, func(t *testing.T) {
+			c, f := operation1AdapterRig(t)
+			original := c.adapter.session.baseline
+			baseline := *original
+			baseline.raw = cloneRawExact(original.raw)
+			baseline.sys = map[string]string(cloneSysExact(SysctlSnapshot(original.sys)))
+			c.adapter.session.baseline = &baseline
+			// Install the reviewed counter layout in BOTH records; shape/presence is
+			// immutable, only its contents may change under existing pinned policy.
+			baseline.raw.Links[0].Raw[23] = make([]byte, 200)
+			raw := cloneRawExact(baseline.raw)
+			sys := cloneSysExact(SysctlSnapshot(baseline.sys))
+			raw.Links[0].Raw[23][0] = 1
+			switch mode {
+			case "foreign-safety":
+				raw.Links[0].Flags ^= 1
+			case "target-persists":
+				raw.Links = append(raw.Links, LinkRecord{Index: 999, Name: f.p.Binding.Name})
+			case "invalid-baseline-target":
+				baseline.raw.Links[0].Name = f.p.Binding.Name
+				raw = cloneRawExact(baseline.raw)
+			case "counter-shape":
+				raw.Links[0].Raw[23] = make([]byte, 199)
+			case "sys-safety":
+				sys["/proc/sys/net/ipv4/ip_forward"] = "1"
+			}
+			expected := mode == "foreign-counters"
+			if got := originalBaselineMatches(f.p, &baseline, raw, sys); got != expected {
+				t.Fatal("preopen comparator", got, expected)
+			}
+			closer := &countOriginalCloser{}
+			c.attempt = &originalAttempt{owner: c, plan: f.p, custody: &fileCustody{closer: closer}}
+			c.absence = &rawAbsenceFake{baseline: &baseline, raw: raw, sys: sys}
+			e := c.stop(context.Background())
+			if (e == nil) != expected || c.tx.PendingCleanup == expected || closer.calls != 1 {
+				t.Fatal("postclose comparator", e, c.tx.PendingCleanup)
+			}
+			// Comparison never mutates original evidence bytes.
+			if mode == "foreign-counters" && (raw.Links[0].Raw[23][0] != 1 || baseline.raw.Links[0].Raw[23][0] != 0) {
+				t.Fatal("evidence masked in place")
+			}
+		})
+	}
+}
