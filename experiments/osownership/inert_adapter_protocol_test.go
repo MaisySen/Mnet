@@ -202,7 +202,7 @@ func TestInertProtocolCloseContextConsumed(t *testing.T) {
 	}
 }
 func TestExactBaselineCloneShapeGuard(t *testing.T) {
-	for value, n := range map[reflect.Type]int{reflect.TypeOf(RawInventory{}): 4, reflect.TypeOf(LinkRecord{}): 7, reflect.TypeOf(AddressRecord{}): 8, reflect.TypeOf(RouteRecord{}): 18} {
+	for value, n := range map[reflect.Type]int{reflect.TypeOf(RawInventory{}): 4, reflect.TypeOf(LinkRecord{}): 8, reflect.TypeOf(AddressRecord{}): 8, reflect.TypeOf(RouteRecord{}): 18} {
 		if value.NumField() != n {
 			t.Fatalf("clone schema changed %s fields=%d expected=%d", value, value.NumField(), n)
 		}

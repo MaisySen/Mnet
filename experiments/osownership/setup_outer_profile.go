@@ -110,7 +110,7 @@ func parseSetupOuter(body []byte) (LinkRecord, error) {
 	}
 	// Required unconditional full-emitter operands. Presence of CONFIG_RPS32
 	// is explicit and later retained, never interpreted as no RX capability.
-	for _, k := range []uint16{3, 4, 6, 7, 13, 14, 16, 17, 18, 23, 26, 27, 30, 31, 33, 35, 39, 40, 41, 43, 47, 48, 50, 51, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67} {
+	for _, k := range []uint16{3, 4, 7, 13, 14, 16, 17, 18, 23, 26, 27, 30, 31, 33, 35, 39, 40, 41, 43, 47, 48, 50, 51, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67} {
 		if _, yes := attrs[k]; !yes {
 			return r, afShape
 		}
@@ -232,4 +232,48 @@ func validateSetupOuter(l LinkRecord) error {
 		return afShape
 	}
 	return nil
+}
+
+// Selection-only scan: validates framing and exactly one canonical IFNAME,
+// retaining no authority from other fields. The selected path then runs the
+// complete owned profile, or the unchanged generic foreign decoder. In
+// particular no hardware-class or generic owned PAD decode is used to select.
+func setupSelectionName(body []byte) (string, error) {
+	if len(body) < 16 || len(body) > 16384 {
+		return "", afShape
+	}
+	var name string
+	found := false
+	for raw := body[16:]; len(raw) > 0; {
+		if len(raw) < 4 {
+			return "", afShape
+		}
+		n := int(binary.NativeEndian.Uint16(raw))
+		typ := binary.NativeEndian.Uint16(raw[2:])
+		aligned := (n + 3) &^ 3
+		if n < 4 || n > len(raw) || aligned > len(raw) {
+			return "", afShape
+		}
+		for _, v := range raw[n:aligned] {
+			if v != 0 {
+				return "", afShape
+			}
+		}
+		if typ&0x3fff == 3 {
+			if typ != 3 || found {
+				return "", afShape
+			}
+			found = true
+			var e error
+			name, e = attrText(map[uint16][]byte{3: raw[4:n]}, 3, true)
+			if e != nil || !safeInterfaceName(name) {
+				return "", afShape
+			}
+		}
+		raw = raw[aligned:]
+	}
+	if !found {
+		return "", afShape
+	}
+	return name, nil
 }

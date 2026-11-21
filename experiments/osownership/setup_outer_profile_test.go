@@ -135,6 +135,10 @@ func (f *setupRunFake) mutateFullPhaseObservation(o *setupPhaseObservation) erro
 			l.Raw[16] = []byte{1, 2}
 		case "qdisc-change":
 			l.Raw[6] = []byte("another\x00")
+		case "qdisc-add":
+			l.Raw[6] = []byte("added\x00")
+		case "qdisc-remove":
+			delete(l.Raw, 6)
 		case "topology":
 			l.Raw[10] = u32(9)
 		case "carrier-zero":
@@ -333,5 +337,32 @@ func TestFullOuterMetadataIsShapeOnlyAndCopiedWithoutMutableAlias(t *testing.T) 
 				t.Fatal("unsupported encoding admitted", mode)
 			}
 		})
+	}
+}
+
+func TestFullOuterQdiscAbsentRetainedAndPresenceDriftRefuses(t *testing.T) {
+	for _, mode := range []string{"absent", "qdisc-add", "qdisc-remove"} {
+		for _, phase := range []int{2, 3} {
+			c, f := fullSetupRunRig(t, "0")
+			if mode != "qdisc-remove" {
+				delete(f.owned().Raw, 6)
+			}
+			f.mode = mode
+			f.corruptPhase = phase
+			tx := c.tx
+			e := c.withOwner(context.Background(), func(ctx context.Context) error { return tx.Run(ctx) })
+			if e == nil || tx.Ready || tx.PendingCleanup {
+				t.Fatal(mode, phase, e, f.events)
+			}
+			reached := false
+			for _, ev := range tx.Evidence {
+				if ev.Step == "address-add-exclusive-intent" {
+					reached = true
+				}
+			}
+			if reached != (mode == "absent") {
+				t.Fatal("qdisc absence/presence retention", mode, phase, f.events, tx.Evidence)
+			}
+		}
 	}
 }
