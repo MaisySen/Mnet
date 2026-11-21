@@ -32,11 +32,11 @@ func sourceFunction(t *testing.T, file, name string) string {
 	return ""
 }
 func TestSourcePidfdBeforeAnyWaitAndPinThroughChildLifetime(t *testing.T) {
-	s := sourceFunction(t, "resident_linux.go", "spawnResidentPinnedMode")
+	s := sourceFunction(t, "resident_launch_live_linux.go", "spawnResidentPinnedMode")
 	if strings.Index(s, "unix.PidfdOpen(") < 0 || strings.Index(s, "unix.PidfdOpen(") > strings.Index(s, "cmd.Wait()") {
 		t.Fatal("pidfd opened after reaper")
 	}
-	s = sourceFunction(t, "resident_linux.go", "spawnResidentMode")
+	s = sourceFunction(t, "resident_launch_live_linux.go", "spawnResidentMode")
 	for _, term := range []string{"runtime.LockOSThread()", "defer runtime.UnlockOSThread()", "<-child.wait"} {
 		if !strings.Contains(s, term) {
 			t.Fatal("starter thread lifetime pin missing", term)
@@ -60,7 +60,7 @@ func TestSourceInheritedVerdictCLOEXECNoParentNamespaceFD(t *testing.T) {
 	}
 }
 func TestSourceClientCapsNNPFDAllowlistBeforeFixedExec(t *testing.T) {
-	s := sourceFunction(t, "client_sandbox_linux.go", "execUnprivilegedClientSource")
+	s := sourceFunction(t, "client_exec_live_linux.go", "execUnprivilegedClientSource")
 	last := -1
 	for _, term := range []string{"runtime.LockOSThread()", "PR_SET_NO_NEW_PRIVS", "PR_CAP_AMBIENT_CLEAR_ALL", "PR_CAPBSET_DROP", "PR_SET_SECUREBITS", "unix.Capset(", "unix.CloseRange(", "syscall.Exec("} {
 		n := strings.Index(s, term)
@@ -76,7 +76,7 @@ func TestSourceClientCapsNNPFDAllowlistBeforeFixedExec(t *testing.T) {
 }
 
 func TestFixedResidentModeForwardingSource(t *testing.T) {
-	for _, part := range [][3]string{{"resident_linux.go", "Spawn", "spawnResidentMode(ctx, \"--osownership-resident-no-tun-source\")"}, {"resident_linux.go", "spawnResidentPinnedSource", "spawnResidentPinnedMode(ctx, \"--osownership-resident-no-tun-source\")"}, {"resident_linux.go", "spawnResidentMode", "spawnResidentPinnedMode(ctx, mode)"}, {"resident_linux.go", "spawnResidentPinnedMode", "allowedResidentEvidenceMode(mode)"}, {"resident_linux.go", "spawnResidentPinnedMode", "cmd.Args[1] = mode"}} {
+	for _, part := range [][3]string{{"resident_linux.go", "Spawn", "spawnResidentMode(ctx, \"--osownership-resident-no-tun-source\")"}, {"resident_launch_live_linux.go", "spawnResidentPinnedSource", "spawnResidentPinnedMode(ctx, \"--osownership-resident-no-tun-source\")"}, {"resident_launch_live_linux.go", "spawnResidentMode", "spawnResidentPinnedMode(ctx, mode)"}, {"resident_launch_live_linux.go", "spawnResidentPinnedMode", "allowedResidentEvidenceMode(mode)"}, {"resident_launch_live_linux.go", "spawnResidentPinnedMode", "cmd.Args[1] = mode"}} {
 		if !strings.Contains(sourceFunction(t, part[0], part[1]), part[2]) {
 			t.Fatal("mode forwarding mismatch", part)
 		}

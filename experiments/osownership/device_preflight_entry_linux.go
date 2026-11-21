@@ -4,41 +4,54 @@ package osownership
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"golang.org/x/sys/unix"
-	"os"
 	"reflect"
 	"time"
 )
 
-type devicePreflightSpawner struct{}
+// Parser dependencies default to inert refusal. Unit/mutation code never owns
+// concrete namespace/launcher/device callbacks. Live binding is separate-tagged.
+type devicePreflightEntryOps struct {
+	uid       func() int
+	namespace func() (Namespace, error)
+	supervise func(context.Context) (Verdict, error)
+	resident  func(context.Context) error
+	output    func(any) error
+}
 
-func (devicePreflightSpawner) Spawn(ctx context.Context) (ResidentProcess, error) {
-	return spawnResidentMode(ctx, "--osownership-resident-device-open-preflight")
+func inertDevicePreflightEntryOps() devicePreflightEntryOps {
+	return devicePreflightEntryOps{
+		uid: func() int { return 1000 }, namespace: func() (Namespace, error) { return Namespace{}, ErrExecutorUnreleased },
+		supervise: func(context.Context) (Verdict, error) { return Verdict{}, ErrExecutorUnreleased },
+		resident:  func(context.Context) error { return ErrExecutorUnreleased }, output: func(any) error { return ErrExecutorUnreleased },
+	}
+}
+func DevicePreflightMain(args []string) error {
+	return devicePreflightDispatch(args, inertDevicePreflightEntryOps())
 }
 
 // Separate binary and exact modes. Existing BootstrapEvidenceMain unchanged.
-func DevicePreflightMain(args []string) error {
+func devicePreflightDispatch(args []string, ops devicePreflightEntryOps) error {
 	if len(args) != 1 {
 		return errors.New("one exact device-preflight mode required")
 	}
 	switch args[0] {
 	case "--device-open-preflight":
-		if os.Getuid() == 0 {
+		if ops.uid() == 0 {
 			return errors.New("unprivileged outer required")
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 		defer cancel()
-		outer, e := numericCurrentNamespace()
+		outer, e := ops.namespace()
 		if e != nil {
 			return e
 		}
-		v, runErr := SuperviseResident(ctx, devicePreflightSpawner{})
+		v, runErr := ops.supervise(ctx)
 		if runErr == nil {
 			runErr = validateDevicePreflightVerdict(v, outer)
 		}
-		after, e := numericCurrentNamespace()
+		after, e := ops.namespace()
 		runErr = errors.Join(runErr, e)
 		unchanged := e == nil && after == outer
 		if !unchanged {
@@ -56,9 +69,9 @@ func DevicePreflightMain(args []string) error {
 			OuterUnchanged bool      `json:"outer_unchanged"`
 			Verdict        Verdict   `json:"verdict"`
 		}{1, outcome, outer, after, unchanged, v}
-		return errors.Join(runErr, json.NewEncoder(os.Stdout).Encode(out))
+		return errors.Join(runErr, ops.output(out))
 	case "--osownership-resident-device-open-preflight":
-		return residentBootstrapSource(context.Background(), runDevicePreflightVerdict)
+		return ops.resident(context.Background())
 	default:
 		return errors.New("unknown device-preflight mode")
 	}
@@ -104,7 +117,7 @@ func validateDevicePreflightResult(r DevicePreflightEvidence, ns Namespace) erro
 	return nil
 }
 func validateDevicePreflightVerdict(v Verdict, outer Namespace) error {
-	if v.DevicePreflight == nil || v.Bootstrap != nil || v.Failure != nil || v.Result != "pass" || v.Stage != "final" || !v.CleanupConfirmed || sameNamespace(v.Namespace, outer) || v.Lifecycle == nil || !v.Lifecycle.Reaped || !v.Lifecycle.CustodyClosed || v.Lifecycle.CustodyRetained {
+	if v.DevicePreflight == nil || v.Bootstrap != nil || v.Failure != nil || v.Result != "pass" || v.Stage != "final" || !v.CleanupConfirmed || !v.Namespace.Isolated || outer.Device == 0 || outer.Inode == 0 || (v.Namespace.Device == outer.Device && v.Namespace.Inode == outer.Inode) || v.Lifecycle == nil || !v.Lifecycle.Reaped || !v.Lifecycle.CustodyClosed || v.Lifecycle.CustodyRetained {
 		return ErrConflict
 	}
 	if v.BaselineHash != v.DevicePreflight.BaselineHash || v.FinalHash != v.DevicePreflight.FinalHash {

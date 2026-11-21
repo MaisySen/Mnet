@@ -74,7 +74,7 @@ func TestReadOnlyFailureVerdictContainsBaselineAndDiagnosticSource(t *testing.T)
 			t.Fatal("typed failure retention missing", term)
 		}
 	}
-	s = sourceFunction(t, "bootstrap_evidence_linux.go", "runReadOnlyClientAndJoin")
+	s = sourceFunction(t, "bootstrap_client_launch_live_linux.go", "runReadOnlyClientAndJoin")
 	for _, term := range []string{"failure.StdoutBytes = stdout.Len()", "failure.StdoutJSON = json.Valid(stdout.Bytes())", "failure.Reaped = c.ProcessState != nil", "readProcessStartTicks(c.Process.Pid)", "scanSanitizedStderr("} {
 		if !strings.Contains(s, term) {
 			t.Fatal("failure pin missing", term)
@@ -82,7 +82,7 @@ func TestReadOnlyFailureVerdictContainsBaselineAndDiagnosticSource(t *testing.T)
 	}
 }
 func TestEvidencePathActuallyUsesHonestyGuards(t *testing.T) {
-	s := sourceFunction(t, "bootstrap_evidence_linux.go", "runReadOnlyClientAndJoin")
+	s := sourceFunction(t, "bootstrap_client_launch_live_linux.go", "runReadOnlyClientAndJoin")
 	for _, term := range []string{"rejectClientLifecycleClaim(out)", "validateClientWaitEvidence(identityErr, runErr, failure.ExitObserved)", "failure.StderrComplete = pipeEvidenceComplete(stderr.overflow, errors.Is(runErr, exec.ErrWaitDelay))"} {
 		if !strings.Contains(s, term) {
 			t.Fatal("honesty guard detached from evidence path", term)
@@ -90,13 +90,13 @@ func TestEvidencePathActuallyUsesHonestyGuards(t *testing.T) {
 	}
 }
 func TestFixedDispatchModesAndErrorExitSource(t *testing.T) {
-	s := sourceFunction(t, "bootstrap_evidence_linux.go", "BootstrapEvidenceMain")
+	s := sourceFunction(t, "bootstrap_entry_live_linux.go", "BootstrapEvidenceMain")
 	for _, mode := range []string{"--bootstrap-readonly", "--osownership-resident-no-tun-source", "--osownership-client-capdrop-bootstrap-source", "--osownership-client-unprivileged-source"} {
 		if strings.Count(s, "case \""+mode+"\":") != 1 {
 			t.Fatal("fixed dispatch missing/duplicate", mode)
 		}
 	}
-	s = sourceFunction(t, "client_sandbox_linux.go", "execUnprivilegedClientSource")
+	s = sourceFunction(t, "client_exec_live_linux.go", "execUnprivilegedClientSource")
 	if !strings.Contains(s, "--osownership-client-unprivileged-source") {
 		t.Fatal("client exec target not dispatchable")
 	}

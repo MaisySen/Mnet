@@ -35,6 +35,16 @@ def identity(pid, proc_root=Path('/proc')):
         if fields[19] != check[19]:
             return {'pid': pid, 'observation_error': 'lifetime-changed', 'read_start_ns': start, 'read_end_ns': time.monotonic_ns()}
         return {'pid': pid, 'tgid': tgid[0], 'ppid': int(fields[1]), 'start_ticks': int(fields[19]), 'state': fields[0], 'exe': exe, 'cmdline': command.rstrip(b'\x00').decode('utf-8', errors='replace').split('\x00') if command else [], 'read_start_ns': start, 'read_end_ns': time.monotonic_ns()}
+    except FileNotFoundError:
+        try:
+            (path / 'stat').stat()
+        except FileNotFoundError:
+            reason = 'not-found'
+        except OSError:
+            reason = 'unreadable-or-gone'
+        else:
+            reason = 'partial-read-process-present'
+        return {'pid': pid, 'observation_error': reason, 'read_start_ns': start, 'read_end_ns': time.monotonic_ns()}
     except (OSError, ValueError, IndexError):
         return {'pid': pid, 'observation_error': 'unreadable-or-gone', 'read_start_ns': start, 'read_end_ns': time.monotonic_ns()}
 

@@ -1,4 +1,4 @@
-//go:build linux && mnet_enrollment_development && mnet_os_readonly_evidence
+//go:build linux && mnet_enrollment_development && mnet_os_readonly_evidence && mnet_os_process_launch
 
 package main
 

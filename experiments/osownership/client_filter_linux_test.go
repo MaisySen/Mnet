@@ -97,7 +97,7 @@ func TestClientFilterOnlyExactRuntimeClone(t *testing.T) {
 	}
 }
 func TestSecurebitsValueActuallyApplied(t *testing.T) {
-	s := sourceFunction(t, "client_sandbox_linux.go", "execUnprivilegedClientSource")
+	s := sourceFunction(t, "client_exec_live_linux.go", "execUnprivilegedClientSource")
 	if !strings.Contains(s, "PR_SET_SECUREBITS, clientSecurebits") {
 		t.Fatal("exact tested securebits not applied")
 	}

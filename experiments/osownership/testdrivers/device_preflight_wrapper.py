@@ -30,6 +30,45 @@ def checked_kill(record, sig):
     return True
 
 
+def recover_verdict_lifetimes(output, records):
+    # Bounded exact JSON only. Recovery is source evidence, not trust in child
+    # lifecycle claims; Go supervisor overwrites lifecycle with owner facts.
+    try:
+        with (output/'stdout.json').open('rb') as f:
+            raw = f.read(131073)
+        if len(raw) > 131072:
+            return 'output-overflow'
+        def unique(pairs):
+            out = {}
+            for k,v in pairs:
+                if k in out: raise ValueError('duplicate')
+                out[k]=v
+            return out
+        doc = json.loads(raw, object_pairs_hook=unique)
+        life = doc.get('verdict',{}).get('lifecycle')
+        if not isinstance(life,dict): return 'no-lifecycle'
+        pid,ticks = life.get('pid'),life.get('start_ticks')
+        if type(pid) is not int or type(ticks) is not int or pid<=1 or ticks<=0:
+            return 'invalid-lifecycle'
+        records.setdefault((pid,ticks),{'pid':pid,'start_ticks':ticks,'source':'bounded-owner-verdict'})
+        return 'recovered'
+    except (OSError,ValueError,TypeError,AttributeError):
+        return 'unavailable-or-invalid'
+
+
+def lifetime_postcheck(record):
+    current = identity(record['pid'])
+    if current.get('observation_error') == 'not-found':
+        state = 'absent-at-read';same = False
+    elif 'observation_error' in current or 'start_ticks' not in current:
+        state = 'unreadable-unknown';same = None
+    elif current['start_ticks'] != record['start_ticks']:
+        state = 'different-lifetime';same = False
+    else:
+        state = 'survivor';same = True
+    return {'recorded':record,'current':current,'state':state,'same_lifetime':same}
+
+
 def run_once(binary, expected_sha256, output_dir):
     binary = Path(binary)
     if os.getuid() == 0 or not binary.is_absolute() or binary.is_symlink():
@@ -89,8 +128,11 @@ def run_once(binary, expected_sha256, output_dir):
     meta['outer_final'] = namespace()
     meta['outer_unchanged'] = meta['outer_initial'] == meta['outer_final']
     meta['elapsed_ms'] = (time.monotonic_ns()-start)/1e6
+    meta['verdict_lifetime_recovery'] = recover_verdict_lifetimes(output, records)
     meta['recorded_lifetimes'] = list(records.values())
-    meta['post_exact_lifetime_checks'] = [{'recorded': r, 'current': identity(r['pid'])} for r in records.values()]
+    meta['post_exact_lifetime_checks'] = [lifetime_postcheck(r) for r in records.values()]
+    meta['exact_lifetime_survivors'] = [x for x in meta['post_exact_lifetime_checks'] if x['same_lifetime'] is True]
+    meta['unknown_postchecks'] = [x for x in meta['post_exact_lifetime_checks'] if x['same_lifetime'] is None]
     # Unknown reads are UNKNOWN, never silently absent.
     meta['postcheck_note'] = 'unreadable-or-gone is not definitive absence; Wait only proves driver reap, resident lifecycle must be validated from bounded verdict. Unrecorded descendants remain unverified.'
     meta['classification'] = 'unreviewed-output'

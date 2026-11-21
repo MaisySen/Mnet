@@ -3,6 +3,7 @@
 package osownership
 
 import (
+	"context"
 	"errors"
 	"go/ast"
 	"go/parser"
@@ -198,8 +199,8 @@ func TestDevicePreflightNoMutationSurface(t *testing.T) {
 	if kernelExecutionReleased {
 		t.Fatal("ordinary executor enabled")
 	}
-	if _, e := openExclusiveNonpersistentTUN(nil, "blocked"); !errors.Is(e, ErrExecutorUnreleased) {
-		t.Fatal("TUN guard bypass", e)
+	if !strings.Contains(sourceFunction(t, "kernel_linux.go", "openExclusiveNonpersistentTUN"), "if !kernelExecutionReleased {") {
+		t.Fatal("ordinary TUN guard source changed")
 	}
 }
 
@@ -253,19 +254,23 @@ func TestDevicePreflightEntryRefusesInvalidEvidence(t *testing.T) {
 	}
 }
 func TestDevicePreflightSeparateModeAndCustody(t *testing.T) {
-	for _, mode := range []string{"--device-open-preflight", "--osownership-resident-device-open-preflight"} {
-		if e := DevicePreflightMain([]string{mode, "extra"}); e == nil {
-			t.Fatal("extra args accepted")
-		}
+	// Never call a recognized live mode even with deliberately invalid args:
+	// an arity mutant could otherwise start a namespace before failing.
+	if !strings.Contains(sourceFunction(t, "device_preflight_entry_linux.go", "devicePreflightDispatch"), "if len(args) != 1 {") {
+		t.Fatal("arity guard changed before any dispatch")
 	}
+	if e := DevicePreflightMain([]string{"--unknown", "extra"}); e == nil {
+		t.Fatal("extra args accepted")
+	}
+
 	if e := DevicePreflightMain([]string{"--bootstrap-readonly"}); e == nil {
 		t.Fatal("bootstrap accepted by different entry")
 	}
 	if allowedResidentEvidenceMode("--arbitrary") {
 		t.Fatal("arbitrary child mode allowed")
 	}
-	s := sourceFunction(t, "device_preflight_entry_linux.go", "DevicePreflightMain")
-	for _, part := range []string{"os.Getuid() == 0", "SuperviseResident(ctx, devicePreflightSpawner{})", "validateDevicePreflightVerdict(v, outer)", "after == outer"} {
+	s := sourceFunction(t, "device_preflight_entry_linux.go", "devicePreflightDispatch")
+	for _, part := range []string{"ops.uid() == 0", "ops.supervise(ctx)", "validateDevicePreflightVerdict(v, outer)", "after == outer"} {
 		if !strings.Contains(s, part) {
 			t.Fatal("entry oracle detached", part)
 		}
@@ -322,5 +327,61 @@ func TestDevicePreflightOuterBaselineMismatchDecisive(t *testing.T) {
 	v := Verdict{DevicePreflight: &r, Namespace: r.Namespace, Result: "pass", Stage: "final", CleanupConfirmed: true, BaselineHash: strings.Repeat("b", 64), FinalHash: r.FinalHash, Lifecycle: &LifecycleEvidence{Reaped: true, CustodyClosed: true}}
 	if e := validateDevicePreflightVerdict(v, Namespace{Device: 7, Inode: 1}); e == nil {
 		t.Fatal("unbound outer baseline")
+	}
+}
+
+func TestDevicePreflightEntryAllCustodyGuardsDecisive(t *testing.T) {
+	for _, kind := range []string{"valid", "equal-outer", "nonisolated", "reaped", "retained", "cleanup", "bootstrap"} {
+		r := goodPreflightResult()
+		v := Verdict{DevicePreflight: &r, Namespace: r.Namespace, Result: "pass", Stage: "final", CleanupConfirmed: true, BaselineHash: r.BaselineHash, FinalHash: r.FinalHash, Lifecycle: &LifecycleEvidence{Reaped: true, CustodyClosed: true}}
+		outer := Namespace{Device: 7, Inode: 1}
+		switch kind {
+		case "equal-outer":
+			outer.Device = v.Namespace.Device
+			outer.Inode = v.Namespace.Inode
+		case "nonisolated":
+			v.Namespace.Isolated = false
+			r.Namespace = v.Namespace
+		case "reaped":
+			v.Lifecycle.Reaped = false
+		case "retained":
+			v.Lifecycle.CustodyRetained = true
+		case "cleanup":
+			v.CleanupConfirmed = false
+		case "bootstrap":
+			v.Bootstrap = &BootstrapReadOnlyEvidence{}
+		}
+		if e := validateDevicePreflightVerdict(v, outer); (e == nil) != (kind == "valid") {
+			t.Fatal(kind, e)
+		}
+	}
+}
+func TestDevicePreflightExactTimeoutAndModeAritySource(t *testing.T) {
+	s := sourceFunction(t, "device_preflight_entry_linux.go", "devicePreflightDispatch")
+	if !strings.Contains(s, "context.WithTimeout(context.Background(), 6*time.Second)") {
+		t.Fatal("driver timeout changed")
+	}
+	if !strings.Contains(s, "if len(args) != 1 {") {
+		t.Fatal("exact arity removed")
+	}
+	s = sourceFunction(t, "device_mode_enabled_linux.go", "allowedResidentEvidenceMode")
+	if !strings.Contains(s, `mode == "--osownership-resident-no-tun-source" || mode == "--osownership-resident-device-open-preflight"`) {
+		t.Fatal("mode allowlist changed")
+	}
+}
+
+func TestDevicePreflightRecognizedModesInertByDefault(t *testing.T) {
+	for _, args := range [][]string{{"--device-open-preflight"}, {"--osownership-resident-device-open-preflight"}, {"--device-open-preflight", "extra"}} {
+		if e := DevicePreflightMain(args); !errors.Is(e, ErrExecutorUnreleased) && len(args) == 1 {
+			t.Fatal("default must refuse real effects", e)
+		}
+	}
+}
+func TestDevicePreflightInjectedParserNoRealEffects(t *testing.T) {
+	calls := 0
+	ops := inertDevicePreflightEntryOps()
+	ops.resident = func(context.Context) error { calls++; return ErrExecutorUnreleased }
+	if e := devicePreflightDispatch([]string{"--osownership-resident-device-open-preflight"}, ops); !errors.Is(e, ErrExecutorUnreleased) || calls != 1 {
+		t.Fatal(e, calls)
 	}
 }

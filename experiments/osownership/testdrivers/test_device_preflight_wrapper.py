@@ -47,3 +47,20 @@ class SimulatedRun(unittest.TestCase):
         r={'pid':17,'tgid':17,'exe':'/fixed','start_ticks':77}
         with patch.object(w,'identity',return_value={**r,'start_ticks':78}),patch.object(w.os,'kill') as k:
             self.assertFalse(w.checked_kill(r,9));k.assert_not_called()
+
+class RecoveredLifetimeOffline(unittest.TestCase):
+    def test_recover_unsampled_resident_and_unknown(self):
+        import tempfile,json
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td);(root/'stdout.json').write_text(json.dumps({'verdict':{'lifecycle':{'pid':938,'start_ticks':325}}}))
+            records={};self.assertEqual(w.recover_verdict_lifetimes(root,records),'recovered')
+            self.assertIn((938,325),records)
+            with patch.object(w,'identity',return_value={'pid':938,'observation_error':'unreadable-or-gone'}):
+                r=w.lifetime_postcheck(records[(938,325)]);self.assertIsNone(r['same_lifetime']);self.assertEqual(r['state'],'unreadable-unknown')
+    def test_survivor_absence_and_reuse(self):
+        from unittest.mock import patch
+        old={'pid':17,'start_ticks':77,'source':'bounded-owner-verdict'}
+        for current,state,same in [({'pid':17,'start_ticks':77},'survivor',True),({'pid':17,'start_ticks':78},'different-lifetime',False),({'pid':17,'observation_error':'not-found'},'absent-at-read',False),({'pid':17,'observation_error':'partial-read-process-present'},'unreadable-unknown',None)]:
+            with patch.object(w,'identity',return_value=current):
+                r=w.lifetime_postcheck(old);self.assertEqual(r['state'],state);self.assertIs(r['same_lifetime'],same)
