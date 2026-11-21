@@ -89,3 +89,19 @@ func TestEvidencePathActuallyUsesHonestyGuards(t *testing.T) {
 		}
 	}
 }
+func TestFixedDispatchModesAndErrorExitSource(t *testing.T) {
+	s := sourceFunction(t, "bootstrap_evidence_linux.go", "BootstrapEvidenceMain")
+	for _, mode := range []string{"--bootstrap-readonly", "--osownership-resident-no-tun-source", "--osownership-client-capdrop-bootstrap-source", "--osownership-client-unprivileged-source"} {
+		if strings.Count(s, "case \""+mode+"\":") != 1 {
+			t.Fatal("fixed dispatch missing/duplicate", mode)
+		}
+	}
+	s = sourceFunction(t, "client_sandbox_linux.go", "execUnprivilegedClientSource")
+	if !strings.Contains(s, "--osownership-client-unprivileged-source") {
+		t.Fatal("client exec target not dispatchable")
+	}
+	s = sourceFunction(t, "cmd/bootstrap-evidence/main_linux.go", "main")
+	if !strings.Contains(s, "os.Exit(1)") || strings.Contains(s, "os.Exit(2)") {
+		t.Fatal("fixed main exit convention changed")
+	}
+}

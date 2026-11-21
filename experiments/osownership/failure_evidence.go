@@ -15,24 +15,25 @@ import (
 // No arbitrary error strings or stderr text cross into verdicts. Operation is
 // chosen by source, errno is typed, exit facts come from owned process Wait.
 type FailureEvidence struct {
-	Phase            string           `json:"phase"`
-	StdoutBytes      int              `json:"stdout_bytes"`
-	StdoutComplete   bool             `json:"stdout_complete"`
-	StdoutJSON       bool             `json:"stdout_json"`
-	Operation        string           `json:"operation"`
-	Class            string           `json:"class"`
-	Errno            int              `json:"errno,omitempty"`
-	ExitCode         int              `json:"exit_code,omitempty"`
-	ExitObserved     bool             `json:"exit_observed"`
-	Signal           int              `json:"signal,omitempty"`
-	PID              int              `json:"pid,omitempty"`
-	StartTicks       uint64           `json:"start_ticks,omitempty"`
-	IdentityObserved bool             `json:"identity_observed"`
-	Reaped           bool             `json:"reaped"`
-	StderrBytes      int              `json:"stderr_bytes"`
-	StderrSHA256     string           `json:"stderr_sha256,omitempty"`
-	StderrComplete   bool             `json:"stderr_complete"`
-	ChildDiagnostic  *ChildDiagnostic `json:"child_diagnostic,omitempty"`
+	Runtime          *RuntimeStderrEvidence `json:"runtime_stderr,omitempty"`
+	Phase            string                 `json:"phase"`
+	StdoutBytes      int                    `json:"stdout_bytes"`
+	StdoutComplete   bool                   `json:"stdout_complete"`
+	StdoutJSON       bool                   `json:"stdout_json"`
+	Operation        string                 `json:"operation"`
+	Class            string                 `json:"class"`
+	Errno            int                    `json:"errno,omitempty"`
+	ExitCode         int                    `json:"exit_code,omitempty"`
+	ExitObserved     bool                   `json:"exit_observed"`
+	Signal           int                    `json:"signal,omitempty"`
+	PID              int                    `json:"pid,omitempty"`
+	StartTicks       uint64                 `json:"start_ticks,omitempty"`
+	IdentityObserved bool                   `json:"identity_observed"`
+	Reaped           bool                   `json:"reaped"`
+	StderrBytes      int                    `json:"stderr_bytes"`
+	StderrSHA256     string                 `json:"stderr_sha256,omitempty"`
+	StderrComplete   bool                   `json:"stderr_complete"`
+	ChildDiagnostic  *ChildDiagnostic       `json:"child_diagnostic,omitempty"`
 }
 type ChildDiagnostic struct {
 	Phase     string `json:"phase,omitempty"`

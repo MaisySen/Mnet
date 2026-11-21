@@ -206,7 +206,12 @@ func runReadOnlyClientAndJoin(ctx context.Context, ns *namespaceCustody) (Client
 	failure.StdoutComplete = pipeEvidenceComplete(stdout.overflow, errors.Is(runErr, exec.ErrWaitDelay))
 	failure.StderrComplete = pipeEvidenceComplete(stderr.overflow, errors.Is(runErr, exec.ErrWaitDelay))
 	failure.StderrBytes, failure.StderrSHA256, failure.ChildDiagnostic = summarizedStderr(stderr.Bytes(), failure.StderrComplete)
+	runtimeSummary := classifyRuntimeStderr(stderr.Bytes(), failure.StderrComplete)
+	failure.Runtime = &runtimeSummary
 	failure.ChildDiagnostic, failure.Phase = scanSanitizedStderr(stderr.Bytes(), failure.StderrComplete)
+	if failure.Phase == "unknown" {
+		failure.Phase = runtimeSummary.LastStrictPhase
+	}
 	if failure.ChildDiagnostic != nil {
 		failure.Operation = failure.ChildDiagnostic.Operation
 		failure.Class = failure.ChildDiagnostic.Class
