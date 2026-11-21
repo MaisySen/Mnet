@@ -308,8 +308,11 @@ func TestDevelopmentIngressPublicationCapacityKeepsWholeStore(t *testing.T) {
 			if mode == "state-bytes" {
 				g.limits.MaxStateBytes = len(before) + 5
 			}
-			if _, err := s.CreateNetwork("another-network-with-enough-bytes"); err == nil {
-				t.Fatal("over-budget publication succeeded")
+			if _, err := cleanName("another-network"); err != nil {
+				t.Fatal("capacity candidate name invalid", err)
+			}
+			if _, err := s.CreateNetwork("another-network"); err != errRegistrarEnrollment {
+				t.Fatal("expected exact capacity refusal, got", err)
 			}
 			after, _ := os.ReadFile(s.ownedPath)
 			if !bytes.Equal(before, after) || len(s.data.Networks) != 1 || s.Version() != version || s.Health() != nil {

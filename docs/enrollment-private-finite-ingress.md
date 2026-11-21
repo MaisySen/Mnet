@@ -66,3 +66,11 @@ setup now creates the initial network first, preserving missing-file refusal.
 An initial atomic handoff edit referenced its local gate inside the inner
 closure and failed tagged compilation. That edit was corrected and the full
 crossapp graph rerun; initial failure logs are retained.
+
+A subsequent scratch guard-bypass control exposed a false-positive capacity test:
+its candidate network name was too long, so it could fail name validation before
+publication. The test now uses a separately checked valid name and requires the
+exact capacity error. It passes with the guards present; bypassing count, shape
+and exact-byte guards in a separate scratch tree makes both entry-count and
+state-byte candidate tests, plus all three nested candidate tests, fail on their
+intended assertion. This correction changes test/doc evidence only.
