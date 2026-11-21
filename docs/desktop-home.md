@@ -11,7 +11,7 @@ mnet open --layout chosen-layout.json
 
 ![Actual local engineering home](ui/desktop-home/home.png)
 
-The home has three distinct tool choices. Networking opens the actual authenticated read-only device snapshot. Remote Desktop opens the existing current-peer chooser with separate View Only and Pointer View choices. Shared Desk opens only the supplied read-only arrangement inspector; without a supplied layout it is visibly unavailable. No raw-input run or pairing can start from this home.
+The home has three distinct tool choices. Networking opens the actual authenticated read-only device snapshot. Remote Desktop opens the existing current-peer chooser with separate View Only and Pointer View choices. Shared Desk opens an offline arrangements window: browse drafts, create a starter seeded from the actual local root size, inspect or edit existing drafts, each as its own owned window. Drafts live in a private store under the explicit state directory; browsing creates nothing, saving always creates one new file and never replaces. A supplied --layout file appears as a pinned first row. Invalid drafts are listed honestly and refused in-window. No raw-input run, pairing, network or daemon path can start from this home.
 
 ## Specific Remote Desktop outcomes at home
 
@@ -90,8 +90,9 @@ Original4b3 failed its first hosted home launch with `home readable fonts unavai
 The ordinary local entry now uses the same embedded proportional-font visual
 style as the opt-in Multies preview. It still routes only the existing three
 local tools. No production origin, sign-in bridge, network enrollment, saved
-pairing or remote permission is inferred. Shared Desk remains disabled without
-an explicit offline layout file. The title and route coordinates remain stable.
+pairing or remote permission is inferred. The Shared Desk route always opens
+its offline arrangements window; an explicit --layout file is pinned as its
+first row. The title and route coordinates remain stable.
 
 The home uploads complete strips into an offscreen pixmap and installs the
 completed pixmap as the background before exposing the window. An initial

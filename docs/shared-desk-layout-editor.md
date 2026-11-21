@@ -56,7 +56,9 @@ is not runtime UI support.
 ## Starting from no file
 
 `mnet desk layout-new --out NEW_FILE` opens the same editor without an input
-file. It seeds a two-display starter arrangement from the actual local root
+file. From the [home](desktop-home.md), the Shared Desk route's **New starter**
+button reaches the same starter without any terminal work, saving into the
+private store. It seeds a two-display starter arrangement from the actual local root
 pixel size: the local display carries the real pixel dimensions, and a second
 placeholder display shares its full right edge. Both IDs and device labels
 (`this-display`/`this-computer`, `next-display`/`next-computer`) are local
