@@ -166,18 +166,35 @@ func TestDummyEncoderAndNestedLinkInfoFixture(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	binary.NativeEndian.PutUint32(raw[4:], 7)
-	r, e := DecodeLink(raw)
-	if e != nil || r.Name != b.Name {
-		t.Fatal(r, e)
+	// Request and response are different wire contracts, not a round trip.
+	requestAttrs, e := schemaAttrs(raw[16:], map[uint16]bool{3: false, 20: false, 18: true})
+	if e != nil {
+		t.Fatal("flagged creation request", e)
 	}
-	a, e := decodeAttributes(r.Raw[18])
+	requestKind, e := decodeAttributes(requestAttrs[18])
 	if e != nil {
 		t.Fatal(e)
 	}
-	kind, e := attrText(a, 1, true)
+	kind, e := attrText(requestKind, 1, true)
 	if e != nil || kind != "dummy" {
 		t.Fatal(kind, e)
+	}
+	requestAsDump := append([]byte(nil), raw...)
+	binary.NativeEndian.PutUint32(requestAsDump[4:], 7)
+	if _, e = DecodeLink(requestAsDump); e == nil {
+		t.Fatal("flagged creation request accepted as dump")
+	}
+	response := make([]byte, 16)
+	binary.NativeEndian.PutUint32(response[4:], 7)
+	response = append(response, attr(3, requestAttrs[3])...)
+	response = append(response, attr(20, requestAttrs[20])...)
+	response = append(response, attr(18, requestAttrs[18])...)
+	r, e := DecodeLink(response)
+	if e != nil || r.Name != b.Name || r.Alias != b.Alias {
+		t.Fatal("plain emitted dump", r, e)
+	}
+	if _, e = schemaAttrs(response[16:], map[uint16]bool{3: false, 20: false, 18: true}); e == nil {
+		t.Fatal("plain dump accepted as flagged creation request")
 	}
 	w := &fakeWire{}
 	if e = NewInMemoryNetlinkClient(w, 1).createDummy(context.Background(), raw); e != nil {

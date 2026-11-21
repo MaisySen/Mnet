@@ -204,7 +204,9 @@ func (c *NetlinkClient) createDummy(ctx context.Context, payload []byte) error {
 	if len(payload) < 16 {
 		return errors.New("short dummy creation")
 	}
-	a, e := decodeAttributesWithLinkInfo(payload[16:], true)
+	// Creation requests use flagged LINKINFO, unlike emitted dump replies.
+	// Exact request-only schema, no change to DecodeLink's response contract.
+	a, e := schemaAttrs(payload[16:], map[uint16]bool{3: false, 20: false, 18: true})
 	if e != nil {
 		return e
 	}
