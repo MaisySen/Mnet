@@ -73,6 +73,12 @@ func main() {
 	switch args[0] {
 	case "version":
 		fmt.Printf("mnet %s\n", version.Version)
+	case "multies-enroll-preview":
+		origin, err := enrollmentPreviewOrigin(args[1:])
+		must(err)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		must(runEnrollmentPreview(ctx, hc, apiBase(), origin, openMultiesBrowser, os.Stdout))
 	case "multies-open":
 		origin, err := multiesSignInOrigin(args[1:])
 		must(err)
@@ -205,6 +211,7 @@ func usage() {
   mnet wait [--timeout 60s]  (observe current Up state; timeout does not stop startup)
   mnet status [--json]  (private local status; may include an approval link)
   mnet multies-open --server TRUSTED_MULTIES_ORIGIN (experimental Linux X11 review; own approvals only)
+  mnet multies-enroll-preview --server TRUSTED_MULTIES_ORIGIN (consent preview only; no network joining)
   mnet setup-config-check FILE (offline operator mapping syntax only; no enrollment)
   mnet multies-signin --server TRUSTED_MULTIES_ORIGIN (experimental; own approvals only, no VPN enrollment)
   mnet open [--layout FILE] [--multies-server TRUSTED_ORIGIN] (local preview; approvals only, no automatic connection)
