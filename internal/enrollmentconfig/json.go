@@ -18,6 +18,7 @@ func Parse(raw []byte) (*Mapping, error) {
 		return nil, ErrInvalid
 	}
 	d := json.NewDecoder(bytes.NewReader(raw))
+	d.UseNumber()
 	if !exactValue(d, reflect.TypeFor[Config](), 0) {
 		return nil, ErrInvalid
 	}
@@ -81,8 +82,12 @@ func exactValue(d *json.Decoder, t reflect.Type, depth int) bool {
 		return e == nil && ok
 	case reflect.Int:
 		v, e := d.Token()
-		f, ok := v.(float64)
-		return e == nil && ok && f == 1
+		n, ok := v.(json.Number)
+		if e != nil || !ok {
+			return false
+		}
+		_, e = n.Int64()
+		return e == nil
 	}
 	return false
 }
