@@ -286,8 +286,7 @@ func (s *Store) validateRegistrarState() error {
 		// No duplicate handoff/attempt/reserve under the same issuer and registrar,
 		// even when other echoed fields/service IDs have been changed.
 		for _, item := range [][2]string{{"handoff", r.Scope.HandoffID}, {"attempt", r.Scope.AttemptID}, {"reserve", r.Scope.ReserveID}} {
-			b, _ := json.Marshal([]string{r.Scope.Issuer, r.Scope.RegistrarOrigin, item[0], item[1]})
-			key := string(b)
+			key := registrarScopeKey(r.Scope.Issuer, r.Scope.RegistrarOrigin, item[0], item[1])
 			if identities[key] {
 				return errRegistrarState
 			}
@@ -363,4 +362,10 @@ func registrarExactFields(raw []byte, fields []string) bool {
 		}
 	}
 	return true
+}
+
+// Byte-exact existing immutable namespace key. Not generic JSON equivalence.
+func registrarScopeKey(issuer, origin, kind, id string) string {
+	b, _ := json.Marshal([]string{issuer, origin, kind, id})
+	return string(b)
 }

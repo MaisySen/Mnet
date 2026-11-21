@@ -34,6 +34,11 @@ func TestRegistrarIndexKeysByteExactIndependentPython(t *testing.T) {
 				t.Fatal("claim key differs from independent bytes")
 			}
 		}
+		if len(v.Fields) == 4 {
+			if hex.EncodeToString([]byte(registrarScopeKey(v.Fields[0], v.Fields[1], v.Fields[2], v.Fields[3]))) != v.Encoded {
+				t.Fatal("actual scope helper differs from independent Python bytes")
+			}
+		}
 		if len(v.Fields) == 3 {
 			c := enrollmentcontract.Challenge{ID: v.Fields[2], Binding: enrollmentcontract.Binding{PrincipalAuthority: v.Fields[0], RegistrarOrigin: v.Fields[1]}}
 			if hex.EncodeToString([]byte(registrarProofKey(c))) != v.Encoded {

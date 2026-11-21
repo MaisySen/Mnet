@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import hmac
 import json
+import struct
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -34,9 +35,23 @@ def vectors():
               [special, 'https://registrar.test', 'attempt', 'id'],
               ['ab', 'c'], ['a', 'bc']]
     index = [dict(fields=a, encoded_utf8_hex=go_key(a).encode().hex()) for a in arrays]
+    confirm_info = b'mnet/enrollment-key-possession/experimental-v4/server-confirmation-key'
+    confirm_key = hmac.new(prk, confirm_info + b'\x01', hashlib.sha256).digest()
+    fields = [b'mnet/enrollment-key-possession/experimental-v4/server-confirmation',
+              hashlib.sha256(data).digest(), mac]
+    confirmation_bytes = b''.join(struct.pack('>I', len(v)) + v for v in fields)
+    confirmation = dict(info=confirm_info.decode(), key_hex=confirm_key.hex(),
+                        message_hex=confirmation_bytes.hex(),
+                        mac_hex=hmac.new(confirm_key, confirmation_bytes, hashlib.sha256).hexdigest())
+    # Public fixture secret, never real native credentials. Existing consent
+    # digest semantics are SHA256 UTF8 canonical43char secret, without prefix.
+    secret = 'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE'
+    credential = dict(secret=secret, digest=__import__('base64').urlsafe_b64encode(hashlib.sha256(secret.encode()).digest()).decode().rstrip('='))
     return {
         ROOT / 'internal/enrollmentcontract/testdata/response-mac-v4.json': kdf,
         ROOT / 'internal/control/testdata/registrar-index-keys.json': index,
+        ROOT / 'internal/enrollmentcontract/testdata/server-confirmation-v4.json': confirmation,
+        ROOT / 'internal/enrollmentcontract/testdata/native-credential-digest-v1.json': credential,
     }
 
 def main():
