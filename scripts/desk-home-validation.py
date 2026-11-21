@@ -96,6 +96,11 @@ try:
  action('key','Up');poll(lambda:'armedfalse' in title() and 'sel0' in title(),'selection change cancels pending delete')
  action('key','Down');poll(lambda:'sel1' in title(),'invalid draft reselected')
  action('mousemove','--window',wid,'540','474','click','1');poll(lambda:'armedtrue' in title(),'delete re-armed')
+ # A same-name replacement after arming cancels the confirm and removes nothing.
+ (store/'broken.json').write_text('{still not json, replaced')
+ action('mousemove','--window',wid,'540','474','click','1')
+ poll(lambda:'nothing was removed' in title(),'replacement cancels confirm');capture('arrangements-delete-cancelled',wid);assert (store/'broken.json').exists(),'replacement was removed'
+ action('mousemove','--window',wid,'540','474','click','1');poll(lambda:'armedtrue' in title(),'delete armed after replacement')
  action('mousemove','--window',wid,'540','474','click','1')
  poll(lambda:'rows1' in title() and 'Deleted broken.json' in title(),'invalid draft deleted after confirm')
  assert not (store/'broken.json').exists() and (store/'arrangement-1.json').exists(),'delete removed the wrong files'

@@ -307,6 +307,7 @@ func runDeskHomeJourney(ctx context.Context, deskDir, layoutPath string) error {
 	notice := ""
 	pinned := ""
 	armed := ""
+	var armedID deskDraftID
 	armedAt := time.Time{}
 	selKeep := -1
 	if layoutPath != "" {
@@ -387,22 +388,20 @@ func runDeskHomeJourney(ctx context.Context, deskDir, layoutPath string) error {
 				continue
 			}
 			if armed != rowName || time.Since(armedAt) > 15*time.Second {
-				armed, armedAt = rowName, time.Now()
+				id, er := statDeskDraft(deskDir, rowName)
+				if er != nil {
+					notice = "That draft could not be deleted."
+					continue
+				}
+				armed, armedID, armedAt = rowName, id, time.Now()
 				continue
 			}
 			armed = ""
-			present := false
-			for _, entry := range entries {
-				if entry.Name == rowName {
-					present = true
-				}
-			}
-			if !present {
-				notice = "That draft is already gone."
+			if er := deleteDeskStoreEntry(deskDir, rowName, armedID); errors.Is(er, errDeskDraftChanged) {
+				notice = "That draft changed; nothing was removed."
 				continue
-			}
-			if er := deleteDeskStoreEntry(deskDir, rowName); er != nil {
-				notice = "That draft could not be deleted."
+			} else if er != nil {
+				notice = "That draft could not be deleted. Nothing was removed."
 				continue
 			}
 			notice = "Deleted " + rowName + "."
