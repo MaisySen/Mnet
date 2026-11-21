@@ -10,12 +10,14 @@ import "encoding/binary"
 // named word remains a release blocker until its effect on this invariant is
 // reviewed. Exact names prevent unlabelled trailing data becoming readiness.
 type ownedTUNWordPolicy struct {
-	Family   int
-	Index    int
-	Name     string
-	Value    uint32
-	Rule     string
-	Resolved bool
+	Decision  tunWordDecision
+	Satisfied bool
+	Family    int
+	Index     int
+	Name      string
+	Value     uint32
+	Rule      string
+	Resolved  bool
 }
 type ownedTUNPolicyAssessment struct {
 	Words      []ownedTUNWordPolicy
@@ -73,6 +75,15 @@ func assessOwnedTUNPolicy(l LinkRecord) (ownedTUNPolicyAssessment, error) {
 				word.Rule = "source-omitted-zero-fill-slot"
 				word.Resolved = word.Value == 0
 			}
+			decision := ownedV4Decision(index)
+			if family == 10 {
+				decision = ownedV6Decision(index)
+			}
+			word.Decision = decision
+			// Static assertions can be checked now; dormant/unchanged decisions need
+			// original creation flags/values and namespace effective policy evidence.
+			word.Satisfied = decision.Decision == "assert" && word.Value == decision.Expected
+			word.Resolved = false // no effective-all/group/packet-gate policy proof yet
 			if !word.Resolved {
 				out.Unresolved++
 			}

@@ -250,3 +250,11 @@ func (s *adapterSession) disabledAFCandidate(p *afReadPass) (ownedAFDisabledCand
 	// candidate cannot become Inventory/active observation until policy review.
 	return ownedAFDisabledCandidate{diagnostic: d, uncheckedDevconf: true, pass: p, session: s}, nil
 }
+
+// Snapshot boundary: never hand callers the pass's link slice/maps/bytes.
+func (p *afReadPass) linkSnapshot() ([]LinkRecord, error) {
+	if _, e := p.requestClaim(); e != nil {
+		return nil, e
+	}
+	return cloneRawExact(RawInventory{Links: p.links}).Links, nil
+}

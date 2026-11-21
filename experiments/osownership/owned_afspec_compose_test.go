@@ -97,7 +97,10 @@ func diagnosticComposeRig(t *testing.T, steps int) (*adapterSession, *afReadPass
 	if e != nil {
 		t.Fatal(e)
 	}
-	raw.Links = pass.links
+	raw.Links, e = pass.linkSnapshot()
+	if e != nil {
+		t.Fatal(e)
+	}
 	if steps >= 4 {
 		raw.Addresses = []AddressRecord{{Index: h.Link.Index, Family: 2, Prefix: 32, Flags: 0x80, Local: h.Address.Prefix.Addr(), Address: h.Address.Prefix.Addr(), Raw: map[uint16][]byte{8: u32(0x280)}}}
 	}
@@ -131,7 +134,11 @@ func TestCanonicalOwnedDiagnosticComposeNeverReady(t *testing.T) {
 	if _, e = d.activeInventory(); !errors.Is(e, ownedAFPolicyIncomplete) {
 		t.Fatal("candidate flag became authority", e)
 	}
+	originalMTU := p.links[0].MTU
 	raw.Links[0].MTU++
+	if p.links[0].MTU != originalMTU {
+		t.Fatal("pass aliased returned snapshot")
+	}
 	if _, e = s.composeOwnedTUNDiagnostic(raw, p); !errors.Is(e, afRequest) {
 		t.Fatal("caller raw differs from received pass", e)
 	}
@@ -153,13 +160,17 @@ func TestDiagnosticComposeBaselineAndIPv6PhaseRefusals(t *testing.T) {
 		}
 	}
 	s, p, raw, source := diagnosticComposeRig(t, 6)
+	source.extra = cloneRawExact(RawInventory{Links: source.extra}).Links
 	source.extra[0].MTU++
 	source.extra[0].Raw[4] = u32(source.extra[0].MTU)
 	newer, e := p.reader.read(context.Background())
 	if e != nil {
 		t.Fatal(e)
 	}
-	raw.Links = newer.links
+	raw.Links, e = newer.linkSnapshot()
+	if e != nil {
+		t.Fatal(e)
+	}
 	if _, e = s.composeOwnedTUNDiagnostic(raw, newer); e == nil {
 		t.Fatal("baseline mutation accepted")
 	}
@@ -183,5 +194,61 @@ func TestNamedPolicyDoesNotTreatRetainedWordsAsSafe(t *testing.T) {
 	}
 	if a.Unresolved == 0 {
 		t.Fatal("retention laundered policy")
+	}
+}
+
+func TestPassLinkSnapshotDeepIsolation(t *testing.T) {
+	_, p, _, _ := diagnosticComposeRig(t, 6)
+	first, e := p.linkSnapshot()
+	if e != nil {
+		t.Fatal(e)
+	}
+	second, e := p.linkSnapshot()
+	if e != nil {
+		t.Fatal(e)
+	}
+	before := cloneRawExact(RawInventory{Links: p.links})
+	first[0].MTU++
+	first[0].Raw[4][0] ^= 0xff
+	if !reflect.DeepEqual(before.Links, p.links) || !reflect.DeepEqual(before.Links, second) {
+		t.Fatal("returned copy aliases immutable pass")
+	}
+}
+func TestNamedWordDecisionCoverageAndConservativeChoices(t *testing.T) {
+	for index := range ownedTUNIPv4Words {
+		d := ownedV4Decision(index)
+		if d.Decision == "unresolved" || d.Decision == "" || d.Source == "" || d.Reason == "" {
+			t.Fatal("missing grounded IPv4 decision", index, d)
+		}
+	}
+	for index := range ownedTUNIPv6Words {
+		d := ownedV6Decision(index)
+		if d.Decision == "" || d.Source == "" || d.Reason == "" {
+			t.Fatal("missing grounded IPv6 decision", index, d)
+		}
+	}
+	for _, index := range []int{0, 1, 3, 5, 8, 9, 14, 15, 22, 23, 25, 31} {
+		d := ownedV4Decision(index)
+		if d.Decision != "assert" || d.Expected != 0 {
+			t.Fatal("unsafe transit/learning/bypass policy", index, d)
+		}
+	}
+	for _, index := range []int{7, 28, 29, 32} {
+		d := ownedV4Decision(index)
+		if d.Decision != "assert" || d.Expected != 1 {
+			t.Fatal("restrictive ingress/carrier policy", index, d)
+		}
+	}
+	// Important counterexample: NOARP does not make the carrier notifier dormant.
+	if ownedV4Decision(32).Decision != "assert" {
+		t.Fatal("NOARP incorrectly bypassed neighbor carrier event")
+	}
+	l, _ := fullAFSynthetic()
+	a, e := assessOwnedTUNPolicy(l)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if a.Unresolved != 93 {
+		t.Fatal("claims promoted without original NOARP/effective-all/membership evidence", a.Unresolved)
 	}
 }
