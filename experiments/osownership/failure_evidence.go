@@ -42,6 +42,10 @@ type ChildDiagnostic struct {
 	Class     string `json:"class"`
 	Errno     int    `json:"errno,omitempty"`
 }
+
+// Custody close fields apply only to this helper's explicit custody object.
+// A successful Cmd.Wait proves reap; it does not imply no stdlib-managed pidfd,
+// nor independently attest the ignored Close error in Go's handle release.
 type LifecycleEvidence struct {
 	PID                   int    `json:"pid,omitempty"`
 	StartTicks            uint64 `json:"start_ticks,omitempty"`
