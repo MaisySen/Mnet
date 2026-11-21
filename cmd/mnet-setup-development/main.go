@@ -25,16 +25,51 @@ import (
 func main() {
 	root := flag.String("disposable-root", "", "existing private disposable root with explicit marker, policy and limits")
 	open := flag.Bool("open-browser", false, "open local joining consent in the system browser")
+	inspect := flag.Bool("inspect-retained", false, "inspect only the same existing disposable attempt without changing its files or contacting services")
+	recover := flag.Bool("recover-retained", false, "explicit bounded same-attempt authenticated history/prepared recovery, never network activation")
 	dashboard := flag.Bool("disposable-network-dashboard", false, "explicit finite in-memory network with local capability-protected status and Stop; no screen/input")
 	networkTCP := flag.Bool("disposable-network-tcp", false, "explicit finite in-memory loopback-only network TCP proof after joining; no OS device or screen/input")
 	flag.Parse()
-	if flag.NArg() != 0 || *root == "" || (*dashboard && *networkTCP) {
+	if flag.NArg() != 0 || *root == "" || (*dashboard && *networkTCP) || ((*inspect || *recover) && (*dashboard || *networkTCP)) || (*inspect && *recover) {
 		fmt.Fprintln(os.Stderr, "an explicit disposable setup root is required")
 		os.Exit(2)
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	encoder := json.NewEncoder(os.Stdout)
+	if *inspect || *recover {
+		if *inspect {
+			result, err := daemon.InspectDisposableEnrollment(*root)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "Retained attempt could not be inspected. Nothing was restarted.")
+				os.Exit(1)
+			}
+			if err := encoder.Encode(result); err != nil {
+				os.Exit(1)
+			}
+			if *open {
+				if err := writeDevelopmentRecoveryPage(*root, result, nil); err != nil {
+					fmt.Fprintln(os.Stderr, "Inspection complete; optional historical display unavailable.")
+				}
+			}
+			return
+		}
+		result, err := daemon.RecoverDisposableEnrollment(ctx, *root)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Same-attempt recovery was not confirmed. The original attempt remains retained. No network was started.")
+			os.Exit(1)
+		}
+		if err := encoder.Encode(result); err != nil {
+			os.Exit(1)
+		}
+		if *open {
+			if err := writeDevelopmentRecoveryPage(*root, result.Inspection, &result); err != nil {
+				fmt.Fprintln(os.Stderr, "Recovery complete; optional historical display unavailable.")
+			}
+		}
+		return
+	}
+
 	ownedAttempt, saved, declined := false, false, false
 	writeStatus := func(joined bool, peers int) error {
 		title, body := "Setup did not finish", "Setup stopped without a confirmed completion result. A partial joining result may have been saved. The original local attempt is retained. Do not assume this computer is connected or start a replacement attempt."

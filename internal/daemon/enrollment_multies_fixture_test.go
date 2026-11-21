@@ -124,6 +124,10 @@ func writeFixtureAtomic(dir, name string, raw []byte) error {
 // A separate disposable process owns the ACTUAL native State key and callback.
 // Control fixture receives only launch + receipt outcome, never the private key
 // or presaved credential. Its real TLS service sees the expected bearer header.
+var developmentRecoveryFixtureSetup func(*testing.T, string, config.LocalConfigV2, registrar.WorkflowLimits) string
+var developmentRecoveryFixtureRun func(*testing.T, string, string, []byte) bool
+var developmentPreparedRecoveryFixture func(*testing.T, string)
+
 func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 	dir := os.Getenv("MNET_NATIVE_OWNED_WORKFLOW_DIR")
 	if dir == "" {
@@ -149,7 +153,14 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 	if _, err := config.ValidateLocalV2(f.Policy); err != nil {
 		t.Fatal(err)
 	}
-	d, err := New(Config{StateDir: filepath.Join(dir, "owned-native")})
+	nativeDir := filepath.Join(dir, "owned-native")
+	if os.Getenv("MNET_DEVELOPMENT_RECOVERY_FIXTURE") == "1" {
+		if developmentRecoveryFixtureSetup == nil || developmentRecoveryFixtureRun == nil {
+			t.Fatal("tagged development recovery fixture missing")
+		}
+		nativeDir = developmentRecoveryFixtureSetup(t, dir, f.Policy, f.Limits)
+	}
+	d, err := New(Config{StateDir: nativeDir})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +169,7 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	policyRaw, _ := json.Marshal(f.Policy)
-	if err := os.WriteFile(filepath.Join(dir, "owned-native", "enrollment-policy-v2.json"), policyRaw, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(nativeDir, "enrollment-policy-v2.json"), policyRaw, 0600); err != nil {
 		t.Fatal(err)
 	}
 	before, err := os.ReadFile(d.stateOwner.path)
@@ -199,6 +210,12 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 		}
 		actualDir := d.stateOwner.lease.Parent()
 		d.Close()
+		if os.Getenv("MNET_DEVELOPMENT_RECOVERY_FIXTURE") == "1" && !f.FinalizeHistory {
+			if developmentRecoveryFixtureRun(t, dir, actualDir, before) {
+				return
+			}
+			t.Fatal("development recovery fixture did not complete")
+		}
 		reopened, err := New(Config{StateDir: actualDir})
 		if err != nil {
 			t.Fatal(err)
@@ -355,15 +372,28 @@ func testActualMultiesHistoryFinalization(t *testing.T, d *Daemon, before []byte
 		if _, err := LoadState(dir); err == nil {
 			t.Fatal("detached loader admitted prepared-only intent")
 		}
-		recovery, err := openNativeFinalizationRecovery(dir)
-		if err != nil {
-			t.Fatal(err)
+		if os.Getenv("MNET_DEVELOPMENT_RECOVERY_FIXTURE") == "1" {
+			if developmentPreparedRecoveryFixture == nil {
+				t.Fatal("tagged prepared recovery fixture missing")
+			}
+			developmentPreparedRecoveryFixture(t, dir)
+			var err error
+			d, err = New(Config{StateDir: dir})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer d.Close()
+		} else {
+			recovery, err := openNativeFinalizationRecovery(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer recovery.Close()
+			if err := recovery.resume(context.Background(), 3*time.Second, 2); err != nil {
+				t.Fatal("actual prepared restart same-attempt history", err)
+			}
+			d = recovery.daemon
 		}
-		defer recovery.Close()
-		if err := recovery.resume(context.Background(), 3*time.Second, 2); err != nil {
-			t.Fatal("actual prepared restart same-attempt history", err)
-		}
-		d = recovery.daemon
 		var old, new struct {
 			FinalizationJSON string `json:"finalization_json"`
 		}
@@ -426,7 +456,11 @@ func testActualMultiesHistoryFinalization(t *testing.T, d *Daemon, before []byte
 		NativeStateFinalized      bool
 		NativeCurrentPeers        int
 	}{history, false, true, true, true, 2})
-	if err := writeFixtureAtomic(filepath.Dir(dir), "native-workflow-outcome.json", outcome); err != nil {
+	outcomeDir := filepath.Dir(dir)
+	if os.Getenv("MNET_DEVELOPMENT_RECOVERY_FIXTURE") == "1" {
+		outcomeDir = filepath.Dir(outcomeDir)
+	}
+	if err := writeFixtureAtomic(outcomeDir, "native-workflow-outcome.json", outcome); err != nil {
 		t.Fatal(err)
 	}
 }

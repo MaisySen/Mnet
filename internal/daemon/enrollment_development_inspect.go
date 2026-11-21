@@ -28,7 +28,12 @@ type DevelopmentRecoveryInspection struct {
 	OriginalLeaseEnded bool   `json:"originalLeaseEnded"`
 }
 
+type developmentInspectionBinding struct{ state, policy, journal [32]byte }
+
 func InspectDisposableEnrollment(root string) (DevelopmentRecoveryInspection, error) {
+	return inspectDisposableEnrollment(root, nil)
+}
+func inspectDisposableEnrollment(root string, binding *developmentInspectionBinding) (DevelopmentRecoveryInspection, error) {
 	empty := DevelopmentRecoveryInspection{}
 	if !filepath.IsAbs(root) || filepath.Clean(root) != root {
 		return empty, fmt.Errorf("explicit original disposable root required")
@@ -131,9 +136,9 @@ func InspectDisposableEnrollment(root string) (DevelopmentRecoveryInspection, er
 			return empty, errEnrollmentContextStale
 		}
 	}
-	out := DevelopmentRecoveryInspection{Phase: status.Phase, Recovery: status.Recovery}
+	out := DevelopmentRecoveryInspection{Phase: status.Phase, Recovery: status.Recovery, OriginalLeaseEnded: status.OriginalAccessExpiresAtMS > 0 && time.Now().UnixMilli() >= status.OriginalAccessExpiresAtMS}
 	if state.native != nil {
-		if state.native.PolicyRevision != base64.RawURLEncoding.EncodeToString(sha256Sum(nativePolicy)) {
+		if state.native.PolicyRevision != base64.RawURLEncoding.EncodeToString(sha256Sum(nativePolicy)) || !pending.CheckDevelopmentSavedDATA(pendingRaw, state.native.Document, state.native.OriginalStateRevision, state.native.PolicyRevision) {
 			return empty, errEnrollmentContextStale
 		}
 		out.JoiningSaved = true
@@ -142,6 +147,11 @@ func InspectDisposableEnrollment(root string) (DevelopmentRecoveryInspection, er
 	}
 	if owner.Check() != nil || journalOwner.Check() != nil {
 		return empty, errEnrollmentContextStale
+	}
+	if binding != nil {
+		binding.state = sha256.Sum256(raw)
+		binding.policy = sha256.Sum256(nativePolicy)
+		binding.journal = sha256.Sum256(pendingRaw)
 	}
 	return out, nil
 }

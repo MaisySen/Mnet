@@ -1,0 +1,47 @@
+//go:build mnet_enrollment_development
+
+package main
+
+import (
+	"context"
+	"fintex.au/mnet/internal/daemon"
+	"html/template"
+	"os"
+)
+
+func writeDevelopmentRecoveryPage(root string, i daemon.DevelopmentRecoveryInspection, r *daemon.DevelopmentRecoveryResult) error {
+	title := "Retained attempt inspected. Not connected."
+	body := "This is local historical inspection only. It did not contact a service, recover authority or start a network. A lost browser listener cannot be resumed from an old page."
+	if i.JoiningSaved {
+		title = "Joining saved. Not connected."
+		body = "The original local joining result is saved. Its presence does not verify a current network or authorize another connection."
+	}
+	if r != nil && r.HistoricalRecovered {
+		title = "Joining history recovered. Not connected."
+		body = "An authenticated lookup recovered the same original attempt's historical receipt. This is not a new approval, proof confirmation, saved joining credential or live network."
+		if r.JoiningFinalized {
+			title = "Original joining finalized. Not connected."
+			body = "The existing prepared attempt was finalized within its original approved interval. This did not start or verify a network."
+		}
+	}
+	if i.OriginalLeaseEnded {
+		body += " The original approved interval has ended. There are no network controls."
+	}
+	file, err := os.CreateTemp("", "mnet-retained-result-*.html")
+	if err != nil {
+		return err
+	}
+	name := file.Name()
+	// A separate temporary display file, never a write inside inspected State/root.
+	page := template.Must(template.New("recovery").Parse(`<!doctype html><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>Mnet retained attempt</title><style>body{font:17px system-ui;background:#f4f5f7;color:#202124;padding:48px 20px}main{max-width:640px;margin:auto;background:white;border:1px solid #ddd;border-radius:18px;padding:30px}p{line-height:1.6}small{color:#596171}</style><main><small>DISPOSABLE DEVELOPMENT RECOVERY</small><h1>{{.Title}}</h1><p>{{.Body}}</p><p>Retained phase: {{.Phase}}</p><p>Screen, keyboard and mouse access are unavailable. No automatic retry, reconnect, new joining attempt or service was started.</p><small>Historical result only. You can close this tab.</small></main>`))
+	err = page.Execute(file, struct{ Title, Body, Phase string }{title, body, i.Phase})
+	closeErr := file.Close()
+	if err != nil {
+		os.Remove(name)
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	return runDevelopmentBrowser(context.Background(), name, nil)
+}

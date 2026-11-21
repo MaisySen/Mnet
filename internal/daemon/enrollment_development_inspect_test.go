@@ -12,6 +12,7 @@ import (
 	"fintex.au/mnet/internal/stateowner"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -73,6 +74,9 @@ func TestDisposableInspectionPreparedIsReadOnlyNotLive(t *testing.T) {
 	if status.Phase != "prepared-listener-not-owned" || status.JoiningSaved || status.NetworkVerified || status.Recovery != "unavailable" {
 		t.Fatalf("prepared file misrepresented: %+v", status)
 	}
+	if _, err := RecoverDisposableEnrollment(context.Background(), root); err == nil {
+		t.Fatal("prepared listener was restarted or recovered without eligible history")
+	}
 	after := snap()
 	if len(before) != len(after) {
 		t.Fatal("inspection changed directory entries")
@@ -83,6 +87,48 @@ func TestDisposableInspectionPreparedIsReadOnlyNotLive(t *testing.T) {
 			t.Fatal("inspection mutated path", p)
 		}
 	}
+
+	// Invalid retained DATA must neither repair files nor start a replacement.
+	for _, name := range []string{"state.json", "enrollment-pending/enrollment-pending-v1.json"} {
+		path := filepath.Join(root, "native", name)
+		original, e := os.ReadFile(path)
+		if e != nil {
+			t.Fatal(e)
+		}
+		for _, missing := range []bool{false, true} {
+			if missing {
+				os.Remove(path)
+			} else {
+				os.WriteFile(path, []byte("{}"), 0600)
+			}
+			imageBefore := snap()
+			if _, e := InspectDisposableEnrollment(root); e == nil {
+				t.Fatal("invalid retained image inspected", name, missing)
+			}
+			if _, e := RecoverDisposableEnrollment(context.Background(), root); e == nil {
+				t.Fatal("invalid retained image recovered", name, missing)
+			}
+			imageAfter := snap()
+			if !reflect.DeepEqual(imageBefore, imageAfter) {
+				t.Fatal("invalid image was repaired", name, missing)
+			}
+			os.WriteFile(path, original, 0600)
+		}
+	}
+	// Valid but different native key cannot bind the retained original journal.
+	path := filepath.Join(root, "native", "state.json")
+	original, _ := os.ReadFile(path)
+	other, _, _ := enrollmentContextFixture(t)
+	otherRaw, _ := os.ReadFile(other.stateOwner.path)
+	other.Close()
+	os.WriteFile(path, otherRaw, 0600)
+	if _, e := InspectDisposableEnrollment(root); e == nil {
+		t.Fatal("changed valid identity admitted")
+	}
+	if _, e := RecoverDisposableEnrollment(context.Background(), root); e == nil {
+		t.Fatal("changed identity recovered")
+	}
+	os.WriteFile(path, original, 0600)
 	lease, _, err := stateowner.Acquire(filepath.Join(root, "native", "daemon"))
 	if err != nil {
 		t.Fatal(err)
