@@ -104,6 +104,7 @@ func (a *inertAdapterProtocol) CloseOriginalFD(h Handle) error {
 	// deadline-bearing context from Transaction.Stop's immediately preceding
 	// snapshot. Never replace expired ownership with a Background context.
 	owner := a.ownerContext
+	a.ownerContext = nil // one snapshot context authorizes at most one close attempt
 	if owner == nil {
 		return ErrConflict
 	}

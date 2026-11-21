@@ -16,6 +16,7 @@ type networkCapabilityWitness struct {
 	ValidUntil time.Time
 }
 type networkCapabilityEvidence struct {
+	Final             *adapterFinalState
 	RunnerObservation string
 	TargetID          string
 	SessionID         string
@@ -37,14 +38,17 @@ type networkCapabilityStatus struct {
 }
 
 func projectNetworkCapability(e networkCapabilityEvidence) networkCapabilityStatus {
+	e.Now = e.Now.Round(0).UTC() // compare explicit wall intervals, not hidden monotonic stamps
 	r := networkCapabilityStatus{State: "not-verified", RunnerObservation: e.RunnerObservation, UserDeployment: "unknown", TargetID: e.TargetID, SessionID: e.SessionID, AsOf: e.Now}
-	if e.CleanupPending {
+	if e.Final == nil || e.CleanupPending || e.Final.requiresCleanup() {
 		r.State = "cleanup-pending"
 		return r
 	}
 	kinds := map[string]bool{}
 	if e.TargetID != "" && e.SessionID != "" && !e.Now.IsZero() && sameNamespace(e.Namespace, e.Namespace) {
 		for _, w := range e.Witnesses {
+			w.ObservedAt = w.ObservedAt.Round(0).UTC()
+			w.ValidUntil = w.ValidUntil.Round(0).UTC()
 			if w.TargetID != e.TargetID || w.SessionID != e.SessionID || !sameNamespace(w.Namespace, e.Namespace) || w.ObservedAt.IsZero() || e.Now.Before(w.ObservedAt) || !e.Now.Before(w.ValidUntil) {
 				continue
 			}
@@ -77,11 +81,24 @@ func projectNetworkCapability(e networkCapabilityEvidence) networkCapabilityStat
 		return r
 	}
 	if e.RunnerObservation == "device-open-denied" {
-		r.State = "runner-device-access-blocked"
+		r.State = "historical-runner-device-open-denied-target-unverified"
 		return r
 	}
 	if kinds["transport"] {
 		r.State = "transport-only-os-path-unverified"
 	}
 	return r
+}
+
+// Conservative final-state mapping, intentionally independent of a caller's
+// optional CleanupPending flag. A missing final record cannot claim readiness.
+func (f adapterFinalState) requiresCleanup() bool {
+	if f.CustodyUnresolved || f.RejectedHandle != nil || f.CloseAmbiguous || f.CleanupPending != nil {
+		return true
+	}
+	if f.CreateAttempted && (!f.CloseConfirmed || !f.RawBaselineEqual) {
+		return true
+	}
+	// Poisoned/pending history can be resolved only by proven close plus baseline.
+	return (f.Poisoned || f.PossiblyApplied != nil || f.CleanupRetry != nil) && (!f.CloseConfirmed || !f.RawBaselineEqual)
 }
