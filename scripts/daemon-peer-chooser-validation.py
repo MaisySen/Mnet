@@ -36,7 +36,7 @@ def action(*args):subprocess.run(['xdotool',*args],env=env,check=True)
 def title():return subprocess.check_output(['xdotool','getwindowname',wid],env=env,text=True).strip()
 def phase(name,read):poll(lambda:'['+name+']' in title() and 'read'+str(read)+' ' in title(),name)
 def capture(name):
- p=out/(name+'.png');subprocess.run(['import','-display',env['DISPLAY'],'-window',wid,str(p)],check=True);im=Image.open(p);assert im.size==(900,560)
+ p=out/(name+'.png');subprocess.run(['import','-display',env['DISPLAY'],'-window',wid,str(p)],check=True);im=Image.open(p).convert('RGB');assert im.size==(900,560);return im
 try:
  for name,pkg in [('mnet','./cmd/mnet'),('mnetd','./cmd/mnetd'),('control','./cmd/mnet-control')]:subprocess.run(['go','build','-race','-o',str(out/name),pkg],check=True)
  with socket.socket() as s:s.bind(('127.0.0.1',0));port=s.getsockname()[1]
@@ -84,6 +84,27 @@ try:
  assert api(viewer,'session-peers')[0]['PublicKey']==host_identity['public_key'],'recovery changed peer key'
  for name,state in states.items():assert identities[name]==(state/'state.json').read_bytes(),'chooser/lifecycle changed durable identity'
  action('key','Escape');assert client.wait(timeout=5)==0;processes.remove(client)
+ # A displayed selection cannot survive actual Down merely because the UI
+ # has not refreshed. Both modes re-read real daemon evidence before dialing.
+ for mode,x in [('view-only',470),('pointer',620)]:
+  client=start([out/'mnet','--state',viewer,'session','browse'],'stale-'+mode,env)
+  wid=poll(window,'stale '+mode+' chooser');action('windowfocus',wid);phase('ready',1)
+  action('mousemove','--window',wid,'120','120','click','1');poll(lambda:capture('stale-'+mode+'-selected').getpixel((25,110))==(0,102,204),'actual selected '+mode+' pixels')
+  api(viewer,'down',{});poll(lambda:api(viewer)['status']=='down','stale '+mode+' actual Down')
+  assert not api(viewer,'session-peers'),'stale-mode Down retained authority'
+  # No Refresh. The old row is deliberately still displayed and selected.
+  action('mousemove','--window',wid,str(x),'510','click','1')
+  assert client.wait(timeout=5)!=0,'stale selection accepted after actual Down'
+  processes.remove(client)
+  refusal=(out/('stale-'+mode+'.log')).read_text()
+  assert 'network is not up' in refusal,'expected pre-dial actual-status refusal missing'
+  assert 'dial tcp' not in refusal and not window(),'stale choice reached dial or retained chooser'
+  old=daemons['viewer-state'];old.terminate();assert old.wait(timeout=5)==0;processes.remove(old)
+  daemons['viewer-state']=start([out/'mnetd','-state',viewer,'-fake-tun'],'recovered-after-'+mode)
+  poll(lambda:api(viewer)['status']=='down','new daemon after '+mode)
+  api(viewer,'up',{});poll(lambda:api(viewer)['status']=='up' and api(viewer,'session-peers'),'recovery after '+mode)
+  assert identities['viewer-state']==(viewer/'state.json').read_bytes(),'stale refusal changed durable identity'
+  print('PASS actual selected '+mode+' peer, actual daemon Down with NO Refresh, explicit mode refused by actual status before OS dial; fresh-process recovery preserves identity',flush=True)
  print('PASS actual built control + two owned mnetd ChannelTUN processes + native chooser: actual Up/map-derived exact peer key, selected details, Down invalidation, cleared selection/modes, saved identity fresh-process Up recovery, unchanged State. No synthetic API or record injection. NO kernel TUN, OS mesh TCP, attended session, physical/native OS or release acceptance.',flush=True)
 finally:
  for p in reversed(processes):
