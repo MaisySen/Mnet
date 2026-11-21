@@ -36,7 +36,7 @@ func writeDevelopmentRecoveryPage(root string, i daemon.DevelopmentRecoveryInspe
 	case "setup-reserved":
 		body += " The local development setup slice was reserved but no ready result was confirmed. Inspection only, no retry or connection is allowed."
 	case "ready":
-		body += " This new-setup-only local development workflow has one unspent connection slice. Limits are total 16, setup reserves 2, later one-shot 14, not receipt quota. Explicit --connect-existing-once is required and only works within the unchanged original interval."
+		body += " At this inspection, this new-setup-only local development workflow showed one unspent connection slice. This historical page does not track later use. Limits are total 16, setup reserves 2, later one-shot 14, not receipt quota. Explicit --connect-existing-once is required and only works within the unchanged original interval."
 	case "connection-reserved":
 		body += " The entire 14-request local development connection slice was spent. This does not prove any network started or stopped. No retry, refund or crash resume is allowed."
 	}

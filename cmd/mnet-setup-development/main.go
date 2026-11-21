@@ -88,7 +88,7 @@ func main() {
 			body = fmt.Sprintf("Mnet verified this computer and saved its joining result. The current map checked during setup contained %d live peers. This is a historical setup result, not a live connection indicator. No tunnel, screen, keyboard or mouse access was started.", peers)
 		}
 		if joined && *saveConnection {
-			body += " This new-setup-only workflow has one unspent finite connection slice. Before the original interval ends, explicitly run the same command with --connect-existing-once instead of --save-one-shot-connection. Local development request limits are total 16, setup reserves 2, later connection reserves 14. These are not receipt quota. Stop, failure or crash never refunds a spent slice."
+			body += " At setup completion, this new-setup-only workflow recorded one unspent finite connection slice. This historical page does not check whether it is still available. Use --inspect-retained for current local bookkeeping. Before the original interval ends, explicitly run the same command with --connect-existing-once instead of --save-one-shot-connection. Local development request limits are total 16, setup reserves 2, later connection reserves 14. These are not receipt quota. Stop, failure or crash never refunds a spent slice."
 		}
 		file, err := os.OpenFile(filepath.Join(*root, "setup-result.html"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 		if err != nil {
