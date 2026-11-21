@@ -38,6 +38,7 @@ try:
  assert image.getpixel((330,30))==(21,25,35),'loading paint contaminated header background'
  home=poll(lambda:window(displays[1],'^Mnet: three tools'),'first-screen failure returns home',17)
  elapsed=time.monotonic()-started;assert 14<=elapsed<18,elapsed
+ poll(lambda:'note1' in subprocess.check_output(['xdotool','getwindowname',home],env=env|{'DISPLAY':displays[1]},text=True),'specific first-screen failure notice')
  subprocess.run(['import','-display',displays[1],'-window',home,str(out/'first-screen-failed-home.png')],check=True)
  assert not window(displays[1],'^Mnet view only:'),'retired viewer survived'
  poll(lambda:not window(displays[0],'^Mnet: desktop sharing'),'host sharing closed')

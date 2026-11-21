@@ -22,11 +22,59 @@ const (
 
 type homeConfig struct{ LayoutPath, MultiesOrigin string }
 
+// Fixed home notices. The order is the machine-readable note slug in the
+// window title; fixtures read outcomes from it instead of pixels.
+const (
+	homeNoticeStart        = "Choose a tool to begin."
+	homeNoticeNoScreen     = "No screen arrived. The session ended. Choose Remote Desktop to try again."
+	homeNoticeReviewClosed = "Approval review closed. Network setup is still not connected."
+	homeNoticeReviewFailed = "Approval review was unavailable. Network setup is still not connected."
+	homeNoticeFailed       = "The tool could not finish. Choose it again to try a fresh attempt."
+	homeNoticeClosed       = "Tool closed. You can choose another tool."
+	homeNoticeViewed       = "Viewing ended. Nothing remains connected. Choose a tool to continue."
+	homeNoticeDeclined     = "The host did not allow viewing. Nothing was shared. Choose Remote Desktop to ask again."
+	homeNoticeChanged      = "The device changed before connecting. Nothing was shared. Choose Remote Desktop to review it again."
+	homeNoticeHostEnded    = "The host or the connection ended the viewing session. Nothing remains connected."
+)
+
+var homeNotices = []string{homeNoticeStart, homeNoticeNoScreen, homeNoticeReviewClosed, homeNoticeReviewFailed, homeNoticeFailed, homeNoticeClosed, homeNoticeViewed, homeNoticeDeclined, homeNoticeChanged, homeNoticeHostEnded}
+
+func homeNoticeIndex(notice string) int {
+	for i, n := range homeNotices {
+		if n == notice {
+			return i
+		}
+	}
+	return -1
+}
+
+// desktopHomeNotice names the specific Remote Desktop outcome. A clean return
+// still distinguishes a session that showed the host's screen from a chooser
+// closed before any request; failures never claim a session existed.
+func desktopHomeNotice(viewed bool, err error) string {
+	switch {
+	case errors.Is(err, errDesktopFirstScreen):
+		return homeNoticeNoScreen
+	case errors.Is(err, errDesktopHostEnded):
+		return homeNoticeHostEnded
+	case desktopViewRefused(err):
+		return homeNoticeDeclined
+	case errors.Is(err, errDesktopPeerChanged), errors.Is(err, errCLISessionIdentity):
+		return homeNoticeChanged
+	case err != nil:
+		return homeNoticeFailed
+	case viewed:
+		return homeNoticeViewed
+	default:
+		return homeNoticeClosed
+	}
+}
+
 func runHome(ctx context.Context, hc *http.Client, base string, config homeConfig) error {
 	if ctx == nil {
 		return errors.New("home owner unavailable")
 	}
-	notice := "Choose a tool to begin."
+	notice := homeNoticeStart
 	for ctx.Err() == nil {
 		choice, err := chooseHome(ctx, notice, config.LayoutPath != "", config.MultiesOrigin != "")
 		if err != nil {
@@ -35,11 +83,12 @@ func runHome(ctx context.Context, hc *http.Client, base string, config homeConfi
 		if choice == homeClose {
 			return nil
 		}
+		viewed := false
 		switch choice {
 		case homeNetwork:
 			err = runDeviceWindow(ctx, hc, base)
 		case homeDesktop:
-			err = browseDesktopOnce(ctx, hc, base)
+			viewed, err = browseDesktopOnce(ctx, hc, base)
 		case homeMulties:
 			if config.MultiesOrigin == "" {
 				return errors.New("Multies origin not configured")
@@ -60,17 +109,18 @@ func runHome(ctx context.Context, hc *http.Client, base string, config homeConfi
 		if ctx.Err() != nil {
 			return nil
 		}
-		if errors.Is(err, errDesktopFirstScreen) {
-			notice = "No screen arrived. The session ended. Choose Remote Desktop to try again."
-		} else if choice == homeMulties {
-			notice = "Approval review closed. Network setup is still not connected."
+		switch {
+		case choice == homeDesktop:
+			notice = desktopHomeNotice(viewed, err)
+		case choice == homeMulties:
+			notice = homeNoticeReviewClosed
 			if err != nil {
-				notice = "Approval review was unavailable. Network setup is still not connected."
+				notice = homeNoticeReviewFailed
 			}
-		} else if err != nil {
-			notice = "The tool could not finish. Choose it again to try a fresh attempt."
-		} else {
-			notice = "Tool closed. You can choose another tool."
+		case err != nil:
+			notice = homeNoticeFailed
+		default:
+			notice = homeNoticeClosed
 		}
 	}
 	return nil

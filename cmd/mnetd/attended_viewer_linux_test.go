@@ -49,7 +49,7 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 		mode = "local-end"
 	}
 	switch mode {
-	case "local-end", "pending-close", "decline", "host-end", "authority-loss", "display-loss", "pointer", "pending-terminate", "live-terminate", "pending-root-shrink", "live-root-shrink", "live-root-transient", "pointer-root-shrink", "pointer-root-transient", "first-screen-stall":
+	case "local-end", "pending-close", "decline", "host-end", "authority-loss", "display-loss", "pointer", "pointer-decline-first", "pending-terminate", "live-terminate", "pending-root-shrink", "live-root-shrink", "live-root-transient", "pointer-root-shrink", "pointer-root-transient", "first-screen-stall":
 	default:
 		t.Fatal("unsupported fixture case")
 	}
@@ -143,13 +143,24 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 		t.Fatal(err)
 	}
 	stage("view")
-	host, err := listenAttendedSessionWithApproval(ln, peer.Name, 15*time.Second, func(h session.Hello, from net.Addr, conn net.Conn) (bool, string) {
+	approve := func(h session.Hello, from net.Addr, conn net.Conn) (bool, string) {
 		if h.NodeName != "fixture-viewer" {
 			return false, "wrong fixture peer"
 		}
 		// No host capture/input exists until the real local prompt accepts.
 		return approveAttendedConnection(ctx, ui, fixturePeer, conn, current), "local viewing decision"
-	})
+	}
+	host, err := listenAttendedSessionWithApproval(ln, peer.Name, 15*time.Second, approve)
+	if mode == "pointer-decline-first" {
+		// The first actual request is declined at the real local prompt. The
+		// home-mode viewer must report the refusal and stay alive; a second,
+		// separately approved request then runs the ordinary journey.
+		if err == nil {
+			host.Close()
+			t.Fatal("declined first view reached capture")
+		}
+		host, err = listenAttendedSessionWithApproval(ln, peer.Name, 15*time.Second, approve)
+	}
 	if mode == "pending-close" || mode == "pending-terminate" || mode == "decline" || mode == "pending-root-shrink" {
 		if err == nil {
 			host.Close()
@@ -249,7 +260,7 @@ func builtNativeViewerFixture(t *testing.T, pointer bool) {
 	go func() { exited <- cmd.Wait() }()
 	select {
 	case err = <-exited:
-		cleanExit := mode == "local-end" || mode == "pointer" || mode == "live-terminate" || mode == "first-screen-stall" && os.Getenv("MNET_VIEWER_HOME") == "1"
+		cleanExit := mode == "local-end" || mode == "pointer" || mode == "pointer-decline-first" || mode == "live-terminate" || mode == "first-screen-stall" && os.Getenv("MNET_VIEWER_HOME") == "1"
 		if cleanExit && err != nil {
 			t.Fatal(err)
 		}

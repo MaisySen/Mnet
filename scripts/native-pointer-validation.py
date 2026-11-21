@@ -28,6 +28,9 @@ terminate=os.environ.get('MNET_POINTER_TERMINATE','0')
 if terminate not in ('0','1'):raise SystemExit('unsupported pointer termination fixture')
 root_change=os.environ.get('MNET_POINTER_ROOT_CHANGE','')
 if root_change not in ('','shrink','transient'):raise SystemExit('unsupported pointer root fixture')
+decline_first=os.environ.get('MNET_POINTER_DECLINE_FIRST','0')
+if decline_first not in ('0','1'):raise SystemExit('unsupported decline-first fixture')
+if decline_first=='1' and (root_change or terminate=='1'):raise SystemExit('decline-first combines with no other pointer case')
 xs=[];test=None;focus_app=None
 size=os.environ.get('MNET_VIEWER_DISPLAY_SIZE','1024x768x24')
 if size not in ('1024x768x24','2048x1536x24'):raise SystemExit('unsupported disposable size')
@@ -56,7 +59,7 @@ try:
   with open(out/(role+'-display'),'w') as fd,open(out/(role+'-x.log'),'w') as log:
    xs.append(subprocess.Popen(['Xvfb','-noreset','-nolisten','tcp','-displayfd',str(fd.fileno()),'-screen','0',size if role=='host' else '1024x768x24'],pass_fds=(fd.fileno(),),stdout=log,stderr=log))
   number=poll(lambda:(out/(role+'-display')).read_text().strip(),role+' display');displays.append(':'+number)
- env=os.environ|{'DISPLAY':displays[0],'NO_AT_BRIDGE':'1','DBUS_SESSION_BUS_ADDRESS':'unix:path=/nonexistent-mnet-fixture','MNET_NATIVE_VIEWER_TEST':'1','MNET_ATTENDED_X11_TEST':'1','MNET_ATTENDED_ARTIFACTS':str(out),'MNET_VIEWER_EXECUTABLE':str(executables['mnet']),'MNET_ATTENDED_TEST_EXECUTABLE':str(executables['mnetd']),'MNET_VIEWER_DISPLAY':displays[1],'MNET_VIEWER_CASE':('pointer-root-'+root_change if root_change else 'pointer')}
+ env=os.environ|{'DISPLAY':displays[0],'NO_AT_BRIDGE':'1','DBUS_SESSION_BUS_ADDRESS':'unix:path=/nonexistent-mnet-fixture','MNET_NATIVE_VIEWER_TEST':'1','MNET_ATTENDED_X11_TEST':'1','MNET_ATTENDED_ARTIFACTS':str(out),'MNET_VIEWER_EXECUTABLE':str(executables['mnet']),'MNET_ATTENDED_TEST_EXECUTABLE':str(executables['mnetd']),'MNET_VIEWER_DISPLAY':displays[1],'MNET_VIEWER_CASE':('pointer-decline-first' if decline_first=='1' else ('pointer-root-'+root_change if root_change else 'pointer'))}
  env.pop('WAYLAND_DISPLAY',None);env.pop('XDG_SESSION_TYPE',None)
  if installed: print('Using verified exact installed mnet and mnetd; test harness remains race-enabled',flush=True)
  with open(out/'test.log','w') as log:test=subprocess.Popen([str(out/'host.test'),'-test.run=^TestAttendedX11BuiltPointerClient$','-test.v','-test.timeout=30s'],env=env,stdout=log,stderr=log)
@@ -64,6 +67,19 @@ try:
   home=poll(lambda:window(displays[1],'^Mnet: three tools'),'engineering home')
   subprocess.run(['import','-display',displays[1],'-window',home,str(out/'home-before-session.png')],check=True)
   assert not window(displays[0],'^Mnet: allow viewing'),'home implicitly requested view'
+  # A host view decline returns a specific home outcome, not a generic
+  # failure, and leaves no chooser or viewer window behind.
+  if decline_first=='1':
+   action(displays[1],'windowfocus',home,'key','Tab','Tab','Return')
+   decline_chooser=poll(lambda:window(displays[1],'^Mnet Remote Desktop: choose \[ready\]'),'decline chooser')
+   action(displays[1],'windowfocus',decline_chooser,'mousemove','--window',decline_chooser,'120','120','click','1')
+   action(displays[1],'mousemove','--window',decline_chooser,'460','510','click','1')
+   decline_host=poll(lambda:window(displays[0],'^Mnet: allow viewing'),'decline approval')
+   action(displays[0],'windowfocus',decline_host,'key','Return')
+   home=poll(lambda:window(displays[1],'^Mnet: three tools'),'decline home return')
+   poll(lambda:'note7' in subprocess.check_output(['xdotool','getwindowname',home],env=env|{'DISPLAY':displays[1]},text=True),'specific host-decline notice')
+   assert not window(displays[1],'^Mnet Remote Desktop') and not window(displays[1],'^Mnet view only:'),'decline left a session window'
+   subprocess.run(['import','-display',displays[1],'-window',home,str(out/'home-after-decline.png')],check=True)
   action(displays[1],'windowfocus',home,'key','Tab','Tab','Return')
  if os.environ.get('MNET_VIEWER_CHOOSER')=='1' or os.environ.get('MNET_VIEWER_HOME')=='1':
   chooser=poll(lambda:window(displays[1],'^Mnet Remote Desktop: choose \[ready\]'),'current peer chooser')
@@ -176,6 +192,7 @@ try:
   if os.environ.get('MNET_VIEWER_HOME')=='1':
    home=poll(lambda:window(displays[1],'^Mnet: three tools'),'home after joined session')
    assert not window(displays[1],'^Mnet pointer only:'),'old viewer survived home return'
+   poll(lambda:'note6' in subprocess.check_output(['xdotool','getwindowname',home],env=env|{'DISPLAY':displays[1]},text=True),'specific viewed-end notice')
    # Local closure is synchronous; the independent host observes transport
    # closure and joins its UI asynchronously. Require the same postcondition
    # within the existing readiness bound, not on the first cross-display read.

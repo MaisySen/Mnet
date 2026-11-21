@@ -69,7 +69,18 @@ func chooseHome(parent context.Context, notice string, hasLayout, hasMulties boo
 	if err = xproto.ChangePropertyChecked(c, xproto.PropModeReplace, w, protocols.Atom, xproto.AtomAtom, 32, 1, data).Check(); err != nil {
 		return homeClose, err
 	}
-	title := "Mnet: three tools [local engineering] info0"
+	note := homeNoticeIndex(notice)
+	if note < 0 {
+		return homeClose, errors.New("home notice outside the fixed table")
+	}
+	homeTitle := func(info bool) string {
+		name := "Mnet: three tools [local engineering] info0 note" + string(rune('0'+note))
+		if info {
+			name = "Mnet: three tools [local engineering] info1 note" + string(rune('0'+note))
+		}
+		return name
+	}
+	title := homeTitle(false)
 	if err = xproto.ChangePropertyChecked(c, xproto.PropModeReplace, w, xproto.AtomWmName, xproto.AtomString, 8, uint32(len(title)), []byte(title)).Check(); err != nil {
 		return homeClose, err
 	}
@@ -80,10 +91,7 @@ func chooseHome(parent context.Context, notice string, hasLayout, hasMulties boo
 		if info == titleInfo {
 			return
 		}
-		name := "Mnet: three tools [local engineering] info0"
-		if info {
-			name = "Mnet: three tools [local engineering] info1"
-		}
+		name := homeTitle(info)
 		_ = xproto.ChangeProperty(c, xproto.PropModeReplace, w, xproto.AtomWmName, xproto.AtomString, 8, uint32(len(name)), []byte(name))
 		titleInfo = info
 	}

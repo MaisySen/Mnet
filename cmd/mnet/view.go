@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -36,13 +37,26 @@ func runDesktopView(ctx context.Context, display desktopView, dial func(context.
 
 var errDesktopFirstScreen = errors.New("no usable screen arrived within 15 seconds; session ended")
 
+// The host or the path ended an admitted viewing session. Wrapping keeps the
+// established CLI text while letting the home report the specific outcome.
+var errDesktopHostEnded = errors.New("desktop viewing ended")
+
+// sessionRefusedPrefix marks the attended host's admission refusal produced by
+// internal/session hello handling; the home maps it to a specific outcome.
+const sessionRefusedPrefix = "session: refused:"
+
+func desktopViewRefused(err error) bool {
+	return err != nil && strings.HasPrefix(err.Error(), sessionRefusedPrefix)
+}
+
 func runDesktopWindow(ctx context.Context, display desktopView, dial func(context.Context) (*session.Mux, error), pointer bool) error {
-	return runDesktopWindowWithFirstScreenWait(ctx, display, dial, pointer, 15*time.Second)
+	_, err := runDesktopWindowWithFirstScreenWait(ctx, display, dial, pointer, 15*time.Second)
+	return err
 }
 
 // The first-screen bound starts after host admission, not while the person is
 // deciding whether to allow viewing. It never retries a transport or approval.
-func runDesktopWindowWithFirstScreenWait(ctx context.Context, display desktopView, dial func(context.Context) (*session.Mux, error), pointer bool, firstScreenWait time.Duration) (runErr error) {
+func runDesktopWindowWithFirstScreenWait(ctx context.Context, display desktopView, dial func(context.Context) (*session.Mux, error), pointer bool, firstScreenWait time.Duration) (viewed bool, runErr error) {
 	var firstScreenTimer *time.Timer
 	var firstScreenDeadline <-chan time.Time
 	defer func() {
@@ -55,7 +69,7 @@ func runDesktopWindowWithFirstScreenWait(ctx context.Context, display desktopVie
 		var ok bool
 		pointerView, ok = display.(desktopPointerView)
 		if !ok {
-			return errors.Join(errors.New("native pointer UI unavailable"), display.Close())
+			return false, errors.Join(errors.New("native pointer UI unavailable"), display.Close())
 		}
 	}
 	var control *session.ViewerControl
@@ -80,7 +94,7 @@ func runDesktopWindowWithFirstScreenWait(ctx context.Context, display desktopVie
 		}
 	}()
 	if err := display.State("Awaiting host approval. View only. Escape ends."); err != nil {
-		return err
+		return false, err
 	}
 	tick := time.NewTicker(20 * time.Millisecond)
 	defer tick.Stop()
@@ -88,36 +102,36 @@ func runDesktopWindowWithFirstScreenWait(ctx context.Context, display desktopVie
 		// Local close and display failure are checked before each completed frame,
 		// so a continuously full frame mailbox cannot starve local End.
 		if end, err := display.Poll(); err != nil {
-			return err
+			return viewed, err
 		} else if end {
-			return nil
+			return viewed, nil
 		}
 		if pointer {
 			if err := dispatchDesktopPointer(pointerView, control, viewer); err != nil {
-				return err
+				return viewed, err
 			}
 		}
 		select {
 		case <-ctx.Done():
-			return nil
+			return viewed, nil
 		case <-firstScreenDeadline:
 			if ctx.Err() != nil {
-				return nil
+				return viewed, nil
 			}
-			return errDesktopFirstScreen
+			return viewed, errDesktopFirstScreen
 		case r := <-result:
 			joined = true
 			// A canceled owner can close its transport before this select
 			// chooses between the simultaneously ready completion channels.
 			mux = r.mux
 			if ctx.Err() != nil {
-				return nil
+				return viewed, nil
 			}
 			if r.err != nil {
-				return r.err
+				return viewed, r.err
 			}
 			if r.mux == nil {
-				return errors.New("viewer transport unavailable")
+				return viewed, errors.New("viewer transport unavailable")
 			}
 			mux = r.mux
 			closed = mux.Closed()
@@ -143,29 +157,30 @@ func runDesktopWindowWithFirstScreenWait(ctx context.Context, display desktopVie
 				}
 			}})
 			if err := display.State("Connected. Waiting for screen. View only. Escape ends."); err != nil {
-				return err
+				return viewed, err
 			}
 		case <-closed:
 			if ctx.Err() != nil {
-				return nil
+				return viewed, nil
 			}
-			return errors.New("desktop viewing ended: host or path closed")
+			return viewed, fmt.Errorf("%w: host or path closed", errDesktopHostEnded)
 		case frame := <-frames:
 			// Cancellation wins over queued content; no retired run can reanimate pixels.
 			if ctx.Err() != nil {
-				return nil
+				return viewed, nil
 			}
 			select {
 			case <-closed:
 				if ctx.Err() != nil {
-					return nil
+					return viewed, nil
 				}
-				return errors.New("desktop viewing ended: host or path closed")
+				return viewed, fmt.Errorf("%w: host or path closed", errDesktopHostEnded)
 			default:
 			}
 			if err := display.Frame(frame); err != nil {
-				return err
+				return viewed, err
 			}
+			viewed = true
 			if firstScreenTimer != nil {
 				firstScreenTimer.Stop()
 				firstScreenDeadline = nil
@@ -173,10 +188,10 @@ func runDesktopWindowWithFirstScreenWait(ctx context.Context, display desktopVie
 		case <-tick.C:
 			end, err := display.Poll()
 			if err != nil {
-				return err
+				return viewed, err
 			}
 			if end {
-				return nil
+				return viewed, nil
 			}
 		}
 	}
@@ -260,18 +275,20 @@ func prepareDesktopView(ctx context.Context, peer string) (*cliSessionAuthorizat
 func sessionBrowse() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	if err := browseDesktopOnce(ctx, client(stateDir), apiBase()); err != nil {
+	if _, err := browseDesktopOnce(ctx, client(stateDir), apiBase()); err != nil {
 		fatal(err.Error())
 	}
 }
 
-func browseDesktopOnce(ctx context.Context, hc *http.Client, base string) error {
+// The viewed result lets the home distinguish a session that actually showed
+// the host's screen from a chooser closed before any request.
+func browseDesktopOnce(ctx context.Context, hc *http.Client, base string) (bool, error) {
 	choice, err := chooseDesktopPeer(ctx, hc, base)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if choice == nil {
-		return nil
+		return false, nil
 	}
 	var display desktopView
 	if choice.Pointer {
@@ -280,13 +297,13 @@ func browseDesktopOnce(ctx context.Context, hc *http.Client, base string) error 
 		display, err = newDesktopView(choice.Peer.Name)
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
-	return runDesktopWindow(ctx, display, func(ctx context.Context) (*session.Mux, error) {
+	return runDesktopWindowWithFirstScreenWait(ctx, display, func(ctx context.Context) (*session.Mux, error) {
 		access, name, err := prepareDesktopChoice(ctx, *choice)
 		if err != nil {
 			return nil, err
 		}
 		return dialSessionTryAuthorizedContext(ctx, access, name)
-	}, choice.Pointer)
+	}, choice.Pointer, 15*time.Second)
 }

@@ -44,8 +44,9 @@ func TestDesktopFirstScreenDeadlineRetiresSilentAdmittedTransport(t *testing.T) 
 	}
 	view := &testDesktopView{}
 	calls := 0
-	err = runDesktopWindowWithFirstScreenWait(context.Background(), view, func(context.Context) (*session.Mux, error) { calls++; return mux, nil }, false, 10*time.Millisecond)
-	if !errors.Is(err, errDesktopFirstScreen) || calls != 1 || !view.closed || view.frames != 0 {
+	var viewed bool
+	viewed, err = runDesktopWindowWithFirstScreenWait(context.Background(), view, func(context.Context) (*session.Mux, error) { calls++; return mux, nil }, false, 10*time.Millisecond)
+	if !errors.Is(err, errDesktopFirstScreen) || calls != 1 || !view.closed || view.frames != 0 || viewed {
 		t.Fatal("silent admitted session outcome", err, calls, view.closed, view.frames)
 	}
 	select {
@@ -66,12 +67,12 @@ func TestDesktopFirstScreenBoundDoesNotTimeOutHostConsent(t *testing.T) {
 	dialEntered := make(chan struct{})
 	timer := time.AfterFunc(30*time.Millisecond, cancel)
 	defer timer.Stop()
-	err := runDesktopWindowWithFirstScreenWait(ctx, view, func(ctx context.Context) (*session.Mux, error) {
+	viewed, err := runDesktopWindowWithFirstScreenWait(ctx, view, func(ctx context.Context) (*session.Mux, error) {
 		close(dialEntered)
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}, false, time.Nanosecond)
-	if err != nil || !view.closed || view.frames != 0 {
+	if err != nil || !view.closed || view.frames != 0 || viewed {
 		t.Fatal("first-screen deadline affected pending consent", err)
 	}
 	<-dialEntered
@@ -162,8 +163,8 @@ func TestDesktopFirstScreenCompletionDisarmsStartupBound(t *testing.T) {
 	active := session.ServeHost(host, &onceScreenCapture{data: jpegData.Bytes()}, nil, 100)
 	defer active.Stop()
 	view := &firstScreenEndView{endAfterFrame: make(chan struct{})}
-	err = runDesktopWindowWithFirstScreenWait(context.Background(), view, func(context.Context) (*session.Mux, error) { return mux, nil }, false, 500*time.Millisecond)
-	if err != nil || view.frames != 1 || !view.closed {
-		t.Fatal("complete unchanged screen expired", err, view.frames, view.closed)
+	viewed, err := runDesktopWindowWithFirstScreenWait(context.Background(), view, func(context.Context) (*session.Mux, error) { return mux, nil }, false, 500*time.Millisecond)
+	if err != nil || view.frames != 1 || !view.closed || !viewed {
+		t.Fatal("complete unchanged screen expired", err, view.frames, view.closed, viewed)
 	}
 }

@@ -148,13 +148,17 @@ func (s *desktopPeerSelection) choice(pointer bool, now time.Time) (desktopPeerC
 
 // Selection never carries authority across a refreshed/replaced peer. The
 // existing dial checks this exact pin again and watches ongoing authorization.
+// The exact selected peer no longer matches current daemon evidence. The
+// wrapped text stays identical for the CLI while the home maps the outcome.
+var errDesktopPeerChanged = errors.New("selected peer changed")
+
 func prepareDesktopChoice(ctx context.Context, choice desktopPeerChoice) (*cliSessionAuthorization, string, error) {
 	access, name, err := prepareDesktopView(ctx, choice.Peer.IPv4)
 	if err != nil {
 		return nil, "", err
 	}
 	if access.peer != choice.Peer {
-		return nil, "", errors.New("selected peer changed; reopen and review current identity")
+		return nil, "", fmt.Errorf("%w; reopen and review current identity", errDesktopPeerChanged)
 	}
 	return access, name, nil
 }
