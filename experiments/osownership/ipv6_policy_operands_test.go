@@ -13,6 +13,9 @@ func ipv6PolicyOperandFixture() SysctlSnapshot {
 	s := SysctlSnapshot{}
 	for _, p := range ipv6PolicyPaths() {
 		s[p] = "0"
+		if strings.HasSuffix(p, "/ra_defrtr_metric") {
+			s[p] = "1"
+		}
 	}
 	return s
 }

@@ -102,6 +102,9 @@ func readPolicySysctlsSource(ctx context.Context, ns *namespaceCustody, raw RawI
 			next, err := unix.Openat(fd, part, flags, 0)
 			unix.Close(fd)
 			if err != nil {
+				if strings.HasPrefix(path, "ipv6/") {
+					return nil, &ipv6OperandReadGap{Path: path, Config: ipv6OperandPathConfig(path), ParentOpened: j == len(parts)-1, FinalLeafMissing: j == len(parts)-1 && err == unix.ENOENT, Cause: err}
+				}
 				return nil, fmt.Errorf("sysctl applicability/read gap %s: %w", path, err)
 			}
 			fd = next

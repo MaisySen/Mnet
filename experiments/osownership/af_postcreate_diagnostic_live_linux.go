@@ -107,7 +107,7 @@ func (s *operation1ResidentSource) observeCreatedOriginalAF(ctx context.Context,
 	if e != nil {
 		return nil, e
 	}
-	policy, e := assessOwnedTUNPolicy(link)
+	policy, e := assessCreationDownPolicy(diagnostic)
 	if e != nil {
 		return nil, e
 	}
@@ -116,7 +116,8 @@ func (s *operation1ResidentSource) observeCreatedOriginalAF(ctx context.Context,
 		return nil, e
 	}
 	good = true
-	// DO NOT bindCreationApplicability, change policy.Resolved or convert. Missing
+	// DO NOT bindCreationApplicability or convert. Creation-DOWN-only resolutions
+	// do not apply to later phases. Missing
 	// phase/profile semantics stay explicit. Snapshot caller still always refuses.
 	return &postcreateAFSourceDiagnostic{before: before, after: after, pass: pass, diagnostic: diagnostic, policy: policy, ipv6Operands: operands, ipv6Rules: rules, ipv4Rules: v4rules}, nil
 }

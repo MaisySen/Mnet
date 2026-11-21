@@ -64,6 +64,9 @@ func parseIPv6PolicyOperands(sys SysctlSnapshot) (*ipv6PolicyOperands, error) {
 		if ipv6UnsignedOperand(path) && (n < 0 || n > 4294967295) {
 			return nil, afPolicy
 		}
+		if !ipv6OperandHandlerRange(path, n) {
+			return nil, afPolicy
+		}
 		out.extras[path] = n
 	}
 	for i, leaf := range ipv6PolicyLeaves {
@@ -179,7 +182,7 @@ func ipv6ConsumerRules(o *ipv6PolicyOperands) []ipv6ConsumerAssessment {
 }
 
 func ipv6UnsignedOperand(path string) bool {
-	for _, leaf := range []string{"ra_defrtr_metric", "ioam6_id", "ioam6_id_wide", "ioam6_enabled", "ndisc_evict_nocarrier", "ra_honor_pio_life", "ra_honor_pio_pflag"} {
+	for _, leaf := range []string{"addr_gen_mode", "force_forwarding", "ra_defrtr_metric", "ioam6_id", "ioam6_id_wide", "ioam6_enabled", "ndisc_evict_nocarrier", "ra_honor_pio_life", "ra_honor_pio_pflag"} {
 		if strings.HasSuffix(path, "/"+leaf) {
 			return true
 		}
@@ -293,4 +296,25 @@ func assessIPv6ConsumerOperands(l LinkRecord, o *ipv6PolicyOperands) ([]ipv6Cons
 		}
 	}
 	return out, nil
+}
+
+// Narrow bounds that the reviewed unsigned/minmax handlers actually enforce.
+// Signed proc_dointvec controls remain signed, not blanket boolean-normalized.
+func ipv6OperandHandlerRange(path string, n int64) bool {
+	leaf := path[strings.LastIndex(path, "/")+1:]
+	switch leaf {
+	case "addr_gen_mode":
+		return n >= 0 && n <= 3
+	case "force_forwarding", "ioam6_enabled", "ndisc_evict_nocarrier", "ra_honor_pio_life", "ra_honor_pio_pflag":
+		return n >= 0 && n <= 1
+	case "ioam6_id":
+		return n >= 0 && n <= 65535
+	case "ra_defrtr_metric":
+		return n >= 1 && n <= 4294967295
+	case "accept_untracked_na":
+		return n >= 0 && n <= 2
+	case "ndisc_tclass":
+		return n >= 0 && n <= 255
+	}
+	return true
 }
