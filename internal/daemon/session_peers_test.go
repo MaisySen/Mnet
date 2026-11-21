@@ -14,6 +14,7 @@ func TestSessionPeersRequireCurrentUpAndUnexpiredApproval(t *testing.T) {
 	expired := time.Now().Add(-time.Minute)
 	active := netmap.Node{Name: "viewer", IPv4: "100.64.0.2", PubKey: "fixture-key", Approved: true}
 	d := &Daemon{status: "up", lastMap: &netmap.Map{Self: netmap.Node{Approved: true}, Peers: []netmap.Node{active, {Name: "pending", Approved: false}, {Name: "expired", Approved: true, KeyExpiry: &expired}}}}
+	attachActualTestOwner(t, d)
 	peers := d.SessionPeers()
 	if len(peers) != 1 || peers[0].Name != active.Name || peers[0].PublicKey != active.PubKey {
 		t.Fatal("did not isolate approved identity")
@@ -41,12 +42,14 @@ func TestSessionPeersDenyEveryNonUpStatusAndUnapprovedSelf(t *testing.T) {
 	for _, status := range []string{"", "down", "starting", "waiting-approval", "key-expired", "error"} {
 		t.Run(status, func(t *testing.T) {
 			d := &Daemon{status: status, lastMap: &netmap.Map{Self: netmap.Node{Approved: true}, Peers: []netmap.Node{{Approved: true, Name: "viewer", IPv4: "100.64.0.2", PubKey: "fixture"}}}}
+			attachActualTestOwner(t, d)
 			if len(d.SessionPeers()) != 0 {
 				t.Fatal("non-up state exposed admission authority")
 			}
 		})
 	}
 	d := &Daemon{status: "up", lastMap: &netmap.Map{Self: netmap.Node{Approved: false}, Peers: []netmap.Node{{Approved: true, Name: "viewer", IPv4: "100.64.0.2", PubKey: "fixture"}}}}
+	attachActualTestOwner(t, d)
 	if len(d.SessionPeers()) != 0 {
 		t.Fatal("unapproved self exposed admission authority")
 	}
@@ -56,6 +59,7 @@ func TestSessionPeersSnapshotDoesNotReauthorizeRemovedOrExpiredPeer(t *testing.T
 	expired := time.Now().Add(-time.Second)
 	future := time.Now().Add(time.Hour)
 	d := &Daemon{status: "up", lastMap: &netmap.Map{Self: netmap.Node{Approved: true}, Peers: []netmap.Node{{Approved: true, Name: "viewer", IPv4: "100.64.0.2", PubKey: "fixture", KeyExpiry: &future}}}}
+	attachActualTestOwner(t, d)
 	old := d.SessionPeers()
 	if len(old) != 1 {
 		t.Fatal("active peer missing")
@@ -81,6 +85,7 @@ func TestSessionEvidenceLocalCapabilityAndCurrentExpiry(t *testing.T) {
 		{Name: "expired", Approved: true, KeyExpiry: &expired},
 		{Name: "pending", Approved: false},
 	}}}
+	attachActualTestOwner(t, d)
 	handler := localapi.RequireToken("fixture-local-capability", http.HandlerFunc(d.serveSessionPeers))
 	for _, tc := range []struct {
 		name, token, origin, method string

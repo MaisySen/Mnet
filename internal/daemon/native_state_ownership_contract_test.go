@@ -1,13 +1,11 @@
-//go:build native_state_ownership_contract
-
 package daemon
 
 import (
 	"testing"
 )
 
-// Desired actual native owner contracts. Opt-in while prerequisites are being
-// implemented. These exercise existing APIs, not an alternate fixture journal.
+// Actual native owner contracts, promoted from the initially failing opt-in
+// checkpoint. These exercise existing APIs, not an alternate fixture journal.
 func TestNativeStateContractDaemonOwnsEvenAbsentFile(t *testing.T) {
 	dir := t.TempDir()
 	first, err := New(Config{StateDir: dir})

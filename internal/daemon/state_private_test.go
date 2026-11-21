@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -42,7 +43,7 @@ func TestPrivateStateAtomicRoundTrip(t *testing.T) {
 		t.Fatalf("roundtrip: %v", err)
 	}
 	entries, err := os.ReadDir(dir)
-	if err != nil || len(entries) != 1 {
+	if err != nil || len(entries) != 2 {
 		t.Fatalf("temporary files: %v %v", entries, err)
 	}
 }
@@ -146,7 +147,7 @@ func TestIdentityGenerationFailedSaveRollsBackAndRetries(t *testing.T) {
 		t.Fatal("retry did not publish its identity")
 	}
 	entries, err := os.ReadDir(dir)
-	if err != nil || len(entries) != 1 {
+	if err != nil || len(entries) != 2 {
 		t.Fatal("generation retry leaked temporary state")
 	}
 }
@@ -181,6 +182,7 @@ func TestRoutingFailedSaveRestoresLiveAndDiskState(t *testing.T) {
 	if err := d.SetRouting(false, []string{"10.3.0.0/24"}, ""); err != nil {
 		t.Fatal(err)
 	}
+	d.Close()
 	loaded, err := LoadState(dir)
 	if err != nil || len(loaded.AdvertiseRoutes) != 1 || loaded.AdvertiseRoutes[0] != "10.3.0.0/24" {
 		t.Fatal("routing retry failed", err)
@@ -253,7 +255,11 @@ func TestStateRejectsIncompleteEnrollmentWithoutRepair(t *testing.T) {
 				broken.Network = ""
 			}
 			dir := t.TempDir()
-			if err := broken.Save(dir); err != nil {
+			raw, err := json.Marshal(broken)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(statePath(dir), raw, 0600); err != nil {
 				t.Fatal(err)
 			}
 			before, err := os.ReadFile(statePath(dir))
@@ -276,6 +282,9 @@ func TestStateRejectsIncompleteEnrollmentWithoutRepair(t *testing.T) {
 		})
 	}
 	dir := t.TempDir()
+	valid.revisionPath = ""
+	valid.revisionExists = false
+	valid.revision = [32]byte{}
 	if err := valid.Save(dir); err != nil {
 		t.Fatal(err)
 	}

@@ -14,6 +14,7 @@ func TestHealthyRelayStillRetriesDirectCandidate(t *testing.T) {
 	key := pubKeyOf(t, 0x51)
 	st := &peerTrack{node: netmap.Node{PubKey: key, Endpoints: []string{"198.18.10.3:12345"}}, onRelay: true, lastSwitch: now.Add(-time.Minute)}
 	d := &Daemon{peers: map[string]*peerTrack{key: st}}
+	attachActualTestOwner(t, d)
 	stats := map[string]*peerStats{key: {endpoint: bind.RelayPrefix + key, handshake: now.Unix()}}
 	if !d.selectPaths(stats, now) || st.onRelay {
 		t.Fatal("healthy relay pinned peer forever despite available direct candidate")
@@ -44,6 +45,7 @@ func TestPathSelectionKeepsHealthyDirectAndRelayWithoutCandidate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			st := &peerTrack{node: netmap.Node{PubKey: key, Endpoints: tc.candidates}, onRelay: true}
 			d := &Daemon{peers: map[string]*peerTrack{key: st}}
+			attachActualTestOwner(t, d)
 			changed := d.selectPaths(map[string]*peerStats{key: {endpoint: tc.endpoint, handshake: now.Unix()}}, now)
 			if st.onRelay != tc.wantRelay || changed == tc.wantRelay {
 				t.Fatal("incorrect healthy-path decision")
@@ -73,6 +75,7 @@ func TestRelayRoamingDoesNotCountAsDirectProbeSuccess(t *testing.T) {
 	key := pubKeyOf(t, 0x53)
 	st := &peerTrack{node: netmap.Node{PubKey: key, Endpoints: []string{"198.18.10.3:12345", "198.18.10.4:12345"}}}
 	d := &Daemon{peers: map[string]*peerTrack{key: st}}
+	attachActualTestOwner(t, d)
 	stats := map[string]*peerStats{key: {endpoint: bind.RelayPrefix + key, handshake: now.Unix()}}
 	if !d.selectPaths(stats, now) || !st.probe || st.onRelay {
 		t.Fatal("did not start authenticated direct probe")

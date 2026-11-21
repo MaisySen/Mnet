@@ -48,12 +48,15 @@ type Config struct {
 
 // Daemon is the running node.
 type Daemon struct {
-	cfg         Config
-	state       *State
-	lifecycleMu sync.Mutex
-	loops       sync.WaitGroup
-	applyMu     sync.Mutex // serialize peer replacement and path refresh
-	deviceMu    sync.RWMutex
+	cfg               Config
+	state             *State
+	stateOwner        *nativeStateOwner
+	closeOnce         sync.Once
+	stateFaultHandled bool
+	lifecycleMu       sync.Mutex
+	loops             sync.WaitGroup
+	applyMu           sync.Mutex // serialize peer replacement and path refresh
+	deviceMu          sync.RWMutex
 
 	mu             sync.Mutex
 	status         string // down, preparing, joining, waiting-approval, up, key-expired
@@ -100,13 +103,14 @@ func New(cfg Config) (*Daemon, error) {
 			return nil, err
 		}
 	}
-	st, err := LoadState(cfg.StateDir)
+	owner, err := openStateOwner(cfg.StateDir)
 	if err != nil {
 		return nil, err
 	}
 	return &Daemon{
 		cfg:        cfg,
-		state:      st,
+		state:      func() *State { s := cloneState(owner.saved); return &s }(),
+		stateOwner: owner,
 		status:     "down",
 		mapChanged: make(chan struct{}, 1),
 		stunTx:     map[stun.TxID]time.Time{},
@@ -118,6 +122,12 @@ func New(cfg Config) (*Daemon, error) {
 func (d *Daemon) State() State {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if !d.closed && d.stateHealthLocked() != nil {
+		return State{}
+	}
+	if d.stateOwner != nil && d.stateOwner.fault {
+		return State{}
+	}
 	snapshot := *d.state
 	snapshot.AdvertiseRoutes = append([]string(nil), d.state.AdvertiseRoutes...)
 	return snapshot
@@ -130,7 +140,7 @@ func (d *Daemon) State() State {
 func (d *Daemon) SetRouting(advertiseExit bool, routes []string, useExit string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.closed {
+	if err := d.stateHealthLocked(); err != nil {
 		return fmt.Errorf("node is closed")
 	}
 	if d.status != "down" {
@@ -140,7 +150,7 @@ func (d *Daemon) SetRouting(advertiseExit bool, routes []string, useExit string)
 	d.state.ExitNode = advertiseExit
 	d.state.AdvertiseRoutes = append([]string(nil), routes...)
 	d.state.UseExitNode = useExit
-	if err := d.state.Save(d.cfg.StateDir); err != nil {
+	if err := d.saveStateLocked(); err != nil {
 		d.state.ExitNode, d.state.AdvertiseRoutes, d.state.UseExitNode = previousExit, previousRoutes, previousUse
 		return err
 	}
@@ -163,7 +173,7 @@ func (d *Daemon) upLocked(server, network, nodeName, authKey string, generation 
 		d.mu.Unlock()
 		return nil
 	}
-	if d.closed {
+	if err := d.stateHealthLocked(); err != nil {
 		d.mu.Unlock()
 		return fmt.Errorf("node is closed")
 	}
@@ -206,7 +216,7 @@ func (d *Daemon) upLocked(server, network, nodeName, authKey string, generation 
 		if err := d.state.validateJoinTarget(server, network); err != nil {
 			return err
 		}
-		if err := d.state.EnsureKey(d.cfg.StateDir); err != nil {
+		if err := d.ensureStateKeyLocked(); err != nil {
 			return err
 		}
 		previousServer, previousNetwork, previousName := d.state.Server, d.state.Network, d.state.NodeName
@@ -235,7 +245,7 @@ func (d *Daemon) upLocked(server, network, nodeName, authKey string, generation 
 			}
 			d.state.NodeName = host
 		}
-		if err := d.state.Save(d.cfg.StateDir); err != nil {
+		if err := d.saveStateLocked(); err != nil {
 			return err
 		}
 
@@ -358,14 +368,21 @@ func (d *Daemon) upLocked(server, network, nodeName, authKey string, generation 
 // join registers and waits for approval when needed.
 // postJoin sends one join request.
 func (d *Daemon) postJoin(ctx context.Context, authKey string) (*netmap.JoinResponse, error) {
-	cc := &controlclient.Client{Base: d.state.Server, NodeID: d.state.NodeID, Token: d.state.NodeToken}
+	d.mu.Lock()
+	if err := d.stateHealthLocked(); err != nil {
+		d.mu.Unlock()
+		return nil, err
+	}
+	saved := cloneState(*d.state)
+	d.mu.Unlock()
+	cc := &controlclient.Client{Base: saved.Server, NodeID: saved.NodeID, Token: saved.NodeToken}
 	return cc.Join(ctx, netmap.JoinRequest{
-		Network:  d.state.Network,
-		Name:     d.state.NodeName,
-		PubKey:   d.state.PublicKey,
+		Network:  saved.Network,
+		Name:     saved.NodeName,
+		PubKey:   saved.PublicKey,
 		AuthKey:  authKey,
-		ExitNode: d.state.ExitNode,
-		Routes:   d.state.AdvertiseRoutes,
+		ExitNode: saved.ExitNode,
+		Routes:   saved.AdvertiseRoutes,
 	})
 }
 
@@ -390,12 +407,16 @@ func (d *Daemon) joinLocked(ctx context.Context, authKey string) error {
 		return fmt.Errorf("join: %w", err)
 	}
 	d.mu.Lock()
+	if err := d.stateHealthLocked(); err != nil {
+		d.mu.Unlock()
+		return err
+	}
 	d.state.NodeID = resp.NodeID
 	d.state.NodeToken = resp.NodeToken
 	if authKey != "" {
 		d.state.AuthKey = authKey
 	}
-	if err := d.state.Save(d.cfg.StateDir); err != nil {
+	if err := d.saveNativeStateLocked(false); err != nil {
 		d.mu.Unlock()
 		return fmt.Errorf("enrollment accepted but saving its credential failed; fix local state storage and retry before restarting: %w", err)
 	}
@@ -434,6 +455,9 @@ func (d *Daemon) joinLocked(ctx context.Context, authKey string) error {
 func (d *Daemon) client() *controlclient.Client {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.stateHealthLocked() != nil {
+		return nil
+	}
 	return d.cc
 }
 
@@ -442,7 +466,14 @@ func (d *Daemon) client() *controlclient.Client {
 func (d *Daemon) rejoin(ctx context.Context) {
 	d.joinMu.Lock()
 	defer d.joinMu.Unlock()
-	if d.state.AuthKey == "" {
+	d.mu.Lock()
+	if d.stateHealthLocked() != nil {
+		d.mu.Unlock()
+		return
+	}
+	authKey := d.state.AuthKey
+	d.mu.Unlock()
+	if authKey == "" {
 		log.Printf("mnetd: control plane no longer knows this node and no auth key is saved; re-run `mnetd -up -auth-key ...`")
 		waitContext(ctx, 30*time.Second)
 		return
@@ -450,13 +481,19 @@ func (d *Daemon) rejoin(ctx context.Context) {
 	log.Printf("mnetd: control plane no longer knows this node; re-joining")
 	// Keep the credential for an expired but still-known identity.
 	// A deleted identity can enroll anew using the saved valid auth key.
-	if err := d.joinLocked(ctx, d.state.AuthKey); err != nil {
+	if err := d.joinLocked(ctx, authKey); err != nil {
 		log.Printf("mnetd: rejoin: %v", err)
 		waitContext(ctx, 10*time.Second)
 	}
 }
 
 func (d *Daemon) startDevice() error {
+	d.mu.Lock()
+	healthErr := d.stateHealthLocked()
+	d.mu.Unlock()
+	if healthErr != nil {
+		return healthErr
+	}
 	started := false
 	defer func() {
 		if !started {
@@ -557,10 +594,17 @@ func (d *Daemon) stopDevice() {
 // tunnel injection cannot revive it. Mark first so a concurrent startup either
 // sees closed before publishing cancellation or is canceled by Down.
 func (d *Daemon) Close() {
-	d.mu.Lock()
-	d.closed = true
-	d.mu.Unlock()
-	d.Down()
+	d.closeOnce.Do(func() {
+		d.mu.Lock()
+		d.closed = true
+		d.mu.Unlock()
+		d.Down()
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		if d.stateOwner != nil {
+			d.stateOwner.lease.Close()
+		}
+	})
 }
 
 // Down tears the mesh down.
@@ -588,7 +632,11 @@ func (d *Daemon) Down() {
 
 func (d *Daemon) setDown() {
 	d.mu.Lock()
-	d.status = "down"
+	if d.stateOwner != nil && d.stateOwner.fault {
+		d.status = "state-unavailable"
+	} else {
+		d.status = "down"
+	}
 	d.cancel = nil
 	d.approvalURL = ""
 	d.mu.Unlock()
@@ -620,5 +668,8 @@ func waitContext(ctx context.Context, duration time.Duration) {
 func (d *Daemon) currentMap() *netmap.Map {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.stateHealthLocked() != nil {
+		return nil
+	}
 	return d.lastMap
 }

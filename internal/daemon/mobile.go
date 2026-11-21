@@ -22,7 +22,7 @@ func (d *Daemon) SetTUN(t tun.Device) error {
 	defer d.lifecycleMu.Unlock()
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.closed {
+	if err := d.stateHealthLocked(); err != nil {
 		return fmt.Errorf("node is closed")
 	}
 	if d.status != "down" {
@@ -46,7 +46,7 @@ func (d *Daemon) Prepare(server, network, nodeName, authKey string) (string, err
 	d.lifecycleMu.Lock()
 	defer d.lifecycleMu.Unlock()
 	d.mu.Lock()
-	if d.closed {
+	if err := d.stateHealthLocked(); err != nil {
 		d.mu.Unlock()
 		return "", fmt.Errorf("node is closed")
 	}
@@ -68,7 +68,7 @@ func (d *Daemon) Prepare(server, network, nodeName, authKey string) (string, err
 		if err := d.state.validateJoinTarget(server, network); err != nil {
 			return err
 		}
-		if err := d.state.EnsureKey(d.cfg.StateDir); err != nil {
+		if err := d.ensureStateKeyLocked(); err != nil {
 			return err
 		}
 		previousServer, previousNetwork, previousName := d.state.Server, d.state.Network, d.state.NodeName
@@ -90,7 +90,7 @@ func (d *Daemon) Prepare(server, network, nodeName, authKey string) (string, err
 		if d.state.Server == "" || d.state.Network == "" {
 			return fmt.Errorf("need server and network for the first join")
 		}
-		if err := d.state.Save(d.cfg.StateDir); err != nil {
+		if err := d.saveStateLocked(); err != nil {
 			return err
 		}
 

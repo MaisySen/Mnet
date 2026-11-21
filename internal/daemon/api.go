@@ -42,6 +42,9 @@ func (d *Daemon) Status() *Status {
 	// can wait for completed removal yet return its earlier cached up state.
 	d.applyMu.Lock()
 	d.mu.Lock()
+	if d.stateHealthLocked() != nil && d.stateOwner != nil && d.stateOwner.fault {
+		d.status = "state-unavailable"
+	}
 	st := &Status{
 		Status:      d.status,
 		Interface:   d.interfaceName,

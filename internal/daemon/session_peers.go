@@ -19,6 +19,9 @@ type SessionPeer struct{ Name, IPv4, PublicKey string }
 func (d *Daemon) SessionPeers() []SessionPeer {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.stateHealthLocked() != nil {
+		return nil
+	}
 	if d.status != "up" || d.lastMap == nil {
 		return nil
 	}

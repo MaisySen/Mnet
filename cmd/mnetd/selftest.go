@@ -38,6 +38,7 @@ func selfTestDaemon(stateDir string, verbose bool) (*daemon.Daemon, *tuntest.Cha
 		ManagedIface: false,
 	})
 	if err != nil {
+		ct.TUN().Close()
 		return nil, nil, nil, err
 	}
 	return d, ct, got, nil

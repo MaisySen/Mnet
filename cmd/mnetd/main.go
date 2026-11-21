@@ -178,11 +178,8 @@ func runDaemon(o options, stop <-chan struct{}) error {
 		return nil
 	}
 
-	releaseState, err := lockDaemonState(o.stateDir)
-	if err != nil {
-		return err
-	}
-	defer releaseState()
+	// daemon.New owns the same stable daemon.lock through Close on every path.
+	var err error
 
 	var d *daemon.Daemon
 	var got chan []byte

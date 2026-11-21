@@ -34,12 +34,14 @@ func testDaemon(t *testing.T) *Daemon {
 		t.Fatal(err)
 	}
 	t.Cleanup(dev.Close)
-	return &Daemon{
+	d := &Daemon{
 		dev:    dev,
 		state:  &State{},
 		peers:  map[string]*peerTrack{},
 		stunTx: map[stun.TxID]time.Time{},
 	}
+	attachActualTestOwner(t, d)
+	return d
 }
 
 func pubKeyOf(t *testing.T, seed byte) string {

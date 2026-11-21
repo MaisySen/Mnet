@@ -71,6 +71,7 @@ func TestDownRoutingRemainsEditable(t *testing.T) {
 	if err := d.SetRouting(false, nil, ""); err != nil {
 		t.Fatal(err)
 	}
+	d.Close()
 	saved, err := LoadState(dir)
 	if err != nil {
 		t.Fatal(err)

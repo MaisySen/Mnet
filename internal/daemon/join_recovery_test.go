@@ -97,11 +97,13 @@ func TestJoinAcceptedCredentialSaveRetry(t *testing.T) {
 	if err := d.join(context.Background(), ""); err != nil {
 		t.Fatal(err)
 	}
+	clientReady := d.client() != nil
+	d.Close()
 	loaded, err := LoadState(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if requests.Load() != 2 || d.client() == nil || !reflect.DeepEqual(loaded, d.state) || loaded.PrivateKey != s.PrivateKey {
+	if requests.Load() != 2 || !clientReady || !reflect.DeepEqual(loaded, d.state) || loaded.PrivateKey != s.PrivateKey {
 		t.Fatal("retry did not durably publish the accepted identity")
 	}
 }

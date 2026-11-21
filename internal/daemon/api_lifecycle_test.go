@@ -207,6 +207,7 @@ func TestLocalAPICanResetSavedRouting(t *testing.T) {
 	if !strings.Contains(d.Status().LastError, "need --server") {
 		t.Fatal("reset did not reach ordinary mesh-only Up validation")
 	}
+	d.Close()
 	saved, err := LoadState(dir)
 	if err != nil {
 		t.Fatal(err)

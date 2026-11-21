@@ -4,26 +4,27 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
-	"fintex.au/mnet/internal/privatefs"
 	"golang.org/x/crypto/curve25519"
 )
 
 // State is everything the daemon persists between runs.
 type State struct {
-	PrivateKey string `json:"private_key"` // WireGuard private key, base64
-	PublicKey  string `json:"public_key"`
-	Server     string `json:"server"`  // control plane base URL
-	Network    string `json:"network"` // network name or ID
-	NodeID     string `json:"node_id"`
-	NodeToken  string `json:"node_token"`
-	NodeName   string `json:"node_name"`
+	revision       [32]byte
+	revisionPath   string
+	revisionExists bool
+	uncertain      bool
+	PrivateKey     string `json:"private_key"` // WireGuard private key, base64
+	PublicKey      string `json:"public_key"`
+	Server         string `json:"server"`  // control plane base URL
+	Network        string `json:"network"` // network name or ID
+	NodeID         string `json:"node_id"`
+	NodeToken      string `json:"node_token"`
+	NodeName       string `json:"node_name"`
 	// AuthKey is the pre-auth key used at join, kept so the node can
 	// re-join by itself when the control plane forgets it (state wipe
 	// on the server). Same sensitivity as the private key beside it.
@@ -38,51 +39,64 @@ func statePath(dir string) string { return filepath.Join(dir, "state.json") }
 
 // LoadState reads the state file, or returns an empty state.
 func LoadState(dir string) (*State, error) {
-	if _, err := os.Lstat(statePath(dir)); err == nil {
-		if err = privatefs.EnsureDir(dir); err != nil {
-			return nil, err
-		}
-		if err = privatefs.ProtectFile(statePath(dir)); err != nil {
-			return nil, err
-		}
-	} else if !os.IsNotExist(err) {
-		return nil, err
-	}
-	b, err := os.ReadFile(statePath(dir))
-	if errors.Is(err, os.ErrNotExist) {
-		return &State{}, nil
-	}
+	owner, err := openStateOwner(dir)
 	if err != nil {
 		return nil, err
 	}
-	trimmed := bytes.TrimSpace(b)
-	if len(trimmed) == 0 || trimmed[0] != '{' {
-		return nil, fmt.Errorf("identity state must be an object; file was not changed")
-	}
-	var s State
-	if err := json.Unmarshal(b, &s); err != nil {
-		return nil, err
-	}
-	if err := s.validateIdentity(); err != nil {
-		return nil, err
-	}
+	defer owner.lease.Close()
+	s := owner.saved
 	return &s, nil
 }
 
-// Save writes the state file, owner readable only.
+// Save reacquires the same stable daemon.lock and refuses stale detached images.
+// A fresh State can create an absent file only. It never replaces an existing
+// identity without a matching loaded byte revision. Uncertain instances refuse.
 func (s *State) Save(dir string) error {
-	if err := privatefs.EnsureDir(dir); err != nil {
-		return err
+	if s.uncertain {
+		return ErrStateUncertain
 	}
-	b, err := json.MarshalIndent(s, "", "  ")
+	owner, err := openStateOwner(dir)
 	if err != nil {
 		return err
 	}
-	return privatefs.WriteFile(statePath(dir), b)
+	defer owner.lease.Close()
+	if s.revisionPath != "" && s.revisionPath != owner.path {
+		return ErrStateStale
+	}
+	if s.revisionExists != owner.saved.revisionExists || (s.revisionExists && s.revision != owner.saved.revision) {
+		return ErrStateStale
+	}
+	if err := owner.save(s); err != nil {
+		if owner.fault {
+			s.uncertain = true
+		}
+		return err
+	}
+	return nil
 }
 
 // EnsureKey generates and saves a WireGuard identity if we have none.
 func (s *State) EnsureKey(dir string) error {
+	if s.uncertain {
+		return ErrStateUncertain
+	}
+	if err := s.validateIdentity(); err != nil {
+		return err
+	}
+	if s.PrivateKey != "" {
+		owner, err := openStateOwner(dir)
+		if err != nil {
+			return err
+		}
+		defer owner.lease.Close()
+		if !s.revisionExists || s.revisionPath != owner.path || s.revision != owner.saved.revision || !owner.saved.revisionExists || s.PrivateKey != owner.saved.PrivateKey || s.PublicKey != owner.saved.PublicKey {
+			return ErrStateStale
+		}
+		return nil
+	}
+	return s.ensureKey(func() error { return s.Save(dir) })
+}
+func (s *State) ensureKey(save func() error) error {
 	if err := s.validateIdentity(); err != nil {
 		return err
 	}
@@ -101,11 +115,13 @@ func (s *State) EnsureKey(dir string) error {
 	}
 	s.PrivateKey = base64.StdEncoding.EncodeToString(priv[:])
 	s.PublicKey = base64.StdEncoding.EncodeToString(pub)
-	if err := s.Save(dir); err != nil {
+	if err := save(); err != nil {
 		// A retry must not mistake an unpublished in-memory identity for a
 		// durable saved pair and skip the write after disk failure.
-		s.PrivateKey = ""
-		s.PublicKey = ""
+		if !errors.Is(err, ErrStateUncertain) {
+			s.PrivateKey = ""
+			s.PublicKey = ""
+		}
 		return err
 	}
 	return nil
@@ -153,3 +169,6 @@ func (s *State) validateJoinTarget(server, network string) error {
 	}
 	return nil
 }
+
+func (State) String() string   { return "[private native State]" }
+func (State) GoString() string { return "[private native State]" }

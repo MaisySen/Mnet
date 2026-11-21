@@ -82,11 +82,27 @@ func (Journal) GoString() string { return "[private native enrollment journal]" 
 // folder. It refuses malformed existing state without changing its contents.
 // Existing daemon key and process owner remain separately unimplemented gates.
 func Open(dir string) (*Journal, error) {
-	if err := privatefs.EnsureDir(dir); err != nil {
+	if dir == "" {
+		return nil, ErrInvalid
+	}
+	if info, err := os.Lstat(dir); err == nil {
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return nil, ErrInvalid
+		}
+	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
+	// Let the owner sync newly created parent entries before privatefs protection.
 	owner, path, err := stateowner.Acquire(dir + string(os.PathSeparator) + "enrollment-pending-v1.json")
 	if err != nil {
+		return nil, err
+	}
+	if err := privatefs.EnsureDir(dir); err != nil {
+		owner.Close()
+		return nil, err
+	}
+	if err := stateowner.SyncDir(owner.Parent()); err != nil {
+		owner.Close()
 		return nil, err
 	}
 	ok := false

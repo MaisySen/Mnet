@@ -30,6 +30,7 @@ func bindingReply(id stun.TxID) []byte {
 
 func TestSilentStunProbesExpireWithoutResponses(t *testing.T) {
 	d := &Daemon{stunTx: map[stun.TxID]time.Time{}}
+	attachActualTestOwner(t, d)
 	now := time.Unix(10000, 0)
 	for n := uint64(0); n < 10000; n++ {
 		d.startStunProbe(probeID(n), now.Add(time.Duration(n)*45*time.Second))
@@ -47,6 +48,7 @@ func TestStunExpiryPreservesInFlightBoundary(t *testing.T) {
 		boundary: now.Add(-10 * time.Second),
 		recent:   now.Add(-time.Second),
 	}, stunResult: "stale"}
+	attachActualTestOwner(t, d)
 	d.startStunProbe(next, now)
 	if _, ok := d.stunTx[expired]; ok {
 		t.Fatal("expired probe retained")
@@ -65,6 +67,7 @@ func TestStunOnlyAcceptsMatchingUnexpiredResponse(t *testing.T) {
 	now := time.Now()
 	expired, valid := probeID(1), probeID(2)
 	d := &Daemon{stunTx: map[stun.TxID]time.Time{expired: now.Add(-11 * time.Second), valid: now}}
+	attachActualTestOwner(t, d)
 	d.onStun(bindingReply(expired))
 	if d.stunResult != "" {
 		t.Fatal("expired response accepted")
@@ -85,6 +88,7 @@ func TestStunOnlyAcceptsMatchingUnexpiredResponse(t *testing.T) {
 
 func TestStunProbeAndResponseRace(t *testing.T) {
 	d := &Daemon{stunTx: map[stun.TxID]time.Time{}}
+	attachActualTestOwner(t, d)
 	var workers sync.WaitGroup
 	for worker := uint64(0); worker < 4; worker++ {
 		workers.Add(1)

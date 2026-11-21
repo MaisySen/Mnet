@@ -15,13 +15,13 @@ func (d *Daemon) PrepareIdentity() (string, error) {
 	defer d.lifecycleMu.Unlock()
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.closed {
+	if err := d.stateHealthLocked(); err != nil {
 		return "", errors.New("daemon is closed")
 	}
 	if d.state.PrivateKey == "" && d.status != "down" {
 		return "", errors.New("identity preparation requires a stopped daemon")
 	}
-	if err := d.state.EnsureKey(d.cfg.StateDir); err != nil {
+	if err := d.ensureStateKeyLocked(); err != nil {
 		return "", errors.New("local identity is unavailable; existing identity was not replaced")
 	}
 	return d.state.PublicKey, nil

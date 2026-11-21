@@ -58,6 +58,12 @@ func newProofNodeWithTUN(dir, sub, server, network, name, key string, verbose bo
 	if err != nil {
 		return nil, err
 	}
+	ok := false
+	defer func() {
+		if !ok {
+			d.Close()
+		}
+	}()
 	ipStr, err := d.Prepare(server, network, name, key)
 	if err != nil {
 		return nil, fmt.Errorf("%s prepare: %w", name, err)
@@ -74,6 +80,7 @@ func newProofNodeWithTUN(dir, sub, server, network, name, key string, verbose bo
 		dev = wrap(dev)
 	}
 	if err := d.SetTUN(dev); err != nil {
+		dev.Close()
 		return nil, err
 	}
 	if err := d.Up(server, network, name, key); err != nil {
@@ -87,6 +94,7 @@ func newProofNodeWithTUN(dir, sub, server, network, name, key string, verbose bo
 		time.Sleep(250 * time.Millisecond)
 	}
 	log.Printf("session-proof: %s up at %s", name, ip)
+	ok = true
 	return &proofNodeT{d: d, net: tnet, ip: ip}, nil
 }
 
@@ -129,14 +137,14 @@ func runSessionProof(server, network, authKey, dir string, verbose bool) error {
 	if err != nil {
 		return fail("host node: %v", err)
 	}
-	defer host.d.Down()
+	defer host.d.Close()
 	res.HostIP = host.ip.String()
 
 	view, err := newProofNode(dir, "view", server, network, "proof-viewer", authKey, verbose)
 	if err != nil {
 		return fail("viewer node: %v", err)
 	}
-	defer view.d.Down()
+	defer view.d.Close()
 	res.ViewerIP = view.ip.String()
 
 	// Host side: one session on the mesh address, real capture and

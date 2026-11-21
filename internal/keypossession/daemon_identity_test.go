@@ -60,6 +60,7 @@ func TestActualPreparedDaemonIdentityAgreesWithoutEnrollment(t *testing.T) {
 	if d.Status().Status != "down" || after.Server != "" || after.Network != "" || after.NodeID != "" || after.NodeToken != "" || after.AuthKey != "" {
 		t.Fatal("proof enrolled or started a network")
 	}
+	d.Close() // independent snapshot must acquire the same native owner
 	reloaded, err := daemon.LoadState(dir)
 	if err != nil || reloaded.PublicKey != public || reloaded.PrivateKey != state.PrivateKey {
 		t.Fatal("durable identity changed")

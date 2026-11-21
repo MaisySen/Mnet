@@ -68,6 +68,12 @@ func (d *Daemon) refreshPaths() {
 }
 
 func (d *Daemon) applyMapLocked(m *netmap.Map) {
+	d.mu.Lock()
+	healthErr := d.stateHealthLocked()
+	d.mu.Unlock()
+	if healthErr != nil {
+		return
+	}
 	m = unexpiredMap(m, time.Now())
 	d.deviceMu.RLock()
 	defer d.deviceMu.RUnlock()
@@ -271,7 +277,11 @@ func (d *Daemon) mapLoop(ctx context.Context) {
 		if m := d.currentMap(); m != nil {
 			since = m.Version
 		}
-		m, err := d.client().WaitMap(ctx, since)
+		client := d.client()
+		if client == nil {
+			return
+		}
+		m, err := client.WaitMap(ctx, since)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -366,7 +376,11 @@ func (d *Daemon) discoverEndpoints(ctx context.Context) {
 	for e := range eps {
 		out = append(out, e)
 	}
-	if err := d.client().ReportEndpoints(ctx, out); err != nil {
+	client := d.client()
+	if client == nil {
+		return
+	}
+	if err := client.ReportEndpoints(ctx, out); err != nil {
 		d.setErr(fmt.Errorf("report endpoints: %w", err))
 	}
 }
@@ -503,7 +517,11 @@ func (d *Daemon) relayLoop(ctx context.Context) {
 			waitContext(ctx, time.Second)
 			continue
 		}
-		r, err := d.client().DialRelay(ctx, d.state.PublicKey, d.bind.Inject)
+		client := d.client()
+		if client == nil {
+			return
+		}
+		r, err := client.DialRelay(ctx, d.state.PublicKey, d.bind.Inject)
 		if err != nil {
 			if errors.Is(err, controlclient.ErrForbidden) {
 				d.denyMap(&netmap.Map{})
