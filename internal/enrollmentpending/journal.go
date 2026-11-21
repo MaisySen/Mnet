@@ -75,6 +75,7 @@ type journal struct {
 	fault    bool
 	reopened bool
 	cancel   context.CancelFunc
+	callback *Callback
 	send     exchangeSender
 }
 
@@ -83,7 +84,7 @@ func (Journal) GoString() string { return "[private native enrollment journal]" 
 
 // Open requires an explicit dedicated private directory, not a shared user
 // folder. It refuses malformed existing state without changing its contents.
-// Existing daemon key and process owner remain separately unimplemented gates.
+// Actual daemon key/process ownership is separate and is not proved here.
 func Open(dir string) (*Journal, error) {
 	if dir == "" {
 		return nil, ErrInvalid
@@ -181,6 +182,9 @@ func (j *Journal) Close() error {
 		return nil
 	}
 	j.closed = true
+	if j.callback != nil {
+		j.callback.Close()
+	}
 	if j.cancel != nil {
 		j.cancel()
 		j.cancel = nil
@@ -256,7 +260,7 @@ func (j *Journal) RecordCallback(attempt, state, code string, now time.Time) err
 	if err := j.health(); err != nil {
 		return err
 	}
-	if j.data == nil || j.data.Phase != "prepared" || j.reopened || !live(*j.data, now) || attempt != j.data.Launch.AttemptID || state != j.data.Launch.State || !token(code) {
+	if j.data == nil || j.data.Phase != "prepared" || j.reopened || (j.callback != nil && !j.callback.active()) || !live(*j.data, now) || attempt != j.data.Launch.AttemptID || state != j.data.Launch.State || !token(code) {
 		return ErrInvalid
 	}
 	r := *j.data
@@ -353,7 +357,7 @@ func validRecord(r record) bool {
 		}
 	}
 	switch r.Phase {
-	case "prepared":
+	case "prepared", "declined-data":
 		return r.Code == "" && r.ExchangeJSON == ""
 	case "callback-recorded", "exchange-may-have-started":
 		return token(r.Code) && r.ExchangeJSON == ""
