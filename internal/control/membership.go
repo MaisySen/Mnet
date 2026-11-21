@@ -31,6 +31,9 @@ func (s *Store) SetNetworkMember(networkID, issuer, subject string, allow bool) 
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return err
+	}
 	if s.data.Networks[networkID] == nil {
 		return ErrNotFound
 	}
@@ -73,6 +76,9 @@ func (s *Store) IdentityDevices(networkID, issuer, subject string) ([]IdentityDe
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return nil, err
+	}
 	if s.data.Networks[networkID] == nil {
 		return nil, ErrUnauthorized
 	}
@@ -89,6 +95,9 @@ func (s *Store) IdentityDevices(networkID, issuer, subject string) ([]IdentityDe
 func (s *Store) OperatorMemberships(networkID string) ([]NetworkMember, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return nil, err
+	}
 	if s.data.Networks[networkID] == nil {
 		return nil, ErrNotFound
 	}

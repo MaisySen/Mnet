@@ -70,7 +70,7 @@ func TestProxyOptionsRejectInvalidCIDRs(t *testing.T) {
 }
 
 func TestProxyOptionsApplyToRateLimitAndAudit(t *testing.T) {
-	st, err := Open(t.TempDir() + "/state.json")
+	st, err := openTestStore(t, t.TempDir()+"/state.json")
 	if err != nil {
 		t.Fatal(err)
 	}

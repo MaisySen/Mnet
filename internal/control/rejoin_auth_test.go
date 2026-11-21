@@ -11,7 +11,7 @@ import (
 )
 
 func TestRejoinRequiresSavedNodeCredential(t *testing.T) {
-	st, err := Open(t.TempDir() + "/state.json")
+	st, err := openTestStore(t, t.TempDir()+"/state.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestRejoinRequiresSavedNodeCredential(t *testing.T) {
 }
 
 func TestExpiredRejoinNeedsFreshEnrollmentAuthorization(t *testing.T) {
-	st, err := Open(t.TempDir() + "/state.json")
+	st, err := openTestStore(t, t.TempDir()+"/state.json")
 	if err != nil {
 		t.Fatal(err)
 	}

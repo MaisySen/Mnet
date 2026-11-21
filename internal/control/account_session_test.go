@@ -14,7 +14,7 @@ import (
 
 func accountFixture(t *testing.T) (*Server, *OIDCProvider, string, string) {
 	t.Helper()
-	store, err := Open(filepath.Join(t.TempDir(), "state.json"))
+	store, err := openTestStore(t, filepath.Join(t.TempDir(), "state.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

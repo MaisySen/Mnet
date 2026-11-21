@@ -25,6 +25,9 @@ func (s *Store) ApprovedDevicesForIdentity(networkID, issuer, subject string) ([
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return nil, err
+	}
 	if s.data.Networks[networkID] == nil {
 		return nil, ErrNotFound
 	}

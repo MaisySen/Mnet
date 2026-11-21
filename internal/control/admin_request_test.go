@@ -12,7 +12,7 @@ import (
 )
 
 func TestAdminWriteOriginAndMethodBoundary(t *testing.T) {
-	st, err := Open(t.TempDir() + "/state.json")
+	st, err := openTestStore(t, t.TempDir()+"/state.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestAdminWriteOriginAndMethodBoundary(t *testing.T) {
 
 func TestAdminLoginOriginAndSecureCookie(t *testing.T) {
 	for _, base := range []string{"https://control.invalid", "http://localhost"} {
-		st, err := Open(t.TempDir() + "/state.json")
+		st, err := openTestStore(t, t.TempDir()+"/state.json")
 		if err != nil {
 			t.Fatal(err)
 		}

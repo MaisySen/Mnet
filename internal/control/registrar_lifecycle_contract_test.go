@@ -1,15 +1,17 @@
-//go:build registrar_lifecycle_contract && (linux || darwin)
+//go:build linux || darwin || windows || freebsd || openbsd || netbsd || dragonfly
 
 package control
 
-// Inactive desired lifecycle contract for the real Store. Run explicitly with
-// -tags registrar_lifecycle_contract. These must fail until Open owns a stable
-// writable lease and Store implements Close; no enrollment consumer uses them.
+// Owning lifecycle contract for the real Store. The original opt-in failing
+// baseline is retained in review evidence. No enrollment consumer is connected.
 import (
+	"bufio"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 type lifecycleCloser interface{ Close() error }
@@ -48,7 +50,7 @@ func TestRegistrarLifecycleParentAliasCannotAcquireSecondWriter(t *testing.T) {
 	}
 	alias := filepath.Join(root, "alias")
 	if err := os.Symlink(dir, alias); err != nil {
-		t.Fatal(err)
+		t.Skipf("parent symlink unavailable: %v", err)
 	}
 	s, err := Open(filepath.Join(dir, "state.json"))
 	if err != nil {
@@ -142,5 +144,67 @@ func TestRegistrarLifecycleSubprocessWriter(t *testing.T) {
 	child.Env = append(os.Environ(), "MNET_CONTRACT_SECOND_WRITER_PATH="+path)
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("cross-process ownership failed: %v\n%s", err, output)
+	}
+}
+
+// A real child owns the Store until killed. No PID-file stale-owner guessing.
+func TestRegistrarLifecycleProcessDeathReleasesOwner(t *testing.T) {
+	if path := os.Getenv("MNET_CONTRACT_CRASH_OWNER_PATH"); path != "" {
+		s, err := Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.CreateNetwork("crash-owner"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stdout.WriteString("STORE_READY\n"); err != nil {
+			t.Fatal(err)
+		}
+		// Blocking pipe survives until the parent kills this process.
+		var b [1]byte
+		os.Stdin.Read(b[:])
+		return
+	}
+	path := filepath.Join(t.TempDir(), "state.json")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	child := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestRegistrarLifecycleProcessDeathReleasesOwner$", "-test.count=1")
+	child.Env = append(os.Environ(), "MNET_CONTRACT_CRASH_OWNER_PATH="+path)
+	stdin, err := child.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stdin.Close()
+	stdout, err := child.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { child.Process.Kill(); child.Wait() }()
+	ready, err := bufio.NewReader(stdout).ReadString('\n')
+	if err != nil || ready != "STORE_READY\n" {
+		t.Fatal("child did not acquire Store", ready, err)
+	}
+	if second, err := Open(path); err == nil || second != nil {
+		if second != nil {
+			second.Close()
+		}
+		t.Fatal("live child ownership bypassed")
+	}
+	if err := child.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	if err := child.Wait(); err == nil {
+		t.Fatal("child was expected to be killed")
+	}
+	recovered, err := Open(path)
+	if err != nil {
+		t.Fatal("crash left stale ownership", err)
+	}
+	defer recovered.Close()
+	if recovered.Network("crash-owner") == nil {
+		t.Fatal("crash recovery lost committed network")
 	}
 }

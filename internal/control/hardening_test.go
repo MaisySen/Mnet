@@ -102,7 +102,7 @@ func TestRateLimitedEndpoint429(t *testing.T) {
 
 func TestAuditWritesJSONLines(t *testing.T) {
 	dir := t.TempDir()
-	st, err := Open(dir + "/state.json")
+	st, err := openTestStore(t, dir+"/state.json")
 	if err != nil {
 		t.Fatal(err)
 	}

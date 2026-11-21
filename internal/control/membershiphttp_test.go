@@ -15,7 +15,7 @@ import (
 
 func TestAdminMembershipHTTPBoundaries(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	st, err := Open(path)
+	st, err := openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,13 +89,18 @@ func TestAdminMembershipHTTPBoundaries(t *testing.T) {
 			t.Fatalf("grant: %d %s", rec.Code, rec.Body.String())
 		}
 	}
-	reopened, err := Open(path)
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := reopened.IdentityDevices(network.ID, "https://principal.invalid", "private-subject"); err != nil {
 		t.Fatal("grant did not persist", err)
 	}
+	st = reopened
+	app.store = reopened
 	snapshot, _ := json.Marshal(st.Snapshot())
 	audit, err := os.ReadFile(app.auditPath)
 	if err != nil {
@@ -120,7 +125,10 @@ func TestAdminMembershipHTTPBoundaries(t *testing.T) {
 	if rec := request("POST", revoke, "valid", "application/json", "https://control.invalid", "same-origin"); rec.Code != 200 {
 		t.Fatalf("revoke: %d", rec.Code)
 	}
-	reopened, err = Open(path)
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err = openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +138,7 @@ func TestAdminMembershipHTTPBoundaries(t *testing.T) {
 }
 
 func TestAdminMembershipReadScopeAndCopies(t *testing.T) {
-	st, err := Open(filepath.Join(t.TempDir(), "state.json"))
+	st, err := openTestStore(t, filepath.Join(t.TempDir(), "state.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

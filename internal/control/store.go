@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -54,6 +53,11 @@ type storeData struct {
 type Store struct {
 	mu         sync.Mutex
 	path       string
+	ownedPath  string
+	lease      *storeLease
+	fs         storeFilesystem
+	closed     bool
+	fault      error
 	data       storeData
 	version    int64
 	relayIndex map[string]string                 // network+public key -> node ID, invalidated on identity changes
@@ -62,8 +66,19 @@ type Store struct {
 
 // Open loads or creates the store at path.
 func Open(path string) (*Store, error) {
+	lease, path, err := acquireStoreLease(path)
+	if err != nil {
+		return nil, err
+	}
+	ok := false
+	defer func() {
+		if !ok {
+			lease.file.Close()
+		}
+	}()
 	s := &Store{
-		path:     path,
+		path:      path,
+		ownedPath: path, lease: lease, fs: defaultStoreFilesystem(),
 		watchers: map[string]map[chan struct{}]bool{},
 	}
 	s.data = storeData{
@@ -73,7 +88,10 @@ func Open(path string) (*Store, error) {
 		NodeTokens: map[string]string{},
 		NextIP:     map[string]int{},
 	}
-	if _, err := os.Lstat(path); err == nil {
+	if info, err := os.Lstat(path); err == nil {
+		if err = singleLink(path, info); err != nil {
+			return nil, err
+		}
 		if err = privatefs.ProtectFile(path); err != nil {
 			return nil, fmt.Errorf("store: private state file required: %w", err)
 		}
@@ -82,6 +100,7 @@ func Open(path string) (*Store, error) {
 	}
 	b, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
+		ok = true
 		return s, nil
 	}
 	if err != nil {
@@ -97,55 +116,27 @@ func Open(path string) (*Store, error) {
 	if err := s.validateLoadedShape(); err != nil {
 		return nil, err
 	}
+	// Re-establish the loaded image under the retained owner before serving it.
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return nil, err
+	}
+	err = f.Sync()
+	closeErr := f.Close()
+	if err != nil {
+		return nil, err
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	if err := s.fs.syncDir(lease.parent); err != nil {
+		return nil, err
+	}
+	if err := lease.check(); err != nil {
+		return nil, err
+	}
+	ok = true
 	return s, nil
-}
-
-func (s *Store) saveLocked() error {
-	b, err := json.MarshalIndent(&s.data, "", "  ")
-	if err != nil {
-		return err
-	}
-	if info, err := os.Lstat(s.path); err == nil {
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("store: state destination must be a regular file")
-		}
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-	dir := filepath.Dir(s.path)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(dir, ".mnet-state-*")
-	if err != nil {
-		return err
-	}
-	tmp := f.Name()
-	defer os.Remove(tmp)
-	defer f.Close()
-	if err = privatefs.ProtectFile(tmp); err != nil {
-		return err
-	}
-	if _, err = f.Write(b); err != nil {
-		return err
-	}
-	if err = f.Sync(); err != nil {
-		return err
-	}
-	if err = f.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp, s.path)
-}
-
-// commitLocked makes failed persistence leave the live store unchanged.
-// Rollback closures record only changed entries, not a full-store copy.
-func (s *Store) commitLocked(rollback func()) error {
-	if err := s.saveLocked(); err != nil {
-		rollback()
-		return err
-	}
-	return nil
 }
 
 func newID(prefix string) string {
@@ -188,6 +179,11 @@ func (s *Store) WaitForChange(networkID string, since int64, timeout time.Durati
 // WaitForChangeContext releases its watcher promptly when a client leaves.
 func (s *Store) WaitForChangeContext(ctx context.Context, networkID string, since int64, timeout time.Duration) int64 {
 	s.mu.Lock()
+	if err := s.healthLocked(); err != nil {
+		v := s.version
+		s.mu.Unlock()
+		return v
+	}
 	if s.version > since {
 		v := s.version
 		s.mu.Unlock()
@@ -221,6 +217,9 @@ func (s *Store) CreateNetwork(name string) (*netmap.Network, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return nil, err
+	}
 	for _, n := range s.data.Networks {
 		if n.Name == name {
 			return nil, fmt.Errorf("network %q already exists", name)
@@ -239,6 +238,9 @@ func (s *Store) CreateNetwork(name string) (*netmap.Network, error) {
 func (s *Store) Networks() []*netmap.Network {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return nil
+	}
 	out := make([]*netmap.Network, 0, len(s.data.Networks))
 	for _, n := range s.data.Networks {
 		c := cloneNetwork(n)
@@ -340,6 +342,9 @@ func (s *Store) Join(req netmap.JoinRequest) (*netmap.JoinResponse, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return nil, err
+	}
 	network := s.findNetworkLocked(req.Network)
 	if network == nil {
 		return nil, ErrNotFound
@@ -482,6 +487,9 @@ func (s *Store) findAuthKeyLocked(key string) *netmap.AuthKey {
 func (s *Store) AuthorizeNode(nodeID, token string) (*netmap.Node, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return nil, err
+	}
 	n := s.data.Nodes[nodeID]
 	if n == nil {
 		return nil, ErrNotFound
@@ -506,6 +514,9 @@ func (s *Store) JoinStatus(nodeID, token string) (*netmap.JoinStatus, error) {
 func (s *Store) Touch(nodeID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return
+	}
 	if n := s.data.Nodes[nodeID]; n != nil {
 		n.LastSeen = time.Now().UTC()
 	}
@@ -520,6 +531,9 @@ const DefaultKeyExpiry = 180 * 24 * time.Hour
 func (s *Store) ExpireNode(nodeID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return err
+	}
 	n := s.data.Nodes[nodeID]
 	if n == nil {
 		return ErrNotFound
@@ -549,6 +563,9 @@ func cleanRoutes(in []string) []string {
 func (s *Store) SetEndpoints(nodeID string, eps []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return err
+	}
 	n := s.data.Nodes[nodeID]
 	if n == nil {
 		return ErrNotFound
@@ -600,6 +617,10 @@ func cloneNetwork(n *netmap.Network) netmap.Network {
 
 func (s *Store) Map(nodeID string) (*netmap.Map, error) {
 	s.mu.Lock()
+	if err := s.healthLocked(); err != nil {
+		s.mu.Unlock()
+		return nil, err
+	}
 	self := s.data.Nodes[nodeID]
 	if self == nil {
 		s.mu.Unlock()
@@ -643,6 +664,9 @@ func (s *Store) Map(nodeID string) (*netmap.Map, error) {
 func (s *Store) Network(idOrName string) *netmap.Network {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return nil
+	}
 	n := s.findNetworkLocked(idOrName)
 	if n == nil {
 		return nil
@@ -656,6 +680,9 @@ func (s *Store) Network(idOrName string) *netmap.Network {
 func (s *Store) SetACL(networkID string, pol *netmap.ACLPolicy) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return err
+	}
 	n := s.findNetworkLocked(networkID)
 	if n == nil {
 		return ErrNotFound
@@ -701,6 +728,9 @@ func (s *Store) ApproveNodeIdentity(nodeID, user, issuer, subject string) error 
 func (s *Store) NodeApprovalIdentity(nodeID string) (ApprovalIdentity, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return ApprovalIdentity{}, false
+	}
 	identity, ok := s.data.ApprovalIdentities[nodeID]
 	return identity, ok
 }
@@ -708,6 +738,9 @@ func (s *Store) NodeApprovalIdentity(nodeID string) (ApprovalIdentity, bool) {
 func (s *Store) approveNode(nodeID string, user *string, identity *ApprovalIdentity) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return err
+	}
 	n := s.data.Nodes[nodeID]
 	if n == nil {
 		return ErrNotFound
@@ -747,6 +780,9 @@ func (s *Store) approveNode(nodeID string, user *string, identity *ApprovalIdent
 func (s *Store) DeleteNode(nodeID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return err
+	}
 	n := s.data.Nodes[nodeID]
 	if n == nil {
 		return ErrNotFound
@@ -774,6 +810,9 @@ func (s *Store) DeleteNode(nodeID string) error {
 func (s *Store) CreateAuthKey(networkID, note string, reusable bool, ttl time.Duration) (*netmap.AuthKey, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return nil, err
+	}
 	if s.data.Networks[networkID] == nil {
 		return nil, ErrNotFound
 	}
@@ -810,6 +849,9 @@ func cloneAuthKey(k *netmap.AuthKey) netmap.AuthKey {
 func (s *Store) DeleteAuthKey(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return err
+	}
 	previous := s.data.AuthKeys[id]
 	if previous == nil {
 		return ErrNotFound
@@ -829,6 +871,9 @@ type Snapshot struct {
 func (s *Store) Snapshot() *Snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return &Snapshot{}
+	}
 	snap := &Snapshot{}
 	for _, n := range s.data.Networks {
 		c := cloneNetwork(n)
@@ -853,6 +898,9 @@ func (s *Store) Snapshot() *Snapshot {
 func (s *Store) RelayAllowed(sourceID, dstKey string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.healthLocked(); err != nil {
+		return false
+	}
 	source := s.data.Nodes[sourceID]
 	if source == nil || !source.Approved || source.KeyExpired() {
 		return false

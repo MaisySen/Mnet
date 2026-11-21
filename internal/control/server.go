@@ -143,7 +143,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/admin/api/memberships", s.adminOnly(s.handleAdminMembership))
 	mux.HandleFunc("/admin/api/acl", s.adminOnly(s.handleAdminACL))
 	mux.HandleFunc("/admin/api/metrics", s.adminOnly(s.handleAdminMetrics))
-	return securityHeaders(mux)
+	return securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := s.store.Health(); err != nil {
+			w.Header().Set("Cache-Control", "no-store")
+			writeErr(w, http.StatusServiceUnavailable, "control state unavailable; operator recovery required")
+			return
+		}
+		mux.ServeHTTP(w, r)
+	}))
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

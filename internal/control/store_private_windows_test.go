@@ -67,7 +67,7 @@ func TestControlStateWindowsDACLAfterLoadAndReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st, err := Open(path)
+	st, err := openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,10 @@ func TestControlStateWindowsDACLAfterLoadAndReplacement(t *testing.T) {
 	if err != nil || parentBefore.String() != parentAfter.String() {
 		t.Fatal("shared parent security descriptor changed")
 	}
-	reopened, err := Open(path)
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := openTestStore(t, path)
 	if err != nil || len(reopened.Networks()) != 2 {
 		t.Fatal("protected replacement not readable", err)
 	}

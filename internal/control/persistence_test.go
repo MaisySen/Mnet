@@ -14,7 +14,7 @@ import (
 func TestFailedPersistenceDoesNotChangeLiveState(t *testing.T) {
 	for _, operation := range []string{"network", "join", "approve", "approve-as", "approve-identity", "expire", "endpoints", "acl", "delete-node", "create-key", "delete-key"} {
 		t.Run(operation, func(t *testing.T) {
-			s, err := Open(filepath.Join(t.TempDir(), "state.json"))
+			s, err := openTestStore(t, filepath.Join(t.TempDir(), "state.json"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -75,7 +75,7 @@ func TestFailedPersistenceDoesNotChangeLiveState(t *testing.T) {
 }
 
 func TestFailedExistingRejoinRestoresNodeAndKeyUse(t *testing.T) {
-	s, err := Open(filepath.Join(t.TempDir(), "state.json"))
+	s, err := openTestStore(t, filepath.Join(t.TempDir(), "state.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestFailedExistingRejoinRestoresNodeAndKeyUse(t *testing.T) {
 func TestPersistencePrivateAtomicFileAndFailedRenameCleanup(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
-	s, err := Open(path)
+	s, err := openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,10 +138,14 @@ func TestPersistencePrivateAtomicFileAndFailedRenameCleanup(t *testing.T) {
 	if err != nil || string(bytes) != "unchanged" {
 		t.Fatal("predictable temporary symlink target changed")
 	}
-	loaded, err := Open(path)
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := openTestStore(t, path)
 	if err != nil || len(loaded.Networks()) != 2 {
 		t.Fatal("persisted state could not be reopened")
 	}
+	s = loaded
 	// Force rename failure after write+sync by making destination a directory.
 	destination := filepath.Join(dir, "directory")
 	if err = os.Mkdir(destination, 0700); err != nil {
@@ -161,7 +165,7 @@ func TestPersistencePrivateAtomicFileAndFailedRenameCleanup(t *testing.T) {
 }
 
 func TestApprovalIdentityAndVersionPersistTogether(t *testing.T) {
-	s, err := Open(filepath.Join(t.TempDir(), "state.json"))
+	s, err := openTestStore(t, filepath.Join(t.TempDir(), "state.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +183,10 @@ func TestApprovalIdentityAndVersionPersistTogether(t *testing.T) {
 	if s.Version() != before+1 {
 		t.Fatal("approval did not publish exactly one change")
 	}
-	loaded, err := Open(s.path)
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := openTestStore(t, s.path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +197,7 @@ func TestApprovalIdentityAndVersionPersistTogether(t *testing.T) {
 }
 
 func TestAdministrativeResultsOwnMutableState(t *testing.T) {
-	s, err := Open(filepath.Join(t.TempDir(), "state.json"))
+	s, err := openTestStore(t, filepath.Join(t.TempDir(), "state.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

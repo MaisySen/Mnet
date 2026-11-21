@@ -12,7 +12,7 @@ import (
 
 func TestDeviceNameCollisionKeepsValidatedBound(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	st, err := Open(path)
+	st, err := openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,10 @@ func TestDeviceNameCollisionKeepsValidatedBound(t *testing.T) {
 	if err != nil || st.data.Nodes[separate.NodeID].Name != want {
 		t.Fatal("name collision crossed networks", err)
 	}
-	st, err = Open(path)
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	st, err = openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}

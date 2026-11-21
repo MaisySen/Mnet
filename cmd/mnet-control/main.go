@@ -40,6 +40,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("open store: %v", err)
 	}
+	defer store.Close()
 	hub := relay.NewHub()
 	publicBase := *base
 	if publicBase == "" {

@@ -19,7 +19,7 @@ import (
 // authenticated HTTP serving and persisted endpoint updates, NOT registration.
 func scaleStore(tb testing.TB, count int) *Store {
 	tb.Helper()
-	s, err := Open(filepath.Join(tb.TempDir(), "state.json"))
+	s, err := openTestStore(tb, filepath.Join(tb.TempDir(), "state.json"))
 	if err != nil {
 		tb.Fatal(err)
 	}

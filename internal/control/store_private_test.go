@@ -17,10 +17,10 @@ func TestControlStateRejectsLinkedDestination(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Skipf("symlink not available: %v", err)
 	}
-	if st, err := Open(link); err == nil || st != nil {
+	if st, err := openTestStore(t, link); err == nil || st != nil {
 		t.Fatal("opened symlink state")
 	}
-	st, err := Open(filepath.Join(root, "state.json"))
+	st, err := openTestStore(t, filepath.Join(root, "state.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestControlStateProtectionDoesNotChangeSharedParent(t *testing.T) {
 	if err = os.WriteFile(path, []byte(`{}`), 0644); err != nil {
 		t.Fatal(err)
 	}
-	st, err := Open(path)
+	st, err := openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,10 @@ func TestControlStateProtectionDoesNotChangeSharedParent(t *testing.T) {
 	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatal("state file not private")
 	}
-	loaded, err := Open(path)
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := openTestStore(t, path)
 	if err != nil || len(loaded.Networks()) != 1 {
 		t.Fatal("private state reload failed", err)
 	}

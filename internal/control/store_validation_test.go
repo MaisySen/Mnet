@@ -18,7 +18,7 @@ func TestStoreRejectsNullShapeWithoutReplacingFile(t *testing.T) {
 			if err := os.WriteFile(path, []byte(body), 0600); err != nil {
 				t.Fatal(err)
 			}
-			st, err := Open(path)
+			st, err := openTestStore(t, path)
 			if err == nil || st != nil {
 				t.Fatal("corrupt shape accepted")
 			}
@@ -38,7 +38,7 @@ func TestOldObjectStateWithoutNewFieldsRemainsUsable(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"unknown_future_metadata":{"preserve_compatibility":true}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	st, err := Open(path)
+	st, err := openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,10 @@ func TestOldObjectStateWithoutNewFieldsRemainsUsable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st, err = Open(path)
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	st, err = openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}

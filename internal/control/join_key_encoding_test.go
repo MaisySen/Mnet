@@ -16,7 +16,7 @@ import (
 
 func TestJoinKeyEncodingCannotCreateAliasOfExistingIdentity(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	st, err := Open(path)
+	st, err := openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,10 +65,15 @@ func TestJoinKeyEncodingCannotCreateAliasOfExistingIdentity(t *testing.T) {
 		if strings.Contains(response.Body.String(), original.NodeToken) {
 			t.Error("alias response exposed owner credential")
 		}
-		reopened, err := Open(path)
+		if err := st.Close(); err != nil {
+			t.Fatal(err)
+		}
+		reopened, err := openTestStore(t, path)
 		if err != nil {
 			t.Fatal(err)
 		}
+		st = reopened
+		app.store = reopened
 		if len(reopened.data.Nodes) != 1 {
 			t.Error("alias survived reopen")
 		}

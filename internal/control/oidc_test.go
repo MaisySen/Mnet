@@ -131,6 +131,11 @@ func testEnvOIDCStore(t *testing.T, fake *fakeOIDC) (*httptest.Server, string, *
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	ts := httptest.NewUnstartedServer(nil)
 	t.Cleanup(ts.Close)
 	srv, _, err := control.NewServer(store, relay.NewHub(), "http://"+ts.Listener.Addr().String(), "test-admin-pw")

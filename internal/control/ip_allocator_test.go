@@ -36,7 +36,7 @@ func TestMeshIPChooserBoundsAndExhaustion(t *testing.T) {
 
 func TestMeshAllocatorCursorRecoveryPersistsAndRollsBack(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	st, err := Open(path)
+	st, err := openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,10 @@ func TestMeshAllocatorCursorRecoveryPersistsAndRollsBack(t *testing.T) {
 	if st.data.Nodes[second.NodeID].IPv4 != "100.64.0.2" {
 		t.Fatal("cursor recovery duplicated or escaped address")
 	}
-	st, err = Open(path)
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	st, err = openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}

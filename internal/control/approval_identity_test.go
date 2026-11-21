@@ -12,7 +12,7 @@ import (
 
 func TestApprovalIdentityPersistsWithoutPeerDisclosure(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	store, err := Open(path)
+	store, err := openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,10 @@ func TestApprovalIdentityPersistsWithoutPeerDisclosure(t *testing.T) {
 		if err := store.ApproveNodeIdentity(joined.NodeID, "same-display@example.invalid", identity.Issuer, identity.Subject); err != nil {
 			t.Fatal(err)
 		}
-		store, err = Open(path)
+		if err := store.Close(); err != nil {
+			t.Fatal(err)
+		}
+		store, err = openTestStore(t, path)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -63,7 +66,7 @@ func TestApprovalIdentityPersistsWithoutPeerDisclosure(t *testing.T) {
 
 func TestApprovalIdentityDeleteRollbackAndLegacyUnknown(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	store, err := Open(path)
+	store, err := openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,13 +80,17 @@ func TestApprovalIdentityDeleteRollbackAndLegacyUnknown(t *testing.T) {
 	if err := store.ApproveNodeAs(joined.NodeID, "legacy-label@example.invalid"); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := Open(path)
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := reopened.NodeApprovalIdentity(joined.NodeID); ok {
 		t.Fatal("legacy email upgraded into principal")
 	}
+	store = reopened
 	want := ApprovalIdentity{Issuer: "https://issuer.invalid", Subject: "verified-subject"}
 	if err := store.ApproveNodeIdentity(joined.NodeID, "display", want.Issuer, want.Subject); err != nil {
 		t.Fatal(err)

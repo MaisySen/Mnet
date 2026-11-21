@@ -19,10 +19,11 @@ import (
 
 func TestACLRequestRejectsAmbiguityWithoutClearingPolicy(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	store, err := Open(path)
+	store, err := openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() { store.Close() }()
 	network, err := store.CreateNetwork("fixture")
 	if err != nil {
 		t.Fatal(err)
@@ -95,10 +96,15 @@ func TestACLRequestRejectsAmbiguityWithoutClearingPolicy(t *testing.T) {
 			if err != nil || len(m.Peers) != 0 {
 				t.Error("malformed policy reopened peer visibility", err)
 			}
+			if err := store.Close(); err != nil {
+				t.Fatal(err)
+			}
 			reopened, err := Open(path)
 			if err != nil {
 				t.Fatal(err)
 			}
+			store = reopened
+			app.store = reopened
 			m, err = reopened.Map(self)
 			if err != nil || len(m.Peers) != 0 {
 				t.Error("malformed policy persisted reopened visibility", err)

@@ -16,7 +16,7 @@ import (
 // operator, account and node credentials. These checks run the real handlers;
 // no fake Enroll verifier or pre-approved caller evidence is installed.
 func TestMultiesListTokenDoesNotBecomeLegacyAuthority(t *testing.T) {
-	st, err := Open(t.TempDir() + "/state.json")
+	st, err := openTestStore(t, t.TempDir()+"/state.json")
 	if err != nil {
 		t.Fatal(err)
 	}

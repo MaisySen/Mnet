@@ -33,6 +33,11 @@ func TestOIDCProviderReplacementRetiresPendingAndExchangingApproval(t *testing.T
 			if err != nil {
 				t.Fatal(err)
 			}
+			t.Cleanup(func() {
+				if err := store.Close(); err != nil {
+					t.Error(err)
+				}
+			})
 			ts := httptest.NewUnstartedServer(nil)
 			t.Cleanup(ts.Close)
 			app, _, err := control.NewServer(store, relay.NewHub(), "http://"+ts.Listener.Addr().String(), "test-admin-pw")
@@ -136,10 +141,18 @@ func TestOIDCProviderReplacementRetiresPendingAndExchangingApproval(t *testing.T
 			if code, _ := followLogin(t, joined.ApprovalURL); code != 200 {
 				t.Fatal("new current-provider approval failed after retirement")
 			}
+			if err := store.Close(); err != nil {
+				t.Fatal(err)
+			}
 			persisted, err := control.Open(store.Path())
 			if err != nil {
 				t.Fatal(err)
 			}
+			t.Cleanup(func() {
+				if err := persisted.Close(); err != nil {
+					t.Error(err)
+				}
+			})
 			if _, exists := persisted.NodeApprovalIdentity(joined.NodeID); !exists {
 				t.Fatal("fresh verified approval was not persisted")
 			}

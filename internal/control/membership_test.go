@@ -12,7 +12,7 @@ import (
 
 func TestExplicitMembershipGatesIdentityDeviceQuery(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	s, err := Open(path)
+	s, err := openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,10 @@ func TestExplicitMembershipGatesIdentityDeviceQuery(t *testing.T) {
 	if err := s.SetNetworkMember(network.ID, issuer, subject, true); err != nil {
 		t.Fatal(err)
 	}
-	s, err = Open(path)
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err = openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +58,10 @@ func TestExplicitMembershipGatesIdentityDeviceQuery(t *testing.T) {
 	if err := s.SetNetworkMember(network.ID, issuer, subject, false); err != nil {
 		t.Fatal(err)
 	}
-	s, err = Open(path)
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err = openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +78,7 @@ func TestMembershipPersistenceRollbackAndTupleKeys(t *testing.T) {
 		t.Fatal("principal tuple collision")
 	}
 	path := filepath.Join(t.TempDir(), "state.json")
-	s, err := Open(path)
+	s, err := openTestStore(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}

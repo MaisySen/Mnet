@@ -22,7 +22,7 @@ func TestLegacyRejoinAfterDeleteOrExpiryAuthorityMatrix(t *testing.T) {
 				}
 				t.Run(name, func(t *testing.T) {
 					path := filepath.Join(t.TempDir(), "state.json")
-					s, e := Open(path)
+					s, e := openTestStore(t, path)
 					if e != nil {
 						t.Fatal(e)
 					}
@@ -71,7 +71,10 @@ func TestLegacyRejoinAfterDeleteOrExpiryAuthorityMatrix(t *testing.T) {
 						t.Fatal("revoked node still received map before rejoin")
 					}
 					if restart {
-						s, e = Open(path)
+						if e := s.Close(); e != nil {
+							t.Fatal(e)
+						}
+						s, e = openTestStore(t, path)
 						if e != nil {
 							t.Fatal(e)
 						}

@@ -25,6 +25,11 @@ func testEnv(t *testing.T) (*httptest.Server, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	ts := httptest.NewUnstartedServer(nil)
 	t.Cleanup(ts.Close)
 	srv, pw, err := control.NewServer(store, relay.NewHub(), "http://"+ts.Listener.Addr().String(), "test-admin-pw")
@@ -313,6 +318,11 @@ func TestIPAllocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	if _, err := store.CreateNetwork("home"); err != nil {
 		t.Fatal(err)
 	}

@@ -8,7 +8,7 @@ import (
 )
 
 func TestApprovalURLIgnoresCallerOrigin(t *testing.T) {
-	st, err := Open(t.TempDir() + "/state.json")
+	st, err := openTestStore(t, t.TempDir()+"/state.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestPublicBaseValidation(t *testing.T) {
 			t.Fatalf("invalid origin accepted: %q", bad)
 		}
 	}
-	st, err := Open(t.TempDir() + "/state.json")
+	st, err := openTestStore(t, t.TempDir()+"/state.json")
 	if err != nil {
 		t.Fatal(err)
 	}
