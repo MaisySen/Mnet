@@ -12,22 +12,25 @@ func TestActualFileCustodyReceivesOriginalLedgerAndEffectUsesIt(t *testing.T) {
 	// Zero os.File is an inert nonnil identity placeholder. No method on it is
 	// invoked. The effect callback below changes only local fake counters.
 	c := &ownedCreation{handle: m.sample.handle, fd: &fileCustody{file: &os.File{}}}
-	ns := &namespaceCustody{identity: m.sample.namespace}
-	id := heldPacketIdentity{generation: 1, target: m.sample.namespace, device: m.sample.namespace, identity: m.sample.identity, handle: m.sample.handle}
-	original, e := retainOriginalPacketResources(c, ns, b.owner, b.session, id)
+	id := heldPacketIdentity{fdObject: m.sample.original, generation: 1, target: m.sample.namespace, device: m.sample.namespace, identity: m.sample.identity, handle: m.sample.handle}
+	ledger, e := newHeldPacketLedger(id)
 	if e != nil {
 		t.Fatal(e)
 	}
-	if c.fd.lineage != original.ledger || original.creation != c || original.namespace != ns || original.ledger.snapshot().fdObject == nil {
+	if e = c.fd.attachLineage(ledger); e != nil {
+		t.Fatal(e)
+	}
+	if c.fd.lineage != ledger || ledger.snapshot().fdObject == nil {
 		t.Fatal("detached token")
 	}
-	if _, e = retainOriginalPacketResources(c, ns, b.owner, b.session, id); e == nil {
+	if e = c.fd.attachLineage(ledger); e == nil {
 		t.Fatal("rebound original")
 	}
+	_ = b
 	called := false
 	if e = c.guardedEffect(c.handle, "config-intent", func() error {
 		called = true
-		if !original.ledger.snapshot().uncertain {
+		if !ledger.snapshot().uncertain {
 			t.Fatal("actual attached lineage not invalidated")
 		}
 		return nil

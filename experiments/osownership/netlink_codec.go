@@ -171,16 +171,23 @@ func (c *NetlinkClient) request(ctx context.Context, kind uint16, payload []byte
 
 // Mutation flags are operation-specific. Delete is ACK-only, never CREATE or
 // REPLACE. Link update is ACK-only. Address/route additions are exclusive.
-func (c *NetlinkClient) mutate(ctx context.Context, kind uint16, payload []byte) error {
+func mutationRequestFlags(kind uint16) (uint16, error) {
 	flags := uint16(1 | 4)
 	switch kind {
 	case 20, 24:
 		flags |= 0x200 | 0x400
 	case 16, 21, 25:
 	default:
-		return errors.New("unsupported mutation kind")
+		return 0, errors.New("unsupported mutation kind")
 	}
-	_, e := c.request(ctx, kind, payload, false, flags, true)
+	return flags, nil
+}
+func (c *NetlinkClient) mutate(ctx context.Context, kind uint16, payload []byte) error {
+	flags, e := mutationRequestFlags(kind)
+	if e != nil {
+		return e
+	}
+	_, e = c.request(ctx, kind, payload, false, flags, true)
 	return e
 }
 

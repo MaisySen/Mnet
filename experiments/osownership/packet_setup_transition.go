@@ -15,6 +15,7 @@ import (
 // raw expected side effects are independently derived. No generic diff allowlist.
 type packetSetupTransition struct {
 	ledger      *heldPacketLedger
+	owner       *Transaction
 	original    heldPacketIdentity
 	generation  uint64
 	plan        Plan
@@ -110,7 +111,11 @@ func (l *heldPacketLedger) beginExactSetup(p Plan, op Operation, diagnostic owne
 	request := make([]byte, 16+len(mutation.payload))
 	binary.NativeEndian.PutUint32(request, uint32(len(request)))
 	binary.NativeEndian.PutUint16(request[4:], mutation.kind)
-	binary.NativeEndian.PutUint16(request[6:], 0x605)
+	flags, e := mutationRequestFlags(mutation.kind)
+	if e != nil {
+		return nil, e
+	}
+	binary.NativeEndian.PutUint16(request[6:], flags)
 	binary.NativeEndian.PutUint32(request[8:], sequence)
 	binary.NativeEndian.PutUint32(request[12:], recipient)
 	copy(request[16:], mutation.payload)
@@ -118,7 +123,7 @@ func (l *heldPacketLedger) beginExactSetup(p Plan, op Operation, diagnostic owne
 	if e = l.invalidateLocked("config-intent"); e != nil {
 		return nil, e
 	}
-	token := &packetSetupTransition{ledger: l, original: original, generation: l.current.generation, plan: p, operation: op, expectedRaw: raw, expectedSys: cloneSysExact(diagnostic.sys), request: request}
+	token := &packetSetupTransition{ledger: l, owner: t, original: original, generation: l.current.generation, plan: p, operation: op, expectedRaw: raw, expectedSys: cloneSysExact(diagnostic.sys), request: request}
 	token.plan.Operations = append([]Operation(nil), p.Operations...)
 	l.setup = token
 	return token, nil
@@ -164,7 +169,7 @@ func (t *packetSetupTransition) parsePost(v setupReadbackRecord) (*setupPostEvid
 	l := t.ledger
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.setup != t || t.done || l.current.closed || l.current.generation != t.generation || !reflect.DeepEqual(v.before, l.current) || v.before.fdObject != t.original.fdObject || !reflect.DeepEqual(v.before, v.after) || v.before.fdObject != v.after.fdObject || !reflect.DeepEqual(v.raw, t.expectedRaw) || !reflect.DeepEqual(v.sys, t.expectedSys) || !v.features.observedNamesCompatible(v.names) {
+	if l.setup != t || t.done || l.current.closed || l.current.generation != t.generation || !reflect.DeepEqual(v.before, l.current) || v.before.fdObject != t.original.fdObject || !reflect.DeepEqual(v.before, v.after) || v.before.fdObject != v.after.fdObject || !exactSetupPostMatches(v.raw, t.expectedRaw) || !reflect.DeepEqual(v.sys, t.expectedSys) || !v.features.observedNamesCompatible(v.names) {
 		return nil, ErrConflict
 	}
 	var matched bool
@@ -193,7 +198,7 @@ func (t *packetSetupTransition) finish(ack *setupACKEvidence, post *setupPostEvi
 	}
 	t.done = true
 	l.setup = nil
-	if ack == nil || post == nil || ack.transition != t || post.transition != t || !bytes.Equal(ack.request, t.request) || post.generation != t.generation || l.current.generation != t.generation || l.current.closed || !reflect.DeepEqual(l.current, post.identity) || !reflect.DeepEqual(post.raw, t.expectedRaw) || !reflect.DeepEqual(post.sys, t.expectedSys) || l.current.generation == ^uint64(0) {
+	if ack == nil || t.owner == nil || t.owner.stopStarted || t.owner.fdCloseAttempted || t.owner.clock == nil || t.owner.deadline.expired(t.owner.clock.Now()) || post == nil || ack.transition != t || post.transition != t || !bytes.Equal(ack.request, t.request) || post.generation != t.generation || l.current.generation != t.generation || l.current.closed || !reflect.DeepEqual(l.current, post.identity) || !exactSetupPostMatches(post.raw, t.expectedRaw) || !reflect.DeepEqual(post.sys, t.expectedSys) || l.current.generation == ^uint64(0) {
 		return ErrConflict
 	}
 	l.current.generation++

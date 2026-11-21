@@ -90,6 +90,9 @@ func (s *routeSocket) Close() error {
 	return unix.Close(s.fd)
 }
 func (s *routeSocket) Exchange(ctx context.Context, request []byte) (out []Datagram, err error) {
+	return s.exchangeSource(ctx, request, nil)
+}
+func (s *routeSocket) exchangeSource(ctx context.Context, request []byte, permit *firstLinkSendPermit) (out []Datagram, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	defer func() {
@@ -109,7 +112,11 @@ func (s *routeSocket) Exchange(ctx context.Context, request []byte) (out []Datag
 	}
 	bounded, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
 	defer cancel()
-	if e := guardReadOnlyRouteSend(request, s.pid, func() error { return unix.Sendto(s.fd, request, 0, &unix.SockaddrNetlink{Family: unix.AF_NETLINK}) }); e != nil {
+	gate := func(send func() error) error { return guardReadOnlyRouteSend(request, s.pid, send) }
+	if permit != nil {
+		gate = func(send func() error) error { return permit.send(request, s.pid, send) }
+	}
+	if e := gate(func() error { return unix.Sendto(s.fd, request, 0, &unix.SockaddrNetlink{Family: unix.AF_NETLINK}) }); e != nil {
 		return nil, e
 	}
 	var result []Datagram
