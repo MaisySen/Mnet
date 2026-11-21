@@ -1,0 +1,110 @@
+{
+  "version": 1,
+  "purpose": "mnet-disconnected-provisioning-plan-v1",
+  "proposed_legacy_boundary": "proposed-registrar-only-multies-networks-legacy-separate",
+  "proposed_change": "initial-provision-only-no-rotation-or-migration",
+  "multies_service_scope_snapshot": {
+    "keyId": "service-key-1",
+    "serviceId": "mnet-service",
+    "registrarOrigin": "https://registrar.example.test",
+    "issuer": "https://issuer.example.test/label",
+    "audience": "mnet-workspaces"
+  },
+  "operator_owner_ref": "operator-approval-source-required",
+  "multies_operator_snapshot": {
+    "provenance": {
+      "version": 2,
+      "principalAuthority": "https://principals.example.test",
+      "principalNamespace": "multies-local-user-v1"
+    },
+    "revision": "mapping-r1",
+    "issuer": "https://issuer.example.test/label",
+    "registrarOrigin": "https://registrar.example.test",
+    "audience": "mnet-workspaces",
+    "bindings": [
+      {
+        "workspaceId": "workspace-a",
+        "networkId": "network-a",
+        "principals": [
+          "person-a"
+        ]
+      },
+      {
+        "workspaceId": "workspace-b",
+        "networkId": "network-b",
+        "principals": [
+          "person-b"
+        ]
+      }
+    ]
+  },
+  "registrar_source_snapshot": {
+    "source_origin": "https://multies.example.test",
+    "principal_authority": "https://principals.example.test",
+    "key_id": "service-key-1",
+    "service_id": "mnet-service",
+    "issuer_label": "https://issuer.example.test/label",
+    "registrar_origin": "https://registrar.example.test",
+    "audience": "mnet-workspaces",
+    "secret_owner_ref": "registrar-protected-store-owner",
+    "allowed": [
+      {
+        "issuer": "https://issuer.example.test/label",
+        "audience": "mnet-workspaces",
+        "workspaceId": "workspace-a",
+        "networkId": "network-a",
+        "registrarOrigin": "https://registrar.example.test",
+        "mappingRevision": "mapping-r1"
+      },
+      {
+        "issuer": "https://issuer.example.test/label",
+        "audience": "mnet-workspaces",
+        "workspaceId": "workspace-b",
+        "networkId": "network-b",
+        "registrarOrigin": "https://registrar.example.test",
+        "mappingRevision": "mapping-r1"
+      }
+    ]
+  },
+  "native_policy_snapshot": {
+    "independent_trust_owner_ref": "installed-trust-source-required",
+    "independent_trust_root_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "policy": {
+      "version": 2,
+      "revision": "mapping-r1",
+      "source_origin": "https://multies.example.test",
+      "principal_authority": "https://principals.example.test",
+      "principal_namespace": "multies-local-user-v1",
+      "issuer_label": "https://issuer.example.test/label",
+      "registrar_origin": "https://registrar.example.test",
+      "audience": "mnet-workspaces",
+      "service_id": "mnet-service",
+      "bindings": [
+        {
+          "workspace_id": "workspace-a",
+          "network_id": "network-a",
+          "principal_ids": [
+            "person-a"
+          ]
+        },
+        {
+          "workspace_id": "workspace-b",
+          "network_id": "network-b",
+          "principal_ids": [
+            "person-b"
+          ]
+        }
+      ]
+    }
+  },
+  "workspace_owner_refs": [
+    {
+      "workspace_id": "workspace-a",
+      "owner_ref": "workspace-owner-source-workspace-a"
+    },
+    {
+      "workspace_id": "workspace-b",
+      "owner_ref": "workspace-owner-source-workspace-b"
+    }
+  ]
+}
