@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "source": "a337aa62d4dadaf3f1b12f6ba7a6dcdf9697f305",
+  "binary_sha256": "3fe3a52df7e15ef2c15e0f643019f37f1ae844c02b275e97f88f1b75cf28fa1a",
+  "outer_uid": 1000,
+  "wrapper": {
+    "pid": 1363,
+    "ppid": 1362,
+    "start_ticks": 13393,
+    "state": "R",
+    "exe": "/usr/bin/python3.10"
+  },
+  "outer_initial": {
+    "device": 7,
+    "inode": 4026531833
+  },
+  "invocations": 1,
+  "driver_pid": 1365,
+  "driver_initial": {
+    "pid": 1365,
+    "ppid": 1363,
+    "start_ticks": 13397,
+    "state": "R",
+    "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+  },
+  "last_before_reap": [],
+  "exit_code": 1,
+  "driver_reaped": true,
+  "elapsed_ms": 16.361862,
+  "outer_final": {
+    "device": 7,
+    "inode": 4026531833
+  },
+  "outer_unchanged": true,
+  "recorded_lifetimes": [
+    {
+      "pid": 1365,
+      "ppid": 1363,
+      "start_ticks": 13397,
+      "state": "R",
+      "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+    },
+    {
+      "pid": 1384,
+      "ppid": 1365,
+      "start_ticks": 13397,
+      "state": "S",
+      "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+    },
+    {
+      "pid": 1398,
+      "ppid": 1384,
+      "start_ticks": 13397,
+      "state": "S",
+      "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+    }
+  ],
+  "post_exact_lifetime_checks": [
+    {
+      "recorded": {
+        "pid": 1365,
+        "ppid": 1363,
+        "start_ticks": 13397,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      },
+      "current": null,
+      "same_lifetime": false
+    },
+    {
+      "recorded": {
+        "pid": 1384,
+        "ppid": 1365,
+        "start_ticks": 13397,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      },
+      "current": null,
+      "same_lifetime": false
+    },
+    {
+      "recorded": {
+        "pid": 1398,
+        "ppid": 1384,
+        "start_ticks": 13397,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      },
+      "current": null,
+      "same_lifetime": false
+    }
+  ],
+  "exact_lifetime_survivors": [],
+  "tree_sampling_note": "1ms owned-tree snapshots may miss short-lived children; bounded verdict identities supplement. No name cleanup or signals except timeout safeguard if it fired."
+}

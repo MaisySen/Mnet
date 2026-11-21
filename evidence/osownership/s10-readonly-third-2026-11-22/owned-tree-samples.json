@@ -1,0 +1,227 @@
+[
+  {
+    "elapsed_ms": 0.695464,
+    "processes": [
+      {
+        "pid": 1365,
+        "ppid": 1363,
+        "start_ticks": 13397,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 1.929972,
+    "processes": [
+      {
+        "pid": 1365,
+        "ppid": 1363,
+        "start_ticks": 13397,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 3.349097,
+    "processes": [
+      {
+        "pid": 1365,
+        "ppid": 1363,
+        "start_ticks": 13397,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1384,
+        "ppid": 1365,
+        "start_ticks": 13397,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 4.590581,
+    "processes": [
+      {
+        "pid": 1365,
+        "ppid": 1363,
+        "start_ticks": 13397,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1384,
+        "ppid": 1365,
+        "start_ticks": 13397,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 6.408417,
+    "processes": [
+      {
+        "pid": 1365,
+        "ppid": 1363,
+        "start_ticks": 13397,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1384,
+        "ppid": 1365,
+        "start_ticks": 13397,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 7.546236,
+    "processes": [
+      {
+        "pid": 1365,
+        "ppid": 1363,
+        "start_ticks": 13397,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1384,
+        "ppid": 1365,
+        "start_ticks": 13397,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 8.684366,
+    "processes": [
+      {
+        "pid": 1365,
+        "ppid": 1363,
+        "start_ticks": 13397,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1384,
+        "ppid": 1365,
+        "start_ticks": 13397,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 10.065481,
+    "processes": [
+      {
+        "pid": 1365,
+        "ppid": 1363,
+        "start_ticks": 13397,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1384,
+        "ppid": 1365,
+        "start_ticks": 13397,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1398,
+        "ppid": 1384,
+        "start_ticks": 13397,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 11.256181,
+    "processes": [
+      {
+        "pid": 1365,
+        "ppid": 1363,
+        "start_ticks": 13397,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1384,
+        "ppid": 1365,
+        "start_ticks": 13397,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1398,
+        "ppid": 1384,
+        "start_ticks": 13397,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 12.413422,
+    "processes": [
+      {
+        "pid": 1365,
+        "ppid": 1363,
+        "start_ticks": 13397,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1384,
+        "ppid": 1365,
+        "start_ticks": 13397,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 1398,
+        "ppid": 1384,
+        "start_ticks": 13397,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 13.931153,
+    "processes": [
+      {
+        "pid": 1365,
+        "ppid": 1363,
+        "start_ticks": 13397,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 15.121847,
+    "processes": [
+      {
+        "pid": 1365,
+        "ppid": 1363,
+        "start_ticks": 13397,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S10-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 16.267244,
+    "processes": []
+  }
+]
