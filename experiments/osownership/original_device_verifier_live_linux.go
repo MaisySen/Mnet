@@ -4,6 +4,7 @@ package osownership
 
 import (
 	"context"
+	"errors"
 	"golang.org/x/sys/unix"
 )
 
@@ -20,7 +21,40 @@ func (o *originalHeldPacketResources) verifyOriginalDeviceLockedSource(ctx conte
 	if e := o.namespace.checkCurrent(); e != nil {
 		return nil, e
 	}
-	fd := int(o.creation.fd.file.Fd())
+	raw, e := o.creation.fd.file.SyscallConn()
+	if e != nil {
+		return nil, e
+	}
+	var evidence *originalDeviceEvidence
+	var observedErr error
+	controlErr := raw.Control(func(number uintptr) {
+		before, e := unix.FcntlInt(number, unix.F_GETFL, 0)
+		if e != nil {
+			observedErr = e
+			return
+		}
+		evidence, observedErr = o.inspectOriginalControlSource(ctx, int(number))
+		after, e := unix.FcntlInt(number, unix.F_GETFL, 0)
+		observedErr = errors.Join(observedErr, e)
+		if e == nil && after != before {
+			observedErr = errors.Join(observedErr, ErrConflict)
+		}
+	})
+	if e = errors.Join(controlErr, observedErr); e != nil {
+		return nil, e
+	}
+	return evidence, nil
+}
+
+// Descriptor is valid only inside SyscallConn.Control's callback. Never saved,
+// returned, closed, duped, or used after the callback. No F_SETFL/Fd conversion.
+func (o *originalHeldPacketResources) inspectOriginalControlSource(ctx context.Context, fd int) (*originalDeviceEvidence, error) {
+	if !kernelExecutionReleased {
+		return nil, ErrExecutorUnreleased
+	}
+	if ctx == nil || ctx.Err() != nil {
+		return nil, ErrConflict
+	}
 	var device unix.Stat_t
 	if e := unix.Fstat(fd, &device); e != nil {
 		return nil, e

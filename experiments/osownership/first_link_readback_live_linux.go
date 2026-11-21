@@ -5,8 +5,9 @@ package osownership
 import "context"
 
 // Source proposal preserves actual kernel-derived device namespace/name evidence
-// and parsed raw/ALL/TUN diagnostics. NOT setupPostEvidence: ethtool STRSET+ACTIVE
-// actual socket supplier remains missing, so this cannot finish/mint a setup.
+// and parsed raw/ALL/TUN diagnostics. This older diagnostic-only proposal does
+// not include features. collectSetupPostSource separately preserves the actual
+// STRSET+ACTIVE source record, still without post-evidence mint or setup finish.
 type originalReadbackProposal struct {
 	before, after *originalDeviceEvidence
 	diagnostic    ownedSourceDiagnostic
