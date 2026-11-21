@@ -25,6 +25,7 @@ func (i adapterIdentity) valid() bool {
 }
 
 type adapterSession struct {
+	packetCreation       *packetBindingCandidate
 	afCreationBound      bool
 	afCreationApplicable bool
 	afCreationAttrs      map[uint16][]byte
