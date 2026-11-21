@@ -5,6 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"net/netip"
+	"net/url"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,7 +70,7 @@ func NewPool(sources []PoolSource, limits PoolLimits) (*Pool, error) {
 	}()
 	scopes := map[string]bool{}
 	for _, entry := range sources {
-		if !identifierPattern.MatchString(entry.ID) || p.sources[entry.ID] != nil {
+		if !identifierPattern.MatchString(entry.ID) || p.sources[entry.ID] != nil || !canonicalBudgetOrigin(entry.Scope.SourceOrigin) {
 			return nil, ErrAdmission
 		}
 		client, err := NewService(entry.Scope, entry.Secret, entry.Allowed, entry.Transport)
@@ -168,4 +172,54 @@ func (p *Pool) Reserve(ctx context.Context, sourceID string, request contract.So
 		return contract.SourceReserve{}, ErrUnavailable
 	}
 	return data, nil
+}
+
+// A stricter CONFIG admission subset, not normalization of protocol identities.
+// Reject aliases instead of silently rewriting exact signed/descriptor fields.
+// DNS/CNAME resolution is deliberately absent; global limits still cover names
+// that happen to resolve to the same service through separately configured DNS.
+func canonicalBudgetOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
+		return false
+	}
+	host := u.Hostname()
+	if host != strings.ToLower(host) || strings.HasSuffix(host, ".") {
+		return false
+	}
+	if port := u.Port(); port != "" {
+		n, err := strconv.Atoi(port)
+		if err != nil || n == 443 || strconv.Itoa(n) != port {
+			return false
+		}
+	}
+	if addr, err := netip.ParseAddr(host); err == nil {
+		if addr.Zone() != "" || addr.Is4In6() || addr.String() != host {
+			return false
+		}
+		return true
+	}
+	if strings.Contains(host, ":") || len(host) > 253 {
+		return false
+	}
+	numeric := true
+	for _, r := range host {
+		if r != '.' && (r < '0' || r > '9') {
+			numeric = false
+		}
+	}
+	if numeric {
+		return false
+	}
+	for _, label := range strings.Split(host, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, r := range label {
+			if !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && r != '-' {
+				return false
+			}
+		}
+	}
+	return true
 }

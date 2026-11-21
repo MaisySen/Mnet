@@ -292,3 +292,32 @@ func TestPoolSameOriginalAttemptBlocksDifferentReserveBeforeHistoryFull(t *testi
 		t.Fatal("same original attempt escaped through changed reserve")
 	}
 }
+
+func TestPoolRejectsSourceOriginBudgetAliasesWithoutRewritingIdentity(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { t.Error("config validation performed HTTP") }))
+	defer server.Close()
+	entry := poolConfig(t, server, "fixture")
+	for _, origin := range []string{"https://SOURCE.test", "https://source.test:443", "https://source.test:0444", "https://source.test.", "https://source.test.:444", "https://[0:0:0:0:0:0:0:1]", "https://[::ffff:127.0.0.1]", "https://127.000.0.1", "https://2130706433", "https://é.test"} {
+		t.Run(origin, func(t *testing.T) {
+			copyEntry := entry
+			copyEntry.Scope.SourceOrigin = origin
+			p, err := NewPool([]PoolSource{copyEntry}, poolLimits())
+			if err == nil {
+				p.Close()
+				t.Fatal("semantic/config alias accepted")
+			}
+		})
+	}
+	for _, origin := range []string{"https://source.test", "https://source.test:444", "https://127.0.0.1:444", "https://[::1]:444", "https://xn--9ca.test"} {
+		copyEntry := entry
+		copyEntry.Scope.SourceOrigin = origin
+		p, err := NewPool([]PoolSource{copyEntry}, poolLimits())
+		if err != nil {
+			t.Fatal("canonical explicit origin refused", origin, err)
+		}
+		if p.sources[entry.ID].client.scope.SourceOrigin != origin {
+			t.Fatal("exact identity silently rewritten")
+		}
+		p.Close()
+	}
+}
