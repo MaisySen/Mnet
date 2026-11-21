@@ -31,7 +31,6 @@ type xDesktopView struct {
 	conn                         *xgb.Conn
 	window                       xproto.Window
 	gc                           xproto.Gcontext
-	loadingGC                    xproto.Gcontext
 	waitingHost                  bool
 	deleteAtom                   xproto.Atom
 	width, height                int
@@ -131,20 +130,6 @@ func newDesktopViewMode(peer string, pointer bool) (desktopView, error) {
 		return cleanup(err)
 	}
 	if err = xproto.CreateGCChecked(c, v.gc, xproto.Drawable(window), xproto.GcForeground|xproto.GcBackground, []uint32{0xffffff, 0x151923}).Check(); err != nil {
-		return cleanup(err)
-	}
-	font, err := xproto.NewFontId(c)
-	if err != nil {
-		return cleanup(err)
-	}
-	if err = xproto.OpenFontChecked(c, font, uint16(len("9x15")), "9x15").Check(); err != nil {
-		return cleanup(errors.New("viewer readable loading font unavailable"))
-	}
-	v.loadingGC, err = xproto.NewGcontextId(c)
-	if err != nil {
-		return cleanup(err)
-	}
-	if err = xproto.CreateGCChecked(c, v.loadingGC, xproto.Drawable(window), xproto.GcForeground|xproto.GcBackground|xproto.GcFont, []uint32{0xffffff, 0x1c2a3b, uint32(font)}).Check(); err != nil {
 		return cleanup(err)
 	}
 	protocols, err := xproto.InternAtom(c, false, uint16(len("WM_PROTOCOLS")), "WM_PROTOCOLS").Reply()
@@ -325,28 +310,22 @@ func (v *xDesktopView) draw() error {
 	}
 	if v.image == nil {
 		if v.height >= 260 {
-			heading, detail := "Waiting for host approval", "The host decides whether to share."
-			if !v.waitingHost {
-				heading, detail = "Waiting for the first screen", "No screen in 15 seconds ends this session."
-			}
 			panelWidth := min(v.width-32, 520)
 			left := (v.width - panelWidth) / 2
 			top := viewerHeader + (v.height-viewerHeader-120)/2
-			if err = xproto.ChangeGCChecked(v.conn, v.gc, xproto.GcForeground, []uint32{0x1c2a3b}).Check(); err != nil {
-				return err
+			panel, er := renderViewerWaiting(panelWidth, v.waitingHost)
+			if er != nil {
+				return er
 			}
-			if err = xproto.PolyFillRectangleChecked(v.conn, target, v.gc, []xproto.Rectangle{{X: int16(left), Y: int16(top), Width: uint16(panelWidth), Height: 120}}).Check(); err != nil {
-				return err
+			sampler := newViewerPixelSource(panel, panel.Bounds(), panelWidth, 120)
+			rows := v.maxRowsBytes / (panelWidth * 4)
+			if rows < 1 {
+				return errors.New("viewer waiting request limit too small")
 			}
-			if err = xproto.ImageText8Checked(v.conn, byte(len(heading)), target, v.loadingGC, int16(left+20), int16(top+36), heading).Check(); err != nil {
-				return err
-			}
-			if err = xproto.ChangeGCChecked(v.conn, v.gc, xproto.GcForeground|xproto.GcBackground, []uint32{0xb6c9db, 0x1c2a3b}).Check(); err != nil {
-				return err
-			}
-			for i, line := range []string{detail, "Use End or Escape to leave at any time."} {
-				if err = xproto.ImageText8Checked(v.conn, byte(len(line)), target, v.gc, int16(left+20), int16(top+65+i*23), line).Check(); err != nil {
-					return err
+			for y := 0; y < 120; y += rows {
+				n := min(rows, 120-y)
+				if er = xproto.PutImageChecked(v.conn, xproto.ImageFormatZPixmap, target, v.gc, uint16(panelWidth), uint16(n), int16(left), int16(top+y), 0, 24, sampler.strip(y, n)).Check(); er != nil {
+					return er
 				}
 			}
 		}

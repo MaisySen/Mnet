@@ -124,3 +124,27 @@ The X11 downscale helper now includes the RGBA rectangle origin when reading eac
 Thirty focused race repetitions, fresh full uncached race/vet/build and actual2048host view-only/pointer journeys pass. Current native capture supplies zero-origin images, so this is general Go image-helper correctness, not a diagnosis of earlier blank-canvas or Chrome startup failures. The initial concurrent view-only attempt lost its screenshot window and exceeded the combined outer time limit; the complete large view-only journey then passed separately. No interrupted partial journey is counted. No capture scale, JPEG quality, pointer mapping, permission or physical-device claim changed.
 
 A bounded independent downscale fuzz oracle also varies signed origins, padded subimage stride, dimensions, pixel bytes and block factors. Each output average is checked through RGBAAt, with the parent bytes unchanged. The10second run passed55034executions and30focused race repetitions passed. This remains offline image arithmetic, not native monitor support or a diagnosis of blank frames.
+
+## Embedded readable waiting state
+
+The later isolated branch draws the local waiting card with embedded proportional
+Go fonts, without looking up an X11 loading font. Host-approval waiting and
+admitted-first-screen waiting remain distinct. No timer, image region, viewport,
+local End hit target, input boundary or host decision changed. The card still
+occupies only its existing120pixel local panel, and all supported widths fit.
+The viewer toolbar remains the earlier technical engineering UI.
+
+The actual silent-capture journey still ends at the production15second bound,
+closes the viewer/host and returns to the first-screen failure home. Both actual
+view-only sizes pass protocol pixels/fit/pan/expose/End and the host consent,
+decline, authority/display loss and cancellation journeys. The actual pointer
+home journey also passes with exact input counts. Waiting/failure pixels were
+inspected; they are not received desktop evidence.
+
+An old preapproval fixture asserted fewer than ten colors. Antialiased local
+text legitimately violates that palette count, so that first run failed. Its
+replacement checks the stronger relevant condition: every content pixel outside
+the exact local waiting panel remains background and no independently painted
+host target is present anywhere before approval. Positive received-screen
+checks now count the exact target family, not any blue panel. Both native sizes
+pass without a larger deadline, relaxed host decision or changed input count.

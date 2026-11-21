@@ -138,7 +138,17 @@ try:
        subprocess.run(['import','-window',viewer,str(case/'waiting.png')],env=ve,check=True)
        waiting_image=Image.open(case/'waiting.png').convert('RGB')
        assert waiting_image.getpixel((waiting_image.width-80,15))==(155,52,62),'local End pixels absent before approval'
-       assert len(waiting_image.getcolors(1024*768) or [])<10,'preapproval image not blank'
+       # Antialiased local waiting text has many colors. Remote-content
+       # absence is a spatial invariant, not a count of UI palette entries.
+       content=waiting_image.crop((0,72,waiting_image.width,waiting_image.height))
+       panel_width=min(waiting_image.width-32,520)
+       panel_left=(waiting_image.width-panel_width)//2
+       panel_top=(waiting_image.height-72-120)//2
+       from PIL import ImageDraw
+       masked=content.copy();ImageDraw.Draw(masked).rectangle((panel_left,panel_top,panel_left+panel_width-1,panel_top+119),fill=(21,25,35))
+       assert masked.getcolors(masked.width*masked.height)==[(masked.width*masked.height,(21,25,35))],'preapproval remote content outside local panel'
+       target=lambda c: all(abs(a-b)<=8 for a,b in zip(c,(65,111,168)))
+       assert not any(target(c) for _,c in content.getcolors(content.width*content.height) or []),'preapproval contains host target pixels'
        if mode=='pending-root-shrink':
         subprocess.run(['xrandr','--output','screen','--off','--fb','800x600'],env=ve,check=True);root_changed_at=time.monotonic();captured=True
        elif mode=='pending-terminate':
@@ -153,7 +163,7 @@ try:
       viewer=window(ve,'^Mnet view only:.*Viewing.');active=window(env,'^Mnet: desktop sharing')
       if viewer and active:
        subprocess.run(['import','-window',viewer,str(case/'live.png')],env=ve,check=True)
-       image=Image.open(case/'live.png').convert('RGB');colors=image.getcolors(1024*768) or [];blue=sum(n for n,c in colors if c[2]>c[0]+30 and c[1]>c[0]+10)
+       image=Image.open(case/'live.png').convert('RGB');colors=image.getcolors(1024*768) or [];blue=sum(n for n,c in colors if all(abs(a-b)<=8 for a,b in zip(c,(65,111,168))))
        if blue>10000:
         subprocess.run(['import','-window',active,str(case/'host-active.png')],env=env,check=True)
         if mode=='local-end':
