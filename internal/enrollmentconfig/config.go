@@ -1,6 +1,6 @@
 // Package enrollmentconfig validates an inactive operator handoff contract.
-// It has no file loader, environment defaults, route, network client, membership
-// writer or production caller. A validated mapping is configuration, not consent
+// It has no implicit file loader, environment defaults, route, network client, membership
+// writer or enrollment caller. A validated mapping is configuration, not consent
 // or proof of a person's current authority.
 package enrollmentconfig
 
@@ -15,18 +15,25 @@ import (
 var ErrInvalid = errors.New("invalid enrollment operator mapping")
 
 // Principal is an immutable authenticated identity, never an email match.
-type Principal struct{ Issuer, Subject string }
+type Principal struct {
+	Issuer  string `json:"issuer"`
+	Subject string `json:"subject"`
+}
 type Binding struct {
-	WorkspaceID, NetworkID string
+	WorkspaceID string `json:"workspace_id"`
+	NetworkID   string `json:"network_id"`
 	// Explicit principals are a proposed minimum policy, not workspace membership.
 	// More permissive role policies require a separate design and review.
-	Principals []Principal
+	Principals []Principal `json:"principals"`
 }
 type Config struct {
-	Version                                          int
-	Revision                                         string
-	MultiesOrigin, Issuer, RegistrarOrigin, Audience string
-	Bindings                                         []Binding
+	Version         int       `json:"version"`
+	Revision        string    `json:"revision"`
+	MultiesOrigin   string    `json:"multies_origin"`
+	Issuer          string    `json:"issuer"`
+	RegistrarOrigin string    `json:"registrar_origin"`
+	Audience        string    `json:"audience"`
+	Bindings        []Binding `json:"bindings"`
 }
 
 // Mapping holds a private copy so a caller cannot change validated policy later.

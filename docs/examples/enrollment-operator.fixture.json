@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "revision": "fixture-r1",
+  "multies_origin": "https://multies.example.test",
+  "issuer": "https://identity.example.test/issuer",
+  "registrar_origin": "https://registrar.example.test",
+  "audience": "fixture-enrollment",
+  "bindings": [
+    {
+      "workspace_id": "workspace-fixture",
+      "network_id": "net-fixture",
+      "principals": [
+        {
+          "issuer": "https://identity.example.test/issuer",
+          "subject": "subject-fixture"
+        }
+      ]
+    }
+  ]
+}

@@ -71,8 +71,9 @@ principal is currently eligible. Syntax validation proves neither fact.
 `internal/enrollmentconfig` now models and validates this *inactive* handoff:
 HTTPS origin-only endpoints, explicit issuer/audience/revision, nonempty exact
 workspace/network/principal tuples, unique workspace entries and defensive
-copies. No file/environment loader, route, network client, store adapter or
-production caller exists. Same-network mappings for two explicitly configured
+copies. The explicit offline check below is its only command caller. No implicit
+file/environment loading, route, network client, store adapter or enrollment
+caller exists. Same-network mappings for two explicitly configured
 workspaces are not rejected merely by inference; their disclosure policy still
 needs review. This is not an authorization verifier or product setup switch.
 
@@ -174,3 +175,25 @@ same-computer Linux X11 fixtures, not working consumer enrollment or physical
 cross-machine pairing. Shared Desk's installed offline arrangement/recovery is
 not live keyboard/mouse sharing. Full Multies repository typecheck has its prior
 memory-limit failure; selected strict-entry checks do not replace it.
+
+## Offline operator handoff check
+
+```
+mnet setup-config-check docs/examples/enrollment-operator.fixture.json
+```
+
+The committed example is deliberately synthetic. Its `.test` names and fixture
+IDs are not production values, a default configuration or suggested real URLs.
+The operator can prepare a separate explicit file in this exact JSON shape and
+run this check without a daemon or a connection. The command creates no state,
+installs no configuration, performs no URL resolution or request and echoes no
+principal identifiers. It reports syntax only, followed by the unresolved
+existence/permission/service-authentication/protocol-review checks.
+
+The reader accepts at most 256 KiB from an existing regular file. It rejects
+unknown or missing fields, null values, duplicate decoded names including escape
+aliases, case aliases, trailing JSON, invalid UTF-8 and overlarge arrays before
+policy validation. Every origin is explicit HTTPS and origin-only, while the
+immutable issuer may include its exact path. No redirect, normalization, broad
+Multies cookie, enrolment key or environment fallback is used. This checker does
+not load into home, enable a registrar, prove key possession or approve a person.

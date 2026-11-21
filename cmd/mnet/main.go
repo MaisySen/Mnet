@@ -64,6 +64,10 @@ func main() {
 		usage()
 		return
 	}
+	if args[0] == "setup-config-check" {
+		must(checkSetupConfig(args[1:], os.Stdout))
+		return
+	}
 	hc := client(stateDir)
 
 	switch args[0] {
@@ -201,6 +205,7 @@ func usage() {
   mnet wait [--timeout 60s]  (observe current Up state; timeout does not stop startup)
   mnet status [--json]  (private local status; may include an approval link)
   mnet multies-open --server TRUSTED_MULTIES_ORIGIN (experimental Linux X11 review; own approvals only)
+  mnet setup-config-check FILE (offline operator mapping syntax only; no enrollment)
   mnet multies-signin --server TRUSTED_MULTIES_ORIGIN (experimental; own approvals only, no VPN enrollment)
   mnet open [--layout FILE] [--multies-server TRUSTED_ORIGIN] (local preview; approvals only, no automatic connection)
   mnet devices  (read-only Linux X11 snapshot, manual refresh; no network/session changes)
