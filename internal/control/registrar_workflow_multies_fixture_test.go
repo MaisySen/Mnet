@@ -6,6 +6,7 @@ package control
 // workflow. Native-side key/secret here are DISPOSABLE TEST-owned values, not a
 // daemon key caller, native credential installation or registered bootstrap API.
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/ecdh"
@@ -568,9 +569,64 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	}
 	nativeTimeout := "40s"
 	nativeCmd := exec.Command(nativeBinary, "-test.run=^TestActualMultiesNativeWorkflowFixture$", "-test.v", "-test.timeout="+nativeTimeout)
+	if installed := os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY"); installed != "" {
+		if input.Mode != "success" {
+			t.Fatal("installed setup fixture only supports success mode")
+		}
+		root := filepath.Join(dir, "installed-setup")
+		if err := os.Mkdir(root, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "DISPOSABLE-MNET-SETUP"), []byte("mnet-disposable-enrollment-v1\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		policyRaw, _ := json.Marshal(input.Workflow.Policy)
+		limitRaw, _ := json.Marshal(limits)
+		if err := os.WriteFile(filepath.Join(root, "enrollment-policy-v2.json"), policyRaw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "workflow-limits.json"), limitRaw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		nativeCmd = exec.Command(installed, "--disposable-root", root)
+		if os.Getenv("MNET_DEVELOPMENT_SETUP_BROWSER") == "1" {
+			nativeCmd.Args = append(nativeCmd.Args, "--open-browser")
+		}
+		pipe, err := nativeCmd.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		go func() {
+			scanner := bufio.NewScanner(pipe)
+			scanner.Buffer(make([]byte, 4096), 32768)
+			for scanner.Scan() {
+				var event struct {
+					Stage  string                 `json:"stage"`
+					Launch *contract.SourceLaunch `json:"launch"`
+					Result json.RawMessage        `json:"result"`
+				}
+				if json.Unmarshal(scanner.Bytes(), &event) != nil {
+					continue
+				}
+				if event.Launch != nil {
+					raw, _ := json.Marshal(event.Launch)
+					if err := writeRegistrarFixtureAtomic(dir, "native-launch.json", raw); err != nil {
+						t.Error(err)
+					}
+				}
+				if event.Stage == "joined-not-connected" && len(event.Result) > 0 {
+					if err := writeRegistrarFixtureAtomic(dir, "native-workflow-outcome.json", event.Result); err != nil {
+						t.Error(err)
+					}
+				}
+			}
+		}()
+	}
 	nativeCmd.Env = append(os.Environ(), "MNET_NATIVE_OWNED_WORKFLOW_DIR="+dir)
 	var nativeOutput bytes.Buffer
-	nativeCmd.Stdout = &nativeOutput
+	if os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY") == "" {
+		nativeCmd.Stdout = &nativeOutput
+	}
 	nativeCmd.Stderr = &nativeOutput
 	if err := nativeCmd.Start(); err != nil {
 		t.Fatal(err)
@@ -722,10 +778,39 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		NativeEncryptedDirect     bool
 		NativeEncryptedRelay      bool
 	}
-	if json.Unmarshal(raw, &nativeOutcome) != nil || !nativeOutcome.NativeProofStateUnchanged || (!recoveryMode.Load() && !preparedFinalize.Load() && (!nativeOutcome.NativeOwnedKeyConfirmed || !nativeOutcome.NativeStateFinalized || nativeOutcome.NativeCurrentPeers != 2)) || (preparedFinalize.Load() && (!nativeOutcome.NativeHistoryRecovered || nativeOutcome.NativeOwnedKeyConfirmed || !nativeOutcome.NativeStateFinalized || nativeOutcome.NativeCurrentPeers != 2 || (historyCalls.Load() != 1 && !preparedHistoryFinalize.Load()) || (preparedHistoryFinalize.Load() && historyCalls.Load() != 2))) || (recoveryMode.Load() && (!nativeOutcome.NativeHistoryRecovered || nativeOutcome.NativeOwnedKeyConfirmed || nativeOutcome.NativeStateFinalized != historyFinalize.Load() || historyCalls.Load() != 1 || (historyFinalize.Load() && nativeOutcome.NativeCurrentPeers != 2))) {
-		t.Fatal("missing actual daemon proof result")
+	if json.Unmarshal(raw, &nativeOutcome) != nil || !nativeOutcome.NativeProofStateUnchanged || (!recoveryMode.Load() && !preparedFinalize.Load() && (!nativeOutcome.NativeOwnedKeyConfirmed || !nativeOutcome.NativeStateFinalized || nativeOutcome.NativeCurrentPeers != 2 && os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY") == "")) || (preparedFinalize.Load() && (!nativeOutcome.NativeHistoryRecovered || nativeOutcome.NativeOwnedKeyConfirmed || !nativeOutcome.NativeStateFinalized || nativeOutcome.NativeCurrentPeers != 2 || (historyCalls.Load() != 1 && !preparedHistoryFinalize.Load()) || (preparedHistoryFinalize.Load() && historyCalls.Load() != 2))) || (recoveryMode.Load() && (!nativeOutcome.NativeHistoryRecovered || nativeOutcome.NativeOwnedKeyConfirmed || nativeOutcome.NativeStateFinalized != historyFinalize.Load() || historyCalls.Load() != 1 || (historyFinalize.Load() && nativeOutcome.NativeCurrentPeers != 2))) {
+		t.Fatalf("missing actual daemon proof result owned=%v unchanged=%v finalized=%v peers=%d receipt=%v", nativeOutcome.NativeOwnedKeyConfirmed, nativeOutcome.NativeProofStateUnchanged, nativeOutcome.NativeStateFinalized, nativeOutcome.NativeCurrentPeers, nativeOutcome.Receipt.Receipt.NodeID != "")
 	}
 
+	if os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY") != "" {
+		nodeID := nativeOutcome.Receipt.Receipt.NodeID
+		record := s.registrarNodeLocked(nodeID)
+		if record == nil || len(s.data.Nodes) != 3 {
+			t.Fatal("installed source proof absent from actual Store")
+		}
+		installedRef := registrarCredentialReference{NodeID: record.NodeID, NetworkID: record.NetworkID, DevicePublicKey: record.DevicePublicKey, Scope: record.Scope, ReceiptID: record.ReceiptID, ReceiptDigest: record.ReceiptDigest, DescriptorDigest: record.DescriptorDigest, TranscriptDigest: record.Consumption.TranscriptDigest}
+		current, err := s.registrarCredentialMap(installedRef, getPeerSecret())
+		if err != nil || len(current.Peers) != nativeOutcome.NativeCurrentPeers {
+			t.Fatal("installed native current map not source grounded", err)
+		}
+		ids := []string{}
+		for id := range s.data.Nodes {
+			ids = append(ids, id)
+		}
+		for _, id := range ids {
+			if err := s.DeleteNode(id); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := s.registrarCredentialMap(installedRef, getPeerSecret()); err == nil {
+			t.Fatal("deleted installed credential remained current")
+		}
+		outcome, _ := json.Marshal(map[string]any{"developmentInstalled": true, "nativeOwnedKeyConfirmed": true, "nativeProofStateUnchanged": true, "nativeStateFinalized": true, "nativeCurrentPeers": nativeOutcome.NativeCurrentPeers, "nodeDeleted": true, "inputAuthorized": false})
+		if err := writeRegistrarFixtureAtomic(dir, "outcome.json", outcome); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
 	if transportMode.Load() {
 		if transport == nil || !transport.revoked || transportReceivedAtRevoke == 0 || transport.reverseSent != 5 || !(nativeOutcome.NativeEncryptedDirect || nativeOutcome.NativeEncryptedRelay) || !postRemovalVerified || transportNativeID == "" || len(s.data.Nodes) != 2 {
 			t.Fatal("connected encrypted direct transport/revocation evidence absent")
