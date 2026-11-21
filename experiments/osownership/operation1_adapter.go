@@ -107,6 +107,7 @@ type operation1Adapter struct {
 	controller *operation1Controller
 	session    *adapterSession
 	source     operation1DiagnosticSource
+	creation   operation1CreationSource
 }
 
 var _ transactionLedgerAdapter = (*operation1Adapter)(nil)
@@ -135,8 +136,50 @@ func (a *operation1Adapter) Snapshot(ctx context.Context) (Inventory, error) {
 	// bypass. Canonical diagnostic-to-Inventory policy is still incomplete.
 	return Inventory{}, ownedAFPolicyIncomplete
 }
-func (a *operation1Adapter) Create(ctx context.Context, _ Plan) (Handle, error) {
-	return Handle{}, ErrExecutorUnreleased
+
+// Private creation dependency never returns an untracked raw descriptor.
+type operation1CreationSource interface {
+	createOriginal(context.Context, Plan, *originalAttempt) (Handle, error)
+	bindCreatedOriginal(context.Context, *originalAttempt) (operation1DiagnosticSource, error)
+}
+
+func (a *operation1Adapter) Create(ctx context.Context, p Plan) (Handle, error) {
+	if !a.authorized(ctx) || a.creation == nil || a.controller.attempt != nil || a.session == nil || a.session.createAttempted {
+		return Handle{}, ErrConflict
+	}
+	c := a.controller
+	frozen := p
+	frozen.Operations = append([]Operation(nil), p.Operations...)
+	c.attempt = &originalAttempt{owner: c, plan: frozen, stage: "unopened"}
+	c.tx.PendingCleanup = true
+	a.session.createAttempted = true
+	h, e := a.creation.createOriginal(ctx, p, c.attempt)
+	if e != nil {
+		a.session.poisoned = true
+		return h, c.attempt.fail(e)
+	}
+	if e = ctx.Err(); e != nil {
+		a.session.poisoned = true
+		return h, c.attempt.fail(e)
+	}
+	if c.attempt.custody == nil || c.attempt.handle == nil || *c.attempt.handle != h {
+		a.session.poisoned = true
+		return h, c.attempt.fail(ErrConflict)
+	}
+	if e = a.session.bindCreated(p, h); e != nil {
+		a.session.poisoned = true
+		copy := h
+		a.session.rejectedHandle = &copy
+		return h, c.attempt.fail(e)
+	}
+	source, e := a.creation.bindCreatedOriginal(ctx, c.attempt)
+	if e != nil || source == nil {
+		a.session.poisoned = true
+		return h, c.attempt.fail(errors.Join(e, ErrConflict))
+	}
+	a.source = source
+	c.attempt.stage = "session-bound"
+	return h, nil
 }
 func (a *operation1Adapter) CloseOriginalFD(Handle) error { return ErrExecutorUnreleased }
 func (a *operation1Adapter) Apply(ctx context.Context, h Handle, op Operation) (err error) {

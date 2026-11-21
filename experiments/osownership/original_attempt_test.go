@@ -48,9 +48,9 @@ func (f *fakeOriginalAbsence) observeOriginalAbsence(_ context.Context, a *origi
 		return nil, ErrConflict
 	}
 	if f.wrong {
-		return &originalAbsenceEvidence{attempt: &originalAttempt{}, custody: a.custody}, nil
+		return &originalAbsenceEvidence{ticket: a.absenceTicket, attempt: &originalAttempt{}, custody: a.custody}, nil
 	}
-	return &originalAbsenceEvidence{attempt: a, custody: a.custody}, nil
+	return &originalAbsenceEvidence{ticket: a.absenceTicket, attempt: a, custody: a.custody}, nil
 }
 func TestOwnerCloseOwedRegardlessObservationAndNoHandle(t *testing.T) {
 	closeFailure := errors.New("fake original close failed")

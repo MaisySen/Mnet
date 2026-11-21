@@ -5,6 +5,8 @@ package osownership
 import (
 	"context"
 	"errors"
+	"reflect"
+	"time"
 )
 
 // Controller publishes this before opening anything. Every post-open failure
@@ -20,6 +22,8 @@ type originalAttempt struct {
 	closeAttempted   bool
 	closeErr         error
 	absenceConfirmed bool
+	absenceSequence  uint64
+	absenceTicket    *originalAbsenceTicket
 }
 
 func (a *originalAttempt) retain(c *fileCustody) error {
@@ -72,10 +76,27 @@ var errAbsenceUnverified = errors.New("original close does not prove raw absence
 
 // Private scoped absence, NOT an Inventory or readiness capability. Production
 // has no supplier/mint until complete raw reconciliation provenance is reviewed.
+type originalAbsenceTicket struct {
+	attempt      *originalAttempt
+	owner        *operation1Controller
+	sequence     uint64
+	active, used bool
+}
 type originalAbsenceEvidence struct {
+	ticket  *originalAbsenceTicket
 	attempt *originalAttempt
 	custody *fileCustody
 }
+
+// Pure equality/correlation seam. Calling it alone does not establish source
+// provenance; only resident source checks lifetime/ns before and after reads.
+func parseOriginalAbsence(a *originalAttempt, ticket *originalAbsenceTicket, b *CapturedBaseline, raw RawInventory, sys SysctlSnapshot) (*originalAbsenceEvidence, error) {
+	if a == nil || ticket == nil || b == nil || a.owner == nil || a.owner.adapter == nil || a.owner.adapter.session == nil || a.owner.adapter.session.baseline != b || a.absenceTicket != ticket || !ticket.active || ticket.used || ticket.attempt != a || ticket.owner != a.owner || ticket.sequence != a.absenceSequence || !a.closeAttempted || a.custody == nil || !sameNamespace(a.plan.Binding.Namespace, b.ns) || !reflect.DeepEqual(raw, b.raw) || !reflect.DeepEqual(map[string]string(sys), b.sys) {
+		return nil, ErrConflict
+	}
+	return &originalAbsenceEvidence{ticket: ticket, attempt: a, custody: a.custody}, nil
+}
+
 type originalAbsenceSource interface {
 	observeOriginalAbsence(context.Context, *originalAttempt) (*originalAbsenceEvidence, error)
 }
@@ -107,22 +128,31 @@ func (c *operation1Controller) stopOwnedLocked(ctx context.Context) error {
 	if attempt.custody == nil {
 		return attempt.createErr
 	}
-	if !attempt.absenceConfirmed {
-		if ctx == nil || ctx.Err() != nil {
-			return errors.Join(closeErr, errAbsenceUnverified)
-		}
-		if c.absence == nil {
-			return errors.Join(closeErr, errAbsenceUnverified)
-		}
-		proof, e := c.absence.observeOriginalAbsence(ctx, attempt)
-		if e != nil {
-			return errors.Join(closeErr, e, errAbsenceUnverified)
-		}
-		if proof == nil || proof.attempt != attempt || proof.custody != attempt.custody || !attempt.closeAttempted {
-			return errors.Join(closeErr, ErrConflict, errAbsenceUnverified)
-		}
-		attempt.absenceConfirmed = true
+
+	attempt.absenceConfirmed = false
+	if ctx == nil || ctx.Err() != nil || c.absence == nil {
+		return errors.Join(closeErr, errAbsenceUnverified)
 	}
+	if attempt.absenceSequence == ^uint64(0) {
+		return errors.Join(closeErr, ErrConflict)
+	}
+	bounded, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+	ctx = bounded
+	attempt.absenceSequence++
+	ticket := &originalAbsenceTicket{attempt: attempt, owner: c, sequence: attempt.absenceSequence, active: true}
+	attempt.absenceTicket = ticket
+	defer func() { ticket.active = false; attempt.absenceTicket = nil }()
+	proof, e := c.absence.observeOriginalAbsence(ctx, attempt)
+	if e != nil {
+		return errors.Join(closeErr, e, errAbsenceUnverified)
+	}
+	if ctx.Err() != nil || proof == nil || proof.ticket != ticket || !ticket.active || ticket.used || ticket.owner != c || ticket.attempt != attempt || ticket.sequence != attempt.absenceSequence || proof.attempt != attempt || proof.custody != attempt.custody || !attempt.closeAttempted {
+		return errors.Join(closeErr, ErrConflict, errAbsenceUnverified)
+	}
+	ticket.used = true
+	attempt.absenceConfirmed = true
+
 	if attempt.closeErr != nil || c.tx.fdCloseError != nil {
 		return c.tx.fdCloseError
 	}
