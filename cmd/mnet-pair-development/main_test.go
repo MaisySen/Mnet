@@ -274,3 +274,14 @@ func TestPrecommitWorkOriginDoesNotPretendToBeReceiptDuration(t *testing.T) {
 		t.Fatal("historical window revived by DATA parse")
 	}
 }
+func TestPrecommitSpanSanityBoundary(t *testing.T) {
+	for _, ms := range []int64{10152, 16000, 16001} {
+		c := fixtureConfig()
+		c.EarlierExpiryMS = c.WorkStartMS + ms
+		raw, _ := json.Marshal(c)
+		_, e := parseConfig(raw)
+		if (e == nil) != (ms <= 16000) {
+			t.Fatalf("span %d result %v", ms, e)
+		}
+	}
+}
