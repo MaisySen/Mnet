@@ -594,7 +594,8 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	// State/key/callback. This process never receives its private key or file
 	// credential; only the real expected registrar request presents the bearer.
 	if networkCase {
-		if err := writeRegistrarFixtureAtomic(dir, "installed-peers-ready", []byte("fresh actual disposable counterpart committed")); err != nil {
+		timing, _ := json.Marshal(map[string]int64{"committedAtMS": r.CommittedAtMS, "accessExpiresAtMS": r.AccessExpiresAtMS, "readyAtMS": time.Now().UnixMilli()})
+		if err := writeRegistrarFixtureAtomic(dir, "installed-peers-ready", timing); err != nil {
 			t.Fatal(err)
 		}
 	}
