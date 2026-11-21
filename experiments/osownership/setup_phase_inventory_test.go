@@ -239,7 +239,8 @@ func TestActualTransactionRunCreationAliasDisableThenAddressRefusal(t *testing.T
 	for _, disabled := range []string{"0", "1"} {
 		t.Run(disabled, func(t *testing.T) {
 			c, f := setupRunRig(t, disabled)
-			e := c.withOwner(context.Background(), func(ctx context.Context) error { return c.tx.Run(ctx) })
+			tx := c.tx
+			e := c.withOwner(context.Background(), func(ctx context.Context) error { return tx.Run(ctx) })
 			if e == nil || c.tx.Ready || c.tx.PendingCleanup || !c.tx.stopStarted || c.adapter.session.forwardStep != 3 || c.adapter.disabled == nil || c.adapter.disabled.current() {
 				t.Fatal("Run escaped bounded graph or cleanup", e, c.tx.Ready, c.tx.PendingCleanup, c.adapter.session.forwardStep, f.events)
 			}
@@ -269,7 +270,8 @@ func TestPhaseSnapshotsRefuseDriftBindingAndUnsupportedStates(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			c, f := setupRunRig(t, "0")
 			f.mode = mode
-			e := c.withOwner(context.Background(), func(ctx context.Context) error { return c.tx.Run(ctx) })
+			tx := c.tx
+			e := c.withOwner(context.Background(), func(ctx context.Context) error { return tx.Run(ctx) })
 			if e == nil || c.tx.Ready || c.tx.PendingCleanup || !c.tx.stopStarted {
 				t.Fatal("bad phase escaped/unclean", e, f.events)
 			}
