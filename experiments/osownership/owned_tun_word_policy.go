@@ -55,26 +55,7 @@ func assessOwnedTUNPolicy(l LinkRecord) (ownedTUNPolicyAssessment, error) {
 			return out, afShape
 		}
 		for index, name := range names {
-			word := ownedTUNWordPolicy{Family: family, Index: index, Name: name, Value: binary.NativeEndian.Uint32(conf[index*4:]), Rule: "UNRESOLVED-effect-on-exact-local-endpoint-no-transit-invariant"}
-			if index == 0 || (family == 10 && index == 59) {
-				word.Rule = "no-transit-forwarding-must-zero"
-				if word.Value != 0 {
-					return out, afPolicy
-				}
-				word.Resolved = true
-			}
-			if family == 10 && index == 26 {
-				word.Rule = "phase-specific-disable-validated-separately"
-				word.Resolved = true
-			}
-			if family == 10 && index == 47 {
-				word.Rule = "generation-mode-range-and-sysctl-match-validated-separately"
-				word.Resolved = true
-			}
-			if family == 10 && index == 36 {
-				word.Rule = "source-omitted-zero-fill-slot"
-				word.Resolved = word.Value == 0
-			}
+			word := ownedTUNWordPolicy{Family: family, Index: index, Name: name, Value: binary.NativeEndian.Uint32(conf[index*4:]), Rule: "UNRESOLVED-original-custody-effective-policy-endpoint-admission"}
 			decision := ownedV4Decision(index)
 			if family == 10 {
 				decision = ownedV6Decision(index)

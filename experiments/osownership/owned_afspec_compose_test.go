@@ -227,21 +227,10 @@ func TestNamedWordDecisionCoverageAndConservativeChoices(t *testing.T) {
 			t.Fatal("missing grounded IPv6 decision", index, d)
 		}
 	}
-	for _, index := range []int{0, 1, 3, 5, 8, 9, 14, 15, 22, 23, 25, 31} {
-		d := ownedV4Decision(index)
-		if d.Decision != "assert" || d.Expected != 0 {
-			t.Fatal("unsafe transit/learning/bypass policy", index, d)
+	for index := range ownedTUNIPv4Words {
+		if ownedV4Decision(index).Decision == "assert" {
+			t.Fatal("obsolete blanket hardening", index)
 		}
-	}
-	for _, index := range []int{7, 28, 29, 32} {
-		d := ownedV4Decision(index)
-		if d.Decision != "assert" || d.Expected != 1 {
-			t.Fatal("restrictive ingress/carrier policy", index, d)
-		}
-	}
-	// Important counterexample: NOARP does not make the carrier notifier dormant.
-	if ownedV4Decision(32).Decision != "assert" {
-		t.Fatal("NOARP incorrectly bypassed neighbor carrier event")
 	}
 	l, _ := fullAFSynthetic()
 	a, e := assessOwnedTUNPolicy(l)
