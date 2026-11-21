@@ -122,6 +122,15 @@ func InspectDisposableEnrollment(root string) (DevelopmentRecoveryInspection, er
 	if err != nil {
 		return empty, err
 	}
+	if status.Recovery == "prepared-original-state" {
+		stateRevision := base64.RawURLEncoding.EncodeToString(sha256Sum(raw))
+		if state.native != nil {
+			stateRevision = state.native.OriginalStateRevision
+		}
+		if !pending.CheckPreparedRecoveryStateDATA(pendingRaw, stateRevision, base64.RawURLEncoding.EncodeToString(sha256Sum(nativePolicy)), base64.RawURLEncoding.EncodeToString(key), cfg) {
+			return empty, errEnrollmentContextStale
+		}
+	}
 	out := DevelopmentRecoveryInspection{Phase: status.Phase, Recovery: status.Recovery}
 	if state.native != nil {
 		if state.native.PolicyRevision != base64.RawURLEncoding.EncodeToString(sha256Sum(nativePolicy)) {
