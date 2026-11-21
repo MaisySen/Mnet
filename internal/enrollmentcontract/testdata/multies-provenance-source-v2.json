@@ -1,0 +1,76 @@
+{
+  "fixtureOnly": true,
+  "exchange": {
+    "responseVersion": 2,
+    "provenance": {
+      "principalAuthority": "https://multies.test",
+      "principalNamespace": "multies-local-user-v1",
+      "principalId": "usr_x17vm51k71d3rkay",
+      "sessionBinding": "NBp-EjS4nGPmQuFcdwgzO0rg_gIL1oWM1ghTAc5W3Ag"
+    },
+    "launch": {
+      "version": 1,
+      "purpose": "mnet-enrollment",
+      "attemptId": "hgU8CUb2UYqz8-0aNN_hYOjV7w-mpBo5waO6eBW7jeE",
+      "devicePublicKey": "PPrD_8bGzDzKplk-HLmdP9JowYfGHKfq8C_lzmt0UTo",
+      "challenge": "TiYcAHWs3UgaBKftcX-cib5S8Jsead45XXYwa56Ldsc",
+      "state": "ZrRJM8KaNQDaCY8cq0Y2wknKIGetmOq2Gevsn2LY2rg",
+      "redirectUri": "http://127.0.0.1:34567/mnet/enrollment/callback",
+      "platform": "linux",
+      "credentialDigest": "zCtFbJ_rC34bCyadkRpFXSDt3KjFXXKOMobn_tVFgXU"
+    },
+    "ticket": "ingRJkHjRUaJzdAR95R0SljcCeX1Lim-d3jkLWHEdQU",
+    "id": "C-VpBRm0e50Hi1yaN-69KqOTSk1BB9QLZTH-kCwPnko",
+    "expiresAt": "2026-11-21T04:01:46.666Z",
+    "binding": {
+      "workspaceId": "org_m6k4yjgc8m69ei3c",
+      "issuer": "https://issuer.test/path",
+      "registrarOrigin": "https://registrar.test",
+      "audience": "fixture-enrollment",
+      "mappingRevision": "fixture-r1",
+      "networkId": "fixture-net"
+    },
+    "purpose": "mnet-enrollment",
+    "registrarConnected": false,
+    "enrolled": false,
+    "inputAuthorized": false
+  },
+  "reserve": {
+    "handoffId": "C-VpBRm0e50Hi1yaN-69KqOTSk1BB9QLZTH-kCwPnko",
+    "reserveId": "4gAkhfIVCtBI874pYhg9xYip7TdAF3GREN1MBtYTirc",
+    "descriptorDigest": "FBdqBEsUGyCh3k8Ju31m2e4SXgmWFvFB6Kn-0TyL9gg",
+    "deadline": "2026-11-21T04:00:16.673Z",
+    "status": "reserved",
+    "enrolled": false,
+    "responseVersion": 2,
+    "provenance": {
+      "principalAuthority": "https://multies.test",
+      "principalNamespace": "multies-local-user-v1",
+      "principalId": "usr_x17vm51k71d3rkay",
+      "sessionBinding": "NBp-EjS4nGPmQuFcdwgzO0rg_gIL1oWM1ghTAc5W3Ag"
+    },
+    "launch": {
+      "version": 1,
+      "purpose": "mnet-enrollment",
+      "attemptId": "hgU8CUb2UYqz8-0aNN_hYOjV7w-mpBo5waO6eBW7jeE",
+      "devicePublicKey": "PPrD_8bGzDzKplk-HLmdP9JowYfGHKfq8C_lzmt0UTo",
+      "challenge": "TiYcAHWs3UgaBKftcX-cib5S8Jsead45XXYwa56Ldsc",
+      "state": "ZrRJM8KaNQDaCY8cq0Y2wknKIGetmOq2Gevsn2LY2rg",
+      "redirectUri": "http://127.0.0.1:34567/mnet/enrollment/callback",
+      "platform": "linux",
+      "credentialDigest": "zCtFbJ_rC34bCyadkRpFXSDt3KjFXXKOMobn_tVFgXU"
+    },
+    "binding": {
+      "issuer": "https://issuer.test/path",
+      "registrarOrigin": "https://registrar.test",
+      "audience": "fixture-enrollment",
+      "mappingRevision": "fixture-r1",
+      "networkId": "fixture-net",
+      "workspaceId": "org_m6k4yjgc8m69ei3c"
+    },
+    "serviceId": "fixture-registrar",
+    "checkedAt": "2026-11-21T03:59:46.674Z",
+    "descriptorEncodingVersion": 1,
+    "authorityGranted": false
+  }
+}

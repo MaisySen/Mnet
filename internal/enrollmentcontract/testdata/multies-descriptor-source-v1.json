@@ -1,0 +1,89 @@
+{
+  "fixtureOnly": true,
+  "vectors": [
+    {
+      "name": "actual-response",
+      "exchange": {
+        "responseVersion": 2,
+        "provenance": {
+          "principalAuthority": "https://multies.test",
+          "principalNamespace": "multies-local-user-v1",
+          "principalId": "usr_x17vm51k71d3rkay",
+          "sessionBinding": "NBp-EjS4nGPmQuFcdwgzO0rg_gIL1oWM1ghTAc5W3Ag"
+        },
+        "launch": {
+          "version": 1,
+          "purpose": "mnet-enrollment",
+          "attemptId": "hgU8CUb2UYqz8-0aNN_hYOjV7w-mpBo5waO6eBW7jeE",
+          "devicePublicKey": "PPrD_8bGzDzKplk-HLmdP9JowYfGHKfq8C_lzmt0UTo",
+          "challenge": "TiYcAHWs3UgaBKftcX-cib5S8Jsead45XXYwa56Ldsc",
+          "state": "ZrRJM8KaNQDaCY8cq0Y2wknKIGetmOq2Gevsn2LY2rg",
+          "redirectUri": "http://127.0.0.1:34567/mnet/enrollment/callback",
+          "platform": "linux",
+          "credentialDigest": "zCtFbJ_rC34bCyadkRpFXSDt3KjFXXKOMobn_tVFgXU"
+        },
+        "ticket": "ingRJkHjRUaJzdAR95R0SljcCeX1Lim-d3jkLWHEdQU",
+        "id": "C-VpBRm0e50Hi1yaN-69KqOTSk1BB9QLZTH-kCwPnko",
+        "expiresAt": "2026-11-21T04:01:46.666Z",
+        "binding": {
+          "workspaceId": "org_m6k4yjgc8m69ei3c",
+          "issuer": "https://issuer.test/path",
+          "registrarOrigin": "https://registrar.test",
+          "audience": "fixture-enrollment",
+          "mappingRevision": "fixture-r1",
+          "networkId": "fixture-net"
+        },
+        "purpose": "mnet-enrollment",
+        "registrarConnected": false,
+        "enrolled": false,
+        "inputAuthorized": false
+      },
+      "serviceId": "fixture-registrar",
+      "reserveId": "4gAkhfIVCtBI874pYhg9xYip7TdAF3GREN1MBtYTirc",
+      "bytesBase64": "WyJtbmV0LXJlc2VydmUtZGVzY3JpcHRvci12MSIsImZpeHR1cmUtcmVnaXN0cmFyIiwiQy1WcEJSbTBlNTBIaTF5YU4tNjlLcU9UU2sxQkI5UUxaVEgta0N3UG5rbyIsIjRnQWtoZklWQ3RCSTg3NHBZaGc5eFlpcDdUZEFGM0dSRU4xTUJ0WVRpcmMiLDEsIm1uZXQtZW5yb2xsbWVudCIsImhnVThDVWIyVVlxejgtMGFOTl9oWU9qVjd3LW1wQm81d2FPNmVCVzdqZUUiLCJQUHJEXzhiR3pEektwbGstSExtZFA5Sm93WWZHSEtmcThDX2x6bXQwVVRvIiwiekN0RmJKX3JDMzRiQ3lhZGtScEZYU0R0M0tqRlhYS09Nb2JuX3RWRmdYVSIsIlRpWWNBSFdzM1VnYUJLZnRjWC1jaWI1UzhKc2VhZDQ1WFhZd2E1Nkxkc2MiLCJaclJKTThLYU5RRGFDWThjcTBZMndrbktJR2V0bU9xMkdldnNuMkxZMnJnIiwiaHR0cDovLzEyNy4wLjAuMTozNDU2Ny9tbmV0L2Vucm9sbG1lbnQvY2FsbGJhY2siLCJsaW51eCIsIm9yZ19tNms0eWpnYzhtNjllaTNjIiwiaHR0cHM6Ly9pc3N1ZXIudGVzdC9wYXRoIiwiaHR0cHM6Ly9yZWdpc3RyYXIudGVzdCIsImZpeHR1cmUtZW5yb2xsbWVudCIsImZpeHR1cmUtcjEiLCJmaXh0dXJlLW5ldCJd",
+      "digest": "FBdqBEsUGyCh3k8Ju31m2e4SXgmWFvFB6Kn-0TyL9gg"
+    },
+    {
+      "name": "unicode-html-quote-backslash",
+      "exchange": {
+        "responseVersion": 2,
+        "provenance": {
+          "principalAuthority": "https://multies.test",
+          "principalNamespace": "multies-local-user-v1",
+          "principalId": "usr_x17vm51k71d3rkay",
+          "sessionBinding": "NBp-EjS4nGPmQuFcdwgzO0rg_gIL1oWM1ghTAc5W3Ag"
+        },
+        "launch": {
+          "version": 1,
+          "purpose": "mnet-enrollment",
+          "attemptId": "hgU8CUb2UYqz8-0aNN_hYOjV7w-mpBo5waO6eBW7jeE",
+          "devicePublicKey": "PPrD_8bGzDzKplk-HLmdP9JowYfGHKfq8C_lzmt0UTo",
+          "challenge": "TiYcAHWs3UgaBKftcX-cib5S8Jsead45XXYwa56Ldsc",
+          "state": "ZrRJM8KaNQDaCY8cq0Y2wknKIGetmOq2Gevsn2LY2rg",
+          "redirectUri": "http://127.0.0.1:34567/mnet/enrollment/callback",
+          "platform": "linux",
+          "credentialDigest": "zCtFbJ_rC34bCyadkRpFXSDt3KjFXXKOMobn_tVFgXU"
+        },
+        "ticket": "ingRJkHjRUaJzdAR95R0SljcCeX1Lim-d3jkLWHEdQU",
+        "id": "C-VpBRm0e50Hi1yaN-69KqOTSk1BB9QLZTH-kCwPnko",
+        "expiresAt": "2026-11-21T04:01:46.666Z",
+        "binding": {
+          "workspaceId": "org_m6k4yjgc8m69ei3c",
+          "issuer": "https://issuer.test/path",
+          "registrarOrigin": "https://registrar.test",
+          "audience": "台灣<&>\"\\literal",
+          "mappingRevision": "fixture-r1",
+          "networkId": "fixture-net"
+        },
+        "purpose": "mnet-enrollment",
+        "registrarConnected": false,
+        "enrolled": false,
+        "inputAuthorized": false
+      },
+      "serviceId": "fixture-registrar",
+      "reserveId": "4gAkhfIVCtBI874pYhg9xYip7TdAF3GREN1MBtYTirc",
+      "bytesBase64": "WyJtbmV0LXJlc2VydmUtZGVzY3JpcHRvci12MSIsImZpeHR1cmUtcmVnaXN0cmFyIiwiQy1WcEJSbTBlNTBIaTF5YU4tNjlLcU9UU2sxQkI5UUxaVEgta0N3UG5rbyIsIjRnQWtoZklWQ3RCSTg3NHBZaGc5eFlpcDdUZEFGM0dSRU4xTUJ0WVRpcmMiLDEsIm1uZXQtZW5yb2xsbWVudCIsImhnVThDVWIyVVlxejgtMGFOTl9oWU9qVjd3LW1wQm81d2FPNmVCVzdqZUUiLCJQUHJEXzhiR3pEektwbGstSExtZFA5Sm93WWZHSEtmcThDX2x6bXQwVVRvIiwiekN0RmJKX3JDMzRiQ3lhZGtScEZYU0R0M0tqRlhYS09Nb2JuX3RWRmdYVSIsIlRpWWNBSFdzM1VnYUJLZnRjWC1jaWI1UzhKc2VhZDQ1WFhZd2E1Nkxkc2MiLCJaclJKTThLYU5RRGFDWThjcTBZMndrbktJR2V0bU9xMkdldnNuMkxZMnJnIiwiaHR0cDovLzEyNy4wLjAuMTozNDU2Ny9tbmV0L2Vucm9sbG1lbnQvY2FsbGJhY2siLCJsaW51eCIsIm9yZ19tNms0eWpnYzhtNjllaTNjIiwiaHR0cHM6Ly9pc3N1ZXIudGVzdC9wYXRoIiwiaHR0cHM6Ly9yZWdpc3RyYXIudGVzdCIsIuWPsOeBozwmPlwiXFxsaXRlcmFsIiwiZml4dHVyZS1yMSIsImZpeHR1cmUtbmV0Il0=",
+      "digest": "6r9AWSr0BlOtGQ6ReG8ERRQV-b9F0JUK7MyicjZ3Ia0"
+    }
+  ]
+}
