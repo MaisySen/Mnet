@@ -34,43 +34,42 @@ func disableOwnedIPv6(ns *namespaceCustody, c *ownedCreation, l Link, verifyLink
 	if c == nil || c.handle.Link != l {
 		return ErrConflict
 	}
-	if e := c.beforeEffect(c.handle, "config-intent"); e != nil {
-		return e
-	}
-	fd, e := unix.Open("/proc/sys/net/ipv6/conf", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
-	if e != nil {
-		return e
-	}
-	defer unix.Close(fd)
-	linkFD, e := unix.Openat(fd, l.Name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
-	if e != nil {
-		return e
-	}
-	defer unix.Close(linkFD)
-	leaf, e := unix.Openat(linkFD, "disable_ipv6", unix.O_RDWR|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
-	if e != nil {
-		return e
-	}
-	f := os.NewFile(uintptr(leaf), "owned-link-disable-ipv6")
-	defer f.Close()
-	if e = ns.checkCurrent(); e != nil {
-		return e
-	}
-	if e = verifyLink(); e != nil {
-		return e
-	}
-	if _, e = f.Write([]byte("1\n")); e != nil {
-		return e
-	}
-	if _, e = f.Seek(0, 0); e != nil {
-		return e
-	}
-	b, e := io.ReadAll(io.LimitReader(f, 16))
-	if e != nil || strings.TrimSpace(string(b)) != "1" {
-		return errors.New("disable_ipv6 readback failed")
-	}
-	if e = ns.checkCurrent(); e != nil {
-		return e
-	}
-	return verifyLink()
+	return c.guardedEffect(c.handle, "config-intent", func() error {
+		fd, e := unix.Open("/proc/sys/net/ipv6/conf", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+		if e != nil {
+			return e
+		}
+		defer unix.Close(fd)
+		linkFD, e := unix.Openat(fd, l.Name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+		if e != nil {
+			return e
+		}
+		defer unix.Close(linkFD)
+		leaf, e := unix.Openat(linkFD, "disable_ipv6", unix.O_RDWR|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+		if e != nil {
+			return e
+		}
+		f := os.NewFile(uintptr(leaf), "owned-link-disable-ipv6")
+		defer f.Close()
+		if e = ns.checkCurrent(); e != nil {
+			return e
+		}
+		if e = verifyLink(); e != nil {
+			return e
+		}
+		if _, e = f.Write([]byte("1\n")); e != nil {
+			return e
+		}
+		if _, e = f.Seek(0, 0); e != nil {
+			return e
+		}
+		b, e := io.ReadAll(io.LimitReader(f, 16))
+		if e != nil || strings.TrimSpace(string(b)) != "1" {
+			return errors.New("disable_ipv6 readback failed")
+		}
+		if e = ns.checkCurrent(); e != nil {
+			return e
+		}
+		return verifyLink()
+	})
 }

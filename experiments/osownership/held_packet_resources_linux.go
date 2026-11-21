@@ -15,7 +15,7 @@ type originalHeldPacketResources struct {
 }
 
 func retainOriginalPacketResources(c *ownedCreation, ns *namespaceCustody, t *Transaction, s *adapterSession, v heldPacketIdentity) (*originalHeldPacketResources, error) {
-	if c == nil || c.fd == nil || c.fd.closed || c.fd.lineage != nil || c.fd.file == nil || ns == nil || t == nil || s == nil || s.canonical == nil || s.plan == nil || s.forwardStep != 1 || s.closeAttempted || s.cleanupMode || s.poisoned || t.stopStarted || t.fdCloseAttempted || c.handle != *s.canonical || v.handle != c.handle || v.identity != s.identity || !sameNamespace(ns.identity, v.target) || !sameNamespace(c.handle.Namespace, ns.identity) {
+	if c == nil || c.fd == nil || c.fd.file == nil || ns == nil || t == nil || s == nil || s.canonical == nil || s.plan == nil || s.forwardStep != 1 || s.closeAttempted || s.cleanupMode || s.poisoned || t.stopStarted || t.fdCloseAttempted || c.handle != *s.canonical || v.handle != c.handle || v.identity != s.identity || !sameNamespace(ns.identity, v.target) || !sameNamespace(c.handle.Namespace, ns.identity) {
 		return nil, ErrConflict
 	}
 	a, ok := t.k.(transactionLedgerAdapter)
@@ -29,7 +29,9 @@ func retainOriginalPacketResources(c *ownedCreation, ns *namespaceCustody, t *Tr
 	if e != nil {
 		return nil, e
 	}
-	c.fd.lineage = l
+	if e = c.fd.attachLineage(l); e != nil {
+		return nil, e
+	}
 	return &originalHeldPacketResources{creation: c, namespace: ns, ledger: l, owner: t, session: s}, nil
 }
 

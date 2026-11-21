@@ -118,13 +118,6 @@ func readPolicySysctlsSource(ctx context.Context, ns *namespaceCustody, raw RawI
 	if _, e := parseEffectiveV4(out); e != nil {
 		return nil, e
 	}
-	for _, l := range raw.Links {
-		if strings.HasPrefix(l.Name, "mno-") {
-			if _, e := parseTUNNested(l); e != nil {
-				return nil, e
-			}
-		}
-	}
 	return out, validateForwarding(raw, out)
 }
 

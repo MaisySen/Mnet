@@ -52,7 +52,7 @@ func TestOwnedEffectWrongHandleMissingLineageAndEscapeRefuse(t *testing.T) {
 func TestRealSourceLineageHooksPrecedeEffectsNoExecution(t *testing.T) {
 	for _, v := range []struct{ file, fn, guard, effect string }{
 		{"rtnetlink_linux.go", "applyExact", "guardedEffect", "openRouteSocket"},
-		{"custody_effects_live_linux.go", "disableOwnedIPv6", "beforeEffect", "unix.Open("},
+		{"custody_effects_live_linux.go", "disableOwnedIPv6", "guardedEffect", "unix.Open("},
 		{"custody_linux.go", "Close", "lineage.invalidate", "c.file.Close"},
 	} {
 		src := sourceFunction(t, v.file, v.fn)
@@ -62,7 +62,7 @@ func TestRealSourceLineageHooksPrecedeEffectsNoExecution(t *testing.T) {
 		}
 	}
 	src := sourceFunction(t, "sysctl_read_linux.go", "readPolicySysctlsSource")
-	for _, needed := range []string{"effectiveV4Leaves", "parseEffectiveV4", "parseTUNNested", "force_forwarding"} {
+	for _, needed := range []string{"effectiveV4Leaves", "parseEffectiveV4", "force_forwarding"} {
 		if !strings.Contains(src, needed) {
 			t.Fatal("reader disconnected", needed)
 		}

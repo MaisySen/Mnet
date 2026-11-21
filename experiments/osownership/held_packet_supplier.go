@@ -5,6 +5,7 @@ package osownership
 import (
 	"context"
 	"reflect"
+	"sync"
 )
 
 // Pure source protocol. Only test-memory wire implements this marker. Actual
@@ -28,7 +29,11 @@ type heldPacketIdentity struct {
 	handle            Handle
 	closed, uncertain bool
 }
-type heldPacketLedger struct{ current heldPacketIdentity }
+type heldPacketLedger struct {
+	mu      sync.Mutex
+	current heldPacketIdentity
+	setup   *packetSetupTransition
+}
 
 func newHeldPacketLedger(v heldPacketIdentity) (*heldPacketLedger, error) {
 	if v.fdObject == nil || v.fdObject.serial == 0 || v.generation != 1 || v.closed || v.uncertain || !v.identity.valid() || !sameNamespace(v.target, v.device) || !sameNamespace(v.target, v.handle.Namespace) || !sameNamespace(v.target, v.identity.Namespace) {
@@ -43,6 +48,15 @@ func newHeldPacketLedger(v heldPacketIdentity) (*heldPacketLedger, error) {
 // control leaves this lineage permanently unusable for packet evidence.
 func (l *heldPacketLedger) invalidate(kind string) error {
 	if l == nil {
+		return ErrConflict
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.setup = nil
+	return l.invalidateLocked(kind)
+}
+func (l *heldPacketLedger) invalidateLocked(kind string) error {
+	if l.current.closed && kind != "close-intent" {
 		return ErrConflict
 	}
 	switch kind {
@@ -61,6 +75,14 @@ func (l *heldPacketLedger) invalidate(kind string) error {
 	return nil
 }
 func (l *heldPacketLedger) matches(v heldPacketIdentity) bool {
+	if l == nil {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.matchesLocked(v)
+}
+func (l *heldPacketLedger) matchesLocked(v heldPacketIdentity) bool {
 	return l != nil && !l.current.closed && !l.current.uncertain && reflect.DeepEqual(v, l.current) && v.fdObject == l.current.fdObject
 }
 
@@ -183,3 +205,12 @@ func (o *heldPacketObservation) current() bool {
 
 // No endpoint policy conversion: authenticated peer MTU and original supplier
 // facts are not present. Compatible features are diagnostic state, not readiness.
+
+func (l *heldPacketLedger) snapshot() heldPacketIdentity {
+	if l == nil {
+		return heldPacketIdentity{}
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.current
+}

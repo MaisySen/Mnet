@@ -19,6 +19,10 @@ func (o *originalHeldPacketResources) collectSourceDiagnostic(ctx context.Contex
 	if e := o.namespace.checkCurrent(); e != nil {
 		return out, e
 	}
+	held, e := heldSourceSnapshot(o.ledger, o.owner, o.session)
+	if e != nil {
+		return out, e
+	}
 	raw, e := ReadStableInventory(ctx, residentNetlink{ns: o.namespace}, o.namespace.checkCurrent)
 	if e != nil {
 		return out, e
@@ -27,5 +31,5 @@ func (o *originalHeldPacketResources) collectSourceDiagnostic(ctx context.Contex
 	if e != nil {
 		return out, e
 	}
-	return sourceDiagnosticFromRecords(raw, sys, *o.session.canonical, o.ledger.matches(o.ledger.current))
+	return diagnosticForHeldRecords(raw, sys, held)
 }

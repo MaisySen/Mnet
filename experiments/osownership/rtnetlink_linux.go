@@ -107,21 +107,9 @@ func (s *routeSocket) Exchange(ctx context.Context, request []byte) (out []Datag
 	if len(request) < 16 || len(request) > 65536 {
 		return nil, errors.New("invalid netlink request")
 	}
-	kind := binary.NativeEndian.Uint16(request[4:])
-	if kind == 16 || kind == 20 || kind == 21 || kind == 24 || kind == 25 {
-		if !kernelExecutionReleased {
-			return nil, ErrExecutorUnreleased
-		}
-		if s.creation == nil {
-			return nil, ErrConflict
-		}
-		if e := s.creation.beforeEffect(s.creation.handle, "config-intent"); e != nil {
-			return nil, e
-		}
-	}
 	bounded, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
 	defer cancel()
-	if e := unix.Sendto(s.fd, request, 0, &unix.SockaddrNetlink{Family: unix.AF_NETLINK}); e != nil {
+	if e := guardReadOnlyRouteSend(request, s.pid, func() error { return unix.Sendto(s.fd, request, 0, &unix.SockaddrNetlink{Family: unix.AF_NETLINK}) }); e != nil {
 		return nil, e
 	}
 	var result []Datagram
