@@ -134,7 +134,9 @@ func renderDeskArrangementsSurface(v deskArrangementsView) (*image.RGBA, error) 
 	rows := v.rows()
 	rect(20, 100, 860, 330, 0xffffff)
 	if rows == 0 {
-		text(40, 150, 820, 14, false, 0x63758c, "No arrangement drafts yet. Choose New starter to create one locally.")
+		text(40, 150, 820, 14, true, 0x172b4d, "No arrangement drafts yet")
+		text(40, 174, 820, 13, false, 0x63758c, "An arrangement names where each display sits on this desk. It stays a local file.")
+		text(40, 194, 820, 13, false, 0x63758c, "Choose New starter to create one. Nothing is shared, paired or connected here.")
 	} else {
 		for i := 0; i < rows && i < deskArrRows; i++ {
 			y := 108 + i*36
