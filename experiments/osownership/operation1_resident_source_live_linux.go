@@ -143,7 +143,11 @@ func (s *operation1ScopedDiagnostic) diagnoseOperation1(ctx context.Context) (ow
 	if e := s.scope.check(ctx, s.scope.owner.attempt); e != nil {
 		return ownedSourceDiagnostic{}, e
 	}
-	return s.source.diagnoseOperation1(ctx)
+	observation, e := s.scope.observeCreatedOriginalAF(ctx, s.source.resources)
+	if e != nil {
+		return ownedSourceDiagnostic{}, e
+	}
+	return observation.diagnostic, nil
 }
 func (s *operation1ScopedDiagnostic) applyOperation1(ctx context.Context, p Plan) (*firstStepCompletion, error) {
 	if e := s.scope.check(ctx, s.scope.owner.attempt); e != nil {

@@ -29,34 +29,6 @@ func newOperation1SourceController(b *CapturedBaseline, id adapterIdentity, bind
 
 type operation1OriginalSource struct{ resources *originalHeldPacketResources }
 
-func (s *operation1OriginalSource) diagnoseOperation1(ctx context.Context) (ownedSourceDiagnostic, error) {
-	var zero ownedSourceDiagnostic
-	if !kernelExecutionReleased {
-		return zero, ErrExecutorUnreleased
-	}
-	if s == nil || s.resources == nil || s.resources.creation == nil || s.resources.creation.fd == nil {
-		return zero, ErrConflict
-	}
-	o := s.resources
-	o.creation.fd.mu.Lock()
-	defer o.creation.fd.mu.Unlock()
-	before, e := o.verifyOriginalDeviceLockedSource(ctx)
-	if e != nil {
-		return zero, e
-	}
-	diagnostic, e := o.collectSourceDiagnostic(ctx)
-	if e != nil {
-		return zero, e
-	}
-	after, e := o.verifyOriginalDeviceLockedSource(ctx)
-	if e != nil {
-		return zero, e
-	}
-	if before.identity != after.identity || before.tunName != after.tunName || before.deviceNamespace != after.deviceNamespace {
-		return zero, ErrConflict
-	}
-	return diagnostic, nil
-}
 func (s *operation1OriginalSource) applyOperation1(ctx context.Context, p Plan) (*firstStepCompletion, error) {
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased

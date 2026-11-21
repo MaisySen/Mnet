@@ -10,6 +10,7 @@ type ownedSourceDiagnostic struct {
 	effective     []effectiveV4Word
 	lineageUsable bool
 	held          *heldSourceRecord
+	afPass        *afReadPass
 }
 
 func sourceDiagnosticFromRecords(raw RawInventory, sys SysctlSnapshot, h Handle, usable bool) (ownedSourceDiagnostic, error) {
