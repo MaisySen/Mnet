@@ -8,8 +8,9 @@ import (
 )
 
 // SOURCE ONLY. Creates bookkeeping, never a namespace/device/FD/helper. The
-// operation1 Kernel is connected, but Start's actual Snapshot conversion and
-// Create are both held gates. No caller can obtain a Ready path through it.
+// operation1 Kernel has only precreation and three bounded DOWN-phase Snapshot
+// conversions. Create/effects remain execution-unreleased. Address/UP/route and
+// every Ready path are refused; no packet supplier is constructed here.
 func newOperation1SourceController(b *CapturedBaseline, id adapterIdentity, binding Binding) (*operation1Controller, error) {
 	session, e := newAdapterSession(b, id)
 	if e != nil {

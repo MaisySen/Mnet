@@ -262,7 +262,12 @@ func stepPresent(op Operation, h Handle, i Inventory) bool {
 // Stop has an independent finite cleanup context, not an expired grant context.
 // No new traffic is allowed. It reads back before EVERY mutation, retains
 // pending state on mismatch/unknown, and never assumes timeout means no effect.
+// A private owned adapter instead closes the original before ticketed absence,
+// while retaining the active ownership lane. It never uses generic rollback.
 func (t *Transaction) Stop(ctx context.Context) error {
+	if owned, ok := t.k.(interface{ stopOwnedTransaction(context.Context) error }); ok {
+		return owned.stopOwnedTransaction(ctx)
+	}
 	t.stopStarted = true // invalidate display authority before the first cleanup read
 	bounded, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
@@ -345,7 +350,7 @@ func (t *Transaction) Expired() bool { return t.deadline.expired(t.clock.Now()) 
 func (t *Transaction) Run(ctx context.Context) error {
 	startErr := t.Start(ctx)
 	if startErr != nil {
-		return errors.Join(startErr, t.Stop(context.Background()))
+		return errors.Join(startErr, t.Stop(context.WithoutCancel(ctx)))
 	}
 	now := t.clock.Now()
 	remaining := t.deadline.Wall.Sub(now.Wall)
@@ -361,7 +366,7 @@ func (t *Transaction) Run(ctx context.Context) error {
 	case <-ctx.Done():
 		ended = ctx.Err()
 	}
-	return errors.Join(ended, t.Stop(context.Background()))
+	return errors.Join(ended, t.Stop(context.WithoutCancel(ctx)))
 }
 
 func (t *Transaction) closeFDOnce(h Handle) error {

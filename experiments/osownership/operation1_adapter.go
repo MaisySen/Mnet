@@ -17,6 +17,7 @@ import (
 // Existing free-standing inert Transaction API is not made thread-safe by this.
 type operation1Controller struct {
 	precreationSequence   uint64
+	precreationAdmitted   bool
 	precreationGeneration uint64
 	mu                    sync.Mutex
 	tx                    *Transaction
@@ -112,6 +113,11 @@ type operationDisableSource interface {
 	applyOwnedDisable(context.Context) (*postDisableResult, error)
 }
 type operation1Adapter struct {
+	phaseCreation    bool
+	phaseSequence    uint64
+	phaseAdmitted    int
+	phaseIdentity    heldPacketIdentity
+	aliasPost        *firstStepCompletion
 	disableAttempted bool // controller lane, one attempt even on source error
 	disabled         *postDisableResult
 	controller       *operation1Controller
@@ -133,6 +139,7 @@ func (a *operation1Adapter) Snapshot(ctx context.Context) (Inventory, error) {
 		return Inventory{}, ErrConflict
 	}
 	if a.controller.attempt == nil && a.session.canonical == nil && !a.session.createAttempted {
+		a.controller.precreationAdmitted = false
 		supplier, ok := a.creation.(operation1PrecreationSource)
 		if !ok {
 			return Inventory{}, ErrConflict
@@ -145,6 +152,10 @@ func (a *operation1Adapter) Snapshot(ctx context.Context) (Inventory, error) {
 	}
 	if a.source == nil {
 		return Inventory{}, ErrConflict
+	}
+	if source, ok := a.source.(setupPhaseSource); ok {
+		a.phaseAdmitted = 0
+		return a.snapshotSetupPhase(ctx, source)
 	}
 	diagnostic, e := a.source.diagnoseOperation1(ctx)
 	if e != nil {
@@ -172,6 +183,13 @@ func (a *operation1Adapter) Create(ctx context.Context, p Plan) (Handle, error) 
 		return Handle{}, ErrConflict
 	}
 	c := a.controller
+	if _, ok := a.creation.(setupPhaseCreationSource); ok {
+		if !c.precreationAdmitted {
+			return Handle{}, afPhase
+		}
+		c.precreationAdmitted = false
+		a.phaseCreation = true
+	}
 	frozen := p
 	frozen.Operations = append([]Operation(nil), p.Operations...)
 	c.attempt = &originalAttempt{owner: c, plan: frozen, stage: "unopened"}
@@ -216,6 +234,12 @@ func (a *operation1Adapter) Apply(ctx context.Context, h Handle, op Operation) (
 	if op.Kind != "set-alias-mtu-exact" || op != a.session.plan.Operations[1] {
 		return ErrConflict
 	}
+	if _, ok := a.source.(setupPhaseSource); ok {
+		if !a.setupAdmissionCurrent(1) {
+			return afPhase
+		}
+		a.phaseAdmitted = 0
+	}
 	if e := a.session.begin(h, op); e != nil {
 		return e
 	}
@@ -236,6 +260,7 @@ func (a *operation1Adapter) Apply(ctx context.Context, h Handle, op Operation) (
 		a.session.poisoned = true
 		return e
 	}
+	a.aliasPost = completion
 	return nil
 }
 
@@ -285,6 +310,12 @@ func (a *operation1Adapter) applyDisable(ctx context.Context, h Handle, op Opera
 	source, ok := a.source.(operationDisableSource)
 	if !ok {
 		return ErrConflict
+	}
+	if _, ok := a.source.(setupPhaseSource); ok {
+		if !a.setupAdmissionCurrent(2) {
+			return afPhase
+		}
+		a.phaseAdmitted = 0
 	}
 	a.disableAttempted = true
 	defer func() {

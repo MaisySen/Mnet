@@ -56,5 +56,9 @@ func consumePrecreation(c *operation1Controller, o *precreationObservation) (Inv
 	}
 	baseline := *o.baseline
 	baseline.raw = baseRaw
-	return baseline.Compose(normalized, o.sys, nil, false)
+	i, e := baseline.Compose(normalized, o.sys, nil, false)
+	if e == nil {
+		c.precreationAdmitted = true
+	}
+	return i, e
 }
