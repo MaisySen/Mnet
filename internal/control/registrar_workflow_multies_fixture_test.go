@@ -61,6 +61,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	relayHub := relay.NewHub()
 	var workflowSubmits atomic.Int32
 	var historyCalls atomic.Int32
+	var mapResponseRefusals atomic.Int32
 	var bridgeMu sync.Mutex
 	getPeerSecret := func() string { bridgeMu.Lock(); defer bridgeMu.Unlock(); return peerSecret }
 	var ingress atomic.Pointer[registrarIngress]
@@ -161,6 +162,11 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 			m, err := s.registrarCredentialMap(ref, nativeSecret)
 			if err != nil {
 				w.WriteHeader(403)
+				return
+			}
+			if os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY") != "" && os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") == "map-failure" {
+				mapResponseRefusals.Add(1)
+				w.WriteHeader(503)
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -660,11 +666,38 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 				if readErr != nil {
 					t.Fatal(readErr)
 				}
+				saved := os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") == "map-failure"
 				var image map[string]any
-				if json.Unmarshal(snapshot, &image) != nil || image["node_id"] != "" || image["node_token"] != "" || image["native_enrollment_v1"] != nil {
-					t.Fatal("stopped installed attempt changed enrollment State shape")
+				if json.Unmarshal(snapshot, &image) != nil || image["node_id"] != "" || image["node_token"] != "" {
+					t.Fatal("stopped installed attempt changed legacy State shape")
 				}
-				remoteCommitted := os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") == "lost-response"
+				if !saved && image["native_enrollment_v1"] != nil {
+					t.Fatal("stopped installed attempt unexpectedly saved a credential")
+				}
+				if saved {
+					encoded, ok := image["native_enrollment_v1"].(string)
+					if !ok {
+						t.Fatal("post-save failure lost its credential")
+					}
+					var outer struct {
+						Document json.RawMessage `json:"document"`
+					}
+					if json.Unmarshal([]byte(encoded), &outer) != nil {
+						t.Fatal("invalid native wrapper")
+					}
+					doc, err := contract.DecodeNativeCredentialDocument(outer.Document)
+					if err != nil {
+						t.Fatal("invalid retained credential")
+					}
+					s.mu.Lock()
+					record := s.registrarNodeLocked(doc.Receipt.NodeID)
+					matches := record != nil && record.ReceiptDigest == doc.ReceiptDigest && record.DevicePublicKey == doc.Receipt.DevicePublicKey
+					s.mu.Unlock()
+					if !matches || mapResponseRefusals.Load() != 1 {
+						t.Fatal("saved credential did not match actual committed registrar node or map was retried")
+					}
+				}
+				remoteCommitted := saved || os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") == "lost-response"
 				expectedNodes := 2
 				if remoteCommitted {
 					expectedNodes = 3
@@ -675,8 +708,12 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 				if remoteCommitted {
 					journalPath := filepath.Join(dir, "installed-setup", "native", "enrollment-pending", "enrollment-pending-v1.json")
 					journalBefore, err := os.ReadFile(journalPath)
-					if err != nil || !bytes.Contains(journalBefore, []byte("workflow-submit-may-have-started")) {
-						t.Fatal("lost response uncertainty not retained", err)
+					expectedPhase := "workflow-submit-may-have-started"
+					if saved {
+						expectedPhase = "native-finalization-completed"
+					}
+					if err != nil || !bytes.Contains(journalBefore, []byte(expectedPhase)) {
+						t.Fatal("original pending outcome not retained", err)
 					}
 					repeat := exec.Command(os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY"), "--disposable-root", filepath.Join(dir, "installed-setup"))
 					if repeat.Run() == nil {
@@ -684,7 +721,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 					}
 					journalAfter, err := os.ReadFile(journalPath)
 					stateAfter, stateErr := os.ReadFile(filepath.Join(dir, "installed-setup", "native", "state.json"))
-					if err != nil || stateErr != nil || !bytes.Equal(journalBefore, journalAfter) || !bytes.Equal(snapshot, stateAfter) || historyCalls.Load() != 0 || workflowSubmits.Load() != 2 {
+					if err != nil || stateErr != nil || !bytes.Equal(journalBefore, journalAfter) || !bytes.Equal(snapshot, stateAfter) || historyCalls.Load() != 0 || workflowSubmits.Load() != 2 || saved && mapResponseRefusals.Load() != 1 {
 						t.Fatal("refused repeated caller changed uncertain owner or retried")
 					}
 				}
@@ -697,7 +734,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				outcome, _ := json.Marshal(map[string]any{"developmentStopped": true, "noNativeCredential": true, "noRegistrarNode": !remoteCommitted, "remoteCommitted": remoteCommitted, "inputAuthorized": false})
+				outcome, _ := json.Marshal(map[string]any{"developmentStopped": true, "noNativeCredential": !saved, "nativeSavedBeforeFailure": saved, "noRegistrarNode": !remoteCommitted, "remoteCommitted": remoteCommitted, "inputAuthorized": false})
 				if err := writeRegistrarFixtureAtomic(dir, "outcome.json", outcome); err != nil {
 					t.Fatal(err)
 				}

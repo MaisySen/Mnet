@@ -145,3 +145,16 @@ refuses, leaves journal/State bytes unchanged, performs no additional submit or
 history lookup, and cannot silently reset the attempt. The callback listener is
 closed. This does NOT implement recovery or remove the remotely committed node
 on the user's behalf; fixture cleanup deletes its disposable nodes afterward.
+
+### Actual durable-save/current-map-response failure
+
+The installed map-failure case permits actual native finalization, then refuses
+only the authenticated current-map response with503. The real saved credential
+matches the committed Store node and receipt; the original journal records
+native-finalization-completed. There is exactly one refused map request. The
+result page still makes no success, rollback or connection claim. Direct pixel
+inspection confirms readable uncertainty copy. Repeating the caller refuses
+without changing State/journal bytes, retries or a new attempt. The late
+callback refuses and the disposable session is joined. This differs from lost
+submit response: here a local credential IS saved. Neither case deletes it or
+reconciles uncertainty automatically. Test cleanup alone deletes remote nodes.
