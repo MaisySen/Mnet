@@ -82,6 +82,7 @@ type journal struct {
 	reopened          bool
 	historyClient     *registrar.HistoryClient
 	finalizationReady *workflowFinalizationReady
+	historyReady      *historyFinalizationReady
 	workflow          *registrar.WorkflowClient
 	cancel            context.CancelFunc
 	callback          *Callback
@@ -207,6 +208,7 @@ func (j *Journal) Close() error {
 		j.historyClient = nil
 	}
 	j.finalizationReady = nil
+	j.historyReady = nil
 	j.data = nil
 	return j.owner.Close()
 }
@@ -354,7 +356,7 @@ func token(s string) bool {
 	return false
 }
 func validRecord(r record) bool {
-	if (r.Version != 2 && r.Version != 3 && r.Version != 4 && r.Version != 5 && r.Version != 6) || r.CreatedMS <= 0 || r.ExpiresMS <= r.CreatedMS || !enrollmentidentity.ValidOrigin(r.SourceOrigin) || !enrollmentidentity.ValidOrigin(r.Authority) || len(r.Allowed) == 0 || len(r.Allowed) > 20 || !token(r.Credential) || !token(r.Verifier) || r.Launch.CredentialDigest != hash(r.Credential) || r.Launch.Challenge != hash(r.Verifier) {
+	if (r.Version != 2 && r.Version != 3 && r.Version != 4 && r.Version != 5 && r.Version != 6 && r.Version != 7) || r.CreatedMS <= 0 || r.ExpiresMS <= r.CreatedMS || !enrollmentidentity.ValidOrigin(r.SourceOrigin) || !enrollmentidentity.ValidOrigin(r.Authority) || len(r.Allowed) == 0 || len(r.Allowed) > 20 || !token(r.Credential) || !token(r.Verifier) || r.Launch.CredentialDigest != hash(r.Credential) || r.Launch.Challenge != hash(r.Verifier) {
 		return false
 	}
 	policy, err := config.ValidateLocalV2(r.Policy)
@@ -373,6 +375,9 @@ func validRecord(r record) bool {
 		if _, err := contract.SourceDescriptorBytes(own, "journal-shape-check", r.Launch.AttemptID); err != nil {
 			return false
 		}
+	}
+	if r.Version == 7 {
+		return r.BootstrapJSON == "" && validHistoryFinalizationRecord(r)
 	}
 	if r.Version == 6 {
 		return r.BootstrapJSON == "" && r.FinalizationJSON == "" && validHistoryRecord(r)
@@ -509,17 +514,17 @@ func strictRecord(raw []byte, out *record) bool {
 	if json.Unmarshal(raw, &exactFields) != nil {
 		return false
 	}
-	if out.Version != 6 {
+	if out.Version != 6 && out.Version != 7 {
 		if _, exists := exactFields["history_json"]; exists {
 			return false
 		}
 	}
-	if out.Version != 5 {
+	if out.Version != 5 && out.Version != 7 {
 		if _, present := exactFields["finalization_json"]; present {
 			return false
 		}
 	}
-	if out.Version == 5 || out.Version == 6 {
+	if out.Version == 5 || out.Version == 6 || out.Version == 7 {
 		if _, present := exactFields["bootstrap_json"]; present {
 			return false
 		}

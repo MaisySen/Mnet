@@ -14,13 +14,23 @@ import (
 // Works for reopened record4 submit-unknown even after source/challenge expiry.
 // Does not bypass normal-loader record5 conflict or reconstruct missing State.
 func (d *Daemon) recoverNativeHistoryDATA(ctx context.Context, timeout time.Duration, maxAttempts int) (contract.HistoryReceiptWire, error) {
+	return d.recoverNativeHistory(ctx, timeout, maxAttempts, false)
+}
+
+// Explicit owner-only recovery. No external trigger or receipt input. Runtime
+// readiness is distinct from proof confirmation and lost on Close/freeze.
+func (d *Daemon) recoverNativeHistoryOwned(ctx context.Context, timeout time.Duration, maxAttempts int) error {
+	_, err := d.recoverNativeHistory(ctx, timeout, maxAttempts, true)
+	return err
+}
+func (d *Daemon) recoverNativeHistory(ctx context.Context, timeout time.Duration, maxAttempts int, ownedResult bool) (contract.HistoryReceiptWire, error) {
 	var empty contract.HistoryReceiptWire
 	if ctx == nil || ctx.Err() != nil {
 		return empty, errEnrollmentContextStale
 	}
 	d.mu.Lock()
 	original, err := d.enrollmentContextLocked()
-	if err != nil || !d.enrollmentIdentityUnclaimedLocked() {
+	if err != nil || !d.enrollmentIdentityUnclaimedLocked() || (ownedResult && d.enrollmentPreparation != nil) {
 		d.mu.Unlock()
 		return empty, errEnrollmentContextStale
 	}
@@ -36,8 +46,13 @@ func (d *Daemon) recoverNativeHistoryDATA(ctx context.Context, timeout time.Dura
 	if err != nil {
 		return empty, err
 	}
+	retained := false
 	if owned {
-		defer j.Close()
+		defer func() {
+			if !retained {
+				j.Close()
+			}
+		}()
 	}
 	raw, err := base64.StdEncoding.Strict().DecodeString(original.publicKey)
 	if err != nil || len(raw) != 32 {
@@ -71,5 +86,18 @@ func (d *Daemon) recoverNativeHistoryDATA(ctx context.Context, timeout time.Dura
 	d.nativeHistoryCancel = cancel
 	d.mu.Unlock()
 	defer func() { d.mu.Lock(); d.nativeHistoryCancel = nil; d.mu.Unlock() }()
-	return j.RecoverHistoryDATA(child, device, current, timeout, maxAttempts)
+	if !ownedResult {
+		return j.RecoverHistoryDATA(child, device, current, timeout, maxAttempts)
+	}
+	if err := j.RecoverHistoryOwned(child, device, current, timeout, maxAttempts); err != nil {
+		return empty, err
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if child.Err() != nil || d.enrollmentPreparation != nil || d.checkEnrollmentContextLocked(original) != nil || !d.enrollmentIdentityUnclaimedLocked() {
+		return empty, errEnrollmentContextStale
+	}
+	d.enrollmentPreparation = &nativeEnrollmentPreparation{historical: true, context: original, journal: j}
+	retained = true
+	return empty, nil
 }

@@ -29,6 +29,7 @@ type historyOwner struct {
 	lifetime       context.Context
 	cancel         context.CancelFunc
 	spent, closed  bool
+	delivery       *HistoryDelivery
 }
 
 func (HistoryClient) String() string   { return "[private one-shot history channel]" }
@@ -125,4 +126,47 @@ func (c *HistoryClient) Receipt(ctx context.Context) (contract.HistoryReceiptWir
 		return empty, ErrUnavailable
 	}
 	return result, nil
+}
+
+// HistoryDelivery is one runtime authenticated-channel delivery, not proof MAC
+// confirmation or current access. Zero values, copies and unrelated clients
+// cannot create/replay it. Receipt DATA alone never constructs this provenance.
+type HistoryDelivery struct {
+	owner  *historyOwner
+	result contract.HistoryReceiptWire
+	used   bool
+}
+
+func (HistoryDelivery) String() string   { return "[private authenticated historical delivery]" }
+func (HistoryDelivery) GoString() string { return "[private authenticated historical delivery]" }
+func (c *HistoryClient) ReceiptOwned(ctx context.Context) (*HistoryDelivery, error) {
+	result, err := c.Receipt(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed || ctx.Err() != nil {
+		return nil, ErrUnavailable
+	}
+	d := &HistoryDelivery{owner: c.historyOwner, result: result}
+	c.delivery = d
+	return d, nil
+}
+
+// ConsumeDelivery returns the exact successful one-shot delivery only to its
+// originating live client. All copies share the client's consumed pointer.
+func (c *HistoryClient) ConsumeDelivery(d *HistoryDelivery) (contract.HistoryReceiptWire, error) {
+	var empty contract.HistoryReceiptWire
+	if c == nil || c.historyOwner == nil || d == nil {
+		return empty, ErrInvalid
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed || c.delivery != d || d.owner != c.historyOwner || d.used {
+		return empty, ErrInvalid
+	}
+	d.used = true
+	c.delivery = nil
+	return d.result, nil
 }

@@ -134,9 +134,10 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	var f struct {
-		Policy  config.LocalConfigV2
-		Limits  registrar.WorkflowLimits
-		Recover bool
+		Policy          config.LocalConfigV2
+		Limits          registrar.WorkflowLimits
+		Recover         bool
+		FinalizeHistory bool
 	}
 	if json.Unmarshal(raw, &f) != nil || !registrar.ValidWorkflowLimits(f.Limits) {
 		t.Fatal("invalid independent fixture config")
@@ -199,6 +200,10 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer reopened.Close()
+		if f.FinalizeHistory {
+			testActualMultiesHistoryFinalization(t, reopened, before, actualDir)
+			return
+		}
 		// Past explicit registrar fixture access/challenge lifetime. History must be
 		// returned even after deletion by the source-of-truth test bridge, not renewed.
 		time.Sleep(16 * time.Second)
@@ -289,6 +294,65 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 		NativeCurrentPeers        int
 	}{result, true, true, true, len(current.Peers)})
 	if err := writeFixtureAtomic(dir, "native-workflow-outcome.json", out); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Actual lost-submit daemon owning reopen -> fresh authenticated history delivery
+// -> distinct original-expiry finalization -> owning reopen -> current maps.
+func testActualMultiesHistoryFinalization(t *testing.T, d *Daemon, before []byte, dir string) {
+	t.Helper()
+	if d.finalizeNativeEnrollment(context.Background()) == nil {
+		t.Fatal("reopened DATA finalized without delivery")
+	}
+	if err := d.recoverNativeHistoryOwned(context.Background(), 3*time.Second, 2); err != nil {
+		t.Fatal("actual authenticated history delivery", err)
+	}
+	if d.enrollmentPreparation == nil || !d.enrollmentPreparation.historical || d.enrollmentPreparation.confirmed != nil {
+		t.Fatal("history laundered into proof confirmation")
+	}
+	raw, _ := os.ReadFile(d.stateOwner.path)
+	if !bytes.Equal(before, raw) || d.state.native != nil {
+		t.Fatal("delivery prematurely changed State")
+	}
+	if err := d.finalizeNativeEnrollment(context.Background()); err != nil {
+		t.Fatal("actual lost-submit finalization", err)
+	}
+	doc := d.stateOwner.saved.native.Document
+	history := contract.HistoryReceiptWire{Version: 1, Receipt: doc.Receipt, ReceiptDigest: doc.ReceiptDigest}
+	finalized, _ := os.ReadFile(d.stateOwner.path)
+	if bytes.Equal(before, finalized) || d.cc != nil || d.dev != nil {
+		t.Fatal("finalization did not use isolated sole State")
+	}
+	d.Close()
+	reopened, err := New(Config{StateDir: dir})
+	if err != nil {
+		t.Fatal("recovered finalized reopen", err)
+	}
+	defer reopened.Close()
+	if err := reopened.reconcileNativeFinalization(); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.nativeCurrentEndpoints(context.Background(), []string{"192.0.2.79:51820"}, controlclient.RegistrarLimits{Timeout: 3 * time.Second, MaxConcurrent: 1, MaxRequests: 8}); err != nil {
+		t.Fatal(err)
+	}
+	current, err := reopened.nativeCurrentMap(context.Background(), controlclient.RegistrarLimits{Timeout: 3 * time.Second, MaxConcurrent: 1, MaxRequests: 8})
+	if err != nil || current.Self.ID != history.Receipt.NodeID || len(current.Peers) != 2 || len(current.Self.Endpoints) != 1 {
+		t.Fatal("recovered original credential not current with actual approved peers", err)
+	}
+	after, _ := os.ReadFile(reopened.stateOwner.path)
+	if !bytes.Equal(finalized, after) || reopened.cc != nil || reopened.dev != nil {
+		t.Fatal("recovered current access changed State or activated tunnel")
+	}
+	outcome, _ := json.Marshal(struct {
+		History                   contract.HistoryReceiptWire
+		NativeOwnedKeyConfirmed   bool
+		NativeHistoryRecovered    bool
+		NativeProofStateUnchanged bool
+		NativeStateFinalized      bool
+		NativeCurrentPeers        int
+	}{history, false, true, true, true, 2})
+	if err := writeFixtureAtomic(filepath.Dir(dir), "native-workflow-outcome.json", outcome); err != nil {
 		t.Fatal(err)
 	}
 }

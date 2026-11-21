@@ -120,6 +120,17 @@ func (j *Journal) checkExactHistoryFileLocked() error {
 // disclosure. Reopen may retry SAME immutable lookup within ORIGINAL budget.
 // No automatic retry. Begin-unknown without full challenge is never admitted.
 func (j *Journal) RecoverHistoryDATA(ctx context.Context, device string, current func() SourceConfig, timeout time.Duration, maxAttempts int) (contract.HistoryReceiptWire, error) {
+	return j.recoverHistory(ctx, device, current, timeout, maxAttempts, false)
+}
+
+// RecoverHistoryOwned additionally requires fresh SAME-client authenticated
+// delivery provenance and a still-live original access interval. It never
+// constructs proof confirmation. Native owner must separately publish State.
+func (j *Journal) RecoverHistoryOwned(ctx context.Context, device string, current func() SourceConfig, timeout time.Duration, maxAttempts int) error {
+	_, err := j.recoverHistory(ctx, device, current, timeout, maxAttempts, true)
+	return err
+}
+func (j *Journal) recoverHistory(ctx context.Context, device string, current func() SourceConfig, timeout time.Duration, maxAttempts int, owned bool) (contract.HistoryReceiptWire, error) {
 	var empty contract.HistoryReceiptWire
 	if j == nil || j.journal == nil || ctx == nil || ctx.Err() != nil || current == nil || timeout < time.Millisecond || timeout > time.Minute || timeout%time.Millisecond != 0 || maxAttempts < 1 || maxAttempts > 4 {
 		return empty, ErrInvalid
@@ -177,6 +188,7 @@ func (j *Journal) RecoverHistoryDATA(ctx context.Context, device string, current
 	j.cancel = cancel
 	j.historyClient = client
 	j.finalizationReady = nil
+	j.historyReady = nil
 	j.mu.Unlock()
 	// Marker sync can outlive policy or cancellation. Check again BEFORE the
 	// credential leaves the device, without taking native lock under journal.
@@ -193,7 +205,17 @@ func (j *Journal) RecoverHistoryDATA(ctx context.Context, device string, current
 		return empty, errors.Join(ErrNoLongerCurrent, readyHealth)
 	}
 	j.mu.Unlock()
-	result, sendErr := client.Receipt(child)
+	var result contract.HistoryReceiptWire
+	var sendErr error
+	if owned {
+		var delivery *registrar.HistoryDelivery
+		delivery, sendErr = client.ReceiptOwned(child)
+		if sendErr == nil {
+			result, sendErr = client.ConsumeDelivery(delivery)
+		}
+	} else {
+		result, sendErr = client.Receipt(child)
+	}
 	cfg = copyConfig(current())
 	after, backward := workflowBoundedNow(start)
 	j.mu.Lock()
@@ -232,6 +254,12 @@ func (j *Journal) RecoverHistoryDATA(ctx context.Context, device string, current
 	}
 	if ctx.Err() != nil || back || final.Sub(start) > timeout || !historyPolicyCurrent(r, finalCfg, device) || j.checkExactHistoryFileLocked() != nil {
 		return empty, ErrNoLongerCurrent
+	}
+	if owned {
+		if !historyAccessLive(r, result, start, final) {
+			return empty, ErrNoLongerCurrent
+		}
+		j.historyReady = &historyFinalizationReady{image: j.data, receipt: result, start: start}
 	}
 	return result, nil
 }

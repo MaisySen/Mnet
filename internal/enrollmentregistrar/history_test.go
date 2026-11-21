@@ -132,3 +132,65 @@ func TestHistoryExactChannelOneShotAndHistoricalExpiry(t *testing.T) {
 		t.Fatal("wrong original secret")
 	}
 }
+
+func TestHistoryDeliveryCopyReplayAndClientBoundary(t *testing.T) {
+	var challenge contract.Challenge
+	var secret string
+	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receipt, _ := contract.ReceiptV2ForChallenge(challenge, "historical-node", challenge.Nonce, challenge.Binding.CheckedAtMS+1)
+		headers(w)
+		json.NewEncoder(w).Encode(contract.HistoryReceiptWire{Version: 1, Receipt: receipt, ReceiptDigest: contract.ReceiptV2Digest(receipt)})
+	}))
+	defer s.Close()
+	_, challenge, secret, _ = workflowFixture(t, s.URL)
+	for _, mode := range []string{"zero", "copy", "other-client", "close", "success"} {
+		t.Run(mode, func(t *testing.T) {
+			c, err := NewHistory(s.URL, challenge, secret, time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			roots := x509.NewCertPool()
+			roots.AddCert(s.Certificate())
+			c.transport.TLSClientConfig.RootCAs = roots
+			d, err := c.ReceiptOwned(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch mode {
+			case "zero":
+				if _, err := c.ConsumeDelivery(&HistoryDelivery{}); err == nil {
+					t.Fatal("zero delivery accepted")
+				}
+			case "copy":
+				copy := *d
+				if _, err := c.ConsumeDelivery(&copy); err == nil {
+					t.Fatal("copied token accepted")
+				}
+			case "other-client":
+				other, _ := NewHistory(s.URL, challenge, secret, time.Second)
+				defer other.Close()
+				if _, err := other.ConsumeDelivery(d); err == nil {
+					t.Fatal("other client accepted")
+				}
+			case "close":
+				c.Close()
+				if _, err := c.ConsumeDelivery(d); err == nil {
+					t.Fatal("closed client accepted")
+				}
+				return
+			}
+			alias := *c
+			got, err := alias.ConsumeDelivery(d)
+			if err != nil || got.Receipt.NodeID != "historical-node" {
+				t.Fatal("origin client delivery", err)
+			}
+			if _, err := c.ConsumeDelivery(d); err == nil {
+				t.Fatal("shared client replayed delivery")
+			}
+			if _, err := c.ReceiptOwned(context.Background()); err == nil {
+				t.Fatal("owned method retried read")
+			}
+		})
+	}
+}

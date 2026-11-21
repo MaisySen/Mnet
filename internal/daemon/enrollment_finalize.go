@@ -22,7 +22,7 @@ func (d *Daemon) finalizeNativeEnrollment(ctx context.Context) error {
 	defer d.mu.Unlock()
 	start := time.Now()
 	p := d.enrollmentPreparation
-	if ctx == nil || ctx.Err() != nil || p == nil || p.confirmed == nil || d.checkEnrollmentContextLocked(p.context) != nil || !d.enrollmentIdentityUnclaimedLocked() {
+	if ctx == nil || ctx.Err() != nil || p == nil || (!p.historical && p.confirmed == nil) || d.checkEnrollmentContextLocked(p.context) != nil || !d.enrollmentIdentityUnclaimedLocked() {
 		return errEnrollmentContextStale
 	}
 	cfg, ok := pending.SourceConfigFor(p.context.policy)
@@ -31,7 +31,7 @@ func (d *Daemon) finalizeNativeEnrollment(ctx context.Context) error {
 	}
 	original := base64.RawURLEncoding.EncodeToString(p.context.stateRevision[:])
 	policy := base64.RawURLEncoding.EncodeToString(p.context.policyRevision[:])
-	err := p.journal.FinalizeWorkflow(*p.confirmed, original, policy, cfg, func(doc contract.NativeCredentialDocument) error {
+	publish := func(doc contract.NativeCredentialDocument) error {
 		if ctx.Err() != nil || d.checkEnrollmentContextLocked(p.context) != nil || !d.enrollmentIdentityUnclaimedLocked() || time.Now().UnixMilli() >= doc.Receipt.AccessExpiresAtMS {
 			return errEnrollmentContextStale
 		}
@@ -74,7 +74,13 @@ func (d *Daemon) finalizeNativeEnrollment(ctx context.Context) error {
 		*d.state = cloneState(candidate)
 		// State is sole usable image, but still needs completed pending correlation.
 		return d.checkInstalledNativeLocked()
-	})
+	}
+	var err error
+	if p.historical {
+		err = p.journal.FinalizeHistory(original, policy, cfg, publish)
+	} else {
+		err = p.journal.FinalizeWorkflow(*p.confirmed, original, policy, cfg, publish)
+	}
 	if err != nil {
 		return err
 	}

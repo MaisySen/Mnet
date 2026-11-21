@@ -50,7 +50,18 @@ func finalizationDocument(r record) (contract.NativeCredentialDocument, finaliza
 	if err != nil {
 		return empty, f, err
 	}
-	receipt, err := contract.DecodeWorkflowReceiptWire([]byte(w.ReceiptJSON), c)
+	var receipt contract.HistoryReceiptWire
+	if r.Version == 7 {
+		h, ok := decodeHistory(r)
+		if !ok {
+			return empty, f, ErrInvalid
+		}
+		receipt, err = contract.DecodeHistoryReceiptWire([]byte(h.ReceiptJSON), c)
+	} else {
+		var wire contract.WorkflowReceiptWire
+		wire, err = contract.DecodeWorkflowReceiptWire([]byte(w.ReceiptJSON), c)
+		receipt = contract.HistoryReceiptWire{Version: 1, Receipt: wire.Receipt, ReceiptDigest: wire.ReceiptDigest}
+	}
 	if err != nil || receipt.ReceiptDigest != f.ReceiptDigest {
 		return empty, f, ErrInvalid
 	}
@@ -151,7 +162,7 @@ func (j *Journal) CorrelateFinalization(doc contract.NativeCredentialDocument, o
 	if err := j.health(); err != nil {
 		return err
 	}
-	if j.data == nil || j.data.Version != 5 {
+	if j.data == nil || (j.data.Version != 5 && j.data.Version != 7) {
 		return ErrInvalid
 	}
 	info, err := os.Lstat(j.path)

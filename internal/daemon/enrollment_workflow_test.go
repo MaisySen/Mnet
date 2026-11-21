@@ -42,8 +42,9 @@ func TestNativeWorkflowActualDurableKeyTLSChild(t *testing.T) {
 	os.WriteFile(root, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: s.Certificate().Raw}), 0600)
 	t.Setenv("SSL_CERT_FILE", root)
 	t.Setenv("SSL_CERT_DIR", t.TempDir())
-	for _, mode := range []string{"success", "final-success", "final-create", "final-write", "final-short", "final-sync", "final-close", "final-rename", "final-after-rename", "final-dirsync", "final-policy-before", "final-policy-during", "final-policy-after", "final-expired-during", "final-expired-after", "wrong-principal", "wrong-key", "wrong-session", "wrong-descriptor", "wrong-confirmation", "policy-before", "state-before", "legacy-before", "legacy-saved", "routes-saved", "policy-after-begin", "state-after-begin", "close-after-begin", "policy-on-submit", "lost-submit"} {
+	for _, mode := range []string{"success", "final-success", "final-create", "final-write", "final-short", "final-sync", "final-close", "final-rename", "final-after-rename", "final-dirsync", "final-policy-before", "final-policy-during", "final-policy-after", "final-expired-during", "final-expired-after", "wrong-principal", "wrong-key", "wrong-session", "wrong-descriptor", "wrong-confirmation", "policy-before", "state-before", "legacy-before", "legacy-saved", "routes-saved", "policy-after-begin", "state-after-begin", "close-after-begin", "policy-on-submit", "lost-submit", "history-final-success", "history-final-create", "history-final-write", "history-final-short", "history-final-sync", "history-final-close", "history-final-rename", "history-final-after-rename", "history-final-dirsync", "history-final-policy-before", "history-final-policy-during", "history-final-policy-after", "history-final-expired-during", "history-final-expired-after"} {
 		t.Run(mode, func(t *testing.T) {
+			recovering := strings.HasPrefix(mode, "history-final-")
 			d, policyPath, rawPolicy := enrollmentContextFixture(t)
 			var cfg config.LocalConfigV2
 			json.Unmarshal(rawPolicy, &cfg)
@@ -93,6 +94,7 @@ func TestNativeWorkflowActualDurableKeyTLSChild(t *testing.T) {
 			var begins, submits atomic.Int32
 			var server *proof.Server
 			var challenge contract.Challenge
+			var committed contract.ReceiptV2
 			active.Store(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Header.Get("Authorization") != registrar.WorkflowScheme+saved.Credential {
 					t.Error("wrong credential")
@@ -158,7 +160,8 @@ func TestNativeWorkflowActualDurableKeyTLSChild(t *testing.T) {
 					if mode == "policy-on-submit" {
 						os.WriteFile(policyPath, append(rawPolicy, ' '), 0600)
 					}
-					if mode == "lost-submit" {
+					if mode == "lost-submit" || recovering {
+						committed, _ = contract.ReceiptV2ForChallenge(challenge, "actual-key-fixture-node", token, time.Now().UnixMilli())
 						conn, _, _ := w.(http.Hijacker).Hijack()
 						conn.Close()
 						return
@@ -200,7 +203,7 @@ func TestNativeWorkflowActualDurableKeyTLSChild(t *testing.T) {
 				t.Fatal("negative returned receipt", err)
 			}
 			expectedSubmit := int32(0)
-			if mode == "success" || strings.HasPrefix(mode, "final-") || mode == "wrong-confirmation" || mode == "policy-on-submit" || mode == "lost-submit" {
+			if mode == "success" || strings.HasPrefix(mode, "final-") || mode == "wrong-confirmation" || mode == "policy-on-submit" || mode == "lost-submit" || recovering {
 				expectedSubmit = 1
 			}
 			if submits.Load() != expectedSubmit {
@@ -224,6 +227,35 @@ func TestNativeWorkflowActualDurableKeyTLSChild(t *testing.T) {
 				t.Fatal("unconfirmed/failed workflow finalized native State")
 			}
 
+			if recovering {
+				dir := d.stateOwner.lease.Parent()
+				d.Close()
+				reopened, err := New(Config{StateDir: dir})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer reopened.Close()
+				active.Store(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path != registrar.HistoryPath || r.Header.Get("Authorization") != registrar.HistoryScheme+saved.Credential {
+						t.Error("wrong history channel")
+					}
+					var req contract.HistoryRequestWire
+					json.NewDecoder(r.Body).Decode(&req)
+					if req.Challenge != challenge {
+						t.Error("history changed original transcript")
+					}
+					w.Header().Set("Content-Type", "application/json")
+					w.Header().Set("Cache-Control", "no-store")
+					json.NewEncoder(w).Encode(contract.HistoryReceiptWire{Version: 1, Receipt: committed, ReceiptDigest: contract.ReceiptV2Digest(committed)})
+				}))
+				if err := reopened.recoverNativeHistoryOwned(context.Background(), time.Second, 2); err != nil {
+					t.Fatal("actual native owned history", err)
+				}
+				if reopened.enrollmentPreparation.confirmed != nil {
+					t.Fatal("manufactured proof confirmation")
+				}
+				testActualNativeFinalization(t, reopened, policyPath, rawPolicy, before, strings.TrimPrefix(mode, "history-final-"), func(h http.HandlerFunc) { active.Store(h) })
+			}
 			if mode == "lost-submit" {
 				testNativeHistoryOwner(t, d, policyPath, rawPolicy, before, challenge, func(h http.HandlerFunc) { active.Store(h) })
 			}
