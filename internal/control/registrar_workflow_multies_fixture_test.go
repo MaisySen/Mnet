@@ -215,7 +215,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 				return
 			}
 
-			if workflowSubmits.Add(1) == 2 && recoveryMode.Load() {
+			if workflowSubmits.Add(1) == 2 && (recoveryMode.Load() || os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") == "lost-response") {
 				if len(s.data.Nodes) != 3 {
 					t.Error("lost-submit third node not committed")
 				}
@@ -664,8 +664,29 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 				if json.Unmarshal(snapshot, &image) != nil || image["node_id"] != "" || image["node_token"] != "" || image["native_enrollment_v1"] != nil {
 					t.Fatal("stopped installed attempt changed enrollment State shape")
 				}
-				if len(s.data.Nodes) != 2 {
-					t.Fatal("stopped installed attempt committed a node")
+				remoteCommitted := os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") == "lost-response"
+				expectedNodes := 2
+				if remoteCommitted {
+					expectedNodes = 3
+				}
+				if len(s.data.Nodes) != expectedNodes {
+					t.Fatal("stopped installed remote outcome differs", len(s.data.Nodes))
+				}
+				if remoteCommitted {
+					journalPath := filepath.Join(dir, "installed-setup", "native", "enrollment-pending", "enrollment-pending-v1.json")
+					journalBefore, err := os.ReadFile(journalPath)
+					if err != nil || !bytes.Contains(journalBefore, []byte("workflow-submit-may-have-started")) {
+						t.Fatal("lost response uncertainty not retained", err)
+					}
+					repeat := exec.Command(os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY"), "--disposable-root", filepath.Join(dir, "installed-setup"))
+					if repeat.Run() == nil {
+						t.Fatal("uncertain installed attempt silently restarted")
+					}
+					journalAfter, err := os.ReadFile(journalPath)
+					stateAfter, stateErr := os.ReadFile(filepath.Join(dir, "installed-setup", "native", "state.json"))
+					if err != nil || stateErr != nil || !bytes.Equal(journalBefore, journalAfter) || !bytes.Equal(snapshot, stateAfter) || historyCalls.Load() != 0 || workflowSubmits.Load() != 2 {
+						t.Fatal("refused repeated caller changed uncertain owner or retried")
+					}
 				}
 				result, readErr := os.ReadFile(filepath.Join(dir, "installed-setup", "setup-result.html"))
 				if readErr != nil || bytes.Contains(result, []byte("<h1>Joining saved.")) {
@@ -676,7 +697,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				outcome, _ := json.Marshal(map[string]any{"developmentStopped": true, "noNativeCredential": true, "noRegistrarNode": true, "inputAuthorized": false})
+				outcome, _ := json.Marshal(map[string]any{"developmentStopped": true, "noNativeCredential": true, "noRegistrarNode": !remoteCommitted, "remoteCommitted": remoteCommitted, "inputAuthorized": false})
 				if err := writeRegistrarFixtureAtomic(dir, "outcome.json", outcome); err != nil {
 					t.Fatal(err)
 				}

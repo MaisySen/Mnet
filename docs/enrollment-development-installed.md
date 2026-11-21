@@ -133,3 +133,15 @@ or socket creation. The fixed12family refusal suite passes racecount3. This is
 local misconfiguration hardening, not a claim of an external attacker obtaining
 operator authority. The strict affected-entry TS check also failed at1400MiB
 exit134, not only768MiB; type acceptance remains open.
+
+### Actual remote-commit/response-loss result
+
+An additional installed browser case lets actual Store submit commit the third
+node, then drops that response on the real TLS path. Native State has no joining
+credential and the pending journal retains workflow-submit-may-have-started.
+The actual result page preserves uncertainty and shows no success; its pixels
+were inspected. Explicitly repeating the installed command on that same root
+refuses, leaves journal/State bytes unchanged, performs no additional submit or
+history lookup, and cannot silently reset the attempt. The callback listener is
+closed. This does NOT implement recovery or remove the remotely committed node
+on the user's behalf; fixture cleanup deletes its disposable nodes afterward.
