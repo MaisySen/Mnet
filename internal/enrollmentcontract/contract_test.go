@@ -15,7 +15,7 @@ import (
 
 func vector(t *testing.T) (Challenge, []byte) {
 	t.Helper()
-	raw, err := os.ReadFile("testdata/transcript-v3.json")
+	raw, err := os.ReadFile("testdata/transcript-v4.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func vector(t *testing.T) (Challenge, []byte) {
 	if err = json.Unmarshal(raw, &v); err != nil {
 		t.Fatal(err)
 	}
-	raw, err = os.ReadFile("testdata/transcript-v3.hex")
+	raw, err = os.ReadFile("testdata/transcript-v4.hex")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,5 +144,21 @@ func TestFixtureTimeBoundariesPauseSkewAndOverflow(t *testing.T) {
 	}
 	if err := CheckFixtureTime(c, c.Binding.AccessUntilMS+1, p); err == nil {
 		t.Fatal("pause revived fixture lease")
+	}
+}
+
+func TestSessionBindingRequiresPerHandoffOpaqueValue(t *testing.T) {
+	c, _ := vector(t)
+	for _, value := range []string{"local-session-123", "", strings.Repeat("A", 43)} {
+		changed := c
+		changed.Binding.SessionBinding = value
+		if _, err := Encode(changed); err == nil {
+			t.Fatal("raw/empty/zero session binding accepted")
+		}
+	}
+	// Authority and issuer may share bytes; the namespace carries the distinction.
+	c.Binding.IssuerLabel = c.Binding.PrincipalAuthority
+	if _, err := Encode(c); err != nil {
+		t.Fatal("invented authority/issuer inequality", err)
 	}
 }

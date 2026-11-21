@@ -14,7 +14,7 @@ import (
 	"fintex.au/mnet/internal/enrollmentidentity"
 )
 
-const Domain = "mnet/enrollment-key-possession/experimental-v3"
+const Domain = "mnet/enrollment-key-possession/experimental-v4"
 const PrincipalNamespace = "multies-local-user-v1"
 
 var ErrInvalid = errors.New("invalid inactive enrollment transcript")
@@ -27,7 +27,7 @@ type Binding struct {
 	PrincipalAuthority        string `json:"principal_authority"`
 	PrincipalNamespace        string `json:"principal_namespace"`
 	PrincipalID               string `json:"principal_id"`
-	SessionID                 string `json:"session_id"`
+	SessionBinding            string `json:"session_binding"`
 	IssuerLabel               string `json:"issuer_label"`
 	RegistrarOrigin           string `json:"registrar_origin"`
 	Audience                  string `json:"audience"`
@@ -87,10 +87,13 @@ func Encode(c Challenge) ([]byte, error) {
 	if b.PrincipalNamespace != PrincipalNamespace || !enrollmentidentity.ValidOrigin(b.PrincipalAuthority) || !enrollmentidentity.ValidIssuer(b.IssuerLabel) || !enrollmentidentity.ValidOrigin(b.RegistrarOrigin) || b.DescriptorEncodingVersion != 1 {
 		return nil, ErrInvalid
 	}
-	for _, s := range []string{b.PrincipalID, b.SessionID, b.Audience, b.ServiceID, b.WorkspaceID, b.NetworkID, b.MappingRevision} {
+	for _, s := range []string{b.PrincipalID, b.Audience, b.ServiceID, b.WorkspaceID, b.NetworkID, b.MappingRevision} {
 		if !text(s) {
 			return nil, ErrInvalid
 		}
+	}
+	if _, err := digest(b.SessionBinding); err != nil {
+		return nil, err
 	}
 	if b.CheckedAtMS <= 0 || b.ReserveDeadlineMS <= b.CheckedAtMS || b.AccessUntilMS <= b.CheckedAtMS || b.AccessUntilMS > b.ReserveDeadlineMS || c.ExpiresAtMS <= b.CheckedAtMS || c.ExpiresAtMS > b.AccessUntilMS {
 		return nil, ErrInvalid
@@ -103,7 +106,7 @@ func Encode(c Challenge) ([]byte, error) {
 		}
 		fields = append(fields, raw)
 	}
-	for _, s := range []string{b.PrincipalAuthority, b.PrincipalNamespace, b.PrincipalID, b.SessionID, b.IssuerLabel, b.RegistrarOrigin, b.Audience, b.ServiceID, b.WorkspaceID, b.NetworkID, b.MappingRevision} {
+	for _, s := range []string{b.PrincipalAuthority, b.PrincipalNamespace, b.PrincipalID, b.SessionBinding, b.IssuerLabel, b.RegistrarOrigin, b.Audience, b.ServiceID, b.WorkspaceID, b.NetworkID, b.MappingRevision} {
 		fields = append(fields, []byte(s))
 	}
 	for _, s := range []string{b.HandoffID, b.AttemptID, b.ReserveID, b.DescriptorDigest} {

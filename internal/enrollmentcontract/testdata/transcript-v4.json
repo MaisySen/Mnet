@@ -1,13 +1,13 @@
 {
   "field_count": 26,
-  "byte_length": 692,
-  "sha256_hex": "08205d132df79fe3b0788e653d3390edf7037090a19cc5b643705b4cc4756485",
+  "byte_length": 718,
+  "sha256_hex": "10c048e678a8f7cb584e078297be8c0443a8acd1bd7bc676219e8b7374733b4b",
   "challenge": {
     "binding": {
       "principal_authority": "https://multies.test",
       "principal_namespace": "multies-local-user-v1",
       "principal_id": "local-person-<>&-\u00e9-\u2028-\u2029-end",
-      "session_id": "local-session-123",
+      "session_binding": "CgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgo",
       "issuer_label": "https://configured-issuer.test/path",
       "registrar_origin": "https://registrar.test",
       "audience": "fixture-enrollment",

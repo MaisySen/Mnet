@@ -76,3 +76,48 @@ func TestRegistrarReceiptV1IndependentPythonBytes(t *testing.T) {
 		t.Fatal("field boundary shift collided")
 	}
 }
+
+func TestRegistrarReceiptV2IndependentPythonBytes(t *testing.T) {
+	raw, err := os.ReadFile("testdata/registrar-receipt-v2.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		FieldCount int             `json:"field_count"`
+		ByteLength int             `json:"byte_length"`
+		SHA256     string          `json:"sha256_hex"`
+		Record     registrarRecord `json:"record"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		t.Fatal(err)
+	}
+	raw, err = os.ReadFile("testdata/registrar-receipt-v2.hex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected, err := hex.DecodeString(strings.TrimSpace(string(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual := registrarReceiptBytes(v.Record)
+	hash := sha256.Sum256(actual)
+	if v.FieldCount != 21 || len(actual) != v.ByteLength || !bytes.Equal(actual, expected) || hex.EncodeToString(hash[:]) != v.SHA256 || registrarReceiptDigest(v.Record) != v.Record.ReceiptDigest {
+		t.Fatal("v2 Go differs from independent Python bytes")
+	}
+	if v.Record.Consumption.TranscriptDigest != registrarTranscriptDigest(v.Record.Consumption.Challenge) {
+		t.Fatal("consumed transcript digest differs from actual codec")
+	}
+	changed := v.Record
+	copy := *changed.Consumption
+	changed.Consumption = &copy
+	changed.Consumption.TranscriptDigest = registrarContractDigest(31)
+	if bytes.Equal(actual, registrarReceiptBytes(changed)) {
+		t.Fatal("v2 receipt omitted consumed proof binding")
+	}
+	changed = v.Record
+	changed.ReceiptEncodingVersion = 1
+	changed.Consumption = nil
+	if bytes.Equal(actual, registrarReceiptBytes(changed)) {
+		t.Fatal("receipt version domain separation failed")
+	}
+}

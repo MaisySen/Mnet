@@ -21,8 +21,9 @@ import (
 var errRegistrarState = errors.New("store: invalid registrar state; file was not changed")
 
 type registrarState struct {
-	Version int                         `json:"version"`
-	Records map[string]*registrarRecord `json:"records"`
+	Version        int                         `json:"version"`
+	Records        map[string]*registrarRecord `json:"records"`
+	ConsumedProofs map[string]string           `json:"consumed_proofs,omitempty"`
 }
 type registrarScope struct {
 	Issuer          string `json:"issuer"`
@@ -36,19 +37,20 @@ type registrarScope struct {
 	ReserveID       string `json:"reserve_id"`
 }
 type registrarRecord struct {
-	NetworkID                 string         `json:"network_id"`
-	DevicePublicKey           string         `json:"device_public_key"`
-	NodeID                    string         `json:"node_id"`
-	CredentialDigest          string         `json:"credential_digest"`
-	Phase                     string         `json:"phase"`
-	Scope                     registrarScope `json:"scope"`
-	DescriptorDigest          string         `json:"descriptor_digest"`
-	DescriptorEncodingVersion int            `json:"descriptor_encoding_version"`
-	ReceiptEncodingVersion    int            `json:"receipt_encoding_version"`
-	ReceiptID                 string         `json:"receipt_id"`
-	ReceiptDigest             string         `json:"receipt_digest"`
-	CommittedAtMS             int64          `json:"committed_at_ms"`
-	AccessExpiresAtMS         int64          `json:"access_expires_at_ms"`
+	Consumption               *registrarConsumption `json:"consumption,omitempty"`
+	NetworkID                 string                `json:"network_id"`
+	DevicePublicKey           string                `json:"device_public_key"`
+	NodeID                    string                `json:"node_id"`
+	CredentialDigest          string                `json:"credential_digest"`
+	Phase                     string                `json:"phase"`
+	Scope                     registrarScope        `json:"scope"`
+	DescriptorDigest          string                `json:"descriptor_digest"`
+	DescriptorEncodingVersion int                   `json:"descriptor_encoding_version"`
+	ReceiptEncodingVersion    int                   `json:"receipt_encoding_version"`
+	ReceiptID                 string                `json:"receipt_id"`
+	ReceiptDigest             string                `json:"receipt_digest"`
+	CommittedAtMS             int64                 `json:"committed_at_ms"`
+	AccessExpiresAtMS         int64                 `json:"access_expires_at_ms"`
 }
 
 // No escaping, normalization or JSON serialization participates in receipt v1.
@@ -56,12 +58,19 @@ type registrarRecord struct {
 // represented as uint64 BE positive Unix milliseconds. Phase is mutable history
 // and deliberately not in the immutable receipt. No raw credential is included.
 func registrarReceiptBytes(r registrarRecord) []byte {
+	domain := "mnet/store-enrollment-receipt/v1"
+	if r.ReceiptEncodingVersion == 2 {
+		domain = "mnet/store-enrollment-receipt/v2"
+	}
 	fields := [][]byte{}
-	for _, s := range []string{"mnet/store-enrollment-receipt/v1", r.Scope.Issuer, r.Scope.RegistrarOrigin, r.Scope.Audience, r.Scope.ServiceID, r.Scope.WorkspaceID, r.Scope.MappingRevision, r.Scope.HandoffID, r.Scope.AttemptID, r.Scope.ReserveID, r.DescriptorDigest, "1", r.ReceiptID, r.NodeID, r.NetworkID, r.DevicePublicKey, r.CredentialDigest} {
+	for _, s := range []string{domain, r.Scope.Issuer, r.Scope.RegistrarOrigin, r.Scope.Audience, r.Scope.ServiceID, r.Scope.WorkspaceID, r.Scope.MappingRevision, r.Scope.HandoffID, r.Scope.AttemptID, r.Scope.ReserveID, r.DescriptorDigest, "1", r.ReceiptID, r.NodeID, r.NetworkID, r.DevicePublicKey, r.CredentialDigest} {
 		fields = append(fields, []byte(s))
 	}
 	for _, n := range []int64{r.CommittedAtMS, r.AccessExpiresAtMS} {
 		fields = append(fields, binary.BigEndian.AppendUint64(nil, uint64(n)))
+	}
+	if r.ReceiptEncodingVersion == 2 && r.Consumption != nil {
+		fields = append(fields, []byte(r.Consumption.Challenge.ID), []byte(r.Consumption.TranscriptDigest))
 	}
 	var out []byte
 	for _, f := range fields {
@@ -135,11 +144,22 @@ func (r *registrarState) UnmarshalJSON(b []byte) error {
 	}
 	type plain registrarState
 	var value plain
-	if !registrarExactFields(b, []string{"version", "records"}) {
-		return errRegistrarState
-	}
+
 	var root map[string]json.RawMessage
 	if json.Unmarshal(b, &root) != nil {
+		return errRegistrarState
+	}
+	var version int
+	if json.Unmarshal(root["version"], &version) != nil {
+		return errRegistrarState
+	}
+	fields := []string{"version", "records"}
+	if version == 2 {
+		fields = append(fields, "consumed_proofs")
+	} else if version != 1 {
+		return errRegistrarState
+	}
+	if !registrarExactFields(b, fields) {
 		return errRegistrarState
 	}
 	var records map[string]json.RawMessage
@@ -147,11 +167,26 @@ func (r *registrarState) UnmarshalJSON(b []byte) error {
 		return errRegistrarState
 	}
 	for _, raw := range records {
-		if !registrarExactFields(raw, []string{"network_id", "device_public_key", "node_id", "credential_digest", "phase", "scope", "descriptor_digest", "descriptor_encoding_version", "receipt_encoding_version", "receipt_id", "receipt_digest", "committed_at_ms", "access_expires_at_ms"}) {
+		recordFields := []string{"network_id", "device_public_key", "node_id", "credential_digest", "phase", "scope", "descriptor_digest", "descriptor_encoding_version", "receipt_encoding_version", "receipt_id", "receipt_digest", "committed_at_ms", "access_expires_at_ms"}
+		var head struct {
+			ReceiptVersion int `json:"receipt_encoding_version"`
+		}
+		if json.Unmarshal(raw, &head) != nil {
+			return errRegistrarState
+		}
+		if head.ReceiptVersion == 2 && version == 2 {
+			recordFields = append(recordFields, "consumption")
+		} else if head.ReceiptVersion != 1 {
+			return errRegistrarState
+		}
+		if !registrarExactFields(raw, recordFields) {
 			return errRegistrarState
 		}
 		var record map[string]json.RawMessage
 		if json.Unmarshal(raw, &record) != nil {
+			return errRegistrarState
+		}
+		if head.ReceiptVersion == 2 && !registrarConsumptionJSON(record["consumption"]) {
 			return errRegistrarState
 		}
 		if !registrarExactFields(record["scope"], []string{"issuer", "registrar_origin", "audience", "service_id", "workspace_id", "mapping_revision", "handoff_id", "attempt_id", "reserve_id"}) {
@@ -163,7 +198,7 @@ func (r *registrarState) UnmarshalJSON(b []byte) error {
 	if err := d.Decode(&value); err != nil {
 		return errRegistrarState
 	}
-	if value.Version != 1 || value.Records == nil {
+	if value.Records == nil || (value.Version == 2 && value.ConsumedProofs == nil) {
 		return errRegistrarState
 	}
 	*r = registrarState(value)
@@ -213,7 +248,7 @@ func (s *Store) validateRegistrarState() error {
 	if state == nil {
 		return nil
 	}
-	if state.Version != 1 || state.Records == nil {
+	if (state.Version != 1 && state.Version != 2) || state.Records == nil || (state.Version == 1 && state.ConsumedProofs != nil) || (state.Version == 2 && state.ConsumedProofs == nil) {
 		return errRegistrarState
 	}
 	nodes := map[string]bool{}
@@ -226,7 +261,7 @@ func (s *Store) validateRegistrarState() error {
 		if r.Phase != "active" && r.Phase != "revoked" {
 			return errRegistrarState
 		}
-		if r.DescriptorEncodingVersion != 1 || r.ReceiptEncodingVersion != 1 || r.CommittedAtMS <= 0 || r.AccessExpiresAtMS <= r.CommittedAtMS {
+		if r.DescriptorEncodingVersion != 1 || (r.ReceiptEncodingVersion != 1 && r.ReceiptEncodingVersion != 2) || r.CommittedAtMS <= 0 || r.AccessExpiresAtMS <= r.CommittedAtMS {
 			return errRegistrarState
 		}
 		if !enrollmentidentity.ValidIssuer(r.Scope.Issuer) || !enrollmentidentity.ValidOrigin(r.Scope.RegistrarOrigin) {
@@ -241,6 +276,9 @@ func (s *Store) validateRegistrarState() error {
 			if !registrarDigest(digest) {
 				return errRegistrarState
 			}
+		}
+		if err := validateRegistrarConsumption(state, index, r); err != nil {
+			return err
 		}
 		if registrarReceiptDigest(*r) != r.ReceiptDigest {
 			return errRegistrarState
@@ -273,6 +311,14 @@ func (s *Store) validateRegistrarState() error {
 		}
 		if r.Phase == "active" && (!n.Approved || n.KeyExpiry.UnixMilli() != r.AccessExpiresAtMS) {
 			return errRegistrarState
+		}
+	}
+	if state.Version == 2 {
+		for key, claim := range state.ConsumedProofs {
+			record := state.Records[claim]
+			if record == nil || record.Consumption == nil || key != registrarProofKey(record.Consumption.Challenge) {
+				return errRegistrarState
+			}
 		}
 	}
 	// An alternate node cannot reuse a claimed raw-key identity.

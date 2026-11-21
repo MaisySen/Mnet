@@ -1,0 +1,62 @@
+{
+  "field_count": 21,
+  "byte_length": 669,
+  "sha256_hex": "2f4c05771ffbbe086c35ee7a30723a43081ee37bc1889b3883a3523567da85c7",
+  "record": {
+    "network_id": "fixture-network",
+    "device_public_key": "CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg=",
+    "node_id": "node-fixture-123",
+    "credential_digest": "CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk",
+    "phase": "revoked",
+    "scope": {
+      "registrar_origin": "https://registrar.test",
+      "audience": "fixture-enrollment",
+      "service_id": "fixture-service",
+      "workspace_id": "fixture-workspace",
+      "mapping_revision": "fixture-r1",
+      "handoff_id": "BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ",
+      "attempt_id": "BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU",
+      "reserve_id": "BgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgY",
+      "issuer": "https://configured-issuer.test/path"
+    },
+    "descriptor_digest": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+    "descriptor_encoding_version": 1,
+    "receipt_encoding_version": 2,
+    "receipt_id": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+    "receipt_digest": "L0wFdx_7vghsNe56MHI6Qwge43vBiJs4g6NSNWfahcc",
+    "committed_at_ms": 1795227600124,
+    "access_expires_at_ms": 1795227650123,
+    "consumption": {
+      "challenge": {
+        "binding": {
+          "principal_authority": "https://multies.test",
+          "principal_namespace": "multies-local-user-v1",
+          "principal_id": "local-person-<>&-\u00e9-\u2028-\u2029-end",
+          "session_binding": "CgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgo",
+          "issuer_label": "https://configured-issuer.test/path",
+          "registrar_origin": "https://registrar.test",
+          "audience": "fixture-enrollment",
+          "service_id": "fixture-service",
+          "workspace_id": "fixture-workspace",
+          "network_id": "fixture-network",
+          "mapping_revision": "fixture-r1",
+          "handoff_id": "BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ",
+          "attempt_id": "BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU",
+          "reserve_id": "BgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgY",
+          "descriptor_digest": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+          "descriptor_encoding_version": 1,
+          "device_public_key": "CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg",
+          "credential_digest": "CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk",
+          "checked_at_ms": 1795227600123,
+          "reserve_deadline_ms": 1795227660123,
+          "access_until_ms": 1795227650123
+        },
+        "id": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+        "nonce": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+        "ephemeral_public_key": "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM",
+        "expires_at_ms": 1795227640123
+      },
+      "transcript_digest": "EMBI5nio98tYTgeCl76MBEOorNG9e8Z2IZ6Lc3RzO0s"
+    }
+  }
+}

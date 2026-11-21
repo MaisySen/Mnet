@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inactive proof-v3 public transcript, independent struct-packed bytes.
+"""Inactive proof-v4 public transcript, independent struct-packed bytes.
 No signing, credentials, network or Store authority. --check verifies goldens.
 """
 import argparse
@@ -16,7 +16,7 @@ def fixture():
     binding = dict(
         principal_authority='https://multies.test',
         principal_namespace='multies-local-user-v1',
-        principal_id='local-person-<>&-é-\u2028-\u2029-end', session_id='local-session-123',
+        principal_id='local-person-<>&-é-\u2028-\u2029-end', session_binding=token(10),
         issuer_label='https://configured-issuer.test/path',
         registrar_origin='https://registrar.test', audience='fixture-enrollment',
         service_id='fixture-service', workspace_id='fixture-workspace',
@@ -28,11 +28,11 @@ def fixture():
         access_until_ms=1795227650123)
     challenge = dict(binding=binding, id=token(1), nonce=token(2),
                      ephemeral_public_key=token(3), expires_at_ms=1795227640123)
-    fields = [b'mnet/enrollment-key-possession/experimental-v3']
+    fields = [b'mnet/enrollment-key-possession/experimental-v4']
     fields += [base64.urlsafe_b64decode(challenge[k] + '=') for k in
                ('id', 'nonce', 'ephemeral_public_key')]
     fields += [binding[k].encode('utf-8') for k in (
-        'principal_authority', 'principal_namespace', 'principal_id', 'session_id',
+        'principal_authority', 'principal_namespace', 'principal_id', 'session_binding',
         'issuer_label', 'registrar_origin', 'audience', 'service_id',
         'workspace_id', 'network_id', 'mapping_revision')]
     fields += [base64.urlsafe_b64decode(binding[k] + '=') for k in
@@ -46,8 +46,8 @@ def fixture():
     data = b''.join(struct.pack('>I', len(field)) + field for field in fields)
     meta = dict(field_count=len(fields), byte_length=len(data),
                 sha256_hex=hashlib.sha256(data).hexdigest(), challenge=challenge)
-    return {'transcript-v3.hex': (data.hex() + '\n').encode(),
-            'transcript-v3.json': (json.dumps(meta, ensure_ascii=True, indent=2)
+    return {'transcript-v4.hex': (data.hex() + '\n').encode(),
+            'transcript-v4.json': (json.dumps(meta, ensure_ascii=True, indent=2)
                                    + '\n').encode()}
 
 def main():
@@ -61,6 +61,6 @@ def main():
         else:
             DEST.mkdir(parents=True, exist_ok=True)
             (DEST / name).write_bytes(data)
-    print('inactive transcript v3 ' + ('matches' if args.check else 'written'))
+    print('inactive transcript v4 ' + ('matches' if args.check else 'written'))
 if __name__ == '__main__':
     main()
