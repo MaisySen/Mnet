@@ -219,6 +219,13 @@ try:
   assert not window(),'root restoration retained chooser'
   after=len(server.calls);time.sleep(.05);assert len(server.calls)==after,'root restoration read daemon'
   print('PASS actual chooser root '+mode+' resize retires selected/pending owner and cannot resume',flush=True)
+ # A stopped local daemon names itself honestly in setup details, never implying enrollment.
+ server.shutdown();server.server_close();thread.join(timeout=3);(state/'mnetd.sock').unlink(missing_ok=True)
+ launch();phase('unavailable');capture('daemon-down')
+ action('mousemove','--window',wid,'800','385','click','1');poll(lambda:'detailstrue' in title(),'daemon-down setup details');capture('daemon-down-setup-details')
+ action('key','space');poll(lambda:'detailsfalse' in title(),'daemon-down details close')
+ action('key','Escape');assert client.wait(timeout=3)==0;client=None
+ print('PASS actual chooser daemon-down names the stopped local service in setup details',flush=True)
  assert not server.bad
  print('PASS actual chooser:13 exact peers/three local pages, Home/End endpoints without reads/connections, explicit row+mode, mismatched gestures refused, refresh/empty/error/expiry clears selection, no polling, replaced/missing/renamed/moved/duplicate/non-Up peer refused before TCP, close cancels local read; synthetic local evidence only',flush=True)
 finally:
