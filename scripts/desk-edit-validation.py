@@ -54,7 +54,7 @@ try:
  assert not window() and server.calls==0,'invalid file created a window or daemon request'
  for args in (['layout-edit'],['layout-edit',str(layout)],['layout-edit',str(layout),'--out'],['layout-edit',str(layout),str(edited)],['layout-edit',str(layout),'--out',str(edited),'extra']):
   r=subprocess.run([str(out/'mnet'),'--state',str(state),'desk',*args],env=env,capture_output=True,text=True,timeout=3);assert r.returncode!=0 and 'usage:' in r.stderr,args
- launch();poll(lambda:'sel0/2 edgeright x-100 y0 w100 h100 pw1000 ph1000 undo0 dirtyfalse validtrue confirmfalse' in title(),'initial exact state');capture('initial')
+ launch();poll(lambda:'sel0/2 edgeright x-100 y0 w100 h100 pw1000 ph1000 undo0 dirtyfalse validtrue confirmfalse' in title() and 'starterfalse' in title(),'initial exact state');capture('initial')
  # Arrows move the selected display one layout unit, Shift ten. The immutable
  # opened snapshot ignores a later file replacement.
  layout.write_text(json.dumps(dict(version=1,displays=[dict(source,x=5000),target])))
@@ -104,7 +104,7 @@ try:
  w,h=map(int,size.rsplit('x',1)[0].split('x'))
  with (out/'client.log').open('w') as log:client=subprocess.Popen([str(out/'mnet'),'--state',str(state),'desk','layout-new','--out',str(starter)],env=env,stdout=log,stderr=log)
  wid=poll(window,'starter editor');action('windowfocus',wid)
- poll(lambda:'sel0/2 edgeright x0 y0 w100 h100 pw%d ph%d undo0 dirtytrue validtrue confirmfalse'%(w,h) in title(),'starter exact initial state');capture('starter-open')
+ poll(lambda:'sel0/2 edgeright x0 y0 w100 h100 pw%d ph%d undo0 dirtytrue validtrue confirmfalse'%(w,h) in title() and 'startertrue' in title(),'starter exact initial state');capture('starter-open')
  action('mousemove','--window',wid,'730','615','click','1');assert client.wait(timeout=3)==0;client=None
  saved=json.loads(starter.read_bytes())
  assert [d['id'] for d in saved['displays']]==['this-display','next-display'],'starter placeholder labels changed'
@@ -116,7 +116,7 @@ try:
  starter2=out/'starter-discarded.json'
  with (out/'client.log').open('w') as log:client=subprocess.Popen([str(out/'mnet'),'--state',str(state),'desk','layout-new','--out',str(starter2)],env=env,stdout=log,stderr=log)
  wid=poll(window,'starter editor again');action('windowfocus',wid)
- poll(lambda:'dirtytrue validtrue' in title(),'starter dirty on reopen')
+ poll(lambda:'dirtytrue validtrue' in title() and 'startertrue' in title(),'starter dirty on reopen')
  action('key','Escape');poll(lambda:'confirmtrue' in title(),'starter discard confirmation')
  action('mousemove','--window',wid,'100','322','click','1');assert client.wait(timeout=3)==0;client=None
  assert not starter2.exists() and server.calls==0,'discarded starter wrote a file or contacted a daemon'

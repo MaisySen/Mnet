@@ -71,6 +71,13 @@ func deskEditControlAt(x, y int16) int {
 	return -1
 }
 
+func confirmDetail(e *deskLayoutEditor) string {
+	if e.starter {
+		return "No file was created. Only the unsaved starter is lost."
+	}
+	return "The opened layout file is never modified. Only unsaved in-memory edits are lost."
+}
+
 func renderDeskEditSurface(e *deskLayoutEditor, focus int, confirm bool, notice string) (*image.RGBA, error) {
 	regular, err := opentype.Parse(goregular.TTF)
 	if err != nil {
@@ -130,7 +137,7 @@ func renderDeskEditSurface(e *deskLayoutEditor, focus int, confirm bool, notice 
 	if confirm {
 		rect(20, 96, 860, deskEditDiagram, 0xffffff)
 		text(40, 200, 820, 22, true, 0x172b4d, "Discard your unsaved changes?")
-		text(40, 234, 820, 14, false, 0x526780, "The opened layout file is never modified. Only unsaved in-memory edits are lost.")
+		text(40, 234, 820, 14, false, 0x526780, confirmDetail(e))
 		text(40, 258, 820, 14, false, 0x526780, "Escape or an outside press keeps editing.")
 		for i, label := range []string{"Discard changes", "Keep editing"} {
 			x := 20 + i*170
@@ -169,6 +176,9 @@ func renderDeskEditSurface(e *deskLayoutEditor, focus int, confirm bool, notice 
 		if r.w >= 24 && r.h >= 24 {
 			text(int(34+r.x), int(117+r.y), 20, 13, true, fg, fmt.Sprint(i+1))
 		}
+		if e.starter && starterPlaceholder(e.layout.Displays[i]) && r.w >= 110 && r.h >= 44 {
+			text(int(34+r.x), int(134+r.y), int(r.w-14), 11, false, fg, "placeholder, not a device")
+		}
 	}
 	// A yellow strip marks the edge a new display would attach to. It is a
 	// placement hint, never live input.
@@ -186,13 +196,21 @@ func renderDeskEditSurface(e *deskLayoutEditor, focus int, confirm bool, notice 
 
 	d := e.display()
 	text(20, 366, 860, 13, true, 0x214f90, fmt.Sprintf("Display %d of %d: %s", e.selected+1, len(e.layout.Displays), d.ID))
-	text(20, 388, 860, 13, false, 0x526780, "Device label: "+d.Device)
+	deviceLine := "Device label: " + d.Device
+	if e.starter && starterPlaceholder(d) {
+		deviceLine += " (placeholder, not a verified device)"
+	}
+	text(20, 388, 860, 13, false, 0x526780, deviceLine)
 	text(20, 410, 860, 12, false, 0x526780, fmt.Sprintf("Position (%d, %d), size %dx%d, native pixels %dx%d", d.X, d.Y, d.Width, d.Height, d.PixelWidth, d.PixelHeight))
 	text(20, 432, 860, 12, false, 0x63758c, fmt.Sprintf("New displays attach to the %s edge of the selected display.", e.edge))
 	if verr := e.validate(); verr != nil {
 		text(20, 456, 860, 13, true, 0xb3261e, "Arrangement not valid: "+verr.Error())
 	} else if e.dirty() {
-		text(20, 456, 860, 13, true, 0x1a7f37, "Arrangement valid. Save writes a new file; the opened file is never replaced.")
+		if e.starter {
+			text(20, 456, 860, 13, true, 0x1a7f37, "Arrangement valid. Save writes one new file; nothing is replaced.")
+		} else {
+			text(20, 456, 860, 13, true, 0x1a7f37, "Arrangement valid. Save writes a new file; the opened file is never replaced.")
+		}
 	} else {
 		text(20, 456, 860, 13, false, 0x63758c, "No unsaved changes.")
 	}
@@ -238,7 +256,11 @@ func renderDeskEditSurface(e *deskLayoutEditor, focus int, confirm bool, notice 
 		}
 	}
 	text(20, 668, 860, 12, false, 0x63758c, "Arrows move the selected display (Shift = 10). Page Up/Down chooses a display. Tab selects controls.")
-	text(20, 716, 860, 12, false, 0x63758c, "Closing without saving discards changes. The source file is never modified.")
+	if e.starter {
+		text(20, 716, 860, 12, false, 0x63758c, "Closing without saving discards the starter. No file is created or modified.")
+	} else {
+		text(20, 716, 860, 12, false, 0x63758c, "Closing without saving discards changes. The source file is never modified.")
+	}
 	if renderErr != nil {
 		return nil, renderErr
 	}

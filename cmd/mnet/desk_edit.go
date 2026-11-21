@@ -19,6 +19,14 @@ type deskLayoutEditor struct {
 	selected int
 	edge     desk.Edge
 	undo     []desk.Layout
+	starter  bool
+}
+
+// starterPlaceholder reports whether a display still carries the untouched
+// starter labels. The editor never edits labels, so a placeholder stays
+// visibly marked until the arrangement itself changes it in a later tool.
+func starterPlaceholder(d desk.Display) bool {
+	return d.ID == "this-display" && d.Device == "this-computer" || d.ID == "next-display" && d.Device == "next-computer"
 }
 
 const deskEditUndoLimit = 64

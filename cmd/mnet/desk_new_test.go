@@ -76,3 +76,39 @@ func TestStarterEditorRejectsInvalidLayout(t *testing.T) {
 		t.Fatal("starter editor must apply the exact Compile gate")
 	}
 }
+
+func TestStarterPlaceholderLabels(t *testing.T) {
+	layout := starterDeskLayout(1024, 768)
+	if !starterPlaceholder(layout.Displays[0]) || !starterPlaceholder(layout.Displays[1]) {
+		t.Fatal("untouched starter displays must be marked as placeholders")
+	}
+	edited := layout.Displays[1]
+	edited.X = 200
+	if !starterPlaceholder(edited) {
+		t.Fatal("placeholder marking follows the labels, not the geometry")
+	}
+	other := desk.Display{ID: "office-left", Device: "desk-pc", X: 100, Width: 100, Height: 100, PixelWidth: 1, PixelHeight: 1}
+	if starterPlaceholder(other) {
+		t.Fatal("non-starter labels must not be marked as placeholders")
+	}
+}
+
+func TestConfirmDetailDistinguishesStarter(t *testing.T) {
+	starter, err := newDeskLayoutStarterEditor(starterDeskLayout(1024, 768))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := confirmDetail(starter); got == confirmDetail(&deskLayoutEditor{}) {
+		t.Fatal("starter and file-backed editors must word discard differently")
+	}
+	fileBacked, err := newDeskLayoutEditor(starterDeskLayout(1024, 768))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fileBacked.starter {
+		t.Fatal("a file-backed editor is not a starter")
+	}
+	if confirmDetail(fileBacked) == confirmDetail(starter) {
+		t.Fatal("file-backed editor must keep opened-file wording")
+	}
+}

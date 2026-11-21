@@ -265,7 +265,7 @@ func runDeskLayoutEditor(ctx context.Context, build func(*xproto.ScreenInfo) (*d
 		if len(bounded) > 80 {
 			bounded = bounded[:80]
 		}
-		title := fmt.Sprintf("Mnet Shared Desk: offline layout editor %s dirty%t valid%t confirm%t focus%d notice[%s]", state(), e.dirty(), e.validate() == nil, confirm, focus, bounded)
+		title := fmt.Sprintf("Mnet Shared Desk: offline layout editor %s dirty%t valid%t confirm%t focus%d notice[%s] starter%t", state(), e.dirty(), e.validate() == nil, confirm, focus, bounded, e.starter)
 		return xproto.ChangePropertyChecked(c, xproto.PropModeReplace, w, xproto.AtomWmName, xproto.AtomString, 8, uint32(len(title)), []byte(title)).Check()
 	}
 	// activate returns true only when the window should close (saved, or an

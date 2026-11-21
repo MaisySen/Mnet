@@ -33,7 +33,8 @@ func newDeskLayoutStarterEditor(layout desk.Layout) (*deskLayoutEditor, error) {
 		return nil, err
 	}
 	return &deskLayoutEditor{
-		layout: cloneDeskLayout(layout),
-		edge:   desk.Right,
+		layout:  cloneDeskLayout(layout),
+		edge:    desk.Right,
+		starter: true,
 	}, nil
 }
