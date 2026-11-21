@@ -32,11 +32,11 @@ func sourceFunction(t *testing.T, file, name string) string {
 	return ""
 }
 func TestSourcePidfdBeforeAnyWaitAndPinThroughChildLifetime(t *testing.T) {
-	s := sourceFunction(t, "resident_linux.go", "spawnResidentPinnedSource")
+	s := sourceFunction(t, "resident_linux.go", "spawnResidentPinnedMode")
 	if strings.Index(s, "unix.PidfdOpen(") < 0 || strings.Index(s, "unix.PidfdOpen(") > strings.Index(s, "cmd.Wait()") {
 		t.Fatal("pidfd opened after reaper")
 	}
-	s = sourceFunction(t, "resident_linux.go", "Spawn")
+	s = sourceFunction(t, "resident_linux.go", "spawnResidentMode")
 	for _, term := range []string{"runtime.LockOSThread()", "defer runtime.UnlockOSThread()", "<-child.wait"} {
 		if !strings.Contains(s, term) {
 			t.Fatal("starter thread lifetime pin missing", term)
@@ -72,5 +72,13 @@ func TestSourceClientCapsNNPFDAllowlistBeforeFixedExec(t *testing.T) {
 	s = sourceFunction(t, "resident_linux.go", "residentBootstrapSource")
 	if !strings.Contains(s, "PR_SET_DUMPABLE, 0") || strings.Index(s, "PR_SET_DUMPABLE, 0") < strings.Index(s, "io.ReadFull(") {
 		t.Fatal("client can inspect owner fd custody")
+	}
+}
+
+func TestFixedResidentModeForwardingSource(t *testing.T) {
+	for _, part := range [][3]string{{"resident_linux.go", "Spawn", "spawnResidentMode(ctx, \"--osownership-resident-no-tun-source\")"}, {"resident_linux.go", "spawnResidentPinnedSource", "spawnResidentPinnedMode(ctx, \"--osownership-resident-no-tun-source\")"}, {"resident_linux.go", "spawnResidentMode", "spawnResidentPinnedMode(ctx, mode)"}, {"resident_linux.go", "spawnResidentPinnedMode", "allowedResidentEvidenceMode(mode)"}, {"resident_linux.go", "spawnResidentPinnedMode", "cmd.Args[1] = mode"}} {
+		if !strings.Contains(sourceFunction(t, part[0], part[1]), part[2]) {
+			t.Fatal("mode forwarding mismatch", part)
+		}
 	}
 }

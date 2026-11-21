@@ -138,6 +138,9 @@ func TestDevicePreflightNamespaceAtEveryBoundary(t *testing.T) {
 		if at <= 2 && f.opens != 0 {
 			t.Fatal("open after namespace failure")
 		}
+		if at == 4 && r.NamespaceRechecked {
+			t.Fatal("false final namespace success")
+		}
 		if at >= 3 && f.closes != 1 {
 			t.Fatal("failure leak")
 		}
@@ -208,5 +211,116 @@ func TestDevicePreflightRealNamespaceAndFlagWiring(t *testing.T) {
 		if !strings.Contains(sourceFunction(t, "device_preflight_linux.go", tc[0]), tc[1]) {
 			t.Fatal("real operation wiring changed", tc[0])
 		}
+	}
+}
+
+func goodPreflightResult() DevicePreflightEvidence {
+	f := goodDevice()
+	ns := Namespace{Device: 7, Inode: 42, Isolated: true}
+	r, _ := captureDevicePreflight(f, ns)
+	r.BaselineHash = strings.Repeat("a", 64)
+	r.FinalHash = r.BaselineHash
+	r.BaselineUnchanged = true
+	return r
+}
+func TestDevicePreflightEntryRefusesInvalidEvidence(t *testing.T) {
+	for _, kind := range []string{"valid", "namespace", "flags", "close", "fds", "hash", "errno", "object"} {
+		r := goodPreflightResult()
+		switch kind {
+		case "namespace":
+			r.Namespace.Inode++
+		case "flags":
+			r.Nonblock = false
+		case "close":
+			r.Closed = false
+		case "fds":
+			r.FDsAfter = []int{0, 8}
+		case "hash":
+			r.FinalHash = strings.Repeat("b", 64)
+		case "errno":
+			r.Outcome = "denied"
+			r.FD = -1
+			r.CloseAttempted = false
+			r.Closed = false
+			r.Errno = 123
+		case "object":
+			r.OpenedMetadata.Rdev = unix.Mkdev(1, 3)
+		}
+		e := validateDevicePreflightResult(r, Namespace{Device: 7, Inode: 42, Isolated: true})
+		if (e == nil) != (kind == "valid") {
+			t.Fatal(kind, e)
+		}
+	}
+}
+func TestDevicePreflightSeparateModeAndCustody(t *testing.T) {
+	for _, mode := range []string{"--device-open-preflight", "--osownership-resident-device-open-preflight"} {
+		if e := DevicePreflightMain([]string{mode, "extra"}); e == nil {
+			t.Fatal("extra args accepted")
+		}
+	}
+	if e := DevicePreflightMain([]string{"--bootstrap-readonly"}); e == nil {
+		t.Fatal("bootstrap accepted by different entry")
+	}
+	if allowedResidentEvidenceMode("--arbitrary") {
+		t.Fatal("arbitrary child mode allowed")
+	}
+	s := sourceFunction(t, "device_preflight_entry_linux.go", "DevicePreflightMain")
+	for _, part := range []string{"os.Getuid() == 0", "SuperviseResident(ctx, devicePreflightSpawner{})", "validateDevicePreflightVerdict(v, outer)", "after == outer"} {
+		if !strings.Contains(s, part) {
+			t.Fatal("entry oracle detached", part)
+		}
+	}
+	r := goodPreflightResult()
+	v := Verdict{DevicePreflight: &r, Namespace: r.Namespace, Result: "pass", Stage: "final", CleanupConfirmed: true, BaselineHash: r.BaselineHash, FinalHash: r.FinalHash, Lifecycle: &LifecycleEvidence{Reaped: true, CustodyClosed: true}}
+	outer := Namespace{Device: 7, Inode: 1}
+	if e := validateDevicePreflightVerdict(v, outer); e != nil {
+		t.Fatal(e)
+	}
+	v.Lifecycle.CustodyClosed = false
+	if e := validateDevicePreflightVerdict(v, outer); e == nil {
+		t.Fatal("missing custody accepted")
+	}
+}
+
+func TestDevicePreflightMajorIndependentlyDecisive(t *testing.T) {
+	f := goodDevice()
+	f.m.Rdev = unix.Mkdev(11, 200)
+	r, e := captureDevicePreflight(f, Namespace{})
+	if e != nil || r.Outcome != "refused-object" || r.OpenAttempted {
+		t.Fatal(r, e)
+	}
+}
+func TestDevicePreflightIsolatedAndBaselineSeam(t *testing.T) {
+	for _, valid := range []bool{false, true} {
+		f := goodDevice()
+		calls := 0
+		ns := Namespace{Device: 7, Inode: 42, Isolated: valid}
+		r, e := runDevicePreflightBoundedSource(ns, f, func() (string, error) {
+			calls++
+			if calls == 1 {
+				return strings.Repeat("a", 64), nil
+			}
+			return strings.Repeat("b", 64), nil
+		})
+		if e == nil {
+			t.Fatal("untrusted/mismatched baseline accepted", r)
+		}
+		if !valid && (calls != 0 || f.opens != 0) {
+			t.Fatal("nonisolated source touched")
+		}
+		if valid && (r.BaselineUnchanged || r.BaselineHash == r.FinalHash) {
+			t.Fatal("false baseline success", r)
+		}
+	}
+	s := sourceFunction(t, "device_preflight_linux.go", "runDevicePreflightSource")
+	if !strings.Contains(s, "runDevicePreflightBoundedSource(ns.identity, residentDevicePreflight{ns}, snapshot)") {
+		t.Fatal("real seam detached")
+	}
+}
+func TestDevicePreflightOuterBaselineMismatchDecisive(t *testing.T) {
+	r := goodPreflightResult()
+	v := Verdict{DevicePreflight: &r, Namespace: r.Namespace, Result: "pass", Stage: "final", CleanupConfirmed: true, BaselineHash: strings.Repeat("b", 64), FinalHash: r.FinalHash, Lifecycle: &LifecycleEvidence{Reaped: true, CustodyClosed: true}}
+	if e := validateDevicePreflightVerdict(v, Namespace{Device: 7, Inode: 1}); e == nil {
+		t.Fatal("unbound outer baseline")
 	}
 }

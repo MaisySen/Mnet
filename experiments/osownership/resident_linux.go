@@ -91,6 +91,9 @@ func (c *residentChild) CloseCustody() error {
 	return c.closeErr
 }
 func (residentSpawner) Spawn(ctx context.Context) (ResidentProcess, error) {
+	return spawnResidentMode(ctx, "--osownership-resident-no-tun-source")
+}
+func spawnResidentMode(ctx context.Context, mode string) (ResidentProcess, error) {
 	if !kernelExecutionReleased && !readOnlyEvidenceBuild {
 		return nil, ErrExecutorUnreleased
 	}
@@ -102,7 +105,7 @@ func (residentSpawner) Spawn(ctx context.Context) (ResidentProcess, error) {
 	go func() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
-		p, e := spawnResidentPinnedSource(ctx)
+		p, e := spawnResidentPinnedMode(ctx, mode)
 		ch <- answer{p, e}
 		if child, ok := p.(*residentChild); ok {
 			<-child.wait
@@ -118,7 +121,13 @@ func (residentSpawner) Spawn(ctx context.Context) (ResidentProcess, error) {
 	r := <-ch
 	return r.p, r.e
 }
-func spawnResidentPinnedSource(ctx context.Context) (process ResidentProcess, retErr error) {
+func spawnResidentPinnedSource(ctx context.Context) (ResidentProcess, error) {
+	return spawnResidentPinnedMode(ctx, "--osownership-resident-no-tun-source")
+}
+func spawnResidentPinnedMode(ctx context.Context, mode string) (process ResidentProcess, retErr error) {
+	if !allowedResidentEvidenceMode(mode) {
+		return nil, ErrExecutorUnreleased
+	}
 	if !kernelExecutionReleased && !readOnlyEvidenceBuild {
 		return nil, ErrExecutorUnreleased
 	}
@@ -153,6 +162,7 @@ func spawnResidentPinnedSource(ctx context.Context) (process ResidentProcess, re
 	}
 	outerIdentity := Namespace{Device: uint64(outerStat.Dev), Inode: outerStat.Ino}
 	cmd := residentCommand(exe, os.Getuid(), os.Getgid(), w, outerIdentity, os.Getpid(), gateR)
+	cmd.Args[1] = mode
 	if e = cmd.Start(); e != nil {
 		r.Close()
 		w.Close()

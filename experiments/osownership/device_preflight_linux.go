@@ -11,37 +11,6 @@ import (
 	"reflect"
 )
 
-type DeviceMetadata struct {
-	Device uint64 `json:"device"`
-	Inode  uint64 `json:"inode"`
-	Rdev   uint64 `json:"rdev"`
-	Mode   uint32 `json:"mode"`
-	UID    uint32 `json:"uid"`
-	GID    uint32 `json:"gid"`
-}
-type DevicePreflightEvidence struct {
-	Version              int             `json:"version"`
-	Path                 string          `json:"path"`
-	Namespace            Namespace       `json:"namespace"`
-	Metadata             *DeviceMetadata `json:"metadata,omitempty"`
-	OpenedMetadata       *DeviceMetadata `json:"opened_metadata,omitempty"`
-	Outcome              string          `json:"outcome"`
-	Errno                int             `json:"errno,omitempty"`
-	FD                   int             `json:"fd"`
-	OpenAttempted        bool            `json:"open_attempted"`
-	CloseAttempted       bool            `json:"close_attempted"`
-	Closed               bool            `json:"closed"`
-	CLOEXEC              bool            `json:"cloexec"`
-	Nonblock             bool            `json:"nonblock"`
-	FDsBefore            []int           `json:"fds_before"`
-	FDsAfter             []int           `json:"fds_after"`
-	FDInventoryUnchanged bool            `json:"fd_inventory_unchanged"`
-	BaselineHash         string          `json:"baseline_hash"`
-	FinalHash            string          `json:"final_hash"`
-	BaselineUnchanged    bool            `json:"baseline_unchanged"`
-	NamespaceRechecked   bool            `json:"namespace_rechecked"`
-}
-
 const preflightDevicePath = "/dev/net/tun"
 const preflightOpenFlags = unix.O_RDWR | unix.O_NONBLOCK | unix.O_CLOEXEC | unix.O_NOFOLLOW
 
@@ -210,39 +179,52 @@ func (o residentDevicePreflight) Inventory() ([]int, error) { return clientFDInv
 // Only receives held fresh namespace custody established by reviewed supervisor.
 // No launcher/dispatch added. An outer caller must separately capture unchanged
 // outer namespace and Wait/custody evidence before any execution can be reviewed.
-func runDevicePreflightSource(ctx context.Context, ns *namespaceCustody) (r DevicePreflightEvidence, err error) {
-	if ns == nil || !ns.identity.Isolated {
+func runDevicePreflightSource(ctx context.Context, ns *namespaceCustody) (DevicePreflightEvidence, error) {
+	if ns == nil {
+		return DevicePreflightEvidence{}, ErrConflict
+	}
+	snapshot := func() (string, error) {
+		if e := ctx.Err(); e != nil {
+			return "", e
+		}
+		if e := ns.checkCurrent(); e != nil {
+			return "", e
+		}
+		raw, e := ReadStableInventory(ctx, residentNetlink{ns}, ns.checkCurrent)
+		if e != nil {
+			return "", e
+		}
+		sys, e := readPolicySysctlsSource(ctx, ns, raw)
+		if e != nil {
+			return "", e
+		}
+		return bootstrapEvidenceDigest(raw, sys), nil
+	}
+	return runDevicePreflightBoundedSource(ns.identity, residentDevicePreflight{ns}, snapshot)
+}
+
+// Injected seam exercises unchanged same-run comparison and isolated refusal
+// without any namespace/device access in tests. Real path above owns snapshot.
+func runDevicePreflightBoundedSource(ns Namespace, ops devicePreflightOps, snapshot func() (string, error)) (r DevicePreflightEvidence, err error) {
+	if !ns.Isolated || ns.Device == 0 || ns.Inode == 0 {
 		return r, ErrConflict
 	}
-	if err = ctx.Err(); err != nil {
+	if err = ops.CheckNamespace(); err != nil {
 		return
 	}
-	if err = ns.checkCurrent(); err != nil {
-		return
+	initial, e := snapshot()
+	if e != nil {
+		return r, e
 	}
-	raw, err := ReadStableInventory(ctx, residentNetlink{ns}, ns.checkCurrent)
-	if err != nil {
-		return
-	}
-	sys, err := readPolicySysctlsSource(ctx, ns, raw)
-	if err != nil {
-		return
-	}
-	initial := bootstrapEvidenceDigest(raw, sys)
-	r, err = captureDevicePreflight(residentDevicePreflight{ns}, ns.identity)
+	r, err = captureDevicePreflight(ops, ns)
 	r.BaselineHash = initial
-	after, e := ReadStableInventory(ctx, residentNetlink{ns}, ns.checkCurrent)
+	final, e := snapshot()
 	err = errors.Join(err, e)
 	if e != nil {
 		return
 	}
-	afterSys, e := readPolicySysctlsSource(ctx, ns, after)
-	err = errors.Join(err, e)
-	if e != nil {
-		return
-	}
-	r.FinalHash = bootstrapEvidenceDigest(after, afterSys)
-	r.BaselineUnchanged = initial == r.FinalHash
+	r.FinalHash = final
+	r.BaselineUnchanged = initial == final
 	if !r.BaselineUnchanged {
 		err = errors.Join(err, ErrConflict)
 	}

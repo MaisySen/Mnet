@@ -18,6 +18,7 @@ const maxVerdictBytes = 64 << 10
 // Verdict is one JSON record plus EOF, never streaming arbitrary stdout. Public
 // evidence excludes credentials. Decoder/runner/cleanup failures are distinct.
 type Verdict struct {
+	DevicePreflight  *DevicePreflightEvidence   `json:"device_preflight,omitempty"`
 	Failure          *FailureEvidence           `json:"failure,omitempty"`
 	Lifecycle        *LifecycleEvidence         `json:"lifecycle,omitempty"`
 	Bootstrap        *BootstrapReadOnlyEvidence `json:"bootstrap,omitempty"`
