@@ -34,7 +34,7 @@ func TestStrictPairConfig(t *testing.T) {
 			}
 		})
 	}
-	for name, mutate := range map[string]func(*config){"wrong-role": func(c *config) { c.Role = "legacy" }, "same-key": func(c *config) { c.PeerKey = c.SelfKey }, "same-ip": func(c *config) { c.PeerIP = c.SelfIP }, "loopback": func(c *config) { c.PeerIP = "127.0.0.1" }, "not-pool": func(c *config) { c.PeerIP = "10.0.0.1" }, "key-padding": func(c *config) { c.PeerKey = strings.TrimRight(c.PeerKey, "=") }, "window-widened": func(c *config) { c.EarlierExpiryMS = c.WorkStartMS + 10001 }, "past-work": func(c *config) { c.WorkStartMS = 0 }, "body-cap": func(c *config) { c.BodyHex = "ab" }, "extra-version": func(c *config) { c.Version = 2 }} {
+	for name, mutate := range map[string]func(*config){"wrong-role": func(c *config) { c.Role = "legacy" }, "same-key": func(c *config) { c.PeerKey = c.SelfKey }, "same-ip": func(c *config) { c.PeerIP = c.SelfIP }, "loopback": func(c *config) { c.PeerIP = "127.0.0.1" }, "not-pool": func(c *config) { c.PeerIP = "10.0.0.1" }, "key-padding": func(c *config) { c.PeerKey = strings.TrimRight(c.PeerKey, "=") }, "window-widened": func(c *config) { c.EarlierExpiryMS = c.WorkStartMS }, "past-work": func(c *config) { c.WorkStartMS = 0 }, "body-cap": func(c *config) { c.BodyHex = "ab" }, "extra-version": func(c *config) { c.Version = 2 }} {
 		t.Run(name, func(t *testing.T) {
 			bad := c
 			mutate(&bad)
@@ -260,5 +260,17 @@ func TestEarlyRetirementUsesEffectiveExpiryAndCannotBeHiddenByJoin(t *testing.T)
 	e := observeNaturalRetirement(nil, done, effective, effective, out, func() { time.Sleep(25 * time.Millisecond) })
 	if !inconclusive(e) {
 		t.Fatal("early retirement hidden by cleanup latency or marked safety failure")
+	}
+}
+func TestPrecommitWorkOriginDoesNotPretendToBeReceiptDuration(t *testing.T) {
+	c := fixtureConfig()
+	c.WorkStartMS = 1795283313943
+	c.EarlierExpiryMS = 1795283324095
+	raw, _ := json.Marshal(c)
+	if _, e := parseConfig(raw); e != nil {
+		t.Fatal("precommit work origin rejected as lease duration", e)
+	}
+	if _, _, e := phase(context.Background(), c, time.Second); e == nil {
+		t.Fatal("historical window revived by DATA parse")
 	}
 }

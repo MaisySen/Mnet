@@ -172,3 +172,37 @@ inherited self-expiry at E is therefore not mistaken for premature retirement
 against B's later peer expiry. Missing natural Done still hard fails. No causal
 timer claim is made. Focused test covers expected A self-expiry, premature Done
 and a slow join that must not hide its early observation.
+
+## First single attempt, stopped without networking proof
+
+Exactly one released integrated invocation used native0eabd5f and Multiescc0d3d7,
+non-race binaries, Go1.26.6 temporary modfile. It exited1. Both browser Returns
+were staged and both saves exited, at T+254ms and T+623ms. Both adapters spawned
+by T+652/685ms. No native adapter stage/listener/HTTP proof was observed. Reported
+listener-not-ready was NOT a verified timing miss. That coordinator also mapped
+early adapter exit to this message and lost stderr, exit and ledger evidence on
+cleanup. The failure is therefore an UNVERIFIED PRE-STAGE FAILURE, not successful
+networking, conserved slices, or proven timing infeasibility. No retry authorized.
+
+Retained public log gives T1795283313943 and earlierE1795283324095: span10152ms.
+The old parser incorrectly required E-T<=10000ms even though T is BEFORE source
+exchange/challenge/receipt commitment. This deterministically rejects that span
+in source, but the actual process stderr is missing, so attribution is a source
+explanation, not recovered runtime evidence. Corrective parser removes only the
+invalid work-origin-as-lease-duration comparison. It still requires positive
+ordered timestamps; the exact actual E must match the authenticated snapshot
+before application activity. Original challenge10s, max lease15s, authority,
+receipt and connection slices are untouched. Positive work still finishes by
+min(T+9s,E-1s). Parsing public config never authenticates E or supplies authority.
+
+Corrective evidence code persists public process spawn/exit/signal and capped
+stderr plus explicit truncation facts in a fresh private evidence directory
+outside the deleted fixture root. Public adapter stages and coordinator phases
+persist as they arrive. Setup stdout, native State, journal bytes, receipt,
+callback URLs, launch payloads and private keys are NEVER copied. Allowlisted
+journal phase/version and ledger phase/numeric reservations are captured after
+each save, before connects, before cleanup, after joined processes BEFORE root
+deletion. Missing/unreadable summaries carry error codes, not invented values.
+An unclassified early exit is now explicit failure with exit/signal/stderr,
+never a listener timing miss. This evidence correction cannot restore the lost
+first-attempt stderr, original journal/ledger or expiry outcome.

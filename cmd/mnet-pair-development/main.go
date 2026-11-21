@@ -98,7 +98,7 @@ func parseConfig(raw []byte) (config, error) {
 		}
 	}
 	body, e := hex.DecodeString(c.BodyHex)
-	if e != nil || len(body) != 32 || hex.EncodeToString(body) != c.BodyHex || c.SelfKey == c.PeerKey || c.SelfIP == c.PeerIP || c.WorkStartMS <= 0 || c.EarlierExpiryMS <= c.WorkStartMS || c.EarlierExpiryMS-c.WorkStartMS > 10000 {
+	if e != nil || len(body) != 32 || hex.EncodeToString(body) != c.BodyHex || c.SelfKey == c.PeerKey || c.SelfIP == c.PeerIP || c.WorkStartMS <= 0 || c.EarlierExpiryMS <= c.WorkStartMS {
 		return c, errors.New("invalid finite pair binding")
 	}
 	return c, nil
