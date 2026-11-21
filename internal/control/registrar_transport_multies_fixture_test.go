@@ -26,16 +26,18 @@ import (
 )
 
 type registrarTransportFixture struct {
-	tun         *tuntest.ChannelTUN
-	bind        *bind.Bind
-	dev         *device.Device
-	lastKey     string
-	received    int
-	sent        bool
-	revoked     bool
-	selfIP      string
-	reverseSent int
-	relayMode   bool
+	tun            *tuntest.ChannelTUN
+	bind           *bind.Bind
+	dev            *device.Device
+	lastKey        string
+	received       int
+	sent           bool
+	revoked        bool
+	selfIP         string
+	reverseSent    int
+	relayMode      bool
+	reopen         bool
+	reopenReceived int
 }
 
 func newRegistrarTransportFixture(t *testing.T, key [32]byte) *registrarTransportFixture {
@@ -92,7 +94,11 @@ func (f *registrarTransportFixture) tick(t *testing.T, m *netmap.Map, native net
 	for {
 		select {
 		case packet := <-f.tun.Inbound:
-			if !bytes.Equal(packet, expected) {
+			reopened := append([]byte{}, expected...)
+			reopened[len(reopened)-1] ^= 0x31
+			if f.reopen && bytes.Equal(packet, reopened) {
+				f.reopenReceived++
+			} else if !bytes.Equal(packet, expected) {
 				t.Fatal("decrypted payload/source/destination differs from enrolled native packet")
 			}
 			f.received++
@@ -103,7 +109,13 @@ func (f *registrarTransportFixture) tick(t *testing.T, m *netmap.Map, native net
 drained:
 	if !f.revoked {
 		select {
-		case f.tun.Outbound <- tuntest.Ping(netip.MustParseAddr(native.IPv4), netip.MustParseAddr(m.Self.IPv4)):
+		case f.tun.Outbound <- func() []byte {
+			p := tuntest.Ping(netip.MustParseAddr(native.IPv4), netip.MustParseAddr(m.Self.IPv4))
+			if f.reopen {
+				p[len(p)-1] ^= 0x31
+			}
+			return p
+		}():
 			f.sent = true
 		default:
 		}

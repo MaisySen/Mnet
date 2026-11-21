@@ -138,6 +138,66 @@ func testActualEnrolledNativeTransport(t *testing.T, d *Daemon, dir string, rela
 
 		t.Fatal("no reverse encrypted UDP packet from actually approved peer")
 	}
+	if relayMode {
+		// Explicit disposable caller reopens ONCE using the same retained
+		// client/State and original receipt. No automatic product retry or
+		// alternate credential/lease/timeout is selected.
+		old := relaySocket
+		clientBefore := d.nativeClient
+		old.Close()
+		select {
+		case <-old.Done():
+		case <-time.After(time.Second):
+			t.Fatal("retired socket owner did not finish")
+		}
+		if err := old.Send(peerKey, []byte{1}); err == nil {
+			t.Fatal("retired native socket still sends")
+		}
+		relaySocket, err = d.nativeCurrentRelay(context.Background(), limits, 256)
+		if err != nil {
+			t.Fatal("same original credential explicit socket reopen", err)
+		}
+		defer relaySocket.Close()
+		if relaySocket == old || d.nativeClient != clientBefore {
+			t.Fatal("socket replacement reset shared client owner")
+		}
+		afterReopen, err := os.ReadFile(d.stateOwner.path)
+		if err != nil || !bytes.Equal(before, afterReopen) || d.stateOwner.saved.PublicKey != keyBefore {
+			t.Fatal("socket replacement rewrote authority or identity")
+		}
+		d.bind.SetRelaySender(relaySocket.Send)
+		if err := writeFixtureAtomic(dir, "native-relay-reopened", []byte("same original receipt and retained client, fresh socket")); err != nil {
+			t.Fatal(err)
+		}
+		nextExpected := append([]byte{}, expected...)
+		nextExpected[len(nextExpected)-1] ^= 0x31
+		nextOutbound := tuntest.Ping(netip.MustParseAddr(peerIP), netip.MustParseAddr(m.Self.IPv4))
+		nextOutbound[len(nextOutbound)-1] ^= 0x31
+		freshReceived := false
+		freshPeerReceived := false
+		until := time.Now().Add(2 * time.Second)
+		for time.Now().Before(until) && (!freshReceived || !freshPeerReceived) {
+			select {
+			case tun.Outbound <- nextOutbound:
+			default:
+			}
+			select {
+			case packet := <-packets:
+				if bytes.Equal(packet, nextExpected) {
+					freshReceived = true
+				} else if !bytes.Equal(packet, expected) {
+					t.Fatal("reopened socket decrypted unexpected packet")
+				}
+			case <-time.After(10 * time.Millisecond):
+			}
+			_, err := os.Stat(filepath.Join(dir, "peer-relay-reopened-received"))
+			freshPeerReceived = err == nil
+		}
+		if !freshReceived || !freshPeerReceived {
+			t.Fatal("fresh marked encrypted packet missing after explicit socket replacement", freshReceived, freshPeerReceived)
+		}
+		t.Log("actual retained native owner socket closed/reopened once; same State/client/original receipt; fresh marked encrypted packets both directions")
+	}
 	if err := writeFixtureAtomic(dir, "native-transport-ready", []byte("actual encrypted reverse payload verified")); err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +262,11 @@ drained:
 	if relayMode {
 		postPacket[len(postPacket)-1] ^= 0x5a
 	}
-	deniedInbound := func(packet []byte) bool { return !relayMode || !bytes.Equal(packet, expected) }
+	preReopenExpected := append([]byte{}, expected...)
+	preReopenExpected[len(preReopenExpected)-1] ^= 0x31
+	deniedInbound := func(packet []byte) bool {
+		return !relayMode || !bytes.Equal(packet, expected) && !bytes.Equal(packet, preReopenExpected)
+	}
 	for i := 0; i < 5; i++ {
 		select {
 		case tun.Outbound <- postPacket:

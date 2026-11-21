@@ -613,7 +613,17 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 
 						t.Fatalf("transport current map %v received=%d sent=%v; native output: %s", err, transport.received, transport.sent, nativeOutput.String())
 					}
+					if relayMode.Load() {
+						if _, err := os.Stat(filepath.Join(dir, "native-relay-reopened")); err == nil {
+							transport.reopen = true
+						}
+					}
 					transport.tick(t, firstMap, *n)
+					if transport.reopenReceived > 0 {
+						if err := writeRegistrarFixtureAtomic(dir, "peer-relay-reopened-received", []byte("fresh marked encrypted packet received after explicit native socket replacement")); err != nil {
+							t.Fatal(err)
+						}
+					}
 					if relayMode.Load() && transport.lastKey != "" {
 						if err := writeRegistrarFixtureAtomic(dir, "transport-relay-peer-configured", []byte("exact enrolled native peer configured")); err != nil {
 							t.Fatal(err)
@@ -662,7 +672,9 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 						select {
 						case packet := <-transport.tun.Inbound:
 							original := tuntest.Ping(netip.MustParseAddr(transport.selfIP), netip.MustParseAddr(n.IPv4))
-							if !relayMode.Load() || !bytes.Equal(packet, original) {
+							reopened := append([]byte{}, original...)
+							reopened[len(reopened)-1] ^= 0x31
+							if !relayMode.Load() || !bytes.Equal(packet, original) && !bytes.Equal(packet, reopened) {
 								t.Fatal("new encrypted payload decrypted after native removed revoked peer")
 							}
 						default:

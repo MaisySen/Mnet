@@ -177,3 +177,34 @@ Mutant results are specific to their exact edits. Our earlier destination mutant
 bypasses the entire allowed callback and fails all five destination modes. The
 independent review used a different destination-check bypass, with three state
 failures plus a credential case. Those counts are not equivalent evidence.
+
+## Explicit established-session socket replacement
+
+The maintained dependency, still using the controlled sole-initiator fixture,
+now exercises one explicit native socket replacement after real bidirectional
+encrypted traffic. The native caller closes the old owner, waits for Done,
+checks its sender refuses, dials once with the same retained client and unchanged
+State/key/original receipt, then installs the replacement sender. Native and
+peer must each decrypt a new exact marked packet. Old baseline plaintext cannot
+satisfy these checks. Leaving the retired sender installed fails specifically
+the fresh native-to-peer confirmation even while fresh reverse traffic arrives.
+
+The actual current-map peer removal and new post-removal packet denials still
+follow this replacement. Only the two exact previously authorized plaintext
+variants are ignored as possible delayed pre-removal traffic; the distinct new
+post-removal marked payload must not arrive. Counts remain enqueues rather than
+independent transmission receipts.
+
+This is an explicit disposable caller reusing an established WireGuard session,
+not automatic production reconnect, a daemon process restart, simultaneous-start
+compatibility, or physical/OS/NAT acceptance. Each socket retains the existing
+3s bound and its finite frame budget; this test authorizes exactly two sockets,
+not an unbounded redial loop. It preserves the retained client's shared request
+budget and original authority interval. No product startup caller is added.
+
+The crossed-initiation limit is an application/protocol lifecycle mismatch:
+upstream recovers competing initiations through jittered retries, not guaranteed
+completion inside this application's finite3s socket. The cryptographic
+arbitration experiment stays outside maintained source and is not a selected
+solution. Neither its passing tests nor the explicit established-session socket
+replacement authorizes widening a socket timeout or lease.
