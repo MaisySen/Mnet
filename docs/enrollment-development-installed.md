@@ -61,3 +61,18 @@ Source approval for local joining is separate/default-off development only.
 Earlier zero-native-trigger language concerned publication/automatic native CI
 coordination, not blanket prohibition of disposable local native execution.
 Main explicitly resolved this lane before this new tagged caller was run.
+
+### Later checkpoint: scoped session cleanup and handoff copy
+
+A later complete run under a disposable dbus-run-session and owned Xvfb exits0
+with no detached-child warning. The reusable development-browser validation
+script builds the explicit tagged binary in a new private prefix and joins the
+session/X server. This run again returns zero live peers under unchanged limits.
+The earlier unjoined attempts remain failed evidence.
+
+The companion handoff screen now describes native verification/save as pending,
+not an unconditional disconnected-registrar claim. Actual updated consent/return
+pixels were inspected: readable, and the full private-network identifier stays
+on one code line without the orphaned character. This corrects interim copy
+only. The plain callback still lacks actual final native status and remains
+unfinished, as do browser decline/cancel/configuration-change controls.
