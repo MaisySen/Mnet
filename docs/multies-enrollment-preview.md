@@ -31,3 +31,23 @@ noncanonical identity refusal, explicit origins, fresh attempts, exact full-key
 browser encoding, one local identity request per invocation and canceled-owner
 absence of effects. These are local tests, not completed consumer setup or
 physical cross-machine acceptance.
+
+## Exact installed local pair acceptance
+
+Exact installed Mnet42f84f0d2756c420dcc45d6b9ff06c899cf6d069 with isolated
+Multies1b1c516da7bd383e4f11cd187b4acfa79d84a0e5 completes the real system
+xdg-open/gio/desktop association into a fresh Chrome profile. Signed-out login
+returns to the exact enrollment request. The browser's full public key equals
+the existing0600durable daemon key, the person explicitly selects the mapped
+workspace/network, approval is recorded and the result says not enrolled. The
+native state stays unchanged before/after the browser decision, without server,
+network, node credential or auth key. Actual ready/result pixels were inspected.
+
+The first fixture searched for a newline before the printed key while the
+actual CLI prints it after a colon and space; that fixture failed before browser
+verification. Correcting only the output parser produced the passing full
+journey. No product source, browser association or production timeout changed.
+Disposable local daemon, display, Chrome/profile and session bus were used; the
+installed prefix was removed unchanged after acceptance. This is a Linux local
+consent-entry check, not registrar enrollment, VPN traffic, physical pairing,
+Mac/Windows browser acceptance or completed consumer setup.
