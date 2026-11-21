@@ -38,6 +38,13 @@ type nativeStateOwner struct {
 }
 
 func openStateOwner(dir string) (*nativeStateOwner, error) {
+	return openStateOwnerGuarded(dir, guardNativeStateHistory)
+}
+
+// Internal reader; never creates an identity. Ordinary owning/detached loaders
+// always supply the unchanged normal guard. The private recovery constructor
+// supplies only its stricter exact-prepared-original-State gate, not a boolean.
+func openStateOwnerGuarded(dir string, guard func(*nativeStateOwner) error) (*nativeStateOwner, error) {
 	if dir == "" {
 		return nil, ErrStateStale
 	}
@@ -73,7 +80,7 @@ func openStateOwner(dir string) (*nativeStateOwner, error) {
 	o.saved.revisionPath = o.path
 	info, err := os.Lstat(o.path)
 	if os.IsNotExist(err) {
-		if err := guardNativeStateHistory(o); err != nil {
+		if err := guard(o); err != nil {
 			return nil, err
 		}
 		ok = true
@@ -117,7 +124,7 @@ func openStateOwner(dir string) (*nativeStateOwner, error) {
 	o.saved.revisionPath = o.path
 	o.saved.revision = sha256.Sum256(raw)
 	o.saved.revisionExists = true
-	if err := guardNativeStateHistory(o); err != nil {
+	if err := guard(o); err != nil {
 		return nil, err
 	}
 	ok = true

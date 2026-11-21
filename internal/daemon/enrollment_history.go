@@ -14,16 +14,16 @@ import (
 // Works for reopened record4 submit-unknown even after source/challenge expiry.
 // Does not bypass normal-loader record5 conflict or reconstruct missing State.
 func (d *Daemon) recoverNativeHistoryDATA(ctx context.Context, timeout time.Duration, maxAttempts int) (contract.HistoryReceiptWire, error) {
-	return d.recoverNativeHistory(ctx, timeout, maxAttempts, false)
+	return d.recoverNativeHistory(ctx, timeout, maxAttempts, false, false)
 }
 
 // Explicit owner-only recovery. No external trigger or receipt input. Runtime
 // readiness is distinct from proof confirmation and lost on Close/freeze.
 func (d *Daemon) recoverNativeHistoryOwned(ctx context.Context, timeout time.Duration, maxAttempts int) error {
-	_, err := d.recoverNativeHistory(ctx, timeout, maxAttempts, true)
+	_, err := d.recoverNativeHistory(ctx, timeout, maxAttempts, true, false)
 	return err
 }
-func (d *Daemon) recoverNativeHistory(ctx context.Context, timeout time.Duration, maxAttempts int, ownedResult bool) (contract.HistoryReceiptWire, error) {
+func (d *Daemon) recoverNativeHistory(ctx context.Context, timeout time.Duration, maxAttempts int, ownedResult, prepared bool) (contract.HistoryReceiptWire, error) {
 	var empty contract.HistoryReceiptWire
 	if ctx == nil || ctx.Err() != nil {
 		return empty, errEnrollmentContextStale
@@ -89,7 +89,14 @@ func (d *Daemon) recoverNativeHistory(ctx context.Context, timeout time.Duration
 	if !ownedResult {
 		return j.RecoverHistoryDATA(child, device, current, timeout, maxAttempts)
 	}
-	if err := j.RecoverHistoryOwned(child, device, current, timeout, maxAttempts); err != nil {
+	if prepared {
+		stateRev := base64.RawURLEncoding.EncodeToString(original.stateRevision[:])
+		policyRev := base64.RawURLEncoding.EncodeToString(original.policyRevision[:])
+		err = j.RecoverPreparedHistoryOwned(child, device, stateRev, policyRev, current, timeout, maxAttempts)
+	} else {
+		err = j.RecoverHistoryOwned(child, device, current, timeout, maxAttempts)
+	}
+	if err != nil {
 		return empty, err
 	}
 	d.mu.Lock()

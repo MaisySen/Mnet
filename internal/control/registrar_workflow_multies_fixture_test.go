@@ -49,6 +49,8 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	var peerSecret string
 	var recoveryMode atomic.Bool
 	var historyFinalize atomic.Bool
+	var preparedFinalize atomic.Bool
+	var preparedHistoryFinalize atomic.Bool
 	var workflowSubmits atomic.Int32
 	var historyCalls atomic.Int32
 	var bridgeMu sync.Mutex
@@ -276,6 +278,8 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	}
 	recoveryMode.Store(input.Mode == "history-recovery" || input.Mode == "history-finalize")
 	historyFinalize.Store(input.Mode == "history-finalize")
+	preparedFinalize.Store(input.Mode == "prepared-finalize" || input.Mode == "prepared-history-finalize")
+	preparedHistoryFinalize.Store(input.Mode == "prepared-history-finalize")
 	policyRaw, _ := json.Marshal(input.Workflow)
 	_, policy, err := parseRegistrarWorkflow(policyRaw)
 	if err != nil {
@@ -481,11 +485,13 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		t.Fatal("actual native fixture binary required")
 	}
 	nativeConfig, _ := json.Marshal(struct {
-		Policy          config.LocalConfigV2
-		Limits          registrar.WorkflowLimits
-		Recover         bool
-		FinalizeHistory bool
-	}{input.Workflow.Policy, limits, recoveryMode.Load(), historyFinalize.Load()})
+		Policy                  config.LocalConfigV2
+		Limits                  registrar.WorkflowLimits
+		Recover                 bool
+		FinalizeHistory         bool
+		PreparedFinalize        bool
+		PreparedHistoryFinalize bool
+	}{input.Workflow.Policy, limits, recoveryMode.Load(), historyFinalize.Load(), preparedFinalize.Load(), preparedHistoryFinalize.Load()})
 	if err := os.WriteFile(filepath.Join(dir, "native-workflow-config.json"), nativeConfig, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -529,7 +535,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		NativeHistoryRecovered    bool
 		History                   contract.HistoryReceiptWire
 	}
-	if json.Unmarshal(raw, &nativeOutcome) != nil || !nativeOutcome.NativeProofStateUnchanged || (!recoveryMode.Load() && (!nativeOutcome.NativeOwnedKeyConfirmed || !nativeOutcome.NativeStateFinalized || nativeOutcome.NativeCurrentPeers != 2)) || (recoveryMode.Load() && (!nativeOutcome.NativeHistoryRecovered || nativeOutcome.NativeOwnedKeyConfirmed || nativeOutcome.NativeStateFinalized != historyFinalize.Load() || historyCalls.Load() != 1 || (historyFinalize.Load() && nativeOutcome.NativeCurrentPeers != 2))) {
+	if json.Unmarshal(raw, &nativeOutcome) != nil || !nativeOutcome.NativeProofStateUnchanged || (!recoveryMode.Load() && !preparedFinalize.Load() && (!nativeOutcome.NativeOwnedKeyConfirmed || !nativeOutcome.NativeStateFinalized || nativeOutcome.NativeCurrentPeers != 2)) || (preparedFinalize.Load() && (!nativeOutcome.NativeHistoryRecovered || nativeOutcome.NativeOwnedKeyConfirmed || !nativeOutcome.NativeStateFinalized || nativeOutcome.NativeCurrentPeers != 2 || (historyCalls.Load() != 1 && !preparedHistoryFinalize.Load()) || (preparedHistoryFinalize.Load() && historyCalls.Load() != 2))) || (recoveryMode.Load() && (!nativeOutcome.NativeHistoryRecovered || nativeOutcome.NativeOwnedKeyConfirmed || nativeOutcome.NativeStateFinalized != historyFinalize.Load() || historyCalls.Load() != 1 || (historyFinalize.Load() && nativeOutcome.NativeCurrentPeers != 2))) {
 		t.Fatal("missing actual daemon proof result")
 	}
 
@@ -542,7 +548,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		}
 	} else {
 		nativeNodeID := nativeOutcome.Receipt.Receipt.NodeID
-		if historyFinalize.Load() {
+		if historyFinalize.Load() || preparedFinalize.Load() {
 			nativeNodeID = nativeOutcome.History.Receipt.NodeID
 		}
 		nativeRecord := s.registrarNodeLocked(nativeNodeID)
@@ -591,7 +597,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	if err := s.DeleteNode(peerRecord.NodeID); err != nil {
 		t.Fatal(err)
 	}
-	out, _ := json.Marshal(map[string]any{"sourceDenied": false, "bidirectionalActualPeers": true, "nativeOwnedKeyConfirmed": !recoveryMode.Load(), "threeActualPeers": true, "nativeProofStateUnchanged": true, "nativeStateFinalized": !recoveryMode.Load() || historyFinalize.Load(), "nativeCurrentPeers": nativeOutcome.NativeCurrentPeers, "nativeHistoryRecovered": recoveryMode.Load(), "journalWorkflowReceiptPinned": true, "nodeCreated": true, "nodeDeleted": true, "currentMapBeforeDelete": true, "legacyTokenCreated": false, "inputAuthorized": false, "receiptId": r.ReceiptID, "receiptDigest": r.ReceiptDigest, "reserveId": req.ReserveID, "descriptorDigest": descriptor, "handoffId": own.ID})
+	out, _ := json.Marshal(map[string]any{"sourceDenied": false, "bidirectionalActualPeers": true, "nativeOwnedKeyConfirmed": !recoveryMode.Load() && !preparedFinalize.Load(), "threeActualPeers": true, "nativeProofStateUnchanged": true, "nativeStateFinalized": !recoveryMode.Load() || historyFinalize.Load(), "nativeCurrentPeers": nativeOutcome.NativeCurrentPeers, "nativeHistoryRecovered": recoveryMode.Load() || preparedFinalize.Load(), "journalWorkflowReceiptPinned": true, "nodeCreated": true, "nodeDeleted": true, "currentMapBeforeDelete": true, "legacyTokenCreated": false, "inputAuthorized": false, "receiptId": r.ReceiptID, "receiptDigest": r.ReceiptDigest, "reserveId": req.ReserveID, "descriptorDigest": descriptor, "handoffId": own.ID})
 	if err := os.WriteFile(filepath.Join(dir, "outcome.json"), out, 0600); err != nil {
 		t.Fatal(err)
 	}

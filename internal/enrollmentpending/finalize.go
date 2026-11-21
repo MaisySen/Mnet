@@ -51,7 +51,7 @@ func finalizationDocument(r record) (contract.NativeCredentialDocument, finaliza
 		return empty, f, err
 	}
 	var receipt contract.HistoryReceiptWire
-	if r.Version == 7 {
+	if r.Version == 7 || r.Version == 8 {
 		h, ok := decodeHistory(r)
 		if !ok {
 			return empty, f, ErrInvalid
@@ -162,7 +162,7 @@ func (j *Journal) CorrelateFinalization(doc contract.NativeCredentialDocument, o
 	if err := j.health(); err != nil {
 		return err
 	}
-	if j.data == nil || (j.data.Version != 5 && j.data.Version != 7) {
+	if j.data == nil || (j.data.Version != 5 && j.data.Version != 7 && j.data.Version != 8) {
 		return ErrInvalid
 	}
 	info, err := os.Lstat(j.path)

@@ -111,6 +111,9 @@ func New(cfg Config) (*Daemon, error) {
 	if err != nil {
 		return nil, err
 	}
+	return newStoppedDaemon(cfg, owner), nil
+}
+func newStoppedDaemon(cfg Config, owner *nativeStateOwner) *Daemon {
 	return &Daemon{
 		cfg:        cfg,
 		state:      func() *State { s := cloneState(owner.saved); return &s }(),
@@ -119,7 +122,7 @@ func New(cfg Config) (*Daemon, error) {
 		mapChanged: make(chan struct{}, 1),
 		stunTx:     map[stun.TxID]time.Time{},
 		peers:      map[string]*peerTrack{},
-	}, nil
+	}
 }
 
 // State returns the current persisted state.

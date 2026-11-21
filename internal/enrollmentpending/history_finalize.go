@@ -20,14 +20,22 @@ func historyAccessLive(r record, receipt contract.HistoryReceiptWire, start, now
 	return live(r, now) && now.UnixMilli() >= start.UnixMilli() && now.UnixMilli() >= receipt.Receipt.CommittedAtMS && now.UnixMilli() < receipt.Receipt.AccessExpiresAtMS && elapsed.UnixMilli() < receipt.Receipt.AccessExpiresAtMS
 }
 func validHistoryFinalizationRecord(r record) bool {
-	if r.Version != 7 || (r.Phase != "native-finalization-prepared" && r.Phase != "native-finalization-completed") {
+	if (r.Version != 7 && r.Version != 8) || (r.Phase != "native-finalization-prepared" && r.Phase != "native-finalization-completed") {
 		return false
 	}
 	old := r
-	old.Version = 6
+	if r.Version == 7 {
+		old.Version = 6
+		old.FinalizationJSON = ""
+	}
 	old.Phase = "history-receipt-data"
-	old.FinalizationJSON = ""
-	if !validRecord(old) {
+	valid := false
+	if old.Version == 6 {
+		valid = validRecord(old)
+	} else {
+		valid = validHistoryRecord(old)
+	}
+	if !valid {
 		return false
 	}
 	_, _, err := finalizationDocument(r)
@@ -48,7 +56,7 @@ func (j *Journal) FinalizeHistory(originalRevision, policyRevision string, curre
 		return err
 	}
 	ready := j.historyReady
-	if ready == nil || j.data == nil || ready.image != j.data || j.cancel != nil || j.historyClient != nil || !((j.data.Version == 6 && j.data.Phase == "history-receipt-data") || (j.data.Version == 7 && j.data.Phase == "native-finalization-prepared")) || !historyPolicyCurrent(*j.data, cfg, j.data.Launch.DevicePublicKey) || !historyAccessLive(*j.data, ready.receipt, ready.start, time.Now()) || j.checkExactHistoryFileLocked() != nil {
+	if ready == nil || j.data == nil || ready.image != j.data || j.cancel != nil || j.historyClient != nil || !((j.data.Version == 6 && j.data.Phase == "history-receipt-data") || (j.data.Version == 7 && j.data.Phase == "native-finalization-prepared") || (j.data.Version == 8 && (j.data.Phase == "history-receipt-data" || j.data.Phase == "native-finalization-prepared"))) || !historyPolicyCurrent(*j.data, cfg, j.data.Launch.DevicePublicKey) || !historyAccessLive(*j.data, ready.receipt, ready.start, time.Now()) || j.checkExactHistoryFileLocked() != nil {
 		return ErrInvalid
 	}
 	r := *j.data
@@ -86,6 +94,13 @@ func (j *Journal) FinalizeHistory(originalRevision, policyRevision string, curre
 		f, ok := decodeFinalization(r)
 		if !ok || f.OriginalStateRevision != originalRevision || f.PolicyRevision != policyRevision || f.ReceiptDigest != pinned.ReceiptDigest {
 			return ErrInvalid
+		}
+		if r.Version == 8 && r.Phase == "history-receipt-data" {
+			r.Phase = "native-finalization-prepared"
+			if err := j.commit(r); err != nil {
+				return err
+			}
+			ready.image = j.data
 		}
 	}
 	if !historyAccessLive(r, ready.receipt, ready.start, time.Now()) || j.checkExactHistoryFileLocked() != nil {

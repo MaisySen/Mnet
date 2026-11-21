@@ -17,13 +17,14 @@ import (
 )
 
 type historyData struct {
-	OriginalVersion int    `json:"original_version"`
-	OriginalPhase   string `json:"original_phase"`
-	MaxAttempts     int    `json:"max_attempts"`
-	Attempts        int    `json:"attempts"`
-	TimeoutMS       int64  `json:"timeout_ms"`
-	StartedMS       int64  `json:"started_ms"`
-	ReceiptJSON     string `json:"receipt_json"`
+	PreparedHistoryJSON string `json:"prepared_history_json,omitempty"`
+	OriginalVersion     int    `json:"original_version"`
+	OriginalPhase       string `json:"original_phase"`
+	MaxAttempts         int    `json:"max_attempts"`
+	Attempts            int    `json:"attempts"`
+	TimeoutMS           int64  `json:"timeout_ms"`
+	StartedMS           int64  `json:"started_ms"`
+	ReceiptJSON         string `json:"receipt_json"`
 }
 
 func decodeHistory(r record) (historyData, bool) {
@@ -44,23 +45,44 @@ func decodeHistory(r record) (historyData, bool) {
 func historyOriginal(r record, h historyData) record {
 	r.Version = h.OriginalVersion
 	r.Phase = h.OriginalPhase
-	r.HistoryJSON = ""
+	r.HistoryJSON = h.PreparedHistoryJSON
 	return r
 }
 func historyEligible(r record) bool {
 	return r.Version == 4 && (r.Phase == "workflow-submit-may-have-started" || r.Phase == "workflow-receipt-data")
 }
 func validHistoryRecord(r record) bool {
-	if r.Version != 6 || (r.Phase != "history-lookup-may-have-started" && r.Phase != "history-receipt-data") {
+	if (r.Version != 6 && r.Version != 8) || (r.Phase != "history-lookup-may-have-started" && r.Phase != "history-receipt-data") {
 		return false
 	}
 	h, ok := decodeHistory(r)
 	if !ok {
 		return false
 	}
-	old := historyOriginal(r, h)
-	if !historyEligible(old) || !validRecord(old) {
+	if r.Version != 8 {
+		var fields map[string]json.RawMessage
+		if json.Unmarshal([]byte(r.HistoryJSON), &fields) != nil {
+			return false
+		}
+		if _, exists := fields["prepared_history_json"]; exists {
+			return false
+		}
+	} else if h.OriginalVersion == 5 && h.PreparedHistoryJSON != "" || h.OriginalVersion == 7 && h.PreparedHistoryJSON == "" {
 		return false
+	}
+	old := historyOriginal(r, h)
+	eligible := historyEligible(old)
+	if r.Version == 8 {
+		eligible = (old.Version == 5 || old.Version == 7) && old.Phase == "native-finalization-prepared"
+	}
+	if !eligible || !validRecord(old) {
+		return false
+	}
+	if r.Version == 8 && h.OriginalVersion == 7 {
+		original, ok := decodeHistory(old)
+		if !ok || h.MaxAttempts != original.MaxAttempts || h.TimeoutMS != original.TimeoutMS || h.Attempts <= original.Attempts || h.StartedMS < original.StartedMS || h.ReceiptJSON != original.ReceiptJSON {
+			return false
+		}
 	}
 	w, ok := decodeWorkflow(old)
 	if !ok || !token(w.ResponseDigest) {
@@ -120,17 +142,28 @@ func (j *Journal) checkExactHistoryFileLocked() error {
 // disclosure. Reopen may retry SAME immutable lookup within ORIGINAL budget.
 // No automatic retry. Begin-unknown without full challenge is never admitted.
 func (j *Journal) RecoverHistoryDATA(ctx context.Context, device string, current func() SourceConfig, timeout time.Duration, maxAttempts int) (contract.HistoryReceiptWire, error) {
-	return j.recoverHistory(ctx, device, current, timeout, maxAttempts, false)
+	return j.recoverHistory(ctx, device, current, timeout, maxAttempts, false, "", "")
 }
 
 // RecoverHistoryOwned additionally requires fresh SAME-client authenticated
 // delivery provenance and a still-live original access interval. It never
 // constructs proof confirmation. Native owner must separately publish State.
 func (j *Journal) RecoverHistoryOwned(ctx context.Context, device string, current func() SourceConfig, timeout time.Duration, maxAttempts int) error {
-	_, err := j.recoverHistory(ctx, device, current, timeout, maxAttempts, true)
+	_, err := j.recoverHistory(ctx, device, current, timeout, maxAttempts, true, "", "")
 	return err
 }
-func (j *Journal) recoverHistory(ctx context.Context, device string, current func() SourceConfig, timeout time.Duration, maxAttempts int, owned bool) (contract.HistoryReceiptWire, error) {
+
+// RecoverPreparedHistoryOwned is only for an explicit native recovery owner.
+// It checks the exact ORIGINAL native State/policy revisions in prepared intent
+// before disclosure, preserving the existing finalization identity and receipt.
+func (j *Journal) RecoverPreparedHistoryOwned(ctx context.Context, device, originalRevision, policyRevision string, current func() SourceConfig, timeout time.Duration, maxAttempts int) error {
+	if !token(originalRevision) || !token(policyRevision) {
+		return ErrInvalid
+	}
+	_, err := j.recoverHistory(ctx, device, current, timeout, maxAttempts, true, originalRevision, policyRevision)
+	return err
+}
+func (j *Journal) recoverHistory(ctx context.Context, device string, current func() SourceConfig, timeout time.Duration, maxAttempts int, owned bool, originalRevision, policyRevision string) (contract.HistoryReceiptWire, error) {
 	var empty contract.HistoryReceiptWire
 	if j == nil || j.journal == nil || ctx == nil || ctx.Err() != nil || current == nil || timeout < time.Millisecond || timeout > time.Minute || timeout%time.Millisecond != 0 || maxAttempts < 1 || maxAttempts > 4 {
 		return empty, ErrInvalid
@@ -147,16 +180,33 @@ func (j *Journal) recoverHistory(ctx context.Context, device string, current fun
 		return empty, ErrInvalid
 	}
 	r := *j.data
+	prepared := originalRevision != ""
+	if prepared {
+		if !preparedRecoveryMatches(r, originalRevision, policyRevision, device, cfg) {
+			j.mu.Unlock()
+			return empty, ErrInvalid
+		}
+	} else if r.Version == 5 || r.Version == 8 || r.Version == 7 {
+		j.mu.Unlock()
+		return empty, ErrInvalid
+	}
 	var h historyData
-	if r.Version == 6 {
+	if r.Version == 6 || r.Version == 8 || r.Version == 7 {
 		var ok bool
 		h, ok = decodeHistory(r)
 		if !ok || h.MaxAttempts != maxAttempts || h.TimeoutMS != timeout.Milliseconds() || h.Attempts >= h.MaxAttempts || start.UnixMilli() < h.StartedMS {
 			j.mu.Unlock()
 			return empty, ErrInvalid
 		}
+		if r.Version == 7 {
+			// Preserve the complete original history image and already-spent finite
+			// budget. This is a wrapper, not permission to discard a pin or reset slots.
+			h.OriginalVersion = 7
+			h.OriginalPhase = r.Phase
+			h.PreparedHistoryJSON = r.HistoryJSON
+		}
 	} else {
-		if !historyEligible(r) {
+		if !historyEligible(r) && !(prepared && r.Version == 5 && r.Phase == "native-finalization-prepared") {
 			j.mu.Unlock()
 			return empty, ErrInvalid
 		}
@@ -177,6 +227,9 @@ func (j *Journal) recoverHistory(ctx context.Context, device string, current fun
 	h.StartedMS = start.UnixMilli()
 	raw, _ := json.Marshal(h)
 	r.Version = 6
+	if prepared {
+		r.Version = 8
+	}
 	r.Phase = "history-lookup-may-have-started"
 	r.HistoryJSON = string(raw)
 	if err := j.commit(r); err != nil {

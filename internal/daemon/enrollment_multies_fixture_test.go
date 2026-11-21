@@ -134,10 +134,12 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	var f struct {
-		Policy          config.LocalConfigV2
-		Limits          registrar.WorkflowLimits
-		Recover         bool
-		FinalizeHistory bool
+		Policy                  config.LocalConfigV2
+		Limits                  registrar.WorkflowLimits
+		Recover                 bool
+		FinalizeHistory         bool
+		PreparedFinalize        bool
+		PreparedHistoryFinalize bool
 	}
 	if json.Unmarshal(raw, &f) != nil || !registrar.ValidWorkflowLimits(f.Limits) {
 		t.Fatal("invalid independent fixture config")
@@ -201,7 +203,7 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 		}
 		defer reopened.Close()
 		if f.FinalizeHistory {
-			testActualMultiesHistoryFinalization(t, reopened, before, actualDir)
+			testActualMultiesHistoryFinalization(t, reopened, before, actualDir, false, false)
 			return
 		}
 		// Past explicit registrar fixture access/challenge lifetime. History must be
@@ -243,6 +245,10 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 		t.Fatal("proof DATA installed native State")
 	}
 
+	if f.PreparedFinalize || f.PreparedHistoryFinalize {
+		testActualMultiesHistoryFinalization(t, d, before, d.stateOwner.lease.Parent(), true, f.PreparedHistoryFinalize)
+		return
+	}
 	// Actual private sole-State finalization from SAME confirmed runtime, not
 	// a returned-document installer. Then owner Close/reopen and dedicated map.
 	if err := d.finalizeNativeEnrollment(context.Background()); err != nil {
@@ -300,23 +306,76 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 
 // Actual lost-submit daemon owning reopen -> fresh authenticated history delivery
 // -> distinct original-expiry finalization -> owning reopen -> current maps.
-func testActualMultiesHistoryFinalization(t *testing.T, d *Daemon, before []byte, dir string) {
+func testActualMultiesHistoryFinalization(t *testing.T, d *Daemon, before []byte, dir string, prepared, seven bool) {
 	t.Helper()
-	if d.finalizeNativeEnrollment(context.Background()) == nil {
-		t.Fatal("reopened DATA finalized without delivery")
+	originalPending := []byte(nil)
+	if prepared {
+		if seven {
+			d.Close()
+			var err error
+			d, err = New(Config{StateDir: dir})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer d.Close()
+			if err := d.recoverNativeHistoryOwned(context.Background(), 3*time.Second, 2); err != nil {
+				t.Fatal("actual record7 setup owned delivery", err)
+			}
+		}
+		real := d.stateOwner.fs.create
+		d.stateOwner.fs.create = func(string) (stateTemp, error) { return nil, errNativeInjected }
+		if d.finalizeNativeEnrollment(context.Background()) == nil {
+			t.Fatal("failed publication fixture succeeded")
+		}
+		d.stateOwner.fs.create = real
+		originalPending, _ = os.ReadFile(filepath.Join(dir, "enrollment-pending", "enrollment-pending-v1.json"))
+		if raw, _ := os.ReadFile(d.stateOwner.path); !bytes.Equal(raw, before) {
+			t.Fatal("failed publication changed State")
+		}
+		d.Close()
+		if owner, err := New(Config{StateDir: dir}); err == nil {
+			owner.Close()
+			t.Fatal("normal loader admitted prepared-only intent")
+		}
+		if _, err := LoadState(dir); err == nil {
+			t.Fatal("detached loader admitted prepared-only intent")
+		}
+		recovery, err := openNativeFinalizationRecovery(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer recovery.Close()
+		if err := recovery.resume(context.Background(), 3*time.Second, 2); err != nil {
+			t.Fatal("actual prepared restart same-attempt history", err)
+		}
+		d = recovery.daemon
+		var old, new struct {
+			FinalizationJSON string `json:"finalization_json"`
+		}
+		json.Unmarshal(originalPending, &old)
+		now, _ := os.ReadFile(filepath.Join(dir, "enrollment-pending", "enrollment-pending-v1.json"))
+		json.Unmarshal(now, &new)
+		if old.FinalizationJSON == "" || old.FinalizationJSON != new.FinalizationJSON {
+			t.Fatal("prepared restart replaced original finalization identity")
+		}
 	}
-	if err := d.recoverNativeHistoryOwned(context.Background(), 3*time.Second, 2); err != nil {
-		t.Fatal("actual authenticated history delivery", err)
-	}
-	if d.enrollmentPreparation == nil || !d.enrollmentPreparation.historical || d.enrollmentPreparation.confirmed != nil {
-		t.Fatal("history laundered into proof confirmation")
-	}
-	raw, _ := os.ReadFile(d.stateOwner.path)
-	if !bytes.Equal(before, raw) || d.state.native != nil {
-		t.Fatal("delivery prematurely changed State")
-	}
-	if err := d.finalizeNativeEnrollment(context.Background()); err != nil {
-		t.Fatal("actual lost-submit finalization", err)
+	if !prepared {
+		if d.finalizeNativeEnrollment(context.Background()) == nil {
+			t.Fatal("reopened DATA finalized without delivery")
+		}
+		if err := d.recoverNativeHistoryOwned(context.Background(), 3*time.Second, 2); err != nil {
+			t.Fatal("actual authenticated history delivery", err)
+		}
+		if d.enrollmentPreparation == nil || !d.enrollmentPreparation.historical || d.enrollmentPreparation.confirmed != nil {
+			t.Fatal("history laundered into proof confirmation")
+		}
+		raw, _ := os.ReadFile(d.stateOwner.path)
+		if !bytes.Equal(before, raw) || d.state.native != nil {
+			t.Fatal("delivery prematurely changed State")
+		}
+		if err := d.finalizeNativeEnrollment(context.Background()); err != nil {
+			t.Fatal("actual lost-submit finalization", err)
+		}
 	}
 	doc := d.stateOwner.saved.native.Document
 	history := contract.HistoryReceiptWire{Version: 1, Receipt: doc.Receipt, ReceiptDigest: doc.ReceiptDigest}
