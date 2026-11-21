@@ -24,6 +24,10 @@ import (
 )
 
 func runDisposableNetworkTCP(ctx context.Context, root string, open bool, emit func(daemon.DevelopmentEnrollmentEvent) error) error {
+	return runDisposableNetworkTCPMode(ctx, root, open, emit, false)
+}
+func runDisposableNetworkTCPMode(ctx context.Context, root string, open bool, emit func(daemon.DevelopmentEnrollmentEvent) error, dashboard bool) error {
+	var display *developmentDashboard
 	var network *proofnet.Net
 	verified, retired := false, false
 	retirementReason := ""
@@ -106,6 +110,15 @@ func runDisposableNetworkTCP(ctx context.Context, root string, open bool, emit f
 			return fmt.Errorf("disposable TCP response did not match fresh challenge")
 		}
 		verified = true
+		if dashboard {
+			display, err = newDevelopmentDashboard(s)
+			if err != nil {
+				return err
+			}
+			if err := emit(daemon.DevelopmentEnrollmentEvent{Stage: "development-network-dashboard", BrowserURL: display.URL()}); err != nil {
+				return err
+			}
+		}
 		if err := emit(daemon.DevelopmentEnrollmentEvent{Stage: "development-network-verified"}); err != nil {
 			return err
 		}
@@ -128,8 +141,21 @@ func runDisposableNetworkTCP(ctx context.Context, root string, open bool, emit f
 			}
 		}
 	}}
-	if err := daemon.RunDisposableEnrollmentNetwork(ctx, root, emit, options); err != nil {
-		return err
+	runErr := daemon.RunDisposableEnrollmentNetwork(ctx, root, emit, options)
+	if display != nil {
+		reason := "This finite network run stopped and its owners joined. Joining remains saved."
+		if retirementReason == "peer-expired" {
+			reason = "The original approved peer lease ended. The network stopped and its owners joined."
+		} else if retirementReason == "authorization-changed" {
+			reason = "The current source removed that peer. The network stopped and its owners joined."
+		}
+		display.Finish(reason)
+		// Bounded display grace, no device/service/lease survives it.
+		time.Sleep(3 * time.Second)
+		display.Close()
+	}
+	if runErr != nil {
+		return runErr
 	}
 	if !verified || !retired {
 		return fmt.Errorf("disposable network ended without verified peer retirement")
