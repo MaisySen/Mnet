@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -43,6 +44,7 @@ type attendedFixtureCoordinates struct {
 	Viewer  daemon.SessionPeer `json:"viewer"`
 }
 type attendedFixtureOutcome struct {
+	PromptCancelled   *bool  `json:"promptCancelled,omitempty"`
 	ChallengeVerified bool   `json:"challengeVerified"`
 	Version           int    `json:"version"`
 	FakeUI            bool   `json:"fake_ui"`
@@ -114,6 +116,14 @@ func newRegistrarAttendedTransportFixture(t *testing.T, key [32]byte, ip string)
 func runRegistrarAttendedFixture(t *testing.T, s *Store, f *registrarTransportFixture, dir string, cmd *exec.Cmd, output *bytes.Buffer, current func() (*netmap.Map, error), firstID, secondID string, nativeSecret func() string) {
 	t.Helper()
 	deadline := time.Now().Add(25 * time.Second)
+	caseName := os.Getenv("MNET_DEVELOPMENT_ATTENDED_CASE")
+	if caseName == "" {
+		caseName = "deny"
+	}
+	if caseName != "deny" && caseName != "withdraw-pending" {
+		t.Fatal("unknown attended case")
+	}
+	withdraw := caseName == "withdraw-pending"
 	var pin attendedFixtureCoordinates
 	var nativeID string
 	for {
@@ -204,32 +214,126 @@ func runRegistrarAttendedFixture(t *testing.T, s *Store, f *registrarTransportFi
 	if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	verified := false
-	mux, err := session.DialAttendedView(conn, pin.Viewer.Name, func(reply session.HelloReply, from net.Addr) error {
-		verified = true
-		if reply.NodeName != pin.Host.Name {
-			return fmt.Errorf("wrong host name")
+	type dialResult struct {
+		err      error
+		verified bool
+		admitted bool
+	}
+	dialDone := make(chan dialResult, 1)
+	go func() {
+		verified := false
+		mux, err := session.DialAttendedView(conn, pin.Viewer.Name, func(reply session.HelloReply, from net.Addr) error {
+			verified = true
+			if reply.NodeName != pin.Host.Name {
+				return fmt.Errorf("wrong host name")
+			}
+			return validate()
+		})
+		admitted := mux != nil
+		if mux != nil {
+			mux.Close()
 		}
-		return validate()
-	})
-	if mux != nil {
-		mux.Close()
-		t.Fatal("denial-only fixture admitted viewer")
+		dialDone <- dialResult{err, verified, admitted}
+	}()
+	localWithdrawalClose := false
+	if withdraw {
+		for {
+			pendingRaw, err := os.ReadFile(filepath.Join(dir, "native-attended-pending.json"))
+			if err == nil {
+				var pending struct {
+					Version                int    `json:"version"`
+					FakeUI                 bool   `json:"fake_ui"`
+					Case                   string `json:"case"`
+					AdmissionCalls, UIAsks int
+					Host, Viewer           daemon.SessionPeer
+				}
+				if json.Unmarshal(pendingRaw, &pending) != nil {
+					t.Fatal("invalid pending prompt marker")
+				}
+				// Admission counter fields use lower camel case, accepted by encoding/json.
+				if pending.Version != 1 || !pending.FakeUI || pending.Case != caseName || pending.AdmissionCalls != 1 || pending.UIAsks != 1 || pending.Host != pin.Host || pending.Viewer != pin.Viewer {
+					t.Fatal("pending prompt not correlated to exact real peer")
+				}
+				break
+			}
+			if !os.IsNotExist(err) {
+				t.Fatal(err)
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("pending prompt marker timeout")
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		if err := validate(); err != nil {
+			t.Fatal("prewithdraw current pin", err)
+		}
+		if err := s.DeleteNode(firstID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := current(); err == nil {
+			t.Fatal("deleted viewer credential remained authorized")
+		}
+		s.mu.Lock()
+		record := s.registrarNodeLocked(nativeID)
+		s.mu.Unlock()
+		if record == nil {
+			t.Fatal("native record absent during withdrawal")
+		}
+		nativeRef := registrarCredentialReference{NodeID: record.NodeID, NetworkID: record.NetworkID, DevicePublicKey: record.DevicePublicKey, Scope: record.Scope, ReceiptID: record.ReceiptID, ReceiptDigest: record.ReceiptDigest, DescriptorDigest: record.DescriptorDigest, TranscriptDigest: record.Consumption.TranscriptDigest}
+		m, err := s.registrarCredentialMap(nativeRef, nativeSecret())
+		if err != nil || len(m.Peers) != 1 || !m.Self.Approved || m.Self.KeyExpiry == nil || !time.Now().Before(*m.Self.KeyExpiry) {
+			t.Fatal("actual native current map after viewer removal", err)
+		}
+		for _, p := range m.Peers {
+			if p.ID == firstID || p.PubKey == pin.Viewer.PublicKey || p.IPv4 == pin.Viewer.IPv4 {
+				t.Fatal("native map retained withdrawn viewer")
+			}
+		}
+		// The revoked viewer retires its own dial; a removed WireGuard key cannot promise delivery of a remote FIN.
+		conn.Close()
+		localWithdrawalClose = true
+		marker, _ := json.Marshal(map[string]any{"version": 1, "fake_ui": true, "withdrawn": true})
+		if err := writeRegistrarFixtureAtomic(dir, "peer-attended-withdrawn.json", marker); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err == nil || !strings.HasPrefix(err.Error(), "session: refused:") {
-		t.Fatalf("not an explicit protocol refusal: %v", err)
+	var resultDial dialResult
+	select {
+	case resultDial = <-dialDone:
+	case <-time.After(4 * time.Second):
+		conn.Close()
+		<-dialDone
+		t.Fatal("attended dial did not join within bound")
 	}
-	// Refused replies return before the library's accepted-reply verifier.
-	if verified {
-		t.Fatal("unexpected accepted-reply verifier on refusal")
+	if resultDial.admitted || resultDial.err == nil || resultDial.verified {
+		t.Fatalf("denial-only case admitted or verified accepted reply: %+v", resultDial)
 	}
-	if err := validate(); err != nil {
-		t.Fatal(err)
+	transportClass := ""
+	if strings.HasPrefix(resultDial.err.Error(), "session: refused:") {
+		transportClass = "explicit-protocol-refusal"
+	} else if withdraw && localWithdrawalClose && errors.Is(resultDial.err, net.ErrClosed) {
+		transportClass = "local-close-after-verified-store-withdrawal"
+	} else if withdraw && (errors.Is(resultDial.err, io.EOF) || errors.Is(resultDial.err, io.ErrUnexpectedEOF) || errors.Is(resultDial.err, net.ErrClosed)) {
+		transportClass = "closed-after-authority-withdrawal"
+	} else {
+		t.Fatalf("unaccepted transport result for %s: %v", caseName, resultDial.err)
+	}
+	if !withdraw {
+		if err := validate(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	conn.Close()
-	refused, _ := json.Marshal(map[string]any{"version": 1, "fake_ui": true, "protocolRefused": true, "actualFarIP": far.IP.String(), "acceptedReplyVerifierCalled": false, "joined": true})
-	if err := writeRegistrarFixtureAtomic(dir, "peer-attended-refused.json", refused); err != nil {
-		t.Fatal(err)
+	if !withdraw {
+		refused, _ := json.Marshal(map[string]any{"version": 1, "fake_ui": true, "protocolRefused": true, "actualFarIP": far.IP.String(), "acceptedReplyVerifierCalled": false, "joined": true})
+		if err := writeRegistrarFixtureAtomic(dir, "peer-attended-refused.json", refused); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		transport, _ := json.Marshal(map[string]any{"version": 1, "fake_ui": true, "case": caseName, "transportClass": transportClass, "protocolRefused": transportClass == "explicit-protocol-refusal", "acceptedReplyVerifierCalled": false, "joined": true})
+		if err := writeRegistrarFixtureAtomic(dir, "peer-attended-transport.json", transport); err != nil {
+			t.Fatal(err)
+		}
 	}
 	var raw []byte
 	for {
@@ -250,8 +354,14 @@ func runRegistrarAttendedFixture(t *testing.T, s *Store, f *registrarTransportFi
 		time.Sleep(5 * time.Millisecond)
 	}
 	var outcome attendedFixtureOutcome
-	if json.Unmarshal(raw, &outcome) != nil || outcome.Version != 1 || !outcome.ChallengeVerified || !outcome.FakeUI || !outcome.ListenerClosed || !outcome.ConnClosed || outcome.MuxClosed != nil || !outcome.LateOwnDenied || outcome.ScopeReason == "" || outcome.Case != "deny" || outcome.AdmissionCalls != 1 || outcome.UIAsks != 1 || outcome.Approved != 0 || outcome.Muxes != 0 || outcome.CaptureCalls != 0 || outcome.InputCreates != 0 || !outcome.Joined {
+	if json.Unmarshal(raw, &outcome) != nil || outcome.Version != 1 || !outcome.ChallengeVerified || !outcome.FakeUI || !outcome.ListenerClosed || !outcome.ConnClosed || outcome.MuxClosed != nil || !outcome.LateOwnDenied || outcome.ScopeReason == "" || outcome.Case != caseName || outcome.AdmissionCalls != 1 || outcome.UIAsks != 1 || outcome.Approved != 0 || outcome.Muxes != 0 || outcome.CaptureCalls != 0 || outcome.InputCreates != 0 || !outcome.Joined {
 		t.Fatalf("invalid actual host denial counters: %s", raw)
+	}
+	if withdraw && (outcome.PromptCancelled == nil || !*outcome.PromptCancelled || outcome.ScopeReason != "authorization-changed") {
+		t.Fatal("withdrawal did not cancel actual pending prompt via map authority")
+	}
+	if !withdraw && outcome.PromptCancelled != nil {
+		t.Fatal("deny unexpectedly claimed withdrawal")
 	}
 	if err := cmd.Wait(); err != nil {
 		t.Fatalf("native attended process failed: %v; %s", err, output.String())
@@ -275,10 +385,18 @@ func runRegistrarAttendedFixture(t *testing.T, s *Store, f *registrarTransportFi
 		t.Fatal("native record absent")
 	}
 	ref := registrarCredentialReference{NodeID: record.NodeID, NetworkID: record.NetworkID, DevicePublicKey: record.DevicePublicKey, Scope: record.Scope, ReceiptID: record.ReceiptID, ReceiptDigest: record.ReceiptDigest, DescriptorDigest: record.DescriptorDigest, TranscriptDigest: record.Consumption.TranscriptDigest}
-	if m, err := s.registrarCredentialMap(ref, nativeSecret()); err != nil || len(m.Peers) != 2 {
+	wantPeers := 2
+	if withdraw {
+		wantPeers = 1
+	}
+	if m, err := s.registrarCredentialMap(ref, nativeSecret()); err != nil || len(m.Peers) != wantPeers {
 		t.Fatal("actual native current map absent", err)
 	}
-	for _, id := range []string{firstID, secondID, nativeID} {
+	ids := []string{firstID, secondID, nativeID}
+	if withdraw {
+		ids = []string{secondID, nativeID}
+	}
+	for _, id := range ids {
 		if err := s.DeleteNode(id); err != nil {
 			t.Fatal(err)
 		}
@@ -286,7 +404,13 @@ func runRegistrarAttendedFixture(t *testing.T, s *Store, f *registrarTransportFi
 	if _, err := s.registrarCredentialMap(ref, nativeSecret()); err == nil {
 		t.Fatal("deleted native credential still authorized")
 	}
-	final, _ := json.Marshal(map[string]any{"version": 1, "fake_ui": true, "attendedDenied": true, "actualEnrolledPeers": true, "joined": true, "inputAuthorized": false})
+	finalFields := map[string]any{"version": 1, "fake_ui": true, "attendedDenied": true, "actualEnrolledPeers": true, "joined": true, "inputAuthorized": false}
+	if withdraw {
+		finalFields["case"] = caseName
+		finalFields["promptCancelled"] = true
+		finalFields["transportClass"] = transportClass
+	}
+	final, _ := json.Marshal(finalFields)
 	if err := writeRegistrarFixtureAtomic(dir, "outcome.json", final); err != nil {
 		t.Fatal(err)
 	}

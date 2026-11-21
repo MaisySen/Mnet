@@ -240,6 +240,7 @@ type nativeAttendedOutcome struct {
 	ListenerClosed    bool   `json:"listenerClosed"`
 	ConnClosed        bool   `json:"connClosed"`
 	MuxClosed         *bool  `json:"muxClosed"`
+	PromptCancelled   *bool  `json:"promptCancelled,omitempty"`
 	LateOwnDenied     bool   `json:"lateOwnDenied"`
 	ScopeReason       string `json:"scopeReason"`
 }
@@ -376,6 +377,34 @@ type nativeClosed struct{ closed atomic.Bool }
 func (c *nativeClosed) Close() error { c.closed.Store(true); return nil }
 
 func TestActualMultiesAttendedNativeWorkflowFixture(t *testing.T) {
+	runNativeAttendedCase(t, "deny")
+}
+
+// Withdrawal while the host prompt is pending. Selected by its own test name
+// so the ordinary deny case is unchanged.
+func TestActualMultiesAttendedWithdrawNativeWorkflowFixture(t *testing.T) {
+	runNativeAttendedCase(t, "withdraw-pending")
+}
+
+// nativeCaseUI is the FAKE UI: deny answers at once, withdraw blocks until
+// its context is cancelled and records that it was cancelled.
+type nativeCaseUI struct {
+	asks      atomic.Int32
+	cancelled atomic.Bool
+	wait      bool
+}
+
+func (u *nativeCaseUI) Ask(ctx context.Context, _ attendedPrompt) (string, error) {
+	u.asks.Add(1)
+	if !u.wait {
+		return "deny", nil
+	}
+	<-ctx.Done()
+	u.cancelled.Store(true)
+	return "", ctx.Err()
+}
+
+func runNativeAttendedCase(t *testing.T, caseName string) {
 	dir := os.Getenv("MNET_NATIVE_OWNED_WORKFLOW_DIR")
 	if dir == "" {
 		t.Skip("MNET_NATIVE_OWNED_WORKFLOW_DIR not set")
@@ -411,8 +440,9 @@ func TestActualMultiesAttendedNativeWorkflowFixture(t *testing.T) {
 		decisions, approved, backends atomic.Int32
 		ranOK                         bool
 	)
-	ui := &proofnetAnswerUI{answer: "deny"}
-	out = nativeAttendedOutcome{Version: 1, Case: "deny", FakeUI: true}
+	withdraw := caseName == "withdraw-pending"
+	ui := &nativeCaseUI{wait: withdraw}
+	out = nativeAttendedOutcome{Version: 1, Case: caseName, FakeUI: true}
 
 	emit := func(ev daemon.DevelopmentEnrollmentEvent) error {
 		switch ev.Stage {
@@ -558,6 +588,41 @@ func TestActualMultiesAttendedNativeWorkflowFixture(t *testing.T) {
 			}
 
 			stage = "admission"
+			var withdrawDone chan error
+			if withdraw {
+				withdrawDone = make(chan error, 1)
+				go func() {
+					// Only after the callback is inside the fake ask.
+					for ui.asks.Load() == 0 {
+						select {
+						case <-ctx.Done():
+							withdrawDone <- ctx.Err()
+							return
+						case <-time.After(5 * time.Millisecond):
+						}
+					}
+					pending, _ := json.Marshal(map[string]any{"version": 1, "fake_ui": true, "case": caseName, "admissionCalls": decisions.Load(), "uiAsks": ui.asks.Load(), "host": coords.Host, "viewer": coords.Viewer})
+					if err := writeNativeFile(dir, "native-attended-pending.json", pending, false); err != nil {
+						withdrawDone <- err
+						return
+					}
+					rawW, err := waitNativeFile(ctx, filepath.Join(dir, "peer-attended-withdrawn.json"), 30*time.Second)
+					if err != nil {
+						withdrawDone <- err
+						return
+					}
+					var w struct {
+						Version   int  `json:"version"`
+						FakeUI    bool `json:"fake_ui"`
+						Withdrawn bool `json:"withdrawn"`
+					}
+					if json.Unmarshal(rawW, &w) != nil || w.Version != 1 || !w.FakeUI || !w.Withdrawn {
+						withdrawDone <- errors.New("withdrawal marker invalid")
+						return
+					}
+					withdrawDone <- s.Refresh() // real map refresh retires the exact peer scope
+				}()
+			}
 			type hostResult struct {
 				mux *session.Mux
 				err error
@@ -589,7 +654,10 @@ func TestActualMultiesAttendedNativeWorkflowFixture(t *testing.T) {
 			case res := <-host:
 				joinHost.Wait()
 				out.Muxes = backends.Load()
-				if res.mux != nil || res.err == nil || !strings.Contains(res.err.Error(), "refused by accept callback") {
+				if res.mux != nil || res.err == nil {
+					return errors.New("host admitted or returned no error")
+				}
+				if !withdraw && !strings.Contains(res.err.Error(), "refused by accept callback") {
 					return errors.New("host did not explicitly refuse by callback")
 				}
 			case <-time.After(30 * time.Second):
@@ -602,22 +670,42 @@ func TestActualMultiesAttendedNativeWorkflowFixture(t *testing.T) {
 				return errors.New("admission counters differ from one refused attempt")
 			}
 
-			stage = "peer-refused"
-			rawPeer, err := waitNativeFile(ctx, filepath.Join(dir, "peer-attended-refused.json"), 30*time.Second)
-			if err != nil {
-				return err
-			}
-			var peerRefused nativePeerRefused
-			dec := json.NewDecoder(bytes.NewReader(rawPeer))
-			dec.DisallowUnknownFields()
-			if dec.Decode(&peerRefused) != nil || peerRefused.Version != 1 || !peerRefused.FakeUI || !peerRefused.ProtocolRefused ||
-				peerRefused.AcceptedReplyVerifierCalled || !peerRefused.Joined || peerRefused.ActualFarIP != selfIP {
-				return errors.New("counterpart did not report an explicit protocol refusal from the host address")
+			if withdraw {
+				stage = "withdraw-refresh"
+				select {
+				case err := <-withdrawDone:
+					if err != nil {
+						return err
+					}
+				case <-time.After(5 * time.Second):
+					return errors.New("withdraw refresh did not finish")
+				}
+				if scope.Context().Err() == nil || scope.Reason() == "" {
+					return errors.New("scope not retired by actual map withdrawal")
+				}
+				cancelled := ui.cancelled.Load()
+				if !cancelled {
+					return errors.New("pending prompt was not cancelled")
+				}
+				out.PromptCancelled = &cancelled
+			} else {
+				stage = "peer-refused"
+				rawPeer, err := waitNativeFile(ctx, filepath.Join(dir, "peer-attended-refused.json"), 30*time.Second)
+				if err != nil {
+					return err
+				}
+				var peerRefused nativePeerRefused
+				dec := json.NewDecoder(bytes.NewReader(rawPeer))
+				dec.DisallowUnknownFields()
+				if dec.Decode(&peerRefused) != nil || peerRefused.Version != 1 || !peerRefused.FakeUI || !peerRefused.ProtocolRefused ||
+					peerRefused.AcceptedReplyVerifierCalled || !peerRefused.Joined || peerRefused.ActualFarIP != selfIP {
+					return errors.New("counterpart did not report an explicit protocol refusal from the host address")
+				}
 			}
 
 			// Retirement: close the scope and observe the owned resources.
 			stage = "retirement"
-			if err := scope.Close(); err != nil {
+			if err := scope.Close(); err != nil && !withdraw {
 				return err
 			}
 			if _, err := raw.Accept(); err == nil {
