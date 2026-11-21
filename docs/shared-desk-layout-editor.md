@@ -53,6 +53,18 @@ discard, SIGTERM, root geometry change or unsupported resize never writes.
 Windows/macOS binaries reject the editor before reading any file; compilation
 is not runtime UI support.
 
+## Starting from no file
+
+`mnet desk layout-new --out NEW_FILE` opens the same editor without an input
+file. It seeds a two-display starter arrangement from the actual local root
+pixel size: the local display carries the real pixel dimensions, and a second
+placeholder display shares its full right edge. Both IDs and device labels
+(`this-display`/`this-computer`, `next-display`/`next-computer`) are local
+placeholders to edit, never verified devices. The starter is unsaved new
+content, so the window opens dirty and valid with Save immediately available;
+saving uses the same create-only path and closing without saving asks before
+discarding. Nothing is paired, enabled or shared.
+
 ## Authority remains separate
 
 This command makes no local daemon request, enrollment, network connection,
@@ -76,7 +88,10 @@ directory/device refusal before any window, usage refusals, exact one-unit and
 Shift moves, cross-target release cancellation, mouse undo, edge selection,
 attach, native pixel edit, create-only synced save with exact saved bytes and
 0600 mode, source bytes unchanged, existing-destination refusal, the disabled
-Save notice on an overlapped arrangement, the explicit discard confirmation
+Save notice on an overlapped arrangement, the starter journey (no input file,
+dirty-valid open seeded from the actual root size, create-only save with exact
+placeholder bytes, explicit discard writing nothing), the explicit discard
+confirmation
 (mouse and keyboard, cancel and confirm), keyboard focus pixels and pending-key
 Tab cancellation, immutable snapshot under file replacement, SIGTERM, root
 resize and child resize teardown, and zero daemon calls on a trapped socket.

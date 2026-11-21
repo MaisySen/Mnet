@@ -25,3 +25,27 @@ func TestDeskLayoutCheckRefusesMalformedInput(t *testing.T) {
 		}
 	}
 }
+
+func TestValidDeskArgsLayoutNew(t *testing.T) {
+	valid := [][]string{
+		{"layout-new", "--out", "new.json"},
+		{"layout-edit", "layout.json", "--out", "new.json"},
+	}
+	for _, args := range valid {
+		if !validDeskArgs(args) {
+			t.Fatalf("valid args rejected: %v", args)
+		}
+	}
+	invalid := [][]string{
+		{"layout-new"},
+		{"layout-new", "new.json"},
+		{"layout-new", "--out"},
+		{"layout-new", "--out", "new.json", "extra"},
+		{"layout-new", "layout.json", "--out", "new.json"},
+	}
+	for _, args := range invalid {
+		if validDeskArgs(args) {
+			t.Fatalf("invalid args accepted: %v", args)
+		}
+	}
+}

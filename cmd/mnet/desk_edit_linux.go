@@ -90,10 +90,28 @@ func readDeskLayoutEditorFile(path string) (*deskLayoutEditor, error) {
 // owner is reachable here. Native events edit only this in-memory arrangement;
 // saving creates one explicitly named new file and ends the window.
 func showDeskLayoutEditor(ctx context.Context, e *deskLayoutEditor, outPath string) (bool, error) {
+	return runDeskLayoutEditor(ctx, func(*xproto.ScreenInfo) (*deskLayoutEditor, error) {
+		if e == nil {
+			return nil, errors.New("offline editor unavailable")
+		}
+		return e, nil
+	}, outPath)
+}
+
+// A starter arrangement window: the editor is seeded from the actual local
+// root size once the connection is open. The starter is unsaved new content,
+// never pairing, identity or a run.
+func showDeskLayoutStarter(ctx context.Context, outPath string) (bool, error) {
+	return runDeskLayoutEditor(ctx, func(screen *xproto.ScreenInfo) (*deskLayoutEditor, error) {
+		return newDeskLayoutStarterEditor(starterDeskLayout(int64(screen.WidthInPixels), int64(screen.HeightInPixels)))
+	}, outPath)
+}
+
+func runDeskLayoutEditor(ctx context.Context, build func(*xproto.ScreenInfo) (*deskLayoutEditor, error), outPath string) (bool, error) {
 	if os.Getenv("WAYLAND_DISPLAY") != "" || os.Getenv("XDG_SESSION_TYPE") == "wayland" {
 		return false, errors.New("layout editor requires local X11, no fallback")
 	}
-	if ctx == nil || ctx.Err() != nil || e == nil {
+	if ctx == nil || ctx.Err() != nil || build == nil {
 		return false, errors.New("offline editor unavailable")
 	}
 	c, err := xgb.NewConn()
@@ -117,6 +135,10 @@ func showDeskLayoutEditor(ctx context.Context, e *deskLayoutEditor, outPath stri
 	}
 	if screen.WidthInPixels < 940 || screen.HeightInPixels < 760 {
 		return false, errors.New("layout editor requires at least 940x760 pixels")
+	}
+	e, err := build(screen)
+	if err != nil {
+		return false, err
 	}
 	if err = nativeControlsWatchRoot(c, screen); err != nil {
 		return false, err

@@ -11,6 +11,10 @@ func showDeskLayoutEditor(context.Context, *deskLayoutEditor, string) (bool, err
 	return false, errors.New("offline layout editor requires local Linux X11")
 }
 
+func showDeskLayoutStarter(context.Context, string) (bool, error) {
+	return false, errors.New("offline layout editor requires local Linux X11")
+}
+
 func readDeskLayoutEditorFile(string) (*deskLayoutEditor, error) {
 	return nil, errors.New("offline layout editor requires local Linux X11")
 }

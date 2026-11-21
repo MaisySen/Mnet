@@ -221,6 +221,7 @@ func usage() {
   mnet desk prepare REQUEST_FILE NEW_PRIVATE_DIR (offline one-shot draft pair; no approval or input)
   mnet desk layout-check FILE [--edge DISPLAY EDGE PIXEL]  (offline geometry only)
   mnet desk layout-view FILE           (native offline geometry inspector; Linux X11)
+  mnet desk layout-new --out NEW_FILE  (offline starter arrangement editor; Linux X11)
   mnet session browse  (Linux X11 chooser, exact current peer; no automatic control)
   mnet session view <peer>  (attended Linux X11, view-only)
   mnet session point <peer> (attended Linux X11, explicit pointer request; no keyboard/dragging)

@@ -69,13 +69,15 @@ func validDeskArgs(args []string) bool {
 		return len(args) == 2
 	case "layout-edit":
 		return len(args) == 4 && args[2] == "--out"
+	case "layout-new":
+		return len(args) == 3 && args[1] == "--out"
 	default:
 		return false
 	}
 }
 func runDesk(args []string) {
 	if !validDeskArgs(args) {
-		fatal("usage: mnet desk prepare REQUEST_FILE NEW_PRIVATE_DIR | mnet desk layout-check FILE [--edge DISPLAY EDGE PIXEL] | mnet desk layout-view FILE | mnet desk layout-edit FILE --out NEW_FILE")
+		fatal("usage: mnet desk prepare REQUEST_FILE NEW_PRIVATE_DIR | mnet desk layout-check FILE [--edge DISPLAY EDGE PIXEL] | mnet desk layout-view FILE | mnet desk layout-edit FILE --out NEW_FILE | mnet desk layout-new --out NEW_FILE")
 		return
 	}
 	if args[0] == "prepare" {
@@ -116,6 +118,22 @@ func runDesk(args []string) {
 			fmt.Println("Saved the edited arrangement as a new file. No pairing, approval or input was created.")
 		} else {
 			fmt.Println("No changes saved; the source file was not modified.")
+		}
+		return
+	}
+	if args[0] == "layout-new" {
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		fmt.Println("Opening a starter arrangement sized from this display. The second display is a placeholder to edit; nothing is paired, enabled or shared.")
+		saved, err := showDeskLayoutStarter(ctx, args[2])
+		if err != nil {
+			fatal(err.Error())
+			return
+		}
+		if saved {
+			fmt.Println("Saved the starter arrangement as a new file. No pairing, approval or input was created.")
+		} else {
+			fmt.Println("No starter saved; no file was created.")
 		}
 		return
 	}

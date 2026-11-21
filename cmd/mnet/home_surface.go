@@ -128,7 +128,7 @@ func renderHomeSurface(notice string, hasLayout, hasMulties bool, focus int, inf
 		text(38, y+54, 735, 15, true, accent, card[1])
 		text(38, y+78, 790, 14, false, 0x63758c, card[2])
 		if i == 2 && !hasLayout {
-			text(38, y+97, 790, 12, false, 0x63758c, "Open with --layout FILE to inspect an offline arrangement.")
+			text(38, y+97, 790, 12, false, 0x63758c, "Create a starter with desk layout-new --out NEW_FILE, or open with --layout FILE.")
 		}
 		if enabled {
 			text(832, y+54, 27, 24, false, 0x2563c7, ">")

@@ -97,6 +97,29 @@ try:
  assert client.poll() is None and not (readonly/'blocked.json').exists(),'blocked save created a file'
  action('key','Escape');poll(lambda:'confirmtrue' in title(),'blocked save close confirmation')
  action('mousemove','--window',wid,'100','322','click','1');assert client.wait(timeout=3)==0;client=None
+ # A starter arrangement needs no existing file: the editor opens dirty and
+ # valid, seeded from the actual root pixel size, and saves create-only.
+ starter=out/'starter.json'
+ refused=subprocess.run([str(out/'mnet'),'--state',str(state),'desk','layout-new','--out',str(starter),'extra'],env=env,capture_output=True,text=True,timeout=3);assert refused.returncode!=0 and 'usage:' in refused.stderr
+ w,h=map(int,size.rsplit('x',1)[0].split('x'))
+ with (out/'client.log').open('w') as log:client=subprocess.Popen([str(out/'mnet'),'--state',str(state),'desk','layout-new','--out',str(starter)],env=env,stdout=log,stderr=log)
+ wid=poll(window,'starter editor');action('windowfocus',wid)
+ poll(lambda:'sel0/2 edgeright x0 y0 w100 h100 pw%d ph%d undo0 dirtytrue validtrue confirmfalse'%(w,h) in title(),'starter exact initial state');capture('starter-open')
+ action('mousemove','--window',wid,'730','615','click','1');assert client.wait(timeout=3)==0;client=None
+ saved=json.loads(starter.read_bytes())
+ assert [d['id'] for d in saved['displays']]==['this-display','next-display'],'starter placeholder labels changed'
+ assert saved['displays'][0]['pixel_width']==w and saved['displays'][0]['pixel_height']==h,'starter ignored the actual root size'
+ assert saved['displays'][1]==dict(id='next-display',device='next-computer',x=100,y=0,width=100,height=100,pixel_width=w,pixel_height=h),'placeholder display mismatch'
+ import stat as statmod2;assert statmod2.S_IMODE(starter.stat().st_mode)==0o600,'starter file not owner-only'
+ starterlog=(out/'client.log').read_text();assert 'placeholder' in starterlog and 'Saved the starter' in starterlog,'missing starter guidance or save outcome'
+ # Discarding a starter asks explicitly and writes nothing.
+ starter2=out/'starter-discarded.json'
+ with (out/'client.log').open('w') as log:client=subprocess.Popen([str(out/'mnet'),'--state',str(state),'desk','layout-new','--out',str(starter2)],env=env,stdout=log,stderr=log)
+ wid=poll(window,'starter editor again');action('windowfocus',wid)
+ poll(lambda:'dirtytrue validtrue' in title(),'starter dirty on reopen')
+ action('key','Escape');poll(lambda:'confirmtrue' in title(),'starter discard confirmation')
+ action('mousemove','--window',wid,'100','322','click','1');assert client.wait(timeout=3)==0;client=None
+ assert not starter2.exists() and server.calls==0,'discarded starter wrote a file or contacted a daemon'
  launch();action('key','Down');poll(lambda:'dirtytrue' in title(),'dirty again for overlap check')
  # An overlapping arrangement is invalid; Save is disabled and explains why.
  action('key','Right')
@@ -140,7 +163,7 @@ try:
  # Fail closed on child resize, without a terminal fallback.
  launch(out/'childsize.json');action('windowsize',wid,'901','730');assert client.wait(timeout=3)!=0;client=None
  assert 'unsupported resize' in (out/'client.log').read_text() and not (out/'childsize.json').exists()
- print('PASS actual offline arrangement editor: exact unit/Shift moves, undo, edge attach, native pixel edits, create-only synced save (0600, source untouched), existing-destination refusal, invalid-overlap disabled save, explicit discard confirmation, gesture/focus/Tab cancellation, immutable snapshot, SIGTERM/root-resize/child-resize teardown, safely-absent vs created save outcomes, zero daemon calls. Synthetic same-host geometry only.',flush=True)
+ print('PASS actual offline arrangement editor: exact unit/Shift moves, undo, edge attach, native pixel edits, create-only synced save (0600, source untouched), existing-destination refusal, invalid-overlap disabled save, explicit discard confirmation, gesture/focus/Tab cancellation, immutable snapshot, starter arrangement seeded from the actual root size with create-only save and explicit discard, SIGTERM/root-resize/child-resize teardown, safely-absent vs created save outcomes, zero daemon calls. Synthetic same-host geometry only.',flush=True)
 finally:
  if client is not None and client.poll() is None:client.terminate();client.wait(timeout=3)
  if x is not None:x.terminate();x.wait(timeout=3)
