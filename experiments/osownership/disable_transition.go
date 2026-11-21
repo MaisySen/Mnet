@@ -19,6 +19,9 @@ func (l *disableResidentLifetime) revoke() {
 }
 
 type postDisableResult struct {
+	owner    *Transaction
+	session  *adapterSession
+	consumed bool // controller-lane only
 	lifetime *disableResidentLifetime
 	ledger   *heldPacketLedger
 	identity heldPacketIdentity
@@ -128,5 +131,16 @@ func finishOwnedDisable(ctx context.Context, life *disableResidentLifetime, l *h
 	}
 	l.current.uncertain = false
 	l.current.generation++
-	return &postDisableResult{lifetime: life, ledger: l, identity: l.current, raw: cloneRawExact(raw), sys: cloneSysExact(observed)}, nil
+	return &postDisableResult{owner: h.owner, session: h.session, lifetime: life, ledger: l, identity: l.current, raw: cloneRawExact(raw), sys: cloneSysExact(observed)}, nil
+}
+
+// A controlled config invalidates generation/uncertainty. Compare the original
+// fd-object/handle/ns/controller identity across that transition, never require
+// pre-invalidation generation equality and never ignore close/namespace drift.
+func sameDisableOriginalIdentity(a, b heldPacketIdentity) bool {
+	a.generation = 0
+	b.generation = 0
+	a.uncertain = false
+	b.uncertain = false
+	return a == b
 }

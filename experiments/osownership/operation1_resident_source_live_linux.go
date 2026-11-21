@@ -191,3 +191,10 @@ func (s *operation1ResidentSource) observeOriginalAbsence(ctx context.Context, a
 	// No operational Inventory. Pure parser rechecks ticket/correlation/raw equality.
 	return parseOriginalAbsence(a, ticket, s.baseline, raw, sys)
 }
+
+func (s *operation1ScopedDiagnostic) applyOwnedDisable(ctx context.Context) (*postDisableResult, error) {
+	if s == nil || s.scope == nil || s.source == nil {
+		return nil, ErrConflict
+	}
+	return s.scope.disableFreshDownSource(ctx, s.source.resources)
+}

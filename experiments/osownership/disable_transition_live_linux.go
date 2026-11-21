@@ -84,7 +84,8 @@ func (o *originalHeldPacketResources) openDisableLeafSource(write bool) (result 
 }
 
 // Source-only handoff. Controller owns lane; file mutex spans identity, capture,
-// one write attempt and independent AF+address+route readback. NOT adapter Apply.
+// one write attempt and independent AF+address+route readback. Called only through
+// the private adapter source interface; no generic Inventory conversion.
 func (s *operation1ResidentSource) disableFreshDownSource(ctx context.Context, o *originalHeldPacketResources) (*postDisableResult, error) {
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
@@ -127,7 +128,7 @@ func (s *operation1ResidentSource) disableFreshDownSource(ctx context.Context, o
 		if e != nil {
 			return e
 		}
-		if after.identity != before.identity || after.deviceNamespace != before.deviceNamespace || after.tunName != before.tunName {
+		if !sameDisableOriginalIdentity(after.identity, before.identity) || after.deviceNamespace != before.deviceNamespace || after.tunName != before.tunName {
 			return ErrConflict
 		}
 		return nil

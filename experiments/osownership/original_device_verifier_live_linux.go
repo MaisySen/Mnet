@@ -48,7 +48,7 @@ func (o *originalHeldPacketResources) verifyOriginalDeviceLockedSource(ctx conte
 
 // Descriptor is valid only inside SyscallConn.Control's callback. Never saved,
 // returned, closed, duped, or used after the callback. No F_SETFL/Fd conversion.
-func (o *originalHeldPacketResources) inspectOriginalControlSource(ctx context.Context, fd int) (*originalDeviceEvidence, error) {
+func (o *originalHeldPacketResources) inspectOriginalControlSource(ctx context.Context, fd int) (result *originalDeviceEvidence, err error) {
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
 	}
@@ -82,7 +82,7 @@ func (o *originalHeldPacketResources) inspectOriginalControlSource(ctx context.C
 	if e != nil {
 		return nil, e
 	}
-	defer unix.Close(nsfd)
+	defer func() { err = errors.Join(err, unix.Close(nsfd)) }()
 	var stat unix.Stat_t
 	var fs unix.Statfs_t
 	if e = unix.Fstat(nsfd, &stat); e != nil {

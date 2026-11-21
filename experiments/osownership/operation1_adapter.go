@@ -105,11 +105,19 @@ type operation1DiagnosticSource interface {
 	diagnoseOperation1(context.Context) (ownedSourceDiagnostic, error)
 	applyOperation1(context.Context, Plan) (*firstStepCompletion, error)
 }
+
+// Plan zero-based index2 is the third operation overall (create index0,
+// alias/MTU index1). forwardStep2 means next op is disable, not op index3.
+type operationDisableSource interface {
+	applyOwnedDisable(context.Context) (*postDisableResult, error)
+}
 type operation1Adapter struct {
-	controller *operation1Controller
-	session    *adapterSession
-	source     operation1DiagnosticSource
-	creation   operation1CreationSource
+	disableAttempted bool // controller lane, one attempt even on source error
+	disabled         *postDisableResult
+	controller       *operation1Controller
+	session          *adapterSession
+	source           operation1DiagnosticSource
+	creation         operation1CreationSource
 }
 
 var _ transactionLedgerAdapter = (*operation1Adapter)(nil)
@@ -199,7 +207,13 @@ func (a *operation1Adapter) Create(ctx context.Context, p Plan) (Handle, error) 
 }
 func (a *operation1Adapter) CloseOriginalFD(Handle) error { return ErrExecutorUnreleased }
 func (a *operation1Adapter) Apply(ctx context.Context, h Handle, op Operation) (err error) {
-	if !a.authorized(ctx) || a.source == nil || a.session == nil || a.session.plan == nil || op.Kind != "set-alias-mtu-exact" || op != a.session.plan.Operations[1] {
+	if !a.authorized(ctx) || a.source == nil || a.session == nil || a.session.plan == nil || len(a.session.plan.Operations) != 6 {
+		return ErrConflict
+	}
+	if op.Kind == "disable-owned-link-ipv6" {
+		return a.applyDisable(ctx, h, op)
+	}
+	if op.Kind != "set-alias-mtu-exact" || op != a.session.plan.Operations[1] {
 		return ErrConflict
 	}
 	if e := a.session.begin(h, op); e != nil {
@@ -258,5 +272,49 @@ func (s *adapterSession) joinFirstStep(c *firstStepCompletion, owner *Transactio
 	s.forwardStep = 2
 	s.pending = nil
 	s.pendingACK = false
+	return nil
+}
+
+// No generic mutation dispatch. Only index2/forwardStep2 can reach the held
+// disable wrapper. Address(index3),UP(index4),route(index5) remain refused.
+func (a *operation1Adapter) applyDisable(ctx context.Context, h Handle, op Operation) (err error) {
+	s := a.session
+	if !a.authorized(ctx) || a.disableAttempted || s == nil || s.plan == nil || len(s.plan.Operations) != 6 || op != s.plan.Operations[2] || s.forwardStep != 2 || s.canonical == nil || !s.canonical.TagConfirmed || !sameSessionHandle(h, *s.canonical) || s.pending != nil || s.poisoned || s.cleanupMode || s.closeAttempted || a.controller.tx.stopStarted || a.controller.tx.fdCloseAttempted {
+		return ErrConflict
+	}
+	source, ok := a.source.(operationDisableSource)
+	if !ok {
+		return ErrConflict
+	}
+	a.disableAttempted = true
+	defer func() {
+		if err != nil {
+			s.poisoned = true
+		}
+	}()
+	result, e := source.applyOwnedDisable(ctx)
+	defer func() {
+		if err != nil && result != nil {
+			result.lifetime.revoke()
+			if result.ledger != nil {
+				_ = result.ledger.invalidate("custody-loss")
+			}
+		}
+	}()
+	if e != nil {
+		return e
+	}
+	if e = ctx.Err(); e != nil {
+		return e
+	}
+	if a.controller.tx.clock == nil || a.controller.tx.deadline.expired(a.controller.tx.clock.Now()) {
+		return ErrConflict
+	}
+	if result == nil || result.consumed || result.owner != a.controller.tx || result.session != s || !result.current() || !sameSessionHandle(result.identity.handle, *s.canonical) {
+		return ErrConflict
+	}
+	result.consumed = true
+	a.disabled = result
+	s.forwardStep = 3
 	return nil
 }

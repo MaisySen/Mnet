@@ -119,6 +119,10 @@ type originalAbsenceSource interface {
 }
 
 func (c *operation1Controller) stopOwnedLocked(ctx context.Context) error {
+	// Stop revokes typed disable capability before any close/absence work.
+	if c != nil && c.adapter != nil && c.adapter.disabled != nil {
+		c.adapter.disabled.lifetime.revoke()
+	}
 	c.tx.stopStarted = true
 	c.tx.Ready = false
 	if c.attempt == nil {
