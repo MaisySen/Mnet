@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "binary_sha256": "6eaa51b9a258d86a7be2107f165c292c6260ee34a8269adc97d61a0386b60ab6",
+  "invocations": 1,
+  "outer_uid": 1000,
+  "outer_initial": {
+    "device": 7,
+    "inode": 4026531833
+  },
+  "implicit_effects_inventory": {
+    "driver": [
+      "pidfd_open(self)",
+      "waitid(self) expects ECHILD",
+      "pidfd_send_signal(self,0)",
+      "clone0x5100 transient child",
+      "child exit0",
+      "waitid-WCLONE/reap",
+      "pidfd close"
+    ],
+    "resident": [
+      "NO StartProcess/client in this mode",
+      "metadata/open-close and read-only netlink/sysctl only"
+    ],
+    "fixed_client": [
+      "NOT invoked in device preflight; existing bootstrap nonspawning/filter unchanged"
+    ]
+  },
+  "limits": "6s Go supervisor plus cleanup are cooperative bounds; kernel device call may remain D state. Wrapper10s deadline does not prove termination. Single-user writable binary path has prehash/exec race.",
+  "driver_pid": 939,
+  "driver_initial": {
+    "pid": 939,
+    "tgid": 939,
+    "ppid": 938,
+    "start_ticks": 3088,
+    "state": "R",
+    "exe": "/tmp/device-preflight-S19-COMPILED-NOT-RUN",
+    "cmdline": [
+      "/tmp/device-preflight-S19-COMPILED-NOT-RUN",
+      "--device-open-preflight"
+    ],
+    "read_start_ns": 30880598121,
+    "read_end_ns": 30880767654
+  },
+  "driver_exe_sha_verified": true,
+  "exit_code": 0,
+  "driver_reaped": true,
+  "outer_final": {
+    "device": 7,
+    "inode": 4026531833
+  },
+  "outer_unchanged": true,
+  "elapsed_ms": 14.79505,
+  "verdict_lifetime_recovery": "recovered",
+  "recorded_lifetimes": [
+    {
+      "pid": 939,
+      "tgid": 939,
+      "ppid": 938,
+      "start_ticks": 3088,
+      "state": "S",
+      "exe": "/tmp/device-preflight-S19-COMPILED-NOT-RUN",
+      "cmdline": [
+        "/tmp/device-preflight-S19-COMPILED-NOT-RUN",
+        "--device-open-preflight"
+      ],
+      "read_start_ns": 30892617810,
+      "read_end_ns": 30892839379
+    },
+    {
+      "pid": 944,
+      "start_ticks": 3088,
+      "source": "bounded-owner-verdict"
+    }
+  ],
+  "post_exact_lifetime_checks": [
+    {
+      "recorded": {
+        "pid": 939,
+        "tgid": 939,
+        "ppid": 938,
+        "start_ticks": 3088,
+        "state": "S",
+        "exe": "/tmp/device-preflight-S19-COMPILED-NOT-RUN",
+        "cmdline": [
+          "/tmp/device-preflight-S19-COMPILED-NOT-RUN",
+          "--device-open-preflight"
+        ],
+        "read_start_ns": 30892617810,
+        "read_end_ns": 30892839379
+      },
+      "current": {
+        "pid": 939,
+        "observation_error": "not-found",
+        "read_start_ns": 30894950561,
+        "read_end_ns": 30894972776
+      },
+      "state": "absent-at-read",
+      "same_lifetime": false
+    },
+    {
+      "recorded": {
+        "pid": 944,
+        "start_ticks": 3088,
+        "source": "bounded-owner-verdict"
+      },
+      "current": {
+        "pid": 944,
+        "observation_error": "not-found",
+        "read_start_ns": 30894974942,
+        "read_end_ns": 30894988469
+      },
+      "state": "absent-at-read",
+      "same_lifetime": false
+    }
+  ],
+  "exact_lifetime_survivors": [],
+  "unknown_postchecks": [],
+  "postcheck_note": "unreadable-or-gone is not definitive absence; Wait only proves driver reap, resident lifecycle must be validated from bounded verdict. Unrecorded descendants remain unverified.",
+  "classification": "unreviewed-output"
+}
