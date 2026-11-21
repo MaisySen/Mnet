@@ -18,7 +18,11 @@ type LinkRecord struct {
 	Name, Alias string
 	MTU         uint32
 	Raw         map[uint16][]byte
-	setupOuter  *setupOuterRecord // owned full-profile source evidence only
+	// Dual-purpose original dump bytes: owned full-profile evidence OR generic
+	// foreign/baseline PAD evidence. Presence alone never proves owned profile.
+	// JSON baseline hash excludes this private field; structural clone/equality
+	// retain/bind it, and named comparison uses validated encoding copies.
+	setupOuter *setupOuterRecord
 }
 type AddressRecord struct {
 	Index                        int
