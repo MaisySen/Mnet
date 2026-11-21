@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"image"
+	"time"
 	"image/color"
 	"image/draw"
 
@@ -37,6 +38,9 @@ type deskArrangementsView struct {
 	focus   int // rows 0..rows-1, then New starter, Inspect, Edit, Duplicate, Delete, Close
 	notice  string
 	armed   string // store draft awaiting a second explicit Delete confirmation
+	// armedUntil is when the pending delete lapses; the window clears the
+	// prompt itself so an expired delete never stays armed-looking.
+	armedUntil time.Time
 }
 
 func (v deskArrangementsView) rows() int {

@@ -76,6 +76,17 @@ func showDeskArrangements(ctx context.Context, v *deskArrangementsView) (int, er
 	if err = xproto.ChangePropertyChecked(c, xproto.PropModeReplace, w, protocol.Atom, xproto.AtomAtom, 32, 1, data).Check(); err != nil {
 		return deskArrActClose, err
 	}
+	var expiry <-chan time.Time
+	var expiryTimer *time.Timer
+	if v.armed != "" && !v.armedUntil.IsZero() {
+		if left := time.Until(v.armedUntil); left <= 0 {
+			v.armed = ""
+		} else {
+			expiryTimer = time.NewTimer(left)
+			expiry = expiryTimer.C
+			defer expiryTimer.Stop()
+		}
+	}
 	owner, cancel := context.WithCancel(ctx)
 	defer cancel()
 	events := make(chan deviceEvent, 1)
@@ -188,6 +199,8 @@ func showDeskArrangements(ctx context.Context, v *deskArrangementsView) (int, er
 		select {
 		case <-owner.Done():
 			return deskArrActClose, nil
+		case <-expiry:
+			v.armed = "" // an expired delete is no longer pending
 		case ev := <-events:
 			if ev.err != nil || ev.event == nil {
 				return deskArrActClose, errors.New("arrangements display ended")
@@ -299,6 +312,27 @@ func showDeskArrangements(ctx context.Context, v *deskArrangementsView) (int, er
 // The Shared Desk home journey: browse drafts, create a starter, inspect or
 // edit existing drafts, each as its own owned window, then return. Saving
 // always creates one new file in the private store; nothing is replaced.
+// dedupePinnedStoreEntries removes any store entry that IS the pinned opened
+// file (by base name, or by identity for a hard-linked alias), so a --layout
+// inside the store appears once and its row is never deletable.
+func dedupePinnedStoreEntries(dir, layoutPath string, entries []deskStoreEntry) []deskStoreEntry {
+	pinnedName := filepath.Base(layoutPath)
+	linfo, lerr := os.Stat(layoutPath)
+	kept := entries[:0]
+	for _, entry := range entries {
+		same := entry.Name == pinnedName
+		if !same && lerr == nil {
+			if einfo, err := os.Stat(filepath.Join(dir, entry.Name)); err == nil && os.SameFile(linfo, einfo) {
+				same = true
+			}
+		}
+		if !same {
+			kept = append(kept, entry)
+		}
+	}
+	return kept
+}
+
 // The reopened list shows each save, so home needs no separate save notice.
 func runDeskHomeJourney(ctx context.Context, deskDir, layoutPath string) error {
 	if deskDir == "" {
@@ -310,15 +344,20 @@ func runDeskHomeJourney(ctx context.Context, deskDir, layoutPath string) error {
 	var armedID deskDraftID
 	armedAt := time.Time{}
 	selKeep := -1
+	pinnedInStore := false
 	if layoutPath != "" {
 		pinned = filepath.Base(layoutPath)
+		pinnedInStore = filepath.Dir(filepath.Clean(layoutPath)) == filepath.Clean(deskDir)
 	}
 	for ctx.Err() == nil {
 		entries, err := listDeskStore(deskDir)
 		if err != nil {
 			return err
 		}
-		v := &deskArrangementsView{pinned: pinned, entries: entries, sel: selKeep, notice: notice, armed: armed}
+		if pinnedInStore {
+			entries = dedupePinnedStoreEntries(deskDir, layoutPath, entries)
+		}
+		v := &deskArrangementsView{pinned: pinned, entries: entries, sel: selKeep, notice: notice, armed: armed, armedUntil: armedAt.Add(15 * time.Second)}
 		notice = ""
 		action, err := showDeskArrangements(ctx, v)
 		if err != nil || action == deskArrActClose || ctx.Err() != nil {

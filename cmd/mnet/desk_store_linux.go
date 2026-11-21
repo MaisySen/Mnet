@@ -46,16 +46,44 @@ func deskStoreOutPath(dir string, entries []deskStoreEntry, extra ...string) (st
 	return filepath.Join(dir, name), nil
 }
 
+
+// openDeskStoreDir pins the real store directory for fd-relative operations:
+// a swapped or symlinked path can never redirect a source read, a
+// destination create or a cleanup outside the directory opened here.
+func openDeskStoreDir(dir string) (int, error) {
+	dfd, err := unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return -1, errors.New("arrangement store is not a real directory")
+	}
+	var st unix.Stat_t
+	if err := unix.Fstat(dfd, &st); err != nil {
+		unix.Close(dfd)
+		return -1, err
+	}
+	if st.Mode&unix.S_IFMT != unix.S_IFDIR || st.Uid != uint32(os.Geteuid()) || st.Mode&0022 != 0 {
+		unix.Close(dfd)
+		return -1, errors.New("arrangement store must be a private owner-only directory")
+	}
+	return dfd, nil
+}
+
+// validDeskDraftName accepts only plain store-local base names.
+func validDeskDraftName(name string) bool {
+	return name != "" && name == filepath.Base(name) && !strings.HasPrefix(name, ".")
+}
+
 // errDeskDraftChanged marks a same-name replacement or edit detected between
 // arming and confirming a delete; the delete cancels and removes nothing.
 var errDeskDraftChanged = errors.New("arrangement draft identity changed")
 
 // deskDraftID pins one store draft's identity across the delete confirmation
-// so a same-name replacement is never removed in its place.
+// so a same-name replacement is never removed in its place. Ctime cannot be
+// turned back by utimensat, so an edit with a restored mtime still cancels.
 type deskDraftID struct {
 	dev, ino uint64
 	size     int64
 	mtime    unix.Timespec
+	ctime    unix.Timespec
 }
 
 // statDeskDraft returns the pinned identity of one app-owned draft. It
@@ -83,7 +111,7 @@ func statDeskDraft(dir, name string) (deskDraftID, error) {
 	if st.Nlink != 1 {
 		return zero, errors.New("refusing an aliased draft")
 	}
-	return deskDraftID{dev: uint64(st.Dev), ino: st.Ino, size: st.Size, mtime: st.Mtim}, nil
+	return deskDraftID{dev: uint64(st.Dev), ino: st.Ino, size: st.Size, mtime: st.Mtim, ctime: st.Ctim}, nil
 }
 
 // deleteDeskStoreEntry removes the pinned draft only while its identity
@@ -100,7 +128,15 @@ func deleteDeskStoreEntry(dir, name string, want deskDraftID) error {
 	if got != want {
 		return errDeskDraftChanged
 	}
-	return os.Remove(filepath.Join(dir, name))
+	dfd, err := openDeskStoreDir(dir)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(dfd)
+	// The unlink is relative to the pinned private directory; the remaining
+	// boundary is the file-identity race between stat and unlink, same-uid
+	// only, unable to cross outside the store.
+	return unix.Unlinkat(dfd, name, 0)
 }
 
 // duplicateDeskStoreEntry copies one pinned store draft into a new
@@ -111,11 +147,6 @@ func duplicateDeskStoreEntry(dir, name, out string, want deskDraftID) error {
 	if out == "" || out != filepath.Base(out) || out == name || strings.HasPrefix(out, ".") {
 		return errors.New("invalid arrangement draft name")
 	}
-	if _, err := statDeskDraft(dir, out); err == nil {
-		return errors.New("arrangement draft destination already exists")
-	} else if !os.IsNotExist(err) {
-		return err
-	}
 	got, err := statDeskDraft(dir, name)
 	if err != nil {
 		return err
@@ -123,7 +154,15 @@ func duplicateDeskStoreEntry(dir, name, out string, want deskDraftID) error {
 	if got != want {
 		return errDeskDraftChanged
 	}
-	fd, err := unix.Open(filepath.Join(dir, name), unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	dfd, err := openDeskStoreDir(dir)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(dfd)
+	// Every step below is relative to the pinned private directory: a
+	// swapped or symlinked store path cannot redirect the source read, the
+	// destination create or the cleanup.
+	fd, err := unix.Openat(dfd, name, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return err
 	}
@@ -131,16 +170,18 @@ func duplicateDeskStoreEntry(dir, name, out string, want deskDraftID) error {
 	// finalizer to close a reused descriptor (an X connection) later.
 	src := os.NewFile(uintptr(fd), name)
 	data, err := io.ReadAll(io.LimitReader(src, (1<<20)+1))
+	// Fstat on the open descriptor pins the identity of the very file read,
+	// so a same-name replacement during the read cancels instead of copying.
+	var again unix.Stat_t
+	ferr := unix.Fstat(fd, &again)
 	src.Close()
-	if err != nil || len(data) > 1<<20 {
+	if err != nil || len(data) > 1<<20 || ferr != nil {
 		return errors.New("arrangement draft unreadable")
 	}
-	if again, err := statDeskDraft(dir, name); err != nil {
-		return err
-	} else if again != want {
+	if (deskDraftID{dev: uint64(again.Dev), ino: again.Ino, size: again.Size, mtime: again.Mtim, ctime: again.Ctim}) != want {
 		return errDeskDraftChanged
 	}
-	wfd, err := unix.Open(filepath.Join(dir, out), unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0o600)
+	wfd, err := unix.Openat(dfd, out, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0o600)
 	if err != nil {
 		return errors.New("arrangement draft destination already exists")
 	}
@@ -148,7 +189,7 @@ func duplicateDeskStoreEntry(dir, name, out string, want deskDraftID) error {
 	_, werr := file.Write(data)
 	cerr := file.Close()
 	if werr != nil || cerr != nil {
-		os.Remove(filepath.Join(dir, out))
+		unix.Unlinkat(dfd, out, 0)
 		return errors.New("arrangement draft copy incomplete")
 	}
 	return nil

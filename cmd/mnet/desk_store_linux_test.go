@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
 func TestEnsureDeskStoreCreatesPrivateDir(t *testing.T) {
@@ -184,5 +186,108 @@ func TestDuplicateDeskStoreEntry(t *testing.T) {
 	}
 	if _, err := os.Lstat(filepath.Join(dir, "arrangement-1.json")); err != nil {
 		t.Fatal("source draft was touched")
+	}
+}
+
+func TestDuplicateDeskStoreEntrySwappedStore(t *testing.T) {
+	parent := t.TempDir()
+	real := filepath.Join(parent, "real")
+	if err := os.Mkdir(real, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(real, "arrangement-1.json"), []byte(`{"displays":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(parent, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	id, err := statDeskDraft(real, "arrangement-1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := duplicateDeskStoreEntry(link, "arrangement-1.json", "arrangement-2.json", id); err == nil {
+		t.Fatal("a symlinked store path must fail closed for duplicate")
+	}
+	if _, err := os.Lstat(filepath.Join(real, "arrangement-2.json")); !os.IsNotExist(err) {
+		t.Fatal("duplicate wrote through a swapped store path")
+	}
+	if err := deleteDeskStoreEntry(link, "arrangement-1.json", id); err == nil {
+		t.Fatal("a symlinked store path must fail closed for delete")
+	}
+	if _, err := os.Lstat(filepath.Join(real, "arrangement-1.json")); err != nil {
+		t.Fatal("delete removed through a swapped store path")
+	}
+}
+
+func TestDeleteDeskStoreEntryRestoredMtime(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "arrangement-1.json")
+	if err := os.WriteFile(target, []byte(`{"displays":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	id, err := statDeskDraft(dir, "arrangement-1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st unix.Stat_t
+	if err := unix.Lstat(target, &st); err != nil {
+		t.Fatal(err)
+	}
+	// Same-size edit with the mtime forged back: ctime still moves.
+	if err := os.WriteFile(target, []byte(`{"displays":[1]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ts := []unix.Timeval{{Sec: st.Mtim.Sec, Usec: st.Mtim.Nsec / 1000}, {Sec: st.Mtim.Sec, Usec: st.Mtim.Nsec / 1000}}
+	if err := unix.Utimes(target, ts); err != nil {
+		t.Fatal(err)
+	}
+	if err := deleteDeskStoreEntry(dir, "arrangement-1.json", id); !errors.Is(err, errDeskDraftChanged) {
+		t.Fatalf("edit with restored mtime must cancel, got %v", err)
+	}
+	if _, err := os.Lstat(target); err != nil {
+		t.Fatal("forged-mtime draft was removed")
+	}
+}
+
+func TestDedupePinnedStoreEntries(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(`{"displays":[]}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("arrangement-1.json")
+	write("arrangement-2.json")
+	entries, err := listDeskStore(dir)
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("listing: %v %d", err, len(entries))
+	}
+	layout := filepath.Join(dir, "arrangement-1.json")
+	kept := dedupePinnedStoreEntries(dir, layout, entries)
+	if len(kept) != 1 || kept[0].Name != "arrangement-2.json" {
+		t.Fatalf("pinned store file must appear once, kept %+v", kept)
+	}
+	// A hard-linked alias of the pinned file is deduped by identity too.
+	if err := os.Link(layout, filepath.Join(dir, "alias.json")); err != nil {
+		t.Fatal(err)
+	}
+	entries, err = listDeskStore(dir)
+	if err != nil || len(entries) != 3 {
+		t.Fatalf("listing with alias: %v %d", err, len(entries))
+	}
+	kept = dedupePinnedStoreEntries(dir, layout, entries)
+	if len(kept) != 1 || kept[0].Name != "arrangement-2.json" {
+		t.Fatalf("alias of pinned file must be deduped, kept %+v", kept)
+	}
+	// A pinned file outside the store dedupes nothing.
+	outside := filepath.Join(t.TempDir(), "other.json")
+	if err := os.WriteFile(outside, []byte(`{"displays":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	kept = dedupePinnedStoreEntries(dir, outside, entries)
+	if len(kept) != 3 {
+		t.Fatalf("external pinned file must not hide store drafts, kept %+v", kept)
 	}
 }

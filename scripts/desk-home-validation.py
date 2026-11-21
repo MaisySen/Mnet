@@ -99,6 +99,8 @@ try:
  # Delete requires a second explicit press, selection change cancels it, and only the named draft goes.
  action('mousemove','--window',arrfresh(),'665','474','click','1')
  poll(lambda:'armedtrue' in title(),'delete armed');capture('arrangements-delete-armed',arrfresh())
+ # The pending delete lapses honestly: the prompt clears itself after15s.
+ time.sleep(16);poll(lambda:'armedfalse' in title(),'expired delete clears its prompt');capture('arrangements-delete-expired',arrfresh())
  action('key','Up');poll(lambda:'armedfalse' in title() and 'sel0' in title(),'selection change cancels pending delete')
  action('key','Down');poll(lambda:'sel1' in title(),'invalid draft reselected')
  action('mousemove','--window',arrfresh(),'665','474','click','1');poll(lambda:'armedtrue' in title(),'delete re-armed')
@@ -122,7 +124,18 @@ try:
  assert server.calls==0,'duplicate consulted a daemon'
  action('key','Escape');poll(lambda:window('^Mnet: three tools'),'home after invalid refusal')
  client.terminate();assert client.wait(timeout=3)==0;client=None
- print('PASS actual home arrangements journey: always-enabled card, empty-store browsing creates nothing, starter creation saving one private 0600 draft, inspect/edit child windows, clean close writes nothing, invalid draft listed and refused in-window, two-press identity-pinned delete with replacement cancellation, exclusive duplicate, zero daemon calls. Synthetic same-host geometry only.',flush=True)
+ # A --layout inside the store appears once, and its pinned row cannot be deleted.
+ with (out/'client.log').open('w') as log:client=subprocess.Popen([str(out/'mnet'),'--state',str(state),'open','--layout',str(store/'arrangement-1.json')],env=env,stdout=log,stderr=log)
+ home=poll(lambda:window('^Mnet: three tools'),'home with in-store layout')
+ action('windowfocus',home,'mousemove','--window',home,'100','370','click','1')
+ poll(lambda:'rows2' in title() and 'pinnedtrue' in title(),'in-store layout pinned once')
+ capture('arrangements-pinned-in-store',arrfresh())
+ action('mousemove','--window',arrfresh(),'665','474','click','1');time.sleep(.2)
+ poll(lambda:'armedfalse' in title(),'pinned in-store row refuses delete')
+ assert (store/'arrangement-1.json').exists(),'pinned in-store draft removed'
+ action('key','Escape');poll(lambda:window('^Mnet: three tools'),'home after in-store layout')
+ client.terminate();assert client.wait(timeout=3)==0;client=None
+ print('PASS actual home arrangements journey: always-enabled card, empty-store browsing creates nothing, starter creation saving one private 0600 draft, inspect/edit child windows, clean close writes nothing, invalid draft listed and refused in-window, two-press identity-pinned delete with replacement/restored-mtime cancellation and honest 15s expiry, exclusive duplicate, in-store --layout pinned once and undeletable, zero daemon calls. Synthetic same-host geometry only.',flush=True)
 finally:
  if client is not None and client.poll() is None:client.terminate();client.wait(timeout=3)
  if x is not None:x.terminate();x.wait(timeout=3)
