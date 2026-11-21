@@ -23,11 +23,11 @@ type inertAdapterProtocol struct {
 
 var _ Kernel = (*inertAdapterProtocol)(nil)
 
-func newInertAdapterProtocol(e inertKernelProtocol, b *CapturedBaseline) (*inertAdapterProtocol, error) {
+func newInertAdapterProtocol(e inertKernelProtocol, b *CapturedBaseline, id adapterIdentity) (*inertAdapterProtocol, error) {
 	if e == nil {
 		return nil, ErrConflict
 	}
-	s, err := newAdapterSession(b)
+	s, err := newAdapterSession(b, id)
 	if err != nil {
 		return nil, err
 	}

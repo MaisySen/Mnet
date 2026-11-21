@@ -13,7 +13,18 @@ import (
 	"time"
 )
 
+type adapterIdentity struct {
+	TargetID  string
+	SessionID string
+	Namespace Namespace
+}
+
+func (i adapterIdentity) valid() bool {
+	return i.TargetID != "" && i.SessionID != "" && sameNamespace(i.Namespace, i.Namespace)
+}
+
 type adapterSession struct {
+	identity         adapterIdentity
 	baseline         *CapturedBaseline
 	createAttempted  bool
 	rejectedHandle   *Handle
@@ -34,14 +45,14 @@ type adapterSession struct {
 	closeConfirmed   bool
 }
 
-func newAdapterSession(b *CapturedBaseline) (*adapterSession, error) {
-	if b == nil || !sameNamespace(b.ns, b.ns) {
+func newAdapterSession(b *CapturedBaseline, id adapterIdentity) (*adapterSession, error) {
+	if b == nil || !id.valid() || !sameNamespace(id.Namespace, b.ns) || !sameNamespace(b.ns, b.ns) {
 		return nil, ErrConflict
 	}
 	frozen := *b
 	frozen.raw = cloneRawExact(b.raw)
 	frozen.sys = maps.Clone(b.sys)
-	return &adapterSession{baseline: &frozen}, nil
+	return &adapterSession{baseline: &frozen, identity: id}, nil
 }
 func (s *adapterSession) bindCreated(p Plan, h Handle) error {
 	if s == nil || s.baseline == nil {
@@ -281,6 +292,7 @@ func (s *adapterSession) observeCleanup(i Inventory) error {
 var forwardTransitions = [6]string{"create-nonpersistent-tun", "set-alias-mtu-exact", "disable-owned-link-ipv6", "address-add-exclusive", "link-up-exact", "route-add-exclusive"}
 
 type adapterFinalState struct {
+	Identity          adapterIdentity
 	Poisoned          bool
 	CleanupMode       bool
 	PossiblyApplied   *Operation
@@ -304,7 +316,7 @@ func (s *adapterSession) reconcile(raw RawInventory, sys SysctlSnapshot) (adapte
 	if s == nil || s.baseline == nil {
 		return adapterFinalState{}, ErrConflict
 	}
-	r := adapterFinalState{Poisoned: s.poisoned, CleanupMode: s.cleanupMode, CloseAttempted: s.closeAttempted, CloseRecorded: s.closeRecorded, CloseConfirmed: s.closeConfirmed, CloseAmbiguous: s.closeAttempted && (!s.closeRecorded || !s.closeConfirmed)}
+	r := adapterFinalState{Identity: s.identity, Poisoned: s.poisoned, CleanupMode: s.cleanupMode, CloseAttempted: s.closeAttempted, CloseRecorded: s.closeRecorded, CloseConfirmed: s.closeConfirmed, CloseAmbiguous: s.closeAttempted && (!s.closeRecorded || !s.closeConfirmed)}
 	if s.pending != nil {
 		copy := *s.pending
 		r.PossiblyApplied = &copy

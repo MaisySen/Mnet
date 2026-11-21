@@ -44,6 +44,10 @@ func projectNetworkCapability(e networkCapabilityEvidence) networkCapabilityStat
 		r.State = "cleanup-pending"
 		return r
 	}
+	if !e.Final.Identity.valid() || e.Final.Identity.TargetID != e.TargetID || e.Final.Identity.SessionID != e.SessionID || !sameNamespace(e.Final.Identity.Namespace, e.Namespace) {
+		r.State = "final-scope-mismatch"
+		return r
+	}
 	kinds := map[string]bool{}
 	if e.TargetID != "" && e.SessionID != "" && !e.Now.IsZero() && sameNamespace(e.Namespace, e.Namespace) {
 		for _, w := range e.Witnesses {

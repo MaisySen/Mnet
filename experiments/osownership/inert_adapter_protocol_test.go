@@ -105,7 +105,7 @@ func protocolRig(t *testing.T) (*Transaction, *inertAdapterProtocol, *sessionFak
 		t.Fatal(e)
 	}
 	k := &sessionFake{fakeKernel: &fakeKernel{i: i}}
-	a, e := newInertAdapterProtocol(k, base)
+	a, e := newInertAdapterProtocol(k, base, adapterIdentity{TargetID: "target", SessionID: "session", Namespace: base.ns})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -229,7 +229,7 @@ func TestExactBaselineCloneNilEmptyAndNetip(t *testing.T) {
 func TestCapabilityRequiresFinalCustodyAndBoundFreshWitnesses(t *testing.T) {
 	now := time.Now()
 	ns := Namespace{Device: 7, Inode: 8, Isolated: true}
-	clean := adapterFinalState{}
+	clean := adapterFinalState{Identity: adapterIdentity{TargetID: "target", SessionID: "session", Namespace: ns}}
 	e := networkCapabilityEvidence{Final: &clean, Now: now, TargetID: "target", SessionID: "session", Namespace: ns}
 	for _, kind := range []string{"deployment", "os-path", "transport", "authority"} {
 		e.Witnesses = append(e.Witnesses, networkCapabilityWitness{Kind: kind, TargetID: e.TargetID, SessionID: e.SessionID, Namespace: ns, ObservedAt: now.Add(-time.Second), ValidUntil: now.Add(time.Second)})
@@ -309,11 +309,14 @@ func TestResolvedPoisonFinalCanProjectBoundPath(t *testing.T) {
 		t.Fatal("resolved poisoned history mapping", final, e)
 	}
 	now := time.Now()
-	ev := networkCapabilityEvidence{Final: &final, TargetID: "target", SessionID: "new-explicit-session", Namespace: a.session.baseline.ns, Now: now}
+	ev := networkCapabilityEvidence{Final: &final, TargetID: "target", SessionID: "session", Namespace: a.session.baseline.ns, Now: now}
 	for _, kind := range []string{"deployment", "os-path", "transport", "authority"} {
 		ev.Witnesses = append(ev.Witnesses, networkCapabilityWitness{Kind: kind, TargetID: ev.TargetID, SessionID: ev.SessionID, Namespace: ev.Namespace, ObservedAt: now.Add(-time.Second), ValidUntil: now.Add(time.Second)})
 	}
 	// These are fresh independent projection witnesses, not expired old authority.
+	if final.Identity != a.session.identity {
+		t.Fatal("final scope lost")
+	}
 	if !projectNetworkCapability(ev).NetworkingReady {
 		t.Fatal("resolved history wrongly blocks independent bound witnesses")
 	}
@@ -341,5 +344,51 @@ func TestReaddedDeleteWithoutRetrySlotRefused(t *testing.T) {
 	}
 	if len(k.calls) != before || a.session.cleanupAttempts[op] != 1 {
 		t.Fatal("readd issued effect or consumed budget")
+	}
+}
+
+// Independent custody transition oracle: network absence is not FD-close ACK.
+func TestTransactionFailedCloseStickyAcrossStops(t *testing.T) {
+	tx, _, k := protocolRig(t)
+	if e := tx.Start(context.Background()); e != nil {
+		t.Fatal(e)
+	}
+	k.closeError = true
+	first := tx.Stop(context.Background())
+	if first == nil || !tx.PendingCleanup || k.closeCount != 1 {
+		t.Fatal("first close failure lost", first, k.closeCount)
+	}
+	for n := 0; n < 2; n++ {
+		later := tx.Stop(context.Background())
+		if later != tx.fdCloseError || !tx.PendingCleanup || k.closeCount != 1 {
+			t.Fatal("sticky original close error lost or close retried", later, k.closeCount)
+		}
+	}
+}
+func TestCapabilityFinalScopeCannotCrossSessions(t *testing.T) {
+	now := time.Now()
+	ns := Namespace{Device: 7, Inode: 8, Isolated: true}
+	final := adapterFinalState{Identity: adapterIdentity{TargetID: "target-a", SessionID: "session-a", Namespace: ns}}
+	e := networkCapabilityEvidence{Final: &final, TargetID: "target-a", SessionID: "session-a", Namespace: ns, Now: now}
+	for _, kind := range []string{"deployment", "os-path", "transport", "authority"} {
+		e.Witnesses = append(e.Witnesses, networkCapabilityWitness{Kind: kind, TargetID: e.TargetID, SessionID: e.SessionID, Namespace: ns, ObservedAt: now.Add(-time.Second), ValidUntil: now.Add(time.Second)})
+	}
+	if !projectNetworkCapability(e).NetworkingReady {
+		t.Fatal("matching final/witness refused")
+	}
+	for _, change := range []string{"target", "session", "namespace"} {
+		changed := final
+		switch change {
+		case "target":
+			changed.Identity.TargetID = "target-b"
+		case "session":
+			changed.Identity.SessionID = "session-b"
+		case "namespace":
+			changed.Identity.Namespace.Inode++
+		}
+		e.Final = &changed
+		if r := projectNetworkCapability(e); r.NetworkingReady || r.State != "final-scope-mismatch" {
+			t.Fatal("cross-scope final accepted", change, r)
+		}
 	}
 }

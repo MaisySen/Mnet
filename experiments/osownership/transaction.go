@@ -52,16 +52,17 @@ type Evidence struct {
 // Transaction owns step state and its monotonic deadline independent of the
 // caller's Plan value. API never extends it after an ACK or partial success.
 type Transaction struct {
-	k              Kernel
-	clock          Clock
-	plan           Plan
-	deadline       Deadline
-	handle         *Handle
-	Evidence       []Evidence
-	Ready          bool
-	PendingCleanup bool
-	fdClosed       bool
-	baseline       *Inventory
+	k                Kernel
+	clock            Clock
+	plan             Plan
+	deadline         Deadline
+	handle           *Handle
+	Evidence         []Evidence
+	Ready            bool
+	PendingCleanup   bool
+	fdCloseAttempted bool
+	fdCloseError     error
+	baseline         *Inventory
 }
 
 func NewTransaction(k Kernel, c Clock, b Binding) (*Transaction, error) {
@@ -265,6 +266,10 @@ func (t *Transaction) Stop(ctx context.Context) error {
 	defer cancel()
 	ctx = bounded
 	t.Ready = false
+	if t.fdCloseAttempted && t.fdCloseError != nil {
+		t.PendingCleanup = true
+		return t.fdCloseError
+	}
 	if t.handle == nil {
 		if t.PendingCleanup {
 			return errors.New("ambiguous creation without FD custody; cleanup pending, never adopt")
@@ -302,6 +307,10 @@ func (t *Transaction) Stop(ctx context.Context) error {
 		}
 		after, readErr := t.k.Snapshot(ctx)
 		if readErr != nil {
+			return errors.Join(applyErr, readErr)
+		}
+		if op.Kind == "close-owned-tun-fd" && applyErr != nil {
+			t.PendingCleanup = true
 			return errors.Join(applyErr, readErr)
 		}
 		remaining, conflict := Rollback(h, after)
@@ -354,11 +363,12 @@ func (t *Transaction) Run(ctx context.Context) error {
 }
 
 func (t *Transaction) closeFDOnce(h Handle) error {
-	if t.fdClosed {
-		return nil
+	if t.fdCloseAttempted {
+		return t.fdCloseError
 	}
-	t.fdClosed = true
-	return t.k.CloseOriginalFD(h)
+	t.fdCloseAttempted = true
+	t.fdCloseError = t.k.CloseOriginalFD(h)
+	return t.fdCloseError
 }
 func cloneInventory(i Inventory) Inventory {
 	i.baselineLinks = append([]Link(nil), i.baselineLinks...)
