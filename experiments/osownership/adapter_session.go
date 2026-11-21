@@ -429,8 +429,8 @@ func (s *adapterSession) ownerEligible(t *Transaction) bool {
 	if s == nil || t == nil || t.clock == nil || !t.Ready || t.stopStarted || t.handle == nil || t.fdCloseAttempted || s.clockDistrusted {
 		return false
 	}
-	a, ok := t.k.(*inertAdapterProtocol)
-	if !ok || a.session != s || !reflect.DeepEqual(t.plan, *s.plan) || !sameSessionHandle(*t.handle, *s.canonical) {
+	a, ok := t.k.(transactionLedgerAdapter)
+	if !ok || a.ownershipSession() != s || !reflect.DeepEqual(t.plan, *s.plan) || !sameSessionHandle(*t.handle, *s.canonical) {
 		return false
 	}
 	if s.owner != nil && s.owner != t {

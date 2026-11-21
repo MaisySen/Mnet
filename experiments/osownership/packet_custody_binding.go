@@ -124,14 +124,15 @@ func bindPacketCreation(p *packetCustodyPass) (*packetBindingCandidate, error) {
 	v := p.sample
 	s := v.session
 	t := v.owner
-	if s == nil || s.packetCreation != nil || t == nil || s.canonical == nil || s.plan == nil || s.forwardStep != 1 || s.pending != nil || s.poisoned || s.cleanupMode || s.closeAttempted || t.stopStarted || t.fdCloseAttempted || t.clock == nil || t.deadline.expired(t.clock.Now()) || !s.afCreationBound || !custodyHistory(v) || !custodyLink(v, true) {
+	if s == nil || (s.owner != nil && s.owner != t) || s.packetCreation != nil || t == nil || s.canonical == nil || s.plan == nil || s.forwardStep != 1 || s.pending != nil || s.poisoned || s.cleanupMode || s.closeAttempted || t.stopStarted || t.fdCloseAttempted || t.clock == nil || t.deadline.expired(t.clock.Now()) || !s.afCreationBound || !custodyHistory(v) || !custodyLink(v, true) {
 		return nil, ErrConflict
 	}
-	a, ok := t.k.(*inertAdapterProtocol)
-	if !ok || a.session != s || v.identity != s.identity || !sameNamespace(v.namespace, s.identity.Namespace) || !reflect.DeepEqual(v.plan, *s.plan) || !reflect.DeepEqual(t.plan, *s.plan) || v.handle != *s.canonical || !reflect.DeepEqual(v.link.Raw, s.afCreationAttrs) {
+	a, ok := t.k.(transactionLedgerAdapter)
+	if !ok || a.ownershipSession() != s || v.identity != s.identity || !sameNamespace(v.namespace, s.identity.Namespace) || !reflect.DeepEqual(v.plan, *s.plan) || !reflect.DeepEqual(t.plan, *s.plan) || v.handle != *s.canonical || !reflect.DeepEqual(v.link.Raw, s.afCreationAttrs) {
 		return nil, ErrConflict
 	}
 	bound := &packetBindingCandidate{reader: p.reader, owner: t, session: s, identity: v.identity, plan: v.plan, handle: v.handle, original: v.original, generation: v.generation, creation: v.link}
+	s.owner = t // original transaction retained at creation, not first packet
 	s.packetCreation = bound
 	return bound, nil
 }

@@ -25,13 +25,14 @@ type afReplyHeader struct {
 	Truncated           bool
 }
 type afReadPass struct {
-	request  []byte
-	replies  []Datagram
-	headers  []afReplyHeader
-	links    []LinkRecord
-	sys      SysctlSnapshot
-	sequence uint32
-	reader   *inertAFReader
+	request   []byte
+	replies   []Datagram
+	headers   []afReplyHeader
+	links     []LinkRecord
+	sys       SysctlSnapshot
+	sequence  uint32
+	reader    *inertAFReader
+	effective *effectiveV4Observation
 }
 type inertAFReader struct {
 	source   inertAFSource
@@ -55,7 +56,19 @@ func (w *afRecordingWire) Exchange(ctx context.Context, request []byte) ([]Datag
 	return ds, e
 }
 func (r *inertAFReader) read(ctx context.Context) (*afReadPass, error) {
-	if r == nil || r.source == nil || r.localPID == 0 || ctx == nil || ctx.Err() != nil || r.sequence == ^uint32(0) {
+	return r.readPass(ctx, false)
+}
+
+// Source-only extended collector. Legacy pass cannot masquerade as this profile.
+func (r *inertAFReader) readEffective(ctx context.Context) (*afReadPass, error) {
+	return r.readPass(ctx, true)
+}
+func (r *inertAFReader) readPass(ctx context.Context, effective bool) (*afReadPass, error) {
+	if r == nil {
+		return nil, afRequest
+	}
+	r.last = nil
+	if r.source == nil || r.localPID == 0 || ctx == nil || ctx.Err() != nil || r.sequence == ^uint32(0) {
 		return nil, afRequest
 	}
 	// Any new pass invalidates prior pass, even if the new collection fails.
@@ -97,6 +110,9 @@ func (r *inertAFReader) read(ctx context.Context) (*afReadPass, error) {
 			}
 		}
 	}
+	if effective {
+		paths = append(paths, effectiveV4Paths()...)
+	}
 	// Same reader call/pass, after the received dump. Not atomic/stable kernel
 	// proof. No caller can substitute a sys map after the pass is built.
 	sys, e := r.source.readAFWitnesses(ctx, slices.Clone(paths))
@@ -109,6 +125,12 @@ func (r *inertAFReader) read(ctx context.Context) (*afReadPass, error) {
 		}
 	}
 	p.sys = maps.Clone(sys)
+	if effective {
+		p.effective, e = parseEffectiveV4(p.sys)
+		if e != nil {
+			return nil, e
+		}
+	}
 	for _, d := range p.replies {
 		b := d.Bytes
 		for len(b) > 0 {
