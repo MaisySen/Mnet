@@ -1,0 +1,18 @@
+{
+  "exactly_one": true,
+  "exit0": true,
+  "pass": true,
+  "zero_caps": true,
+  "nnp": true,
+  "filter": true,
+  "fds": true,
+  "signal0": true,
+  "joined_namespace": true,
+  "baseline": true,
+  "cleanup": true,
+  "client_reaped": true,
+  "resident_reaped_closed": true,
+  "outer_unchanged": true,
+  "recorded_lifetimes_absent": true,
+  "stderr_empty": true
+}

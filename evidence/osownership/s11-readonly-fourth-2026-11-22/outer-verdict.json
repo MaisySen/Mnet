@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "source": "7fdec1c851359aaabc2694ffd1d840858b3805ef",
+  "binary_sha256": "5c39bc3bfb48910e5facb2159059491d374143f840147f6d83f16668fae7ef34",
+  "outer_uid": 1000,
+  "wrapper": {
+    "pid": 904,
+    "ppid": 902,
+    "start_ticks": 253,
+    "state": "R",
+    "exe": "/usr/bin/python3.10"
+  },
+  "outer_initial": {
+    "device": 7,
+    "inode": 4026531833
+  },
+  "invocations": 1,
+  "driver_pid": 906,
+  "driver_initial": {
+    "pid": 906,
+    "ppid": 904,
+    "start_ticks": 324,
+    "state": "R",
+    "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+  },
+  "last_before_reap": [],
+  "exit_code": 0,
+  "driver_reaped": true,
+  "elapsed_ms": 16.417799,
+  "outer_final": {
+    "device": 7,
+    "inode": 4026531833
+  },
+  "outer_unchanged": true,
+  "recorded_lifetimes": [
+    {
+      "pid": 906,
+      "ppid": 904,
+      "start_ticks": 324,
+      "state": "S",
+      "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+    },
+    {
+      "pid": 915,
+      "ppid": 906,
+      "start_ticks": 324,
+      "state": "R",
+      "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+    },
+    {
+      "pid": 937,
+      "ppid": 915,
+      "start_ticks": 325,
+      "state": "R",
+      "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+    },
+    {
+      "pid": 938,
+      "ppid": 915,
+      "start_ticks": 325,
+      "state": "D",
+      "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+    }
+  ],
+  "post_exact_lifetime_checks": [
+    {
+      "recorded": {
+        "pid": 906,
+        "ppid": 904,
+        "start_ticks": 324,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      },
+      "current": null,
+      "same_lifetime": false
+    },
+    {
+      "recorded": {
+        "pid": 915,
+        "ppid": 906,
+        "start_ticks": 324,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      },
+      "current": null,
+      "same_lifetime": false
+    },
+    {
+      "recorded": {
+        "pid": 937,
+        "ppid": 915,
+        "start_ticks": 325,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      },
+      "current": null,
+      "same_lifetime": false
+    },
+    {
+      "recorded": {
+        "pid": 938,
+        "ppid": 915,
+        "start_ticks": 325,
+        "state": "D",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      },
+      "current": null,
+      "same_lifetime": false
+    }
+  ],
+  "exact_lifetime_survivors": [],
+  "tree_sampling_note": "1ms owned-tree snapshots may miss short-lived children; bounded verdict identities supplement. No name cleanup or signals except timeout safeguard if it fired."
+}

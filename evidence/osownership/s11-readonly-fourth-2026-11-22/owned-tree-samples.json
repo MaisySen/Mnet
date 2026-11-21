@@ -1,0 +1,203 @@
+[
+  {
+    "elapsed_ms": 1.015856,
+    "processes": [
+      {
+        "pid": 906,
+        "ppid": 904,
+        "start_ticks": 324,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 2.704094,
+    "processes": [
+      {
+        "pid": 906,
+        "ppid": 904,
+        "start_ticks": 324,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 4.713202,
+    "processes": [
+      {
+        "pid": 906,
+        "ppid": 904,
+        "start_ticks": 324,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 915,
+        "ppid": 906,
+        "start_ticks": 324,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 5.943597,
+    "processes": [
+      {
+        "pid": 906,
+        "ppid": 904,
+        "start_ticks": 324,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 915,
+        "ppid": 906,
+        "start_ticks": 324,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 7.180144,
+    "processes": [
+      {
+        "pid": 906,
+        "ppid": 904,
+        "start_ticks": 324,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 915,
+        "ppid": 906,
+        "start_ticks": 324,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 8.92639,
+    "processes": [
+      {
+        "pid": 906,
+        "ppid": 904,
+        "start_ticks": 324,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 915,
+        "ppid": 906,
+        "start_ticks": 324,
+        "state": "D",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 937,
+        "ppid": 915,
+        "start_ticks": 325,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 10.67197,
+    "processes": [
+      {
+        "pid": 906,
+        "ppid": 904,
+        "start_ticks": 324,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 915,
+        "ppid": 906,
+        "start_ticks": 324,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 938,
+        "ppid": 915,
+        "start_ticks": 325,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 12.089282,
+    "processes": [
+      {
+        "pid": 906,
+        "ppid": 904,
+        "start_ticks": 324,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 915,
+        "ppid": 906,
+        "start_ticks": 324,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 938,
+        "ppid": 915,
+        "start_ticks": 325,
+        "state": "D",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 13.413347,
+    "processes": [
+      {
+        "pid": 906,
+        "ppid": 904,
+        "start_ticks": 324,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 915,
+        "ppid": 906,
+        "start_ticks": 324,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 15.21613,
+    "processes": [
+      {
+        "pid": 906,
+        "ppid": 904,
+        "start_ticks": 324,
+        "state": "S",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      },
+      {
+        "pid": 915,
+        "ppid": 906,
+        "start_ticks": 324,
+        "state": "R",
+        "exe": "/tmp/bootstrap-readonly-S11-COMPILED-NOT-RUN"
+      }
+    ]
+  },
+  {
+    "elapsed_ms": 16.341122,
+    "processes": []
+  }
+]
