@@ -235,7 +235,7 @@ func runRegistrarAttendedFixture(t *testing.T, s *Store, f *registrarTransportFi
 		}
 		dialDone <- dialResult{err, verified, admitted}
 	}()
-	localWithdrawalClose := false
+	var localClose attendedLocalCloseEvidence
 	if withdraw {
 		for {
 			pendingRaw, err := os.ReadFile(filepath.Join(dir, "native-attended-pending.json"))
@@ -290,8 +290,12 @@ func runRegistrarAttendedFixture(t *testing.T, s *Store, f *registrarTransportFi
 			}
 		}
 		// The revoked viewer retires its own dial; a removed WireGuard key cannot promise delivery of a remote FIN.
-		conn.Close()
-		localWithdrawalClose = true
+		closeCtx, stopClose := context.WithTimeout(context.Background(), time.Second)
+		localClose, err = closeAttendedOwnedConn(closeCtx, conn)
+		stopClose()
+		if err != nil {
+			t.Fatal("local withdrawal connection close did not join", err)
+		}
 		marker, _ := json.Marshal(map[string]any{"version": 1, "fake_ui": true, "withdrawn": true})
 		if err := writeRegistrarFixtureAtomic(dir, "peer-attended-withdrawn.json", marker); err != nil {
 			t.Fatal(err)
@@ -311,10 +315,10 @@ func runRegistrarAttendedFixture(t *testing.T, s *Store, f *registrarTransportFi
 	transportClass := ""
 	if strings.HasPrefix(resultDial.err.Error(), "session: refused:") {
 		transportClass = "explicit-protocol-refusal"
-	} else if withdraw && localWithdrawalClose && errors.Is(resultDial.err, net.ErrClosed) {
-		transportClass = "local-close-after-verified-store-withdrawal"
+	} else if withdraw && errors.Is(resultDial.err, net.ErrClosed) {
+		transportClass = "closed-read-after-verified-withdrawal"
 	} else if withdraw && (errors.Is(resultDial.err, io.EOF) || errors.Is(resultDial.err, io.ErrUnexpectedEOF) || errors.Is(resultDial.err, net.ErrClosed)) {
-		transportClass = "closed-after-authority-withdrawal"
+		transportClass = "eof-after-verified-withdrawal"
 	} else {
 		t.Fatalf("unaccepted transport result for %s: %v", caseName, resultDial.err)
 	}
@@ -330,7 +334,7 @@ func runRegistrarAttendedFixture(t *testing.T, s *Store, f *registrarTransportFi
 			t.Fatal(err)
 		}
 	} else {
-		transport, _ := json.Marshal(map[string]any{"version": 1, "fake_ui": true, "case": caseName, "transportClass": transportClass, "protocolRefused": transportClass == "explicit-protocol-refusal", "acceptedReplyVerifierCalled": false, "joined": true})
+		transport, _ := json.Marshal(map[string]any{"version": 1, "fake_ui": true, "case": caseName, "localClose": localClose, "transportClass": transportClass, "protocolRefused": transportClass == "explicit-protocol-refusal", "acceptedReplyVerifierCalled": false, "joined": true})
 		if err := writeRegistrarFixtureAtomic(dir, "peer-attended-transport.json", transport); err != nil {
 			t.Fatal(err)
 		}
@@ -409,10 +413,67 @@ func runRegistrarAttendedFixture(t *testing.T, s *Store, f *registrarTransportFi
 		finalFields["case"] = caseName
 		finalFields["promptCancelled"] = true
 		finalFields["transportClass"] = transportClass
+		finalFields["localClose"] = localClose
 	}
 	final, _ := json.Marshal(finalFields)
 	if err := writeRegistrarFixtureAtomic(dir, "outcome.json", final); err != nil {
 		t.Fatal(err)
 	}
 	t.Log("actual enrolled two-stack WireGuard/proofnet attended protocol refusal; exact current pins; fakeUI denial; no capture/input; owners joined")
+}
+
+// This evidence records the LOCAL call and its join, not which close won a read race.
+type attendedLocalCloseEvidence struct {
+	Invoked   bool  `json:"invoked"`
+	Completed bool  `json:"completed"`
+	Joined    bool  `json:"joined"`
+	ElapsedMS int64 `json:"elapsedMS"`
+}
+
+func closeAttendedOwnedConn(ctx context.Context, c net.Conn) (attendedLocalCloseEvidence, error) {
+	started := time.Now()
+	e := attendedLocalCloseEvidence{Invoked: true}
+	done := make(chan error, 1)
+	go func() { done <- c.Close() }()
+	select {
+	case <-done:
+		e.Completed = true
+		e.Joined = true
+		e.ElapsedMS = time.Since(started).Milliseconds()
+		return e, nil
+	case <-ctx.Done():
+		return e, ctx.Err()
+	}
+}
+
+// Independent local-ownership control: remote end remains open and never sends
+// bytes or FIN. This is NOT an enrolled-WireGuard or remote-delivery test.
+func TestAttendedLocalCloseJoinsWithoutRemoteClose(t *testing.T) {
+	local, remote := net.Pipe()
+	defer remote.Close()
+	defer local.Close()
+	entered := make(chan struct{})
+	readDone := make(chan error, 1)
+	go func() { close(entered); var b [1]byte; _, err := local.Read(b[:]); readDone <- err }()
+	<-entered
+	select {
+	case <-readDone:
+		t.Fatal("reader ended before localClose")
+	case <-time.After(20 * time.Millisecond):
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	e, err := closeAttendedOwnedConn(ctx, local)
+	if err != nil || !e.Invoked || !e.Completed || !e.Joined || e.ElapsedMS >= 1000 {
+		t.Fatalf("local close not observed/joined: %+v %v", e, err)
+	}
+	select {
+	case err := <-readDone:
+		if !errors.Is(err, io.ErrClosedPipe) {
+			t.Fatalf("unexpected local blocked-read result: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("owned blocked read did not join")
+	}
+	// Remote is still open here, no remote Close has happened.
 }
