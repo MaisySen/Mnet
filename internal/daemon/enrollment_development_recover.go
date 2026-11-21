@@ -15,10 +15,11 @@ import (
 // DevelopmentRecoveryResult never exposes receipt blobs, keys or authority.
 // HistoricalRecovered does not mean joining was installed or network verified.
 type DevelopmentRecoveryResult struct {
-	Inspection          DevelopmentRecoveryInspection `json:"inspection"`
-	HistoricalRecovered bool                          `json:"historicalRecovered"`
-	JoiningFinalized    bool                          `json:"joiningFinalized"`
-	NetworkVerified     bool                          `json:"networkVerified"`
+	Inspection           DevelopmentRecoveryInspection `json:"inspection"`
+	HistoricalRecovered  bool                          `json:"historicalRecovered"`
+	BookkeepingCompleted bool                          `json:"bookkeepingCompleted"`
+	JoiningFinalized     bool                          `json:"joiningFinalized"`
+	NetworkVerified      bool                          `json:"networkVerified"`
 }
 
 func RecoverDisposableEnrollment(ctx context.Context, root string) (DevelopmentRecoveryResult, error) {
@@ -32,10 +33,10 @@ func recoverDisposableEnrollment(ctx context.Context, root string, historyOut *c
 		return out, errEnrollmentContextStale
 	}
 	out.Inspection = inspected
-	if inspected.JoiningSaved {
+	if inspected.JoiningSaved && !inspected.BookkeepingPending {
 		return out, nil
 	}
-	if inspected.Recovery != "authenticated-history" && inspected.Recovery != "prepared-original-state" {
+	if inspected.Recovery != "authenticated-history" && inspected.Recovery != "prepared-original-state" && inspected.Recovery != "saved-bookkeeping-pending" {
 		return out, pending.ErrPending
 	}
 	dir := filepath.Join(root, "native")
@@ -53,6 +54,38 @@ func recoverDisposableEnrollment(ctx context.Context, root string, historyOut *c
 			return errEnrollmentContextStale
 		}
 		return nil
+	}
+
+	if inspected.BookkeepingPending {
+		d, err := New(Config{StateDir: dir})
+		if err != nil {
+			return out, err
+		}
+		defer d.Close()
+		if err := check(d); err != nil {
+			return out, err
+		}
+		// Existing exact document/revision correlation only, never a lookup,
+		// State publication, credential construction, current-map check or renewal.
+		before, err := readDisposableEnrollmentFile(d.stateOwner.path, 1<<20)
+		if err != nil {
+			return out, err
+		}
+		if err := d.reconcileNativeFinalization(); err != nil {
+			return out, err
+		}
+		after, err := readDisposableEnrollmentFile(d.stateOwner.path, 1<<20)
+		if err != nil || sha256.Sum256(before) != sha256.Sum256(after) {
+			return out, errEnrollmentContextStale
+		}
+		d.Close()
+		current, err := InspectDisposableEnrollment(root)
+		if err != nil {
+			return out, err
+		}
+		out.Inspection = current
+		out.BookkeepingCompleted = true
+		return out, nil
 	}
 	bounded, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()

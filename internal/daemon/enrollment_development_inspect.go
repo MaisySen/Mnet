@@ -23,6 +23,7 @@ import (
 type DevelopmentRecoveryInspection struct {
 	Phase              string `json:"phase"`
 	Recovery           string `json:"recovery"`
+	BookkeepingPending bool   `json:"bookkeepingPending"`
 	JoiningSaved       bool   `json:"joiningSaved"`
 	NetworkVerified    bool   `json:"networkVerified"`
 	OriginalLeaseEnded bool   `json:"originalLeaseEnded"`
@@ -138,11 +139,17 @@ func inspectDisposableEnrollment(root string, binding *developmentInspectionBind
 	}
 	out := DevelopmentRecoveryInspection{Phase: status.Phase, Recovery: status.Recovery, OriginalLeaseEnded: status.OriginalAccessExpiresAtMS > 0 && time.Now().UnixMilli() >= status.OriginalAccessExpiresAtMS}
 	if state.native != nil {
-		if state.native.PolicyRevision != base64.RawURLEncoding.EncodeToString(sha256Sum(nativePolicy)) || !pending.CheckDevelopmentSavedDATA(pendingRaw, state.native.Document, state.native.OriginalStateRevision, state.native.PolicyRevision) {
+		completed := pending.CheckDevelopmentSavedDATA(pendingRaw, state.native.Document, state.native.OriginalStateRevision, state.native.PolicyRevision)
+		prepared := pending.CheckDevelopmentBookkeepingDATA(pendingRaw, state.native.Document, state.native.OriginalStateRevision, state.native.PolicyRevision)
+		if state.native.PolicyRevision != base64.RawURLEncoding.EncodeToString(sha256Sum(nativePolicy)) || (!completed && !prepared) {
 			return empty, errEnrollmentContextStale
 		}
 		out.JoiningSaved = true
 		out.Recovery = "none-saved"
+		if prepared {
+			out.BookkeepingPending = true
+			out.Recovery = "saved-bookkeeping-pending"
+		}
 		out.OriginalLeaseEnded = time.Now().UnixMilli() >= state.native.Document.Receipt.AccessExpiresAtMS
 	}
 	if owner.Check() != nil || journalOwner.Check() != nil {

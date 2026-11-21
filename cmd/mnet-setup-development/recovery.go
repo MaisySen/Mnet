@@ -24,6 +24,14 @@ func writeDevelopmentRecoveryPage(root string, i daemon.DevelopmentRecoveryInspe
 			body = "The existing prepared attempt was finalized within its original approved interval. This did not start or verify a network."
 		}
 	}
+	if i.BookkeepingPending {
+		title = "Joining saved. Bookkeeping pending. Not connected."
+		body = "The exact original joining document is already saved, but its local completion bookkeeping is pending. Inspection did not repair it or verify a current network."
+	}
+	if r != nil && r.BookkeepingCompleted {
+		title = "Original bookkeeping completed. Not connected."
+		body = "Only completion bookkeeping for the exact already-saved joining document was finished. The original State, key, receipt and expiry were unchanged. No service was contacted and no network was verified or started."
+	}
 	if i.OriginalLeaseEnded {
 		body += " The original approved interval has ended. There are no network controls."
 	}

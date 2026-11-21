@@ -68,3 +68,18 @@ func CheckDevelopmentSavedDATA(raw []byte, doc contract.NativeCredentialDocument
 	expected, f, err := finalizationDocument(r)
 	return err == nil && expected == doc && f.OriginalStateRevision == original && f.PolicyRevision == policy
 }
+
+// CheckDevelopmentBookkeepingDATA admits only the exact already-published
+// document with original prepared bookkeeping. It confers no new authority.
+func CheckDevelopmentBookkeepingDATA(raw []byte, doc contract.NativeCredentialDocument, original, policy string) bool {
+	var r record
+	if !strictRecord(raw, &r) || !validRecord(r) || r.Phase != "native-finalization-prepared" {
+		return false
+	}
+	canonical, _ := json.Marshal(r)
+	if !bytes.Equal(raw, canonical) {
+		return false
+	}
+	expected, f, err := finalizationDocument(r)
+	return err == nil && expected == doc && f.OriginalStateRevision == original && f.PolicyRevision == policy
+}
