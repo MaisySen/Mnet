@@ -7,6 +7,7 @@ import (
 	"golang.org/x/sys/unix"
 	"os"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -80,18 +81,18 @@ func verifyClientSandboxSource() error {
 	if !kernelExecutionReleased && !readOnlyEvidenceBuild {
 		return ErrExecutorUnreleased
 	}
-	b, e := os.ReadFile("/proc/self/status")
-	if e != nil {
-		return e
-	}
-	if e = validateClientStatus(string(b)); e != nil {
-		return e
-	}
 	fds, e := clientFDInventorySource()
 	if e != nil {
 		return e
 	}
 	if e = validateFDAllowlist(fds); e != nil {
+		return e
+	}
+	b, e := rawReadBounded("/proc/self/status", 16384)
+	if e != nil {
+		return e
+	}
+	if e = validateClientStatus(string(b)); e != nil {
 		return e
 	}
 	if os.Getppid() <= 1 {
@@ -126,31 +127,99 @@ func validateClientStatus(status string) error {
 	return nil
 }
 
+// Strict pre-app inventory uses no os.File/poll registration. The only
+// exclusion is the exact directory fd opened here under our own custody.
+// Any preexisting runtime poll fd is NOT silently allowed: harness failure.
 func clientFDInventorySource() ([]int, error) {
-	entries, e := os.ReadDir("/proc/self/fd")
+	fd, e := unix.Open("/proc/self/fd", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if e != nil {
 		return nil, e
 	}
-	var out []int
-	for _, entry := range entries {
-		n, e := strconv.Atoi(entry.Name())
+	defer unix.Close(fd)
+	buf := make([]byte, 8192)
+	var names []string
+	total := 0
+	for {
+		n, e := unix.Getdents(fd, buf)
+		if e == unix.EINTR {
+			continue
+		}
 		if e != nil {
 			return nil, e
 		}
-		if _, e = os.Readlink("/proc/self/fd/" + entry.Name()); os.IsNotExist(e) {
+		if n == 0 {
+			break
+		}
+		total += n
+		if total > 65536 {
+			return nil, errors.New("fd inventory cap")
+		}
+		used, _, next := unix.ParseDirent(buf[:n], -1, nil)
+		if used != n {
+			return nil, errors.New("invalid dirent framing")
+		}
+		names = append(names, next...)
+	}
+	return parseOwnedFDInventory(names, fd)
+}
+func parseOwnedFDInventory(names []string, ownedDirectoryFD int) ([]int, error) {
+	if ownedDirectoryFD < 0 {
+		return nil, ErrConflict
+	}
+	var out []int
+	excluded := false
+	seen := map[int]bool{}
+	for _, name := range names {
+		if name == "." || name == ".." {
 			continue
-		} else if e != nil {
-			return nil, e
+		}
+		n, e := strconv.Atoi(name)
+		if e != nil || n < 0 || seen[n] {
+			return nil, ErrConflict
+		}
+		seen[n] = true
+		if n == ownedDirectoryFD {
+			excluded = true
+			continue
 		}
 		out = append(out, n)
 	}
+	if !excluded {
+		return nil, errors.New("owned inventory fd absent")
+	}
+	sort.Ints(out)
 	return out, nil
+}
+func rawReadBounded(path string, limit int) ([]byte, error) {
+	fd, e := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if e != nil {
+		return nil, e
+	}
+	defer unix.Close(fd)
+	buf := make([]byte, limit+1)
+	total := 0
+	for {
+		n, e := unix.Read(fd, buf[total:])
+		if e == unix.EINTR {
+			continue
+		}
+		if e != nil {
+			return nil, e
+		}
+		total += n
+		if total > limit {
+			return nil, errors.New("raw proc read cap")
+		}
+		if n == 0 {
+			return buf[:total], nil
+		}
+	}
 }
 func validateFDAllowlist(fds []int) error {
 	seen := map[int]bool{}
 	for _, n := range fds {
 		if n < 0 || n > 2 || seen[n] {
-			return errors.New("client inherited descriptor outside allowlist")
+			return &FDInventoryHarnessError{}
 		}
 		seen[n] = true
 	}
@@ -173,4 +242,10 @@ func currentSeccompFilterCount() (int, error) {
 		}
 	}
 	return 0, errors.New("seccomp filter count unavailable")
+}
+
+type FDInventoryHarnessError struct{}
+
+func (*FDInventoryHarnessError) Error() string {
+	return "harness: strict pre-app FD inventory has unexpected descriptor; ownership unverified"
 }

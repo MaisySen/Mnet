@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"reflect"
 	"strconv"
 	"strings"
 	"syscall"
@@ -107,6 +108,10 @@ func runReadOnlyBootstrapEvidence(ctx context.Context, ns *namespaceCustody) (v 
 	client, e := runReadOnlyClientAndJoin(ctx, ns)
 	if e != nil {
 		v.Stage = "client-bootstrap"
+		var failure *StageFailure
+		if errors.As(e, &failure) {
+			v.FailureClass = failure.Class
+		}
 		return v, e
 	}
 	after, e := ReadStableInventory(ctx, residentNetlink{ns}, ns.checkCurrent)
@@ -160,9 +165,7 @@ func runReadOnlyClientAndJoin(ctx context.Context, ns *namespaceCustody) (Client
 	c.Stdout = &stdout
 	c.Stderr = &cappedEvidenceBuffer{}
 	c.WaitDelay = 250 * time.Millisecond
-	if e = c.Run(); e != nil {
-		return out, e
-	}
+	runErr := c.Run()
 	d := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
 	d.DisallowUnknownFields()
 	if e = d.Decode(&out); e != nil {
@@ -171,6 +174,12 @@ func runReadOnlyClientAndJoin(ctx context.Context, ns *namespaceCustody) (Client
 	var extra any
 	if d.Decode(&extra) != io.EOF {
 		return out, ErrConflict
+	}
+	if out.FailureClass == "harness-fd-inventory" {
+		return out, &StageFailure{Stage: "client-bootstrap", Class: "harness", Cause: errors.Join(runErr, &FDInventoryHarnessError{})}
+	}
+	if runErr != nil {
+		return out, runErr
 	}
 	if out.ParentPID != os.Getpid() {
 		return out, ErrConflict
@@ -190,11 +199,21 @@ func (b *cappedEvidenceBuffer) Write(p []byte) (int, error) {
 	return b.Buffer.Write(p)
 }
 func emitClientBootstrapEvidence() error {
-	if e := verifyClientSandboxSource(); e != nil {
+	// FIRST final-client evidence operation: raw fd enumeration before any
+	// os.ReadFile/os.Open/JSON stdout can initialize runtime poll descriptors.
+	fds, e := clientFDInventorySource()
+	if e != nil {
 		return e
 	}
-	b, e := os.ReadFile("/proc/self/status")
+	if e = validateFDAllowlist(fds); e != nil {
+		_ = json.NewEncoder(os.Stdout).Encode(ClientBootstrapEvidence{FailureClass: "harness-fd-inventory", FDs: fds})
+		return e
+	}
+	b, e := rawReadBounded("/proc/self/status", 16384)
 	if e != nil {
+		return e
+	}
+	if e = validateClientStatus(string(b)); e != nil {
 		return e
 	}
 	status := map[string]string{}
@@ -208,13 +227,19 @@ func emitClientBootstrapEvidence() error {
 			status[kv[0]] = strings.TrimSpace(kv[1])
 		}
 	}
-	fds, e := clientFDInventorySource()
+	ns, e := rawCurrentNamespace()
 	if e != nil {
 		return e
 	}
-	ns, e := numericCurrentNamespace()
+	finalFDs, e := clientFDInventorySource()
 	if e != nil {
 		return e
+	}
+	if e = validateFDAllowlist(finalFDs); e != nil {
+		return e
+	}
+	if !reflect.DeepEqual(fds, finalFDs) {
+		return &FDInventoryHarnessError{}
 	}
 	filterBaseline, e := strconv.Atoi(os.Getenv("MNO_CLIENT_FILTER_BASELINE"))
 	if e != nil || filterBaseline < 0 {
@@ -246,6 +271,9 @@ func validateClientEvidence(c ClientBootstrapEvidence, target Namespace) error {
 	if e != nil || c.FilterBaseline < 0 || filterCount != c.FilterBaseline+1 {
 		return errors.New("new signal barrier not accounted")
 	}
+	if c.FailureClass != "" {
+		return ErrConflict
+	}
 	if c.PID <= 1 || c.ParentPID <= 1 || c.UID != 0 || c.Namespace.Device != target.Device || c.Namespace.Inode != target.Inode || c.ProbeDenied["owner-signal0"] != int(unix.EPERM) {
 		return ErrConflict
 	}
@@ -267,4 +295,17 @@ func validateBootstrapEvidence(b *BootstrapReadOnlyEvidence, outer Namespace) er
 		}
 	}
 	return nil
+}
+
+func rawCurrentNamespace() (Namespace, error) {
+	fd, e := unix.Open("/proc/thread-self/ns/net", unix.O_RDONLY|unix.O_CLOEXEC, 0)
+	if e != nil {
+		return Namespace{}, e
+	}
+	defer unix.Close(fd)
+	var s unix.Stat_t
+	if e = unix.Fstat(fd, &s); e != nil {
+		return Namespace{}, e
+	}
+	return Namespace{Device: uint64(s.Dev), Inode: s.Ino}, nil
 }

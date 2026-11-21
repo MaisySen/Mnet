@@ -14,6 +14,7 @@ type BootstrapReadOnlyEvidence struct {
 	LinkCount         int                     `json:"link_count"`
 }
 type ClientBootstrapEvidence struct {
+	FailureClass   string            `json:"failure_class,omitempty"`
 	FilterBaseline int               `json:"filter_baseline"`
 	PID            int               `json:"pid"`
 	ParentPID      int               `json:"parent_pid"`

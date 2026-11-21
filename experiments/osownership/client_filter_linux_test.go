@@ -102,3 +102,22 @@ func TestSecurebitsValueActuallyApplied(t *testing.T) {
 		t.Fatal("exact tested securebits not applied")
 	}
 }
+func TestTgkillExactTargetEqualitySameSignalDecisive(t *testing.T) {
+	args := [6]uint64{1234, 1234, uint64(unix.SIGURG)}
+	if evalEvidenceFilter(t, unix.SYS_TGKILL, unix.AUDIT_ARCH_X86_64, args) != unix.SECCOMP_RET_ALLOW {
+		t.Fatal("self runtime signal failed")
+	}
+	for _, target := range []uint64{0, 1233, 1235, ^uint64(0), uint64(1234) | 1<<32} {
+		args[0] = target
+		if got := evalEvidenceFilter(t, unix.SYS_TGKILL, unix.AUDIT_ARCH_X86_64, args); got != unix.SECCOMP_RET_ERRNO|uint32(unix.EPERM) {
+			t.Fatal("tgkill target equality missing", target, got)
+		}
+	}
+}
+func TestRemainingDenySyscallsIndividually(t *testing.T) {
+	for _, nr := range []uint32{unix.SYS_UNSHARE, unix.SYS_PROCESS_VM_READV, unix.SYS_PIDFD_GETFD} {
+		if evalEvidenceFilter(t, nr, unix.AUDIT_ARCH_X86_64, [6]uint64{}) != unix.SECCOMP_RET_ERRNO|uint32(unix.EPERM) {
+			t.Fatal("deny syscall missing", nr)
+		}
+	}
+}

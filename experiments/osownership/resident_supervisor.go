@@ -51,7 +51,7 @@ func DecodeVerdict(r io.Reader, ns Namespace) (Verdict, error) {
 	}
 	if v.Result == "fail" {
 		switch v.FailureClass {
-		case "decoder", "baseline", "sysctl-applicability", "custody", "cleanup", "runner":
+		case "harness", "decoder", "baseline", "sysctl-applicability", "custody", "cleanup", "runner":
 			return v, fmt.Errorf("conformance failure stage=%s class=%s cleanup=%t", v.Stage, v.FailureClass, v.CleanupConfirmed)
 		default:
 			return v, ErrConflict
