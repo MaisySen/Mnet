@@ -597,6 +597,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 			t.Fatal(err)
 		}
 		go func() {
+			defer func() { _ = writeRegistrarFixtureAtomic(dir, "installed-output-ended", []byte("ended")) }()
 			scanner := bufio.NewScanner(pipe)
 			scanner.Buffer(make([]byte, 4096), 32768)
 			for scanner.Scan() {
@@ -645,6 +646,43 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	var postRemovalCheckedAt time.Time
 	var postRemovalVerified bool
 	for {
+		if os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY") != "" && os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") != "" && os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") != "success" {
+			if _, err := os.Stat(filepath.Join(dir, "installed-cancel-request")); err == nil {
+				_ = nativeCmd.Process.Signal(os.Interrupt)
+			}
+			if _, err := os.Stat(filepath.Join(dir, "installed-output-ended")); err == nil {
+				err := nativeCmd.Wait()
+				nativeWaited = true
+				if err == nil {
+					t.Fatal("expected stopped installed attempt succeeded")
+				}
+				snapshot, readErr := os.ReadFile(filepath.Join(dir, "installed-setup", "native", "state.json"))
+				if readErr != nil {
+					t.Fatal(readErr)
+				}
+				var image map[string]any
+				if json.Unmarshal(snapshot, &image) != nil || image["node_id"] != "" || image["node_token"] != "" || image["native_enrollment_v1"] != nil {
+					t.Fatal("stopped installed attempt changed enrollment State shape")
+				}
+				if len(s.data.Nodes) != 2 {
+					t.Fatal("stopped installed attempt committed a node")
+				}
+				result, readErr := os.ReadFile(filepath.Join(dir, "installed-setup", "setup-result.html"))
+				if readErr != nil || bytes.Contains(result, []byte("<h1>Joining saved.")) {
+					t.Fatal("stopped installed attempt claimed success", readErr)
+				}
+				for id := range s.data.Nodes {
+					if err := s.DeleteNode(id); err != nil {
+						t.Fatal(err)
+					}
+				}
+				outcome, _ := json.Marshal(map[string]any{"developmentStopped": true, "noNativeCredential": true, "noRegistrarNode": true, "inputAuthorized": false})
+				if err := writeRegistrarFixtureAtomic(dir, "outcome.json", outcome); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+		}
 		if transport != nil {
 			s.mu.Lock()
 			var n *netmap.Node

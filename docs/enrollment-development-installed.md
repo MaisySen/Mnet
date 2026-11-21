@@ -88,3 +88,37 @@ first run lacked a disposable text/html association and failed to open it; the
 corrected fixture sets that association only in its private HOME and passes with
 clean session exit. Generic failure-page code exists but actual decline/cancel
 browser controls are still pending, so the failure path is not accepted.
+
+### Actual stopped paths and current regression result
+
+The actual installed system-browser fixture separately passes success, browser
+Decline/Return, explicit native SIGINT while consent is shown, and changing native
+policy before approval/Return. The changed-policy callback refuses; the fixture
+then explicitly cancels that suspended owner. All four final runs exit0 with
+joined disposable session/X server and reject a late callback connection. The
+three stopped cases assert only two earlier API source exchanges/reserves, no
+third registrar node, no native_enrollment_v1 credential, and no success page.
+Decline/cancel result pixels were directly inspected, readable without clipping.
+
+The status fallback now requires THIS invocation's owned waiting-for-browser
+event, not merely an existing native/state.json path. Refusing an existing root
+must not create a result there. Once the actual saved event is observed, later
+output/open errors cannot replace it with a failure page. Generic stopped copy
+preserves partial-outcome uncertainty; it does not promise rollback or invite a
+new attempt. No success/failure page includes keys, credentials or receipts.
+
+Current validation: four final actual installed browser modes with late socket
+closure pass, full12 crossapp passes, tagged daemon race, default fullrace/vet/
+build and taggedvet pass. Companion changed-file ESLint and strict handoff-page
+TypeScript pass. Strict affected-entry check including the browser fixture
+aborts at768MiB heap (exit134), so that check is NOT passed; retain its exact
+config and failure log. Browser execution is not a replacement for that type
+check. No independent review has yet accepted this new caller or its UX.
+
+The command currently creates an owned daemon object in its explicit process,
+not an installed background service. The fixture registrar route uses existing
+private test-only composition. Ordinary installed Mnet remains unchanged. This
+is development installed-flow evidence, not finished consumer setup or a usable
+connected peer session. Automatic recovery, eventual post-save uncertainty
+reconciliation, real-account configuration, production leases/lifecycle, startup
+handshake compatibility, OS/physical pairing and release stay unresolved.

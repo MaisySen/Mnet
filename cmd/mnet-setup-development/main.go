@@ -32,8 +32,13 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	encoder := json.NewEncoder(os.Stdout)
+	ownedAttempt, saved, declined := false, false, false
 	writeStatus := func(joined bool, peers int) error {
-		title, body := "Setup did not finish", "No completed joining result was reported. The original local attempt is retained. Do not assume this computer is joined or connected."
+		title, body := "Setup did not finish", "Setup stopped without a confirmed completion result. A partial joining result may have been saved. The original local attempt is retained. Do not assume this computer is connected or start a replacement attempt."
+		if declined {
+			title = "Computer not approved"
+			body = "You declined this joining request. This setup did not submit a device proof or save a joining credential. No tunnel, screen, keyboard or mouse access was started."
+		}
 		if joined {
 			title = "Joining saved. Not connected."
 			body = fmt.Sprintf("Mnet verified this computer and saved its joining result. The current map checked during setup contained %d live peers. This is a historical setup result, not a live connection indicator. No tunnel, screen, keyboard or mouse access was started.", peers)
@@ -60,7 +65,14 @@ func main() {
 		return nil
 	}
 	err := daemon.RunDisposableEnrollment(ctx, *root, func(event daemon.DevelopmentEnrollmentEvent) error {
+		if event.Stage == "waiting-for-browser" {
+			ownedAttempt = true
+		}
+		if event.Stage == "declined" {
+			declined = true
+		}
 		if event.Stage == "joined-not-connected" {
+			saved = true
 			if err := writeStatus(true, event.Peers); err != nil {
 				return err
 			}
@@ -92,7 +104,7 @@ func main() {
 	if err != nil {
 		// Only a configured disposable root with an owned native attempt may
 		// receive a historical failure page. Never create in a refused root.
-		if info, statErr := os.Lstat(filepath.Join(*root, "native", "state.json")); statErr == nil && info.Mode().IsRegular() {
+		if ownedAttempt && !saved {
 			_ = writeStatus(false, 0)
 		}
 		fmt.Fprintln(os.Stderr, err)
