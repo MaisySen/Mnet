@@ -604,6 +604,9 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 							postRemovalBarrier = true
 						}
 					} else {
+						if transport.reverseSent < 5 {
+							transport.sendRevokedReverse(t, *n)
+						}
 						select {
 						case <-transport.tun.Inbound:
 							t.Fatal("new encrypted payload decrypted after native removed revoked peer")
@@ -613,8 +616,8 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 							if postRemovalCheckedAt.IsZero() {
 								postRemovalCheckedAt = time.Now()
 							}
-							if !postRemovalVerified && time.Since(postRemovalCheckedAt) >= 200*time.Millisecond {
-								if err := os.WriteFile(filepath.Join(dir, "transport-post-removal-verified"), []byte("five new packets denied after actual map removal"), 0600); err != nil {
+							if !postRemovalVerified && transport.reverseSent == 5 && time.Since(postRemovalCheckedAt) >= 200*time.Millisecond {
+								if err := os.WriteFile(filepath.Join(dir, "transport-post-removal-verified"), []byte("five new packets per direction denied after actual map removal"), 0600); err != nil {
 									t.Fatal(err)
 								}
 								postRemovalVerified = true
@@ -656,7 +659,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	}
 
 	if transportMode.Load() {
-		if transport == nil || !transport.revoked || transportReceivedAtRevoke == 0 || !nativeOutcome.NativeEncryptedDirect || !postRemovalVerified || transportNativeID == "" || len(s.data.Nodes) != 2 {
+		if transport == nil || !transport.revoked || transportReceivedAtRevoke == 0 || transport.reverseSent != 5 || !nativeOutcome.NativeEncryptedDirect || !postRemovalVerified || transportNativeID == "" || len(s.data.Nodes) != 2 {
 			t.Fatal("connected encrypted direct transport/revocation evidence absent")
 		}
 		if _, err := s.registrarCredentialMap(ref, secret); err == nil {

@@ -163,14 +163,28 @@ drained:
 		case tun.Outbound <- tuntest.Ping(netip.MustParseAddr(peerIP), netip.MustParseAddr(m.Self.IPv4)):
 		default:
 		}
-		time.Sleep(20 * time.Millisecond)
+		select {
+		case <-packets:
+			t.Fatal("revoked peer encrypted payload reached native after removal")
+		case <-time.After(20 * time.Millisecond):
+		}
 	}
 	if err := writeFixtureAtomic(dir, "native-transport-revocation-checked", []byte("actual map removed peer from WireGuard")); err != nil {
 		t.Fatal(err)
 	}
 	deadline = time.Now().Add(3 * time.Second)
 	for {
+		select {
+		case <-packets:
+			t.Fatal("revoked peer encrypted payload reached native during post-removal observation")
+		default:
+		}
 		if _, err := os.Stat(filepath.Join(dir, "transport-post-removal-verified")); err == nil {
+			select {
+			case <-packets:
+				t.Fatal("revoked peer late encrypted payload reached native")
+			default:
+			}
 			break
 		}
 		if time.Now().After(deadline) {

@@ -20,13 +20,15 @@ import (
 )
 
 type registrarTransportFixture struct {
-	tun      *tuntest.ChannelTUN
-	bind     *bind.Bind
-	dev      *device.Device
-	lastKey  string
-	received int
-	sent     bool
-	revoked  bool
+	tun         *tuntest.ChannelTUN
+	bind        *bind.Bind
+	dev         *device.Device
+	lastKey     string
+	received    int
+	sent        bool
+	revoked     bool
+	selfIP      string
+	reverseSent int
 }
 
 func newRegistrarTransportFixture(t *testing.T, key [32]byte) *registrarTransportFixture {
@@ -60,6 +62,7 @@ func (f *registrarTransportFixture) tick(t *testing.T, m *netmap.Map, native net
 	if !found {
 		t.Fatal("current first-peer map omitted native transport authorization")
 	}
+	f.selfIP = m.Self.IPv4
 	if f.lastKey == "" {
 		key, err := base64.StdEncoding.Strict().DecodeString(native.PubKey)
 		if err != nil || len(key) != 32 {
@@ -90,5 +93,31 @@ drained:
 			f.sent = true
 		default:
 		}
+	}
+}
+
+// The revoked test device deliberately retains its old authorized native peer
+// and working session. Only native's actual fresh-map removal may deny receive.
+func (f *registrarTransportFixture) sendRevokedReverse(t *testing.T, native netmap.Node) {
+	t.Helper()
+	if !f.revoked || f.lastKey != native.PubKey || f.selfIP == "" {
+		t.Fatal("reverse revoked sender identity mismatch")
+	}
+	key, err := base64.StdEncoding.Strict().DecodeString(native.PubKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ipc, err := f.dev.IpcGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(ipc, "public_key="+hex.EncodeToString(key)) || !strings.Contains(ipc, "allowed_ip="+native.IPv4+"/32") {
+		t.Fatal("revoked sender no longer retains exact native peer/destination")
+	}
+	select {
+	case f.tun.Outbound <- tuntest.Ping(netip.MustParseAddr(native.IPv4), netip.MustParseAddr(f.selfIP)):
+		f.reverseSent++
+	case <-time.After(time.Second):
+		t.Fatal("revoked peer reverse send not enqueued")
 	}
 }

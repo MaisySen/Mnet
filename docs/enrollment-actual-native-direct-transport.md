@@ -38,9 +38,17 @@ After bidirectional payload receipt, actual Store DeleteNode removes the first
 transport peer. The native owner fetches another current map, asserts the revoked
 ID is absent and runs actual applyMap. Its real WireGuard IPC must no longer
 contain the revoked public key. Test-only drain markers separate old already-
-decrypted/in-flight packets from five newly requested outbound payloads AFTER
+decrypted/in-flight packets from five new native-to-revoked-peer payloads AFTER
 removal. The revoked device decrypts none during the post-removal observation
-window. The remaining current map still has the other approved peer. Revoked
+window. A separate test extension also enqueues five revoked-peer-to-native
+payloads using the still-configured revoked device and the correct native mesh
+destination. It checks that sender still retains the exact native key/allowed
+IP and that native decrypts none during sends or the observation window. A
+scratch negative control preserves the native peer/session, bypasses only the
+absence assertion and suppresses native post-removal outbound sends. The new
+native receive assertion then fails on a decrypted revoked-peer payload. These
+finite 200ms/20ms observation windows are heuristic local test evidence, not
+latency bounds or continuous revocation guarantees. The remaining current map still has the other approved peer. Revoked
 credentials remain denied by the actual current endpoint; final deletion leaves
 three revoked retained records, zero nodes and zero legacy node tokens.
 
