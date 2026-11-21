@@ -1,60 +1,89 @@
-# Disposable connected-session increment, work in progress
+# Explicit disposable connected-session increment, not accepted
 
-This is separate from the accepted historical joining result. The accepted
-standalone setup command still finishes without starting networking. No normal
-CLI, startup, local API, OS TUN or service is changed. No screen/input consent
-is inherited. SharedDesk is outside this increment.
+This adds a separate optional development-only network action after the accepted
+historical joining result. Only the explicitly tagged mnet-setup-development
+binary understands --disposable-network-tcp. With that flag absent, ordinary
+setup still exits without starting a network. Normal CLI/startup/local API,
+OS TUN/service, production ingress, RD host and SharedDesk remain unchanged.
+No screen/input consent is inherited.
 
-The tagged RunDisposableEnrollmentNetwork API retains the same daemon owner
-after its actual browser/source/proof/finalization/current-map path. It requires
-an explicit injected disposable device, a finite registrar request budget and
-a callback that owns the session. Its timeout must equal the supplied workflow
-limit. It uses only the existing receipt interval, never renewal/recovery. The
-normal RunDisposableEnrollment API is unchanged.
+## One actual journey
 
-The new controller starts the same retained-key WireGuard device, publishes
-only a loopback UDP endpoint and applies the actual native current map. Nonlocal
-peer endpoints, routes and exit nodes refuse. It runs existing known-map-expiry
-removal. Original receipt expiry, context cancellation or changed local
-State/policy stops the network. Explicit map refresh failure or exhausted shared
-request budget also ends it. There is no automatic remote-map poll/reconnect.
-Remote revocation is only known after an explicit successful map check; do not
-claim instant offline account revocation.
+The real installed tagged command opens its system browser. Signed-out local
+Multies login, full-key comparison, workspace choice, approval and Return feed
+the same retained native owner. It proves/finalizes the real source/Store result,
+checks the actual current map and reports joining saved before optional display.
+The explicit network action then injects a proofnet in-memory TCP/IP device,
+starts WireGuard with the SAME already-durable key, publishes only a loopback
+UDP endpoint and verifies fresh TCP challenge/response data with the exact
+current approved peer at nonreserved port49173. No OS interface is created.
 
-The callback gets a fatal context. Own registers listener/connection/Mux
-resources for close on stop, before device teardown. Close joins device/expiry
-ownership. The callback remains responsible for joining its own workers after
-close; arbitrary caller callbacks and arbitrary blocking Close implementations
-cannot be forcibly joined by this API. CurrentSessionPeers performs an explicit
-source check, then returns approved unexpired exact name/IP/key identities.
-It is not a persistent membership grant. Peers is only a local snapshot and
-must never be used as a substitute for that current source check at admission.
+The counterpart is enrolled only AFTER the real browser finishes login and
+workspace selection, BEFORE approval/Return completes native proof. This moves
+work inside the original intervals instead of widening the15s fixture leases.
+The initial native map now truthfully has two live peers. A browser login that
+outlasts an earlier authorization still fails honestly; no production lifetime
+or recovery policy is selected here.
 
-## Current evidence and gaps
+The current-map selected peer must uniquely have an endpoint. Its exact
+key/IP/name is source-checked before and after dialing. Actual proofnet returns
+*net.TCPAddr with the pinned mesh IP; this was executed, not merely source-read.
+A random32byte request and the counterpart's SHA256 response prove fresh data
+both ways over actual WireGuard. The historical browser result opens only after
+the peer scope and network owner have stopped. It is not a live status indicator.
 
-Actual opt-in Multies app/SQLite/source/Store/native transport runs use the new
-controller instead of the old manual start. They preserve the existing15s
-lease, original State/key and actual encrypted payload checks both ways. An
-explicit session refresh removes a deleted peer before new packets are denied.
-Stop, local policy change and original deadline separately close the device,
-unblock registered real TCP accept/read operations, join the owner and return
-no peers. The listener/read checks are resource ownership evidence, NOT TCP
-over the encrypted mesh. A first expiry test incorrectly expected current-map
-access after expiry; its log remains failed evidence. The corrected check
-requires denial after the original deadline, without extending it.
+## Lifetime and denial
 
-This is NOT yet the connected installed browser journey. The standalone command
-has no network option wired, the device in the current transport proof is a
-channel TUN, and no actual userspace TCP pair or RD viewer bridge has run. The
-existing proofnet package can supply an in-memory TCP/IP TUN; its source
-compatibility is not execution proof. The earlier browser fixture counterpart
-nodes expire while login is underway. Their enrollment must move after consent
-or otherwise fit within the original interval; policy must not be widened.
+The tagged RunDisposableEnrollmentNetwork API requires mandatory injection,
+a finite shared request budget, and a caller callback. Its timeout must equal
+the existing workflow limit. The original State/policy/journal and native receipt
+remain authoritative. There is no OS fallback, reconnect, renewal or reset.
+Every map is validated before IPC/netstack parsing: canonical keys/IPs, unique
+identities, finite approved peers, same network, no routes/exit nodes/relay URL,
+and loopback-only UDP endpoints. Ambiguous candidates refuse rather than guess.
 
-The proposed next bridge is a development-only nonreserved TCP port with exact
-peer key/IP/name, source checks before/after dial and fatal context ownership of
-listener/connection/Mux. Host attended viewing must still default decline and
-require its own approval each run; pointer permission stays separate. A supplied
-RD contract harness uses loopback wrappers, not actual proofnet, so it does not
-close these gaps. No real display/keyboard/mouse, normal5909 listener, production
-lease, service, physical pairing or live account is authorized by this work.
+The controller runs existing known-map-expiry removal. Original native receipt
+expiry, cancellation or changed State/policy stops the network. Refresh denial,
+unavailability or immutable request-budget exhaustion also ends it. The explicit
+command performs finite two-second local-source checks, capped by sixteen shared
+requests and the original receipt. This is not production polling or instant
+offline account revocation. There is no unlimited background refresh.
+
+An exact peer scope has its OWN original peer deadline. It cancels/closes its
+consumers at that deadline without waiting for another source request. A later
+map removing/changing key/IP/name also cancels/closes it. CurrentSessionPeers
+performs an explicit source check; Peers is only a local snapshot, never a
+persistent admission grant. Registered listener/connection/Mux resources close
+before device teardown; callbacks still must join their own workers. Arbitrary
+blocking consumer Close implementations cannot be forcibly joined.
+
+Actual installed runs separately verify:
+* Fresh encrypted TCP followed by actual Store deletion/source-checked peer
+  removal, existing-connection closure and joined network/counterpart owners.
+* SIGINT AFTER actual TCP verification, retaining the saved native credential
+  and all three remote nodes until fixture cleanup. It does not promise rollback
+  or open a confirmed-withdrawal success page.
+* The selected peer's ORIGINAL lease expiry, with no Store deletion/renewal. Its
+  scope closes and the network ends, retaining the saved credential and nodes
+  until fixture cleanup. Historical copy distinguishes original peer expiry
+  from source-checked removal. Native receipt expiry is separately exercised
+  through the actual controller/API path.
+
+The first API-expiry and installed-expiry attempts had stale fixture assumptions
+that expired credentials should still return an authorized map, and that the
+older counterpart could not expire before the native credential. Their logs
+remain failed evidence. Controls now require the respective original deadline
+and deny access afterward; no timing policy was widened.
+
+## Still not the final product
+
+This is a disposable local connected TCP proof, not OS routing, a persistent
+background network, two physical devices or release readiness. No RD viewer,
+real attended-view approval, screen capture or pointer control ran through this
+new connection. The supplied RD contract harness uses loopback wrappers and is
+not silently substituted as human approval. The next bridge must use this actual
+userspace net.Conn with exact current identity and fatal peer context, separately
+exercise host default-decline/per-run viewing and separate pointer decisions,
+and keep its listener/Mux/display owners joined. Normal5909 and SharedDesk are
+outside this increment. Broad affected-entry TypeScript remains unpassed after
+prior memory exhaustion; runtime browser success does not replace that check.

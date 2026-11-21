@@ -22,10 +22,18 @@ import (
 	"time"
 )
 
+var developmentTCPTransport func(*testing.T, *Daemon, string)
 var developmentTransportStart func(*testing.T, *Daemon, tun.Device) (func(), func() error)
 
 func testActualEnrolledNativeTransport(t *testing.T, d *Daemon, dir string, relayMode bool) {
 	t.Helper()
+	if os.Getenv("MNET_DEVELOPMENT_NETWORK_TCP") == "1" {
+		if developmentTCPTransport == nil {
+			t.Fatal("explicit tagged TCP controller missing")
+		}
+		developmentTCPTransport(t, d, dir)
+		return
+	}
 	if d.stateOwner.saved.native == nil || d.cc != nil || d.dev != nil || d.state.NodeToken != "" || d.state.AuthKey != "" {
 		t.Fatal("transport requires exact sole native credential, no legacy path")
 	}

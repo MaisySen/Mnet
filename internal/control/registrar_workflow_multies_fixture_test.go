@@ -323,7 +323,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	preparedFinalize.Store(input.Mode == "prepared-finalize" || input.Mode == "prepared-history-finalize")
 	preparedHistoryFinalize.Store(input.Mode == "prepared-history-finalize")
 	relayMode.Store(input.Mode == "relay-transport")
-	transportMode.Store(input.Mode == "direct-transport" || relayMode.Load())
+	transportMode.Store(input.Mode == "direct-transport" || relayMode.Load() || strings.HasPrefix(os.Getenv("MNET_DEVELOPMENT_SETUP_CASE"), "network-tcp"))
 	policyRaw, _ := json.Marshal(input.Workflow)
 	_, policy, err := parseRegistrarWorkflow(policyRaw)
 	if err != nil {
@@ -336,6 +336,40 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		raw, _ := json.Marshal(v)
 		if err := os.WriteFile(s.ownedPath+name, raw, 0600); err != nil {
 			t.Fatal(err)
+		}
+	}
+
+	networkCase := strings.HasPrefix(os.Getenv("MNET_DEVELOPMENT_SETUP_CASE"), "network-tcp")
+	var earlyInstalled *exec.Cmd
+	var nativeOutput bytes.Buffer
+	nativeWaited := false
+	limits := registrar.WorkflowLimits{Timeout: 3 * time.Second, MaxChallengeLifetime: time.Duration(input.Workflow.ChallengeMS) * time.Millisecond, MaxReserveLifetime: time.Minute, Timing: contract.FixtureTiming{MaxObservationAgeMS: int64(input.Workflow.MaxObservationAgeMS), MaxLeaseMS: int64(input.Workflow.MaxLeaseMS), ClockUncertaintyMS: int64(input.Workflow.ClockUncertaintyMS)}}
+	if networkCase {
+		installed := os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY")
+		if installed == "" {
+			t.Fatal("installed network binary required")
+		}
+		earlyInstalled = newInstalledDevelopmentFixtureCmd(t, dir, installed, input.Workflow.Policy, limits)
+		earlyInstalled.Env = append(os.Environ(), "MNET_NATIVE_OWNED_WORKFLOW_DIR="+dir)
+		earlyInstalled.Stderr = &nativeOutput
+		if err := earlyInstalled.Start(); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if !nativeWaited {
+				earlyInstalled.Process.Kill()
+				earlyInstalled.Wait()
+			}
+		}()
+		waitUntil := time.Now().Add(45 * time.Second)
+		for {
+			if _, err := os.Stat(filepath.Join(dir, "installed-consent-ready")); err == nil {
+				break
+			}
+			if time.Now().After(waitUntil) {
+				t.Fatal("installed consent readiness timeout")
+			}
+			time.Sleep(10 * time.Millisecond)
 		}
 	}
 	native, err := source.NewNative(input.Workflow.Policy.SourceOrigin, input.Workflow.Policy.PrincipalAuthority, source.Limits{Timeout: 3 * time.Second, MaxConnections: 1})
@@ -472,7 +506,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal("real peer journal own exchange", err)
 	}
-	limits := registrar.WorkflowLimits{Timeout: 3 * time.Second, MaxChallengeLifetime: time.Duration(input.Workflow.ChallengeMS) * time.Millisecond, MaxReserveLifetime: time.Minute, Timing: contract.FixtureTiming{MaxObservationAgeMS: int64(input.Workflow.MaxObservationAgeMS), MaxLeaseMS: int64(input.Workflow.MaxLeaseMS), ClockUncertaintyMS: int64(input.Workflow.ClockUncertaintyMS)}}
+
 	peerChallenge, err := peerJournal.BeginWorkflowDATA(context.Background(), currentPeer, limits)
 	if err != nil {
 		t.Fatal("journal exact-origin begin", err)
@@ -532,7 +566,11 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 
 	var transport *registrarTransportFixture
 	if transportMode.Load() {
-		transport = newRegistrarTransportFixture(t, key)
+		if os.Getenv("MNET_DEVELOPMENT_NETWORK_TCP") == "1" {
+			transport = newRegistrarTCPTransportFixture(t, key, current.Self.IPv4)
+		} else {
+			transport = newRegistrarTransportFixture(t, key)
+		}
 		endpoints := []string{transport.endpoint()}
 		if relayMode.Load() {
 			endpoints = nil
@@ -555,6 +593,11 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	// Third device: separate actual daemon test process owns the retained native
 	// State/key/callback. This process never receives its private key or file
 	// credential; only the real expected registrar request presents the bearer.
+	if networkCase {
+		if err := writeRegistrarFixtureAtomic(dir, "installed-peers-ready", []byte("fresh actual disposable counterpart committed")); err != nil {
+			t.Fatal(err)
+		}
+	}
 	peerSavedSecret := getPeerSecret()
 	nativeBinary := os.Getenv("MNET_NATIVE_WORKFLOW_BINARY")
 	if nativeBinary == "" {
@@ -575,75 +618,27 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	}
 	nativeTimeout := "40s"
 	nativeCmd := exec.Command(nativeBinary, "-test.run=^TestActualMultiesNativeWorkflowFixture$", "-test.v", "-test.timeout="+nativeTimeout)
+
 	if installed := os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY"); installed != "" {
-		if input.Mode != "success" {
-			t.Fatal("installed setup fixture only supports success mode")
-		}
-		root := filepath.Join(dir, "installed-setup")
-		if err := os.Mkdir(root, 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(root, "DISPOSABLE-MNET-SETUP"), []byte("mnet-disposable-enrollment-v1\n"), 0600); err != nil {
-			t.Fatal(err)
-		}
-		policyRaw, _ := json.Marshal(input.Workflow.Policy)
-		limitRaw, _ := json.Marshal(limits)
-		if err := os.WriteFile(filepath.Join(root, "enrollment-policy-v2.json"), policyRaw, 0600); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(root, "workflow-limits.json"), limitRaw, 0600); err != nil {
-			t.Fatal(err)
-		}
-		if os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") == "result-preexisting" {
-			if err := os.WriteFile(filepath.Join(root, "setup-result.html"), []byte("preserve-existing-result"), 0600); err != nil {
-				t.Fatal(err)
+		if earlyInstalled != nil {
+			nativeCmd = earlyInstalled
+		} else {
+			if input.Mode != "success" {
+				t.Fatal("installed setup fixture only supports success mode")
 			}
+			nativeCmd = newInstalledDevelopmentFixtureCmd(t, dir, installed, input.Workflow.Policy, limits)
 		}
-		nativeCmd = exec.Command(installed, "--disposable-root", root)
-		if os.Getenv("MNET_DEVELOPMENT_SETUP_BROWSER") == "1" {
-			nativeCmd.Args = append(nativeCmd.Args, "--open-browser")
-		}
-		pipe, err := nativeCmd.StdoutPipe()
-		if err != nil {
-			t.Fatal(err)
-		}
-		go func() {
-			defer func() { _ = writeRegistrarFixtureAtomic(dir, "installed-output-ended", []byte("ended")) }()
-			scanner := bufio.NewScanner(pipe)
-			scanner.Buffer(make([]byte, 4096), 32768)
-			for scanner.Scan() {
-				var event struct {
-					Stage  string                 `json:"stage"`
-					Launch *contract.SourceLaunch `json:"launch"`
-					Result json.RawMessage        `json:"result"`
-				}
-				if json.Unmarshal(scanner.Bytes(), &event) != nil {
-					continue
-				}
-				if event.Launch != nil {
-					raw, _ := json.Marshal(event.Launch)
-					if err := writeRegistrarFixtureAtomic(dir, "native-launch.json", raw); err != nil {
-						t.Error(err)
-					}
-				}
-				if event.Stage == "joined-not-connected" && len(event.Result) > 0 {
-					if err := writeRegistrarFixtureAtomic(dir, "native-workflow-outcome.json", event.Result); err != nil {
-						t.Error(err)
-					}
-				}
-			}
-		}()
 	}
 	nativeCmd.Env = append(os.Environ(), "MNET_NATIVE_OWNED_WORKFLOW_DIR="+dir)
-	var nativeOutput bytes.Buffer
 	if os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY") == "" {
 		nativeCmd.Stdout = &nativeOutput
 	}
 	nativeCmd.Stderr = &nativeOutput
-	if err := nativeCmd.Start(); err != nil {
-		t.Fatal(err)
+	if earlyInstalled == nil {
+		if err := nativeCmd.Start(); err != nil {
+			t.Fatal(err)
+		}
 	}
-	nativeWaited := false
 	defer func() {
 		if !nativeWaited {
 			nativeCmd.Process.Kill()
@@ -658,8 +653,57 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	var postRemovalVerified bool
 	for {
 		setupCase := os.Getenv("MNET_DEVELOPMENT_SETUP_CASE")
+		if setupCase == "network-tcp-cancel" || setupCase == "network-tcp-expiry" {
+			if _, err := os.Stat(filepath.Join(dir, "native-transport-ready")); err == nil && setupCase == "network-tcp-cancel" {
+				_ = nativeCmd.Process.Signal(os.Interrupt)
+			}
+			if _, err := os.Stat(filepath.Join(dir, "installed-output-ended")); err == nil {
+				err := nativeCmd.Wait()
+				nativeWaited = true
+				if err == nil && setupCase == "network-tcp-cancel" {
+					t.Fatal("cancelled network proof unexpectedly succeeded")
+				}
+				if _, err := os.Stat(filepath.Join(dir, "native-transport-ready")); err != nil {
+					t.Fatal("network stopped before actual TCP proof")
+				}
+				root := filepath.Join(dir, "installed-setup")
+				state, err := os.ReadFile(filepath.Join(root, "native", "state.json"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				var image map[string]any
+				if json.Unmarshal(state, &image) != nil || image["native_enrollment_v1"] == nil || len(s.data.Nodes) != 3 {
+					t.Fatal("stopped network lost saved credential or rolled back remote nodes")
+				}
+				if setupCase == "network-tcp-cancel" {
+					if _, err := os.Stat(filepath.Join(root, "network-result.html")); !os.IsNotExist(err) {
+						t.Fatal("cancelled network claimed confirmed peer withdrawal")
+					}
+				}
+				if setupCase == "network-tcp-expiry" && time.Now().UnixMilli() < r.AccessExpiresAtMS {
+					t.Fatal("selected TCP peer ended before original peer lease deadline")
+				}
+
+				transport.tcp.Close()
+				select {
+				case <-transport.tcp.exited:
+				case <-time.After(time.Second):
+					t.Fatal("stopped TCP counterpart did not join")
+				}
+				for id := range s.data.Nodes {
+					if err := s.DeleteNode(id); err != nil {
+						t.Fatal(err)
+					}
+				}
+				outcome, _ := json.Marshal(map[string]any{"developmentInstalled": true, "networkTCPVerified": true, "networkStopped": true, "nativeSavedBeforeFailure": true, "inputAuthorized": false})
+				if err := writeRegistrarFixtureAtomic(dir, "outcome.json", outcome); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+		}
 		displayUnavailable := setupCase == "result-preexisting" || setupCase == "result-write-failure" || setupCase == "result-open-failure"
-		if os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY") != "" && setupCase != "" && setupCase != "success" && !displayUnavailable {
+		if os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY") != "" && setupCase != "" && setupCase != "success" && !strings.HasPrefix(setupCase, "network-tcp") && !displayUnavailable {
 			if _, err := os.Stat(filepath.Join(dir, "installed-cancel-request")); err == nil {
 				_ = nativeCmd.Process.Signal(os.Interrupt)
 			}
@@ -769,7 +813,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 			_, nativeRelayReady := os.Stat(filepath.Join(dir, "native-relay-socket-ready"))
 			if n != nil && (!relayMode.Load() || nativeRelayReady == nil) {
 				transportNativeID = n.ID
-				if !transport.revoked {
+				if !transport.revoked && !(setupCase == "network-tcp-expiry" && time.Now().UnixMilli() >= r.AccessExpiresAtMS) {
 					firstMap, err := s.registrarCredentialMap(ref, secret)
 					if err != nil {
 						nativeCmd.Process.Kill()
@@ -794,7 +838,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 							t.Fatal(err)
 						}
 					}
-					if _, err := os.Stat(filepath.Join(dir, "native-transport-ready")); err == nil && transport.received > 0 && transport.sent {
+					if _, err := os.Stat(filepath.Join(dir, "native-transport-ready")); err == nil && transport.received > 0 && transport.sent && setupCase != "network-tcp-cancel" && setupCase != "network-tcp-expiry" {
 						if err := s.DeleteNode(r.NodeID); err != nil {
 							t.Fatal(err)
 						}
@@ -802,16 +846,40 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 						transportReceivedAtRevoke = transport.received
 						// Discard only packets decrypted before the revocation
 						// marker; native removes authorization before its next send.
-						for {
-							select {
-							case <-transport.tun.Inbound:
-							default:
-								goto drainedTransport
+						if transport.tcp != nil {
+							transport.tcp.Close()
+						} else {
+							for {
+								select {
+								case <-transport.tun.Inbound:
+								default:
+									goto drainedTransport
+								}
 							}
 						}
 					drainedTransport:
 						if err := os.WriteFile(filepath.Join(dir, "transport-peer-revoked"), []byte("actual Store delete committed"), 0600); err != nil {
 							t.Fatal(err)
+						}
+					}
+				} else if transport.tcp != nil {
+					if setupCase == "network-tcp-expiry" {
+						transport.tcp.Close()
+					}
+					if _, err := os.Stat(filepath.Join(dir, "native-tcp-revocation-checked")); err == nil {
+						if !postRemovalVerified {
+							select {
+							case err := <-transport.tcp.done:
+								if err == nil {
+									t.Fatal("retired TCP host read unexpectedly succeeded")
+								}
+							case <-time.After(time.Second):
+								t.Fatal("retired TCP host read did not join")
+							}
+							if err := writeRegistrarFixtureAtomic(dir, "transport-post-removal-verified", []byte("actual TCP peer scope closed and denied after Store removal")); err != nil {
+								t.Fatal(err)
+							}
+							postRemovalVerified = true
 						}
 					}
 				} else {
@@ -860,7 +928,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 			}
 		}
 		raw, err = os.ReadFile(filepath.Join(dir, "native-workflow-outcome.json"))
-		if err == nil {
+		if err == nil && setupCase != "network-tcp-expiry" {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -891,7 +959,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		t.Fatalf("missing actual daemon proof result owned=%v unchanged=%v finalized=%v peers=%d receipt=%v", nativeOutcome.NativeOwnedKeyConfirmed, nativeOutcome.NativeProofStateUnchanged, nativeOutcome.NativeStateFinalized, nativeOutcome.NativeCurrentPeers, nativeOutcome.Receipt.Receipt.NodeID != "")
 	}
 
-	if os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY") != "" {
+	if os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY") != "" && !networkCase {
 		setupCase := os.Getenv("MNET_DEVELOPMENT_SETUP_CASE")
 		if setupCase == "result-preexisting" || setupCase == "result-write-failure" || setupCase == "result-open-failure" {
 			root := filepath.Join(dir, "installed-setup")
@@ -944,7 +1012,21 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		return
 	}
 	if transportMode.Load() {
-		if transport == nil || !transport.revoked || transportReceivedAtRevoke == 0 || transport.reverseSent != 5 || !(nativeOutcome.NativeEncryptedDirect || nativeOutcome.NativeEncryptedRelay) || !postRemovalVerified || transportNativeID == "" || len(s.data.Nodes) != 2 {
+		if networkCase && !postRemovalVerified {
+			if _, err := os.Stat(filepath.Join(dir, "native-tcp-revocation-checked")); err != nil {
+				t.Fatal("installed TCP retirement evidence absent")
+			}
+			select {
+			case err := <-transport.tcp.done:
+				if err == nil {
+					t.Fatal("retired installed TCP host unexpectedly succeeded")
+				}
+			case <-time.After(time.Second):
+				t.Fatal("installed TCP host not joined")
+			}
+			postRemovalVerified = true
+		}
+		if transport == nil || !transport.revoked || transportReceivedAtRevoke == 0 || transport.tcp == nil && transport.reverseSent != 5 || !(nativeOutcome.NativeEncryptedDirect || nativeOutcome.NativeEncryptedRelay) || !postRemovalVerified || transportNativeID == "" || len(s.data.Nodes) != 2 {
 			t.Fatal("connected encrypted direct transport/revocation evidence absent")
 		}
 		if _, err := s.registrarCredentialMap(ref, secret); err == nil {
@@ -1024,6 +1106,13 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	if err := s.DeleteNode(peerRecord.NodeID); err != nil {
 		t.Fatal(err)
 	}
+	if networkCase {
+		out, _ := json.Marshal(map[string]any{"developmentInstalled": true, "nativeOwnedKeyConfirmed": true, "nativeProofStateUnchanged": true, "nativeStateFinalized": true, "nativeCurrentPeers": nativeOutcome.NativeCurrentPeers, "nodeDeleted": true, "inputAuthorized": false, "networkTCPVerified": true, "networkStopped": true})
+		if err := writeRegistrarFixtureAtomic(dir, "outcome.json", out); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
 	out, _ := json.Marshal(map[string]any{"sourceDenied": false, "bidirectionalActualPeers": true, "nativeOwnedKeyConfirmed": !recoveryMode.Load() && !preparedFinalize.Load(), "threeActualPeers": true, "nativeProofStateUnchanged": true, "nativeStateFinalized": !recoveryMode.Load() || historyFinalize.Load(), "nativeCurrentPeers": nativeOutcome.NativeCurrentPeers, "nativeHistoryRecovered": recoveryMode.Load() || preparedFinalize.Load(), "nativeEncryptedDirect": transportMode.Load() && !relayMode.Load(), "nativeEncryptedRelay": relayMode.Load(), "journalWorkflowReceiptPinned": true, "nodeCreated": true, "nodeDeleted": true, "currentMapBeforeDelete": true, "legacyTokenCreated": false, "inputAuthorized": false, "receiptId": r.ReceiptID, "receiptDigest": r.ReceiptDigest, "reserveId": req.ReserveID, "descriptorDigest": descriptor, "handoffId": own.ID})
 	if err := writeRegistrarFixtureAtomic(dir, "outcome.json", out); err != nil {
 		t.Fatal(err)
@@ -1066,4 +1155,94 @@ func writeRegistrarFixtureAtomic(dir, name string, raw []byte) error {
 		return err
 	}
 	return os.Rename(temp, path)
+}
+
+func newInstalledDevelopmentFixtureCmd(t *testing.T, dir, installed string, policy config.LocalConfigV2, limits registrar.WorkflowLimits) *exec.Cmd {
+	t.Helper()
+
+	root := filepath.Join(dir, "installed-setup")
+	if err := os.Mkdir(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "DISPOSABLE-MNET-SETUP"), []byte("mnet-disposable-enrollment-v1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	policyRaw, _ := json.Marshal(policy)
+	limitRaw, _ := json.Marshal(limits)
+	if err := os.WriteFile(filepath.Join(root, "enrollment-policy-v2.json"), policyRaw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "workflow-limits.json"), limitRaw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") == "result-preexisting" {
+		if err := os.WriteFile(filepath.Join(root, "setup-result.html"), []byte("preserve-existing-result"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	nativeCmd := exec.Command(installed, "--disposable-root", root)
+	if strings.HasPrefix(os.Getenv("MNET_DEVELOPMENT_SETUP_CASE"), "network-tcp") {
+		nativeCmd.Args = append(nativeCmd.Args, "--disposable-network-tcp")
+	}
+	if os.Getenv("MNET_DEVELOPMENT_SETUP_BROWSER") == "1" {
+		nativeCmd.Args = append(nativeCmd.Args, "--open-browser")
+	}
+	pipe, err := nativeCmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		defer func() { _ = writeRegistrarFixtureAtomic(dir, "installed-output-ended", []byte("ended")) }()
+		var savedResult json.RawMessage
+		verifiedTCP := false
+		scanner := bufio.NewScanner(pipe)
+		scanner.Buffer(make([]byte, 4096), 32768)
+		for scanner.Scan() {
+			var event struct {
+				Stage  string                 `json:"stage"`
+				Launch *contract.SourceLaunch `json:"launch"`
+				Result json.RawMessage        `json:"result"`
+			}
+			if json.Unmarshal(scanner.Bytes(), &event) != nil {
+				continue
+			}
+			if event.Launch != nil {
+				raw, _ := json.Marshal(event.Launch)
+				if err := writeRegistrarFixtureAtomic(dir, "native-launch.json", raw); err != nil {
+					t.Error(err)
+				}
+			}
+			networkCase := strings.HasPrefix(os.Getenv("MNET_DEVELOPMENT_SETUP_CASE"), "network-tcp")
+			if event.Stage == "joined-not-connected" && len(event.Result) > 0 {
+				savedResult = append(json.RawMessage(nil), event.Result...)
+				if !networkCase {
+					if err := writeRegistrarFixtureAtomic(dir, "native-workflow-outcome.json", savedResult); err != nil {
+						t.Error(err)
+					}
+				}
+			}
+			if networkCase && event.Stage == "development-network-verified" {
+				verifiedTCP = true
+				if err := writeRegistrarFixtureAtomic(dir, "native-transport-ready", []byte("actual installed userspace TCP response verified")); err != nil {
+					t.Error(err)
+				}
+			}
+			if networkCase && event.Stage == "development-network-finished" && verifiedTCP && len(savedResult) > 0 {
+				var result map[string]any
+				if json.Unmarshal(savedResult, &result) != nil {
+					t.Error("invalid saved result")
+					continue
+				}
+				result["NativeEncryptedDirect"] = true
+				raw, _ := json.Marshal(result)
+				if err := writeRegistrarFixtureAtomic(dir, "native-tcp-revocation-checked", []byte("actual installed peer scope retired and owner joined")); err != nil {
+					t.Error(err)
+				}
+				if err := writeRegistrarFixtureAtomic(dir, "native-workflow-outcome.json", raw); err != nil {
+					t.Error(err)
+				}
+			}
+		}
+	}()
+	return nativeCmd
 }

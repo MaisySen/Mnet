@@ -25,6 +25,7 @@ import (
 func main() {
 	root := flag.String("disposable-root", "", "existing private disposable root with explicit marker, policy and limits")
 	open := flag.Bool("open-browser", false, "open local joining consent in the system browser")
+	networkTCP := flag.Bool("disposable-network-tcp", false, "explicit finite in-memory loopback-only network TCP proof after joining; no OS device or screen/input")
 	flag.Parse()
 	if flag.NArg() != 0 || *root == "" {
 		fmt.Fprintln(os.Stderr, "an explicit disposable setup root is required")
@@ -62,7 +63,7 @@ func main() {
 		}
 		return nil
 	}
-	err := daemon.RunDisposableEnrollment(ctx, *root, func(event daemon.DevelopmentEnrollmentEvent) error {
+	emit := func(event daemon.DevelopmentEnrollmentEvent) error {
 		if event.Stage == "waiting-for-browser" {
 			ownedAttempt = true
 		}
@@ -93,7 +94,13 @@ func main() {
 			}
 		}
 		return nil
-	})
+	}
+	var err error
+	if *networkTCP {
+		err = runDisposableNetworkTCP(ctx, *root, *open, emit)
+	} else {
+		err = daemon.RunDisposableEnrollment(ctx, *root, emit)
+	}
 	if err != nil {
 		// Only a configured disposable root with an owned native attempt may
 		// receive a historical failure page. Never create in a refused root.

@@ -26,6 +26,7 @@ import (
 )
 
 type registrarTransportFixture struct {
+	tcp            *registrarTCPFixture
 	tun            *tuntest.ChannelTUN
 	bind           *bind.Bind
 	dev            *device.Device
@@ -89,6 +90,15 @@ func (f *registrarTransportFixture) tick(t *testing.T, m *netmap.Map, native net
 			t.Fatal(err)
 		}
 		f.lastKey = native.PubKey
+	}
+	if f.tcp != nil {
+		select {
+		case <-f.tcp.exchanged:
+			f.received++
+			f.sent = true
+		default:
+		}
+		return
 	}
 	expected := tuntest.Ping(netip.MustParseAddr(m.Self.IPv4), netip.MustParseAddr(native.IPv4))
 	for {
