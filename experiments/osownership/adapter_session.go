@@ -21,7 +21,7 @@ type adapterIdentity struct {
 }
 
 func (i adapterIdentity) valid() bool {
-	return i.TargetID != "" && i.SessionID != "" && sameNamespace(i.Namespace, i.Namespace)
+	return i.AttemptID != "" && i.TargetID != "" && i.SessionID != "" && sameNamespace(i.Namespace, i.Namespace)
 }
 
 type adapterSession struct {
@@ -370,18 +370,14 @@ type adapterReconciliationObservation struct {
 	Identity   adapterIdentity
 	Sequence   uint64
 	ObservedAt time.Time
-	ValidUntil time.Time
 }
 
 func (s *adapterSession) reconcileObserved(raw RawInventory, sys SysctlSnapshot, o adapterReconciliationObservation) (adapterFinalState, error) {
-	if s == nil || s.identity.AttemptID == "" || o.Identity != s.identity || o.Sequence == 0 || o.Sequence <= s.observationSequence {
+	if s == nil || s.identity.AttemptID == "" || o.Identity != s.identity || o.Sequence == 0 || o.Sequence != s.nextObservationSequence() {
 		return adapterFinalState{}, ErrConflict
 	}
 	o.ObservedAt = o.ObservedAt.Round(0).UTC()
-	o.ValidUntil = o.ValidUntil.Round(0).UTC()
-	// At most one second of display freshness, not an authority extension. The
-	// supplied clock must be trusted. Forward expiry still belongs to Transaction.
-	if o.ObservedAt.IsZero() || !o.ValidUntil.After(o.ObservedAt) || o.ValidUntil.Sub(o.ObservedAt) > time.Second {
+	if o.ObservedAt.IsZero() {
 		return adapterFinalState{}, ErrConflict
 	}
 	r, e := s.reconcile(raw, sys)
@@ -390,4 +386,54 @@ func (s *adapterSession) reconcileObserved(raw RawInventory, sys SysctlSnapshot,
 	copy := o
 	r.Observation = &copy
 	return r, e
+}
+
+// Provisional active-display freshness policy, not a product requirement and
+// never an extension of plan/authority expiry. Historical cleanup has no cap.
+const provisionalActiveObservationFreshness = time.Second
+
+type adapterActiveObservation struct {
+	identity   adapterIdentity
+	sequence   uint64
+	observedAt time.Time
+	validUntil time.Time
+	planExpiry time.Time
+	ledger     *adapterSession
+}
+
+// Sequence allocator is owned by the session. Caller requests must equal the
+// NEXT value; no arbitrary jumps. No persistence/restart protection is claimed.
+func (s *adapterSession) nextObservationSequence() uint64 {
+	if s == nil || s.observationSequence == ^uint64(0) {
+		return 0
+	}
+	return s.observationSequence + 1
+}
+func (s *adapterSession) activeEligible() bool {
+	return s != nil && s.identity.valid() && s.canonical != nil && s.plan != nil && s.forwardStep == len(forwardTransitions) && !s.poisoned && !s.cleanupMode && s.pending == nil && s.cleanupPending == nil && s.cleanupRetry == nil && !s.closeAttempted && s.rejectedHandle == nil
+}
+func (s *adapterSession) observeActive(i Inventory, observedAt time.Time) (*adapterActiveObservation, error) {
+	observedAt = observedAt.Round(0).UTC()
+	if !s.activeEligible() || observedAt.IsZero() || !observedAt.Before(s.plan.EffectiveExpiry) || s.nextObservationSequence() == 0 {
+		return nil, ErrConflict
+	}
+	if e := exactHandle(*s.canonical, *s.plan, i); e != nil {
+		s.poisoned = true
+		return nil, e
+	}
+	for _, op := range s.plan.Operations[1:] {
+		if !stepPresent(op, *s.canonical, i) {
+			s.poisoned = true
+			return nil, ErrConflict
+		}
+	}
+	s.observationSequence++
+	until := observedAt.Add(provisionalActiveObservationFreshness)
+	if s.plan.EffectiveExpiry.Before(until) {
+		until = s.plan.EffectiveExpiry
+	}
+	return &adapterActiveObservation{identity: s.identity, sequence: s.observationSequence, observedAt: observedAt, validUntil: until, planExpiry: s.plan.EffectiveExpiry, ledger: s}, nil
+}
+func (o *adapterActiveObservation) current() bool {
+	return o != nil && o.ledger.activeEligible() && o.identity == o.ledger.identity && o.sequence == o.ledger.observationSequence && o.planExpiry.Equal(o.ledger.plan.EffectiveExpiry)
 }

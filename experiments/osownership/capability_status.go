@@ -20,6 +20,7 @@ type networkCapabilityEvidence struct {
 	AttemptID           string
 	ObservationSequence uint64
 	Final               *adapterFinalState
+	Active              *adapterActiveObservation
 	RunnerObservation   string
 	TargetID            string
 	SessionID           string
@@ -47,37 +48,48 @@ func projectNetworkCapability(e networkCapabilityEvidence) networkCapabilityStat
 	r := networkCapabilityStatus{State: "not-verified", RunnerObservation: e.RunnerObservation, UserDeployment: "unknown", TargetID: e.TargetID, SessionID: e.SessionID, AsOf: e.Now}
 
 	r.AttemptID = e.AttemptID
-	if e.Final == nil {
-		r.State = "custody-unverified"
-		r.CustodyUnresolved = true
-		return r
-	}
-	scopeMatches := e.Final.Identity.valid() && e.Final.Identity.TargetID == e.TargetID && e.Final.Identity.SessionID == e.SessionID && sameNamespace(e.Final.Identity.Namespace, e.Namespace) && e.AttemptID != "" && e.Final.Identity.AttemptID == e.AttemptID
-	if !scopeMatches {
-		if e.Final.requiresCleanup() {
-			r.State = "foreign-attempt-cleanup-unresolved"
-		} else {
-			r.State = "final-scope-mismatch"
+
+	r.CustodyUnresolved = e.CleanupPending // preserved on EVERY branch, even foreign
+	id := adapterIdentity{TargetID: e.TargetID, SessionID: e.SessionID, Namespace: e.Namespace, AttemptID: e.AttemptID}
+	if e.Final != nil {
+		if e.Final.Identity != id || !id.valid() {
+			if e.Final.requiresCleanup() {
+				r.State = "foreign-attempt-cleanup-unresolved"
+			} else {
+				r.State = "final-scope-mismatch"
+			}
+			return r
 		}
-		// A foreign cleanup record is not this target's custody report, but still
-		// cannot establish readiness. Do not relabel it as local cleanup.
+		r.CustodyUnresolved = r.CustodyUnresolved || e.Final.requiresCleanup()
+		if r.CustodyUnresolved {
+			r.State = "custody-unresolved"
+			return r
+		}
+		o := e.Final.Observation
+		if o == nil || o.Identity != id || o.Sequence == 0 || o.Sequence != e.ObservationSequence || o.ObservedAt.IsZero() || e.Now.Before(o.ObservedAt) {
+			r.State = "historical-final-undated-or-unbound"
+			return r
+		}
+		if e.Final.CloseConfirmed && e.Final.RawBaselineEqual {
+			r.State = "session-closed-clean"
+		} else {
+			r.State = "historical-final-no-active-path"
+		}
+		// A final is teardown evidence only, never current readiness. No expiry is
+		// assigned to historical facts, AsOf is the observation, not current time.
+		r.AsOf = o.ObservedAt
 		return r
 	}
-	r.CustodyUnresolved = e.Final.requiresCleanup()
 	if r.CustodyUnresolved {
 		r.State = "custody-unresolved"
 		return r
 	}
-	if e.CleanupPending {
-		r.State = "cleanup-pending"
+	a := e.Active
+	if !a.current() || !id.valid() || a.identity != id || e.ObservationSequence != a.sequence || e.Now.IsZero() || e.Now.Before(a.observedAt) || !e.Now.Before(a.validUntil) || !e.Now.Before(a.planExpiry) {
+		r.State = "active-observation-unverified"
 		return r
 	}
-	o := e.Final.Observation
-	if o == nil || o.Identity != e.Final.Identity || e.ObservationSequence == 0 || o.Sequence != e.ObservationSequence || o.ObservedAt.IsZero() || e.Now.Before(o.ObservedAt.Round(0).UTC()) || !e.Now.Before(o.ValidUntil.Round(0).UTC()) || o.ValidUntil.Sub(o.ObservedAt) > time.Second || !o.ValidUntil.After(o.ObservedAt) {
-		r.State = "reconciliation-stale-or-unbound"
-		return r
-	}
-	r.ValidUntil = o.ValidUntil.Round(0).UTC()
+	r.ValidUntil = a.validUntil
 	kinds := map[string]bool{}
 	if e.TargetID != "" && e.SessionID != "" && !e.Now.IsZero() && sameNamespace(e.Namespace, e.Namespace) {
 		for _, w := range e.Witnesses {
