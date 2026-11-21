@@ -168,3 +168,22 @@ map-failure journey runs while a disposable unrelated HTTP listener owns9237;
 it completes and the unrelated listener receives zero requests. This avoids
 cross-run browser attachment. It does not by itself validate concurrent fixture
 artifact filenames or permit automating any non-disposable browser profile.
+
+### Bounded system-browser launcher
+
+Self-review found the initial xdg-open used the outer signal context, so a
+stalled launcher could block the adapter's own attempt timer. A failing-first
+launcher test reaches the outer five-second test deadline instead of returning.
+Both initial and result-page launch now use a three-second child timeout. A
+failed launch preserves the original attempt, never retries or replaces it.
+The final-page launcher was already bounded to that same duration.
+
+The actual launcher-hang installed case substitutes only its disposable
+xdg-open: initial HTTPS opening stalls, but opening the historical failure file
+uses the real system association. The native caller returns, retains its
+original prepared journal, saves no joining credential and creates no third
+registrar node. The actual uncertainty page opens in Chrome, late callback
+refuses and the session joins. Unit checks cover bounded stall, cancellation
+and private log/error preservation. This does not guarantee every desktop
+launcher starts successfully within three seconds or terminate browser trees;
+the disposable session harness owns those browser descendants.

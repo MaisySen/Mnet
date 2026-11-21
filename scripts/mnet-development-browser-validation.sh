@@ -28,7 +28,18 @@ EOF
 Xvfb -displayfd 3 -screen 0 1280x1000x24 3>"$run/display" >"$run/xvfb.log" 2>&1 &
 xpid=$!
 for i in $(seq 1 50);do if [ -s "$run/display" ];then break;fi;sleep .1;done
+launch_path=$PATH
+if [ "${MNET_DEVELOPMENT_SETUP_CASE:-}" = launcher-hang ];then
+ mkdir "$run/launch-bin"
+ cat > "$run/launch-bin/xdg-open" <<'LAUNCHER'
+#!/bin/sh
+case "$1" in https://*) exec sleep 60 ;; esac
+exec /usr/bin/xdg-open "$@"
+LAUNCHER
+ chmod 700 "$run/launch-bin/xdg-open"
+ launch_path="$run/launch-bin:$PATH"
+fi
 cd "$multies"
-dbus-run-session -- env DISPLAY=":$(cat "$run/display")" GOPATH="$(go env GOPATH)" GOCACHE="$(go env GOCACHE)" HOME="$run/home" XDG_CONFIG_HOME="$run/home/.config" XDG_DATA_HOME="$run/home/.local/share" XDG_CURRENT_DESKTOP=GNOME GIO_USE_VFS=local MNET_DEVELOPMENT_SETUP_DEVTOOLS_FILE="$run/home/chrome/DevToolsActivePort" MNET_DEVELOPMENT_SETUP_BROWSER=1 MNET_DEVELOPMENT_SETUP_BINARY="$run/app/bin/mnet-setup-development" MNET_NATIVE_REPO="$mnet" node node_modules/vitest/vitest.mjs run tests/mnet-installed-development.test.ts
+dbus-run-session -- env PATH="$launch_path" DISPLAY=":$(cat "$run/display")" GOPATH="$(go env GOPATH)" GOCACHE="$(go env GOCACHE)" HOME="$run/home" XDG_CONFIG_HOME="$run/home/.config" XDG_DATA_HOME="$run/home/.local/share" XDG_CURRENT_DESKTOP=GNOME GIO_USE_VFS=local MNET_DEVELOPMENT_SETUP_DEVTOOLS_FILE="$run/home/chrome/DevToolsActivePort" MNET_DEVELOPMENT_SETUP_BROWSER=1 MNET_DEVELOPMENT_SETUP_BINARY="$run/app/bin/mnet-setup-development" MNET_NATIVE_REPO="$mnet" node node_modules/vitest/vitest.mjs run tests/mnet-installed-development.test.ts
 sleep 2
 printf 'Disposable development validation root: %s\n' "$run"

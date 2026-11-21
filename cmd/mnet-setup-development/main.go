@@ -57,10 +57,7 @@ func main() {
 			return closeErr
 		}
 		if *open && runtime.GOOS == "linux" {
-			bounded, stop := context.WithTimeout(context.Background(), 3*time.Second)
-			defer stop()
-			cmd := exec.CommandContext(bounded, "xdg-open", filepath.Join(*root, "setup-result.html"))
-			return cmd.Run()
+			return runDevelopmentBrowser(context.Background(), filepath.Join(*root, "setup-result.html"), nil)
 		}
 		return nil
 	}
@@ -90,10 +87,7 @@ func main() {
 			if err != nil {
 				return fmt.Errorf("private browser launch log unavailable")
 			}
-			cmd := exec.CommandContext(ctx, "xdg-open", event.BrowserURL)
-			cmd.Stdout = log
-			cmd.Stderr = log
-			err = cmd.Run()
+			err = runDevelopmentBrowser(ctx, event.BrowserURL, log)
 			log.Close()
 			if err != nil {
 				return fmt.Errorf("system browser could not open; original attempt retained")
@@ -110,4 +104,16 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+// Browser launch must return before an owned attempt can observe its deadline.
+func runDevelopmentBrowser(ctx context.Context, target string, log *os.File) error {
+	bounded, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(bounded, "xdg-open", target)
+	if log != nil {
+		cmd.Stdout = log
+		cmd.Stderr = log
+	}
+	return cmd.Run()
 }

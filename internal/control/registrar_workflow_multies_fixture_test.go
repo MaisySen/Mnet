@@ -697,6 +697,12 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 						t.Fatal("saved credential did not match actual committed registrar node or map was retried")
 					}
 				}
+				if os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") == "launcher-hang" {
+					journal, err := os.ReadFile(filepath.Join(dir, "installed-setup", "native", "enrollment-pending", "enrollment-pending-v1.json"))
+					if err != nil || !bytes.Contains(journal, []byte(`"prepared"`)) {
+						t.Fatal("launcher failure did not retain original prepared attempt")
+					}
+				}
 				remoteCommitted := saved || os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") == "lost-response"
 				expectedNodes := 2
 				if remoteCommitted {
