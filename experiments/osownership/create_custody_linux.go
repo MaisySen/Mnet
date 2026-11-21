@@ -4,7 +4,6 @@ package osownership
 
 import (
 	"context"
-	"os"
 )
 
 type ownedCreation struct {
@@ -37,15 +36,6 @@ func bindOriginalCustody(attempt *originalAttempt, p Plan, observe func() (Link,
 	return c, nil
 }
 
-// Legacy value-binding seam now retains the original even when validation fails.
-// Live creation always uses an already-published controller-owned attempt below.
-func bindOriginalFD(f *os.File, p Plan, observe func() (Link, error)) (*ownedCreation, error) {
-	if f == nil {
-		return nil, ErrConflict
-	}
-	attempt := &originalAttempt{plan: p, custody: &fileCustody{file: f, closer: f}, stage: "original-open"}
-	return bindOriginalCustody(attempt, p, observe)
-}
 func createTUNSource(ctx context.Context, ns *namespaceCustody, p Plan, attempt *originalAttempt, observe func() (Link, error)) (*ownedCreation, error) {
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased

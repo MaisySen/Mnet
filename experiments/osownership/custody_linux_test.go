@@ -45,15 +45,30 @@ func TestNoHandleCreationReadbackFailureRetainsOriginal(t *testing.T) {
 		t.Fatal("close owed", e, closer.calls)
 	}
 }
+func TestActualBindOriginalCustodyMismatchedLinkRetainsOriginal(t *testing.T) {
+	b, i, n := rig()
+	p, _ := Prepare(b, i, n)
+	closer := &countOriginalCloser{}
+	attempt := &originalAttempt{plan: p, custody: &fileCustody{closer: closer}}
+	h, _ := AttachCreated(p, 7, 1500)
+	wrong := h.CreationLink
+	wrong.Alias = "foreign"
+	got, e := bindOriginalCustody(attempt, p, func() (Link, error) { return wrong, nil })
+	if e == nil || got == nil || got.fd != attempt.custody || attempt.handle != nil || closer.calls != 0 {
+		t.Fatal("mismatched link accepted/lost original", e)
+	}
+	_ = attempt.closeOriginal()
+	if closer.calls != 1 {
+		t.Fatal("original not closed")
+	}
+}
 func TestOriginalCreationHasNoAliasUntilExplicitACK(t *testing.T) {
 	b, i, n := rig()
 	p, _ := Prepare(b, i, n)
-	f, e := os.CreateTemp(t.TempDir(), "create")
-	if e != nil {
-		t.Fatal(e)
-	}
+	closer := &countOriginalCloser{}
+	attempt := &originalAttempt{plan: p, custody: &fileCustody{closer: closer}}
 	h, _ := AttachCreated(p, 7, 1500)
-	created, e := bindOriginalFD(f, p, func() (Link, error) { return h.CreationLink, nil })
+	created, e := bindOriginalCustody(attempt, p, func() (Link, error) { return h.CreationLink, nil })
 	if e != nil {
 		t.Fatal(e)
 	}

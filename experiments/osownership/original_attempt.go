@@ -100,7 +100,9 @@ func (c *operation1Controller) stopOwnedLocked(ctx context.Context) error {
 	// and readiness-policy errors can prevent observation, never this close.
 	closeErr := attempt.closeOriginal()
 	c.tx.fdCloseAttempted = attempt.closeAttempted
-	c.tx.fdCloseError = errors.Join(c.tx.fdCloseError, closeErr)
+	if c.tx.fdCloseError == nil {
+		c.tx.fdCloseError = closeErr
+	}
 	c.tx.PendingCleanup = attempt.custody != nil
 	if attempt.custody == nil {
 		return attempt.createErr
@@ -122,7 +124,7 @@ func (c *operation1Controller) stopOwnedLocked(ctx context.Context) error {
 		attempt.absenceConfirmed = true
 	}
 	if attempt.closeErr != nil || c.tx.fdCloseError != nil {
-		return errors.Join(attempt.closeErr, c.tx.fdCloseError)
+		return c.tx.fdCloseError
 	}
 	c.tx.PendingCleanup = false
 	return nil

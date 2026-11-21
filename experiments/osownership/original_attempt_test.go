@@ -54,7 +54,7 @@ func (f *fakeOriginalAbsence) observeOriginalAbsence(_ context.Context, a *origi
 }
 func TestOwnerCloseOwedRegardlessObservationAndNoHandle(t *testing.T) {
 	closeFailure := errors.New("fake original close failed")
-	for _, mode := range []string{"no-observer", "absence-failed", "absence-wrong", "absence-clean", "close-failed-clean-absence", "canceled-no-handle", "snapshot-failed", "rollback-foreign"} {
+	for _, mode := range []string{"no-observer", "absence-failed", "absence-wrong", "absence-clean", "close-failed-clean-absence", "canceled-no-handle", "snapshot-failed", "foreign-handle-ignored"} {
 		t.Run(mode, func(t *testing.T) {
 			c, source := operation1AdapterRig(t)
 			var order []string
@@ -71,7 +71,7 @@ func TestOwnerCloseOwedRegardlessObservationAndNoHandle(t *testing.T) {
 					t.Fatal("fake Snapshot should fail")
 				}
 			}
-			if mode == "rollback-foreign" {
+			if mode == "foreign-handle-ignored" {
 				h := *c.adapter.session.canonical
 				h.Link.Index += 100
 				c.tx.handle = &h
@@ -92,7 +92,7 @@ func TestOwnerCloseOwedRegardlessObservationAndNoHandle(t *testing.T) {
 			if closer.calls != 1 || len(order) == 0 || order[0] != "close" || !c.attempt.closeAttempted || c.tx.Ready || !c.tx.stopStarted {
 				t.Fatal("owed close skipped/order", e, closer.calls, order)
 			}
-			clean := mode == "absence-clean" || mode == "snapshot-failed" || mode == "rollback-foreign"
+			clean := mode == "absence-clean" || mode == "snapshot-failed" || mode == "foreign-handle-ignored"
 			if clean {
 				if e != nil || c.tx.PendingCleanup {
 					t.Fatal("clean reconcile", e)
@@ -103,54 +103,39 @@ func TestOwnerCloseOwedRegardlessObservationAndNoHandle(t *testing.T) {
 			if mode == "close-failed-clean-absence" && (!errors.Is(e, closeFailure) || !c.attempt.absenceConfirmed) {
 				t.Fatal("absence erased failed close", e)
 			}
+			previousCloseErr := c.tx.fdCloseError
 			_ = c.stop(context.Background())
+			if c.tx.fdCloseError != previousCloseErr {
+				t.Fatal("duplicate sticky error accumulation")
+			}
 			if closer.calls != 1 {
 				t.Fatal("original close retried")
 			}
 		})
 	}
 }
-func TestOriginalAttemptPublicationBeforeFallibleStep(t *testing.T) {
-	for _, mode := range []string{"post-open-check", "ioctl-ambiguous", "readback", "attach-handle", "session-bind"} {
-		t.Run(mode, func(t *testing.T) {
-			c, _ := operation1AdapterRig(t)
-			closer := &countOriginalCloser{}
 
-			e := c.withOwner(context.Background(), func(context.Context) error {
-				c.attempt = &originalAttempt{owner: c, stage: "unopened"}
-				// Production opener uses this SAME seam immediately after wrapping.
-				return c.attempt.afterOpen(&fileCustody{closer: closer}, func() error {
-					if c.attempt.custody == nil || closer.calls != 0 {
-						t.Fatal("fallible check before retain")
-					}
-					switch mode {
-					case "post-open-check":
-						return ErrConflict
-					case "ioctl-ambiguous":
-						c.attempt.stage = "ioctl-attempted"
-						return ErrConflict
-					case "readback":
-						c.attempt.stage = "ioctl-returned"
-						return ErrConflict
-					case "attach-handle":
-						return ErrConflict
-					case "session-bind":
-						h := *c.adapter.session.canonical
-						c.attempt.handle = &h
-						return ErrConflict
-					}
-					return nil
-				})
-			})
-			if e == nil || c.attempt.custody == nil || closer.calls != 0 {
-				t.Fatal("error lost custody")
+// This checks only the shared afterOpen publication ordering with one injected
+// error. It does not claim syscall/readback/handle/session failure-path coverage.
+func TestAfterOpenPublishesCustodyBeforeInjectedCheck(t *testing.T) {
+	c, _ := operation1AdapterRig(t)
+	closer := &countOriginalCloser{}
+	e := c.withOwner(context.Background(), func(context.Context) error {
+		c.attempt = &originalAttempt{owner: c, stage: "unopened"}
+		return c.attempt.afterOpen(&fileCustody{closer: closer}, func() error {
+			if c.attempt.custody == nil || closer.calls != 0 {
+				t.Fatal("check before original retained")
 			}
-			_ = c.stop(context.Background())
-			_ = c.stop(context.Background())
-			if closer.calls != 1 || !c.tx.PendingCleanup {
-				t.Fatal("close/absence", closer.calls)
-			}
+			return ErrConflict
 		})
+	})
+	if e == nil || c.attempt.custody == nil || closer.calls != 0 {
+		t.Fatal("error lost original")
+	}
+	_ = c.stop(context.Background())
+	_ = c.stop(context.Background())
+	if closer.calls != 1 || !c.tx.PendingCleanup {
+		t.Fatal("close/absence", closer.calls)
 	}
 }
 func TestStopDuringApplyWaitsThenClosesOriginalOnce(t *testing.T) {

@@ -53,7 +53,7 @@ func TestRealSourceLineageHooksPrecedeEffectsNoExecution(t *testing.T) {
 	for _, v := range []struct{ file, fn, guard, effect string }{
 		{"rtnetlink_linux.go", "applyExact", "guardedEffect", "openRouteSocket"},
 		{"custody_effects_live_linux.go", "disableOwnedIPv6", "guardedEffect", "unix.Open("},
-		{"custody_linux.go", "Close", "lineage.invalidate", "c.file.Close"},
+		{"file_custody.go", "Close", "lineage.invalidate", "closer.Close"},
 	} {
 		src := sourceFunction(t, v.file, v.fn)
 		a, b := strings.Index(src, v.guard), strings.Index(src, v.effect)
