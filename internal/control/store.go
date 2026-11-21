@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"regexp"
@@ -52,6 +53,7 @@ type storeData struct {
 
 // Store is the whole control-plane state, persisted as one JSON file.
 type Store struct {
+	storageCodec        storeCodec // nil preserves exact legacy bytes; no public/config setter
 	registrarIngress    *registrarIngressOwner
 	registrarSources    *registrarSourceOwner
 	registrarEnrollment *registrarEnrollmentOwner
@@ -68,8 +70,16 @@ type Store struct {
 	watchers            map[string]map[chan struct{}]bool // network ID -> waiters
 }
 
-// Open loads or creates the store at path.
-func Open(path string) (*Store, error) {
+// storeCodec is a private per-instance storage-format seam. Nil is legacy.
+type storeCodec interface {
+	decode([]byte) ([]byte, error)
+	encode([]byte) ([]byte, error)
+	maxBytes() int
+}
+
+// Open loads or creates the legacy-format store at path.
+func Open(path string) (*Store, error) { return openStore(path, nil) }
+func openStore(path string, codec storeCodec) (*Store, error) {
 	lease, path, err := acquireStoreLease(path)
 	if err != nil {
 		return nil, err
@@ -81,8 +91,9 @@ func Open(path string) (*Store, error) {
 		}
 	}()
 	s := &Store{
-		path:      path,
-		ownedPath: path, lease: lease, fs: defaultStoreFilesystem(),
+		storageCodec: codec,
+		path:         path,
+		ownedPath:    path, lease: lease, fs: defaultStoreFilesystem(),
 		watchers: map[string]map[chan struct{}]bool{},
 	}
 	s.data = storeData{
@@ -102,13 +113,39 @@ func Open(path string) (*Store, error) {
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
-	b, err := os.ReadFile(path)
+	var b []byte
+	if codec == nil {
+		b, err = os.ReadFile(path)
+	} else {
+		f, e := os.Open(path)
+		if e != nil {
+			err = e
+		} else {
+			b, err = io.ReadAll(io.LimitReader(f, int64(codec.maxBytes())+1))
+			closeErr := f.Close()
+			if err == nil {
+				err = closeErr
+			}
+			if len(b) > codec.maxBytes() {
+				return nil, fmt.Errorf("store: bounded format too large")
+			}
+		}
+	}
 	if errors.Is(err, os.ErrNotExist) {
+		if codec != nil {
+			return nil, fmt.Errorf("store: dedicated existing image required")
+		}
 		ok = true
 		return s, nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if codec != nil {
+		b, err = codec.decode(b)
+		if err != nil {
+			return nil, err
+		}
 	}
 	trimmed := bytes.TrimSpace(b)
 	if len(trimmed) == 0 || trimmed[0] != '{' {

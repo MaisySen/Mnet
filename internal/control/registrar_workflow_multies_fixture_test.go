@@ -95,59 +95,42 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 			}
 		})
 	}
+	// Fixture decorators observe/inject transport effects around the real router.
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-		if r.URL.Path == registrar.HistoryPath {
-			historyCalls.Add(1)
-			raw, err := io.ReadAll(io.LimitReader(r.Body, contract.ProofWireMaxBytes+1))
-			input, decodeErr := contract.DecodeHistoryRequestWire(raw)
-			secret := strings.TrimPrefix(r.Header.Get("Authorization"), registrar.HistoryScheme)
-			if err != nil || decodeErr != nil || secret == r.Header.Get("Authorization") {
-				w.WriteHeader(400)
-				return
-			}
-			if recoveryMode.Load() && !historyFinalize.Load() {
-				s.mu.Lock()
-				var record *registrarRecord
-				for _, candidate := range s.data.Registrar.Records {
-					if candidate.Consumption != nil && candidate.Consumption.Challenge == input.Challenge {
-						record = candidate
-						break
-					}
-				}
-				s.mu.Unlock()
-				if record == nil {
-					w.WriteHeader(403)
-					return
-				}
-				if err := s.DeleteNode(record.NodeID); err != nil {
-					w.WriteHeader(403)
-					return
-				}
-			}
-			history, err := s.registrarHistoricalReceipt(input.Challenge, secret)
-			if err != nil {
-				w.WriteHeader(403)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Header().Set("Cache-Control", "no-store")
-			json.NewEncoder(w).Encode(contract.HistoryReceiptWire{Version: 1, Receipt: history.Receipt, ReceiptDigest: history.Digest})
+		raw, err := io.ReadAll(io.LimitReader(r.Body, contract.ProofWireMaxBytes+1))
+		if err != nil {
+			w.WriteHeader(400)
 			return
 		}
-		if r.URL.Path == "/api/mnet-node-experimental-v1/map" || r.URL.Path == "/api/mnet-node-experimental-v1/endpoints" {
-			nativeSecret := strings.TrimPrefix(r.Header.Get("Authorization"), "Mnet-Node-Credential-V1 ")
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		if r.URL.Path == registrar.HistoryPath {
+			historyCalls.Add(1)
+			if recoveryMode.Load() && !historyFinalize.Load() {
+				input, e := contract.DecodeHistoryRequestWire(raw)
+				if e == nil {
+					s.mu.Lock()
+					var node string
+					for _, candidate := range s.data.Registrar.Records {
+						if candidate.Consumption != nil && candidate.Consumption.Challenge == input.Challenge {
+							node = candidate.NodeID
+							break
+						}
+					}
+					s.mu.Unlock()
+					if node != "" {
+						if e := s.DeleteNode(node); e != nil {
+							t.Error(e)
+						}
+					}
+				}
+			}
+		}
+		isMap := r.URL.Path == developmentNodePrefix+"map"
+		if isMap || r.URL.Path == developmentNodePrefix+"endpoints" {
 			var req struct {
-				Version       int                `json:"version"`
-				Receipt       contract.ReceiptV2 `json:"receipt"`
-				ReceiptDigest string             `json:"receipt_digest"`
-				Endpoints     []string           `json:"endpoints"`
+				Receipt contract.ReceiptV2 `json:"receipt"`
 			}
-			raw, err := io.ReadAll(io.LimitReader(r.Body, contract.ProofWireMaxBytes+1))
-			if err != nil || len(raw) > contract.ProofWireMaxBytes || json.Unmarshal(raw, &req) != nil || req.Version != 1 || nativeSecret == r.Header.Get("Authorization") {
-				w.WriteHeader(400)
-				return
-			}
+			json.Unmarshal(raw, &req)
 			if os.Getenv("MNET_CONNECT_EXISTING_FIXTURE") == "1" {
 				root := filepath.Join(dir, "installed-setup")
 				var image struct {
@@ -162,8 +145,8 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 					var ledger struct {
 						Phase string `json:"phase"`
 					}
-					raw, _ := os.ReadFile(filepath.Join(root, "native", "local-development-connection-v1.json"))
-					json.Unmarshal(raw, &ledger)
+					data, _ := os.ReadFile(filepath.Join(root, "native", "local-development-connection-v1.json"))
+					json.Unmarshal(data, &ledger)
 					switch ledger.Phase {
 					case "setup-reserved":
 						connectionSetupHTTP.Add(1)
@@ -174,109 +157,42 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 					}
 				}
 			}
-			s.mu.Lock()
-			record := s.registrarNodeLocked(req.Receipt.NodeID)
-			if record == nil || record.ReceiptID != req.Receipt.ReceiptID || record.ReceiptDigest != req.ReceiptDigest {
+		}
+		response := httptest.NewRecorder()
+		s.registrarDevelopmentProtocol("fixture-registrar").ServeHTTP(response, r)
+
+		if response.Code >= 200 && response.Code < 300 {
+			if r.URL.Path == registrar.WorkflowPrefix+"begin" {
+				bridgeMu.Lock()
+				peerSecret = strings.TrimPrefix(r.Header.Get("Authorization"), registrar.WorkflowScheme)
+				bridgeMu.Unlock()
+			}
+			if r.URL.Path == registrar.WorkflowPrefix+"submit" && workflowSubmits.Add(1) == 2 && (recoveryMode.Load() || os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") == "lost-response") {
+				s.mu.Lock()
+				nodes := len(s.data.Nodes)
 				s.mu.Unlock()
-				w.WriteHeader(403)
-				return
-			}
-			ref := registrarCredentialReference{NodeID: record.NodeID, NetworkID: record.NetworkID, DevicePublicKey: record.DevicePublicKey, Scope: record.Scope, ReceiptID: record.ReceiptID, ReceiptDigest: record.ReceiptDigest, DescriptorDigest: record.DescriptorDigest, TranscriptDigest: record.Consumption.TranscriptDigest}
-			s.mu.Unlock()
-
-			if r.URL.Path == "/api/mnet-node-experimental-v1/endpoints" {
-				if err := s.setRegistrarCredentialEndpoints(ref, nativeSecret, req.Endpoints); err != nil {
-					w.WriteHeader(403)
-					return
-				}
-				w.Header().Set("Content-Type", "application/json")
-				w.Header().Set("Cache-Control", "no-store")
-				json.NewEncoder(w).Encode(struct {
-					Version       int    `json:"version"`
-					ReceiptDigest string `json:"receipt_digest"`
-					Updated       bool   `json:"updated"`
-				}{1, req.ReceiptDigest, true})
-				return
-			}
-			m, err := s.registrarCredentialMap(ref, nativeSecret)
-			if os.Getenv("MNET_CONNECT_EXISTING_FIXTURE") == "1" {
-				t.Logf("LOCAL WORKFLOW map result err=%v originalRemainingMS=%d", err, req.Receipt.AccessExpiresAtMS-time.Now().UnixMilli())
-			}
-			if err != nil {
-				w.WriteHeader(403)
-				return
-			}
-			if os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY") != "" && os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") == "map-failure" {
-				mapResponseRefusals.Add(1)
-				w.WriteHeader(503)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Header().Set("Cache-Control", "no-store")
-			json.NewEncoder(w).Encode(struct {
-				Version       int         `json:"version"`
-				ReceiptDigest string      `json:"receipt_digest"`
-				Map           *netmap.Map `json:"map"`
-			}{1, req.ReceiptDigest, m})
-			return
-		}
-		secret := strings.TrimPrefix(r.Header.Get("Authorization"), registrar.WorkflowScheme)
-		if secret == r.Header.Get("Authorization") {
-			w.WriteHeader(403)
-			return
-		}
-		raw, err := io.ReadAll(io.LimitReader(r.Body, contract.ProofWireMaxBytes+1))
-		if err != nil {
-			w.WriteHeader(400)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		switch r.URL.Path {
-		case registrar.WorkflowPrefix + "begin":
-			input, err := contract.DecodeWorkflowBeginWire(raw, "fixture-registrar")
-			if err != nil {
-				w.WriteHeader(400)
-				return
-			}
-			c, err := s.beginRegistrarEnrollment(r.Context(), input.Request, secret)
-			if err != nil {
-				w.WriteHeader(403)
-				return
-			}
-			bridgeMu.Lock()
-			peerSecret = secret
-			bridgeMu.Unlock()
-			json.NewEncoder(w).Encode(contract.ChallengeWire{Version: 4, Challenge: c})
-		case registrar.WorkflowPrefix + "submit":
-			input, err := contract.DecodeWorkflowSubmitWire(raw)
-			if err != nil {
-				w.WriteHeader(400)
-				return
-			}
-			mac, _ := base64.RawURLEncoding.DecodeString(input.ResponseMAC)
-			var response [32]byte
-			copy(response[:], mac)
-			result, err := s.submitRegistrarEnrollment(r.Context(), input.AttemptID, input.ChallengeID, secret, response)
-			if err != nil {
-				w.WriteHeader(403)
-				return
-			}
-
-			if workflowSubmits.Add(1) == 2 && (recoveryMode.Load() || os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") == "lost-response") {
-				if len(s.data.Nodes) != 3 {
+				if nodes != 3 {
 					t.Error("lost-submit third node not committed")
 				}
-				conn, _, err := w.(http.Hijacker).Hijack()
-				if err == nil {
+				conn, _, e := w.(http.Hijacker).Hijack()
+				if e == nil {
 					conn.Close()
 				}
 				return
 			}
-			json.NewEncoder(w).Encode(contract.WorkflowReceiptWire{Version: 1, Receipt: result.History.Receipt, ReceiptDigest: result.History.Digest, ConfirmationMAC: base64.RawURLEncoding.EncodeToString(result.Confirmation[:])})
-		default:
-			w.WriteHeader(404)
+			if isMap && os.Getenv("MNET_DEVELOPMENT_SETUP_BINARY") != "" && os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") == "map-failure" {
+				mapResponseRefusals.Add(1)
+				w.WriteHeader(503)
+				return
+			}
 		}
+		for name, values := range response.Header() {
+			for _, value := range values {
+				w.Header().Add(name, value)
+			}
+		}
+		w.WriteHeader(response.Code)
+		w.Write(response.Body.Bytes())
 	})
 	defer bridge.Close()
 	// httptest uses its standard embedded localhost certificate. Merge that with

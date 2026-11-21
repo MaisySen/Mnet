@@ -51,6 +51,15 @@ func (s *Store) publishGuardedLocked(guard func() error) (published bool, err er
 	if s.registrarIngress != nil && len(b) > s.registrarIngress.limits.MaxStateBytes {
 		return false, errRegistrarEnrollment
 	}
+	if s.storageCodec != nil {
+		b, err = s.storageCodec.encode(b)
+		if err != nil {
+			return false, err
+		}
+		if len(b) > s.storageCodec.maxBytes() || s.registrarIngress != nil && len(b) > s.registrarIngress.limits.MaxStateBytes {
+			return false, fmt.Errorf("store: bounded format too large")
+		}
+	}
 	// Reject path mutation, final links and parent replacement before publication.
 	if s.path != s.ownedPath {
 		return false, fmt.Errorf("store path changed while owned")
