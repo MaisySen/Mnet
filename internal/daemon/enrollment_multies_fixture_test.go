@@ -16,7 +16,9 @@ import (
 	"time"
 
 	config "fintex.au/mnet/internal/enrollmentconfig"
+	contract "fintex.au/mnet/internal/enrollmentcontract"
 	pending "fintex.au/mnet/internal/enrollmentpending"
+	registrar "fintex.au/mnet/internal/enrollmentregistrar"
 	source "fintex.au/mnet/internal/enrollmentsource"
 )
 
@@ -116,4 +118,89 @@ func writeFixtureAtomic(dir, name string, raw []byte) error {
 		return err
 	}
 	return os.Rename(tmp, filepath.Join(dir, name))
+}
+
+// A separate disposable process owns the ACTUAL native State key and callback.
+// Control fixture receives only launch + receipt outcome, never the private key
+// or presaved credential. Its real TLS service sees the expected bearer header.
+func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
+	dir := os.Getenv("MNET_NATIVE_OWNED_WORKFLOW_DIR")
+	if dir == "" {
+		t.Skip("explicit disposable control/source coordinator required")
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "native-workflow-config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		Policy config.LocalConfigV2
+		Limits registrar.WorkflowLimits
+	}
+	if json.Unmarshal(raw, &f) != nil || !registrar.ValidWorkflowLimits(f.Limits) {
+		t.Fatal("invalid independent fixture config")
+	}
+	if _, err := config.ValidateLocalV2(f.Policy); err != nil {
+		t.Fatal(err)
+	}
+	d, err := New(Config{StateDir: filepath.Join(dir, "owned-native")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if _, err := d.PrepareIdentity(); err != nil {
+		t.Fatal(err)
+	}
+	policyRaw, _ := json.Marshal(f.Policy)
+	if err := os.WriteFile(filepath.Join(dir, "owned-native", "enrollment-policy-v2.json"), policyRaw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(d.stateOwner.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	launch, err := d.prepareNativeEnrollment(time.Now().Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	public, _ := json.Marshal(launch)
+	if err := writeFixtureAtomic(dir, "native-launch.json", public); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "native-continue")); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("native own callback timeout")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	own, err := d.exchangeNativeEnrollment(context.Background(), source.Limits{Timeout: 3 * time.Second, MaxConnections: 1})
+	if err != nil || own.Launch != launch {
+		t.Fatal("actual native/source exchange", err)
+	}
+	result, err := d.proveNativeEnrollment(context.Background(), f.Limits)
+	if err != nil {
+		t.Fatal("actual owned native key workflow", err)
+	}
+	phase, err := d.enrollmentPreparation.journal.Status()
+	if err != nil || phase != "workflow-receipt-data" {
+		t.Fatal("actual native receipt not pinned", err)
+	}
+	if _, err := d.proveNativeEnrollment(context.Background(), f.Limits); err == nil {
+		t.Fatal("native proof replay")
+	}
+	after, err := os.ReadFile(d.stateOwner.path)
+	if err != nil || !bytes.Equal(before, after) || d.state.NodeID != "" || d.state.NodeToken != "" || d.cc != nil || d.dev != nil {
+		t.Fatal("proof DATA installed native State")
+	}
+	out, _ := json.Marshal(struct {
+		Receipt                 contract.WorkflowReceiptWire
+		NativeOwnedKeyConfirmed bool
+		NativeStateUnchanged    bool
+	}{result, true, true})
+	if err := writeFixtureAtomic(dir, "native-workflow-outcome.json", out); err != nil {
+		t.Fatal(err)
+	}
 }

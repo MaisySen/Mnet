@@ -77,7 +77,7 @@ func validWorkflowRecord(r record, p *config.LocalPolicyV2) bool {
 		return false
 	}
 	switch r.Phase {
-	case "workflow-challenge-data":
+	case "workflow-challenge-data", "workflow-key-use-may-have-started":
 		return w.ResponseDigest == "" && w.ReceiptJSON == ""
 	case "workflow-submit-may-have-started":
 		return token(w.ResponseDigest) && w.ReceiptJSON == ""
@@ -183,6 +183,9 @@ func (j *Journal) BeginWorkflowDATA(ctx context.Context, current func() SourceCo
 // return. Receipt/confirmation still need actual owned native finalization; this
 // method never installs credentials or treats crypto confirmation as a commit.
 func (j *Journal) SubmitWorkflowDATA(ctx context.Context, id string, response [32]byte, current func() SourceConfig) (contract.WorkflowReceiptWire, error) {
+	return j.submitWorkflowDATA(ctx, id, response, current, "workflow-challenge-data")
+}
+func (j *Journal) submitWorkflowDATA(ctx context.Context, id string, response [32]byte, current func() SourceConfig, requiredPhase string) (contract.WorkflowReceiptWire, error) {
 	var empty contract.WorkflowReceiptWire
 	if ctx == nil || ctx.Err() != nil || current == nil {
 		return empty, ErrInvalid
@@ -194,7 +197,7 @@ func (j *Journal) SubmitWorkflowDATA(ctx context.Context, id string, response [3
 		j.mu.Unlock()
 		return empty, err
 	}
-	if j.data == nil || j.data.Version != 4 || j.data.Phase != "workflow-challenge-data" || j.reopened || j.cancel != nil || j.workflow == nil || !live(*j.data, now) || !bootstrapCurrent(*j.data, cfg, now) {
+	if j.data == nil || j.data.Version != 4 || j.data.Phase != requiredPhase || j.reopened || j.cancel != nil || j.workflow == nil || !live(*j.data, now) || !bootstrapCurrent(*j.data, cfg, now) {
 		j.mu.Unlock()
 		return empty, ErrInvalid
 	}

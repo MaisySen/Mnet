@@ -99,18 +99,29 @@ func CheckWorkflowChallenge(c contract.Challenge, own contract.SourceExchange, s
 	if !ValidWorkflowLimits(l) || now.IsZero() {
 		return ErrInvalid
 	}
-	descriptor, err := contract.SourceDescriptorDigest(own, service, reserveID)
+	expected, err := OwnWorkflowBindingDATA(own, service, reserveID, c.Binding.CheckedAtMS, c.Binding.ReserveDeadlineMS, c.Binding.AccessUntilMS)
 	if err != nil {
 		return ErrInvalid
 	}
-	p, m := own.Provenance, own.Mapping
 	b := c.Binding
-	expected := contract.Binding{PrincipalAuthority: p.PrincipalAuthority, PrincipalNamespace: p.PrincipalNamespace, PrincipalID: p.PrincipalID, SessionBinding: p.SessionBinding, IssuerLabel: m.Issuer, RegistrarOrigin: m.RegistrarOrigin, Audience: m.Audience, ServiceID: service, WorkspaceID: m.WorkspaceID, NetworkID: m.NetworkID, MappingRevision: m.MappingRevision, HandoffID: own.ID, AttemptID: own.Launch.AttemptID, ReserveID: reserveID, DescriptorDigest: descriptor, DescriptorEncodingVersion: 1, DevicePublicKey: own.Launch.DevicePublicKey, CredentialDigest: own.Launch.CredentialDigest, CheckedAtMS: b.CheckedAtMS, ReserveDeadlineMS: b.ReserveDeadlineMS, AccessUntilMS: b.AccessUntilMS}
 	if b != expected || contract.CheckFixtureTime(c, now.UnixMilli(), l.Timing) != nil || b.ReserveDeadlineMS-b.CheckedAtMS > l.MaxReserveLifetime.Milliseconds() || c.ExpiresAtMS-b.CheckedAtMS > l.MaxChallengeLifetime.Milliseconds() {
 		return ErrInvalid
 	}
 	return nil
 }
+
+// OwnWorkflowBindingDATA reconstructs identity exclusively from independent own
+// context. Only explicit time metadata may come from a previously checked
+// challenge. This helper authenticates nothing and is not key-use admission.
+func OwnWorkflowBindingDATA(own contract.SourceExchange, service, reserveID string, checkedAt, reserveDeadline, accessUntil int64) (contract.Binding, error) {
+	descriptor, err := contract.SourceDescriptorDigest(own, service, reserveID)
+	if err != nil {
+		return contract.Binding{}, ErrInvalid
+	}
+	p, m := own.Provenance, own.Mapping
+	return contract.Binding{PrincipalAuthority: p.PrincipalAuthority, PrincipalNamespace: p.PrincipalNamespace, PrincipalID: p.PrincipalID, SessionBinding: p.SessionBinding, IssuerLabel: m.Issuer, RegistrarOrigin: m.RegistrarOrigin, Audience: m.Audience, ServiceID: service, WorkspaceID: m.WorkspaceID, NetworkID: m.NetworkID, MappingRevision: m.MappingRevision, HandoffID: own.ID, AttemptID: own.Launch.AttemptID, ReserveID: reserveID, DescriptorDigest: descriptor, DescriptorEncodingVersion: 1, DevicePublicKey: own.Launch.DevicePublicKey, CredentialDigest: own.Launch.CredentialDigest, CheckedAtMS: checkedAt, ReserveDeadlineMS: reserveDeadline, AccessUntilMS: accessUntil}, nil
+}
+
 func (c *WorkflowClient) Begin(ctx context.Context) (contract.Challenge, error) {
 	if c == nil || c.workflowOwner == nil || ctx == nil || ctx.Err() != nil {
 		return contract.Challenge{}, ErrInvalid

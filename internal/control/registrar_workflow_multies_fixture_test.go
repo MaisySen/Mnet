@@ -6,6 +6,7 @@ package control
 // workflow. Native-side key/secret here are DISPOSABLE TEST-owned values, not a
 // daemon key caller, native credential installation or registered bootstrap API.
 import (
+	"bytes"
 	"context"
 	"crypto/ecdh"
 	"crypto/rand"
@@ -17,11 +18,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	config "fintex.au/mnet/internal/enrollmentconfig"
 	contract "fintex.au/mnet/internal/enrollmentcontract"
 	pending "fintex.au/mnet/internal/enrollmentpending"
 	proof "fintex.au/mnet/internal/enrollmentproof"
@@ -41,6 +45,8 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	defer func() { s.Close() }()
 	// Unregistered TEST bridge drives actual journal-owned exact-origin channel.
 	var peerSecret string
+	var bridgeMu sync.Mutex
+	getPeerSecret := func() string { bridgeMu.Lock(); defer bridgeMu.Unlock(); return peerSecret }
 	bridge := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		secret := strings.TrimPrefix(r.Header.Get("Authorization"), registrar.WorkflowScheme)
 		if secret == r.Header.Get("Authorization") {
@@ -66,7 +72,9 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 				w.WriteHeader(403)
 				return
 			}
+			bridgeMu.Lock()
 			peerSecret = secret
+			bridgeMu.Unlock()
 			json.NewEncoder(w).Encode(contract.ChallengeWire{Version: 4, Challenge: c})
 		case registrar.WorkflowPrefix + "submit":
 			input, err := contract.DecodeWorkflowSubmitWire(raw)
@@ -350,10 +358,89 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	if err != nil || len(current.Peers) != 1 || current.Peers[0].ID != peerRecord.NodeID {
 		t.Fatal("first credential did not receive actual approved peer", err)
 	}
-	peerMap, err := s.registrarCredentialMap(peerRef, peerSecret)
+	peerMap, err := s.registrarCredentialMap(peerRef, getPeerSecret())
 	if err != nil || len(peerMap.Peers) != 1 || peerMap.Peers[0].ID != r.NodeID {
 		t.Fatal("second credential did not receive first peer", err)
 	}
+
+	// Third device: separate actual daemon test process owns the retained native
+	// State/key/callback. This process never receives its private key or file
+	// credential; only the real expected registrar request presents the bearer.
+	peerSavedSecret := getPeerSecret()
+	nativeBinary := os.Getenv("MNET_NATIVE_WORKFLOW_BINARY")
+	if nativeBinary == "" {
+		t.Fatal("actual native fixture binary required")
+	}
+	nativeConfig, _ := json.Marshal(struct {
+		Policy config.LocalConfigV2
+		Limits registrar.WorkflowLimits
+	}{input.Workflow.Policy, limits})
+	if err := os.WriteFile(filepath.Join(dir, "native-workflow-config.json"), nativeConfig, 0600); err != nil {
+		t.Fatal(err)
+	}
+	nativeCmd := exec.Command(nativeBinary, "-test.run=^TestActualMultiesNativeWorkflowFixture$", "-test.v", "-test.timeout=40s")
+	nativeCmd.Env = append(os.Environ(), "MNET_NATIVE_OWNED_WORKFLOW_DIR="+dir)
+	var nativeOutput bytes.Buffer
+	nativeCmd.Stdout = &nativeOutput
+	nativeCmd.Stderr = &nativeOutput
+	if err := nativeCmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	nativeWaited := false
+	defer func() {
+		if !nativeWaited {
+			nativeCmd.Process.Kill()
+			nativeCmd.Wait()
+		}
+	}()
+	deadline = time.Now().Add(35 * time.Second)
+	for {
+		raw, err = os.ReadFile(filepath.Join(dir, "native-workflow-outcome.json"))
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("actual native process timeout")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := nativeCmd.Wait(); err != nil {
+		nativeWaited = true
+		t.Fatalf("actual native process failed: %v\n%s", err, nativeOutput.String())
+	}
+	nativeWaited = true
+	var nativeOutcome struct {
+		Receipt                 contract.WorkflowReceiptWire
+		NativeOwnedKeyConfirmed bool
+		NativeStateUnchanged    bool
+	}
+	if json.Unmarshal(raw, &nativeOutcome) != nil || !nativeOutcome.NativeOwnedKeyConfirmed || !nativeOutcome.NativeStateUnchanged {
+		t.Fatal("missing actual daemon proof result")
+	}
+	nativeRecord := s.registrarNodeLocked(nativeOutcome.Receipt.Receipt.NodeID)
+	if nativeRecord == nil || len(s.data.Nodes) != 3 {
+		t.Fatal("actual daemon proof not atomically in Store")
+	}
+	nativeRef := registrarCredentialReference{NodeID: nativeRecord.NodeID, NetworkID: nativeRecord.NetworkID, DevicePublicKey: nativeRecord.DevicePublicKey, Scope: nativeRecord.Scope, ReceiptID: nativeRecord.ReceiptID, ReceiptDigest: nativeRecord.ReceiptDigest, DescriptorDigest: nativeRecord.DescriptorDigest, TranscriptDigest: nativeRecord.Consumption.TranscriptDigest}
+	nativeSecret := getPeerSecret()
+	for _, item := range []struct {
+		ref    registrarCredentialReference
+		secret string
+	}{{ref, secret}, {peerRef, peerSavedSecret}, {nativeRef, nativeSecret}} {
+		got, err := s.registrarCredentialMap(item.ref, item.secret)
+		if err != nil || len(got.Peers) != 2 {
+			t.Fatal("three actual approved peers not mutually usable", err)
+		}
+	}
+	if err := s.DeleteNode(nativeRecord.NodeID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.registrarCredentialMap(nativeRef, nativeSecret); err == nil {
+		t.Fatal("deleted daemon peer retained current authority")
+	}
+	bridgeMu.Lock()
+	peerSecret = peerSavedSecret
+	bridgeMu.Unlock()
 	if err := s.DeleteNode(r.NodeID); err != nil {
 		t.Fatal(err)
 	}
@@ -363,14 +450,14 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	if got, err := s.registrarHistoricalReceipt(c, secret); err != nil || got != history {
 		t.Fatal("delete erased history", err)
 	}
-	peerMap, err = s.registrarCredentialMap(peerRef, peerSecret)
+	peerMap, err = s.registrarCredentialMap(peerRef, getPeerSecret())
 	if err != nil || len(peerMap.Peers) != 0 {
 		t.Fatal("deleted peer remained in second map", err)
 	}
 	if err := s.DeleteNode(peerRecord.NodeID); err != nil {
 		t.Fatal(err)
 	}
-	out, _ := json.Marshal(map[string]any{"sourceDenied": false, "bidirectionalActualPeers": true, "journalWorkflowReceiptPinned": true, "nodeCreated": true, "nodeDeleted": true, "currentMapBeforeDelete": true, "legacyTokenCreated": false, "inputAuthorized": false, "receiptId": r.ReceiptID, "receiptDigest": r.ReceiptDigest, "reserveId": req.ReserveID, "descriptorDigest": descriptor, "handoffId": own.ID})
+	out, _ := json.Marshal(map[string]any{"sourceDenied": false, "bidirectionalActualPeers": true, "nativeOwnedKeyConfirmed": true, "threeActualPeers": true, "nativeStateUnchanged": true, "journalWorkflowReceiptPinned": true, "nodeCreated": true, "nodeDeleted": true, "currentMapBeforeDelete": true, "legacyTokenCreated": false, "inputAuthorized": false, "receiptId": r.ReceiptID, "receiptDigest": r.ReceiptDigest, "reserveId": req.ReserveID, "descriptorDigest": descriptor, "handoffId": own.ID})
 	if err := os.WriteFile(filepath.Join(dir, "outcome.json"), out, 0600); err != nil {
 		t.Fatal(err)
 	}
