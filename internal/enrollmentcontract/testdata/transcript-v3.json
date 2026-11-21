@@ -1,0 +1,34 @@
+{
+  "field_count": 26,
+  "byte_length": 692,
+  "sha256_hex": "08205d132df79fe3b0788e653d3390edf7037090a19cc5b643705b4cc4756485",
+  "challenge": {
+    "binding": {
+      "principal_authority": "https://multies.test",
+      "principal_namespace": "multies-local-user-v1",
+      "principal_id": "local-person-<>&-\u00e9-\u2028-\u2029-end",
+      "session_id": "local-session-123",
+      "issuer_label": "https://configured-issuer.test/path",
+      "registrar_origin": "https://registrar.test",
+      "audience": "fixture-enrollment",
+      "service_id": "fixture-service",
+      "workspace_id": "fixture-workspace",
+      "network_id": "fixture-network",
+      "mapping_revision": "fixture-r1",
+      "handoff_id": "BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ",
+      "attempt_id": "BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU",
+      "reserve_id": "BgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgY",
+      "descriptor_digest": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+      "descriptor_encoding_version": 1,
+      "device_public_key": "CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg",
+      "credential_digest": "CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk",
+      "checked_at_ms": 1795227600123,
+      "reserve_deadline_ms": 1795227660123,
+      "access_until_ms": 1795227650123
+    },
+    "id": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+    "nonce": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+    "ephemeral_public_key": "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM",
+    "expires_at_ms": 1795227640123
+  }
+}
