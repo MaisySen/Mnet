@@ -134,8 +134,9 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	var f struct {
-		Policy config.LocalConfigV2
-		Limits registrar.WorkflowLimits
+		Policy  config.LocalConfigV2
+		Limits  registrar.WorkflowLimits
+		Recover bool
 	}
 	if json.Unmarshal(raw, &f) != nil || !registrar.ValidWorkflowLimits(f.Limits) {
 		t.Fatal("invalid independent fixture config")
@@ -182,6 +183,46 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 		t.Fatal("actual native/source exchange", err)
 	}
 	result, err := d.proveNativeEnrollment(context.Background(), f.Limits)
+
+	if f.Recover {
+		if err == nil {
+			t.Fatal("lost submit unexpectedly returned receipt")
+		}
+		phase, phaseErr := d.enrollmentPreparation.journal.Status()
+		if phaseErr != nil || phase != "workflow-submit-may-have-started" {
+			t.Fatal("submit loss not retained", phase, phaseErr)
+		}
+		actualDir := d.stateOwner.lease.Parent()
+		d.Close()
+		reopened, err := New(Config{StateDir: actualDir})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer reopened.Close()
+		// Past explicit registrar fixture access/challenge lifetime. History must be
+		// returned even after deletion by the source-of-truth test bridge, not renewed.
+		time.Sleep(16 * time.Second)
+		history, err := reopened.recoverNativeHistoryDATA(context.Background(), 3*time.Second, 2)
+		if err != nil {
+			t.Fatal("actual reopened native immutable history", err)
+		}
+		after, err := os.ReadFile(reopened.stateOwner.path)
+		if err != nil || !bytes.Equal(before, after) || reopened.state.native != nil || reopened.cc != nil || reopened.dev != nil {
+			t.Fatal("history DATA installed authority")
+		}
+		if err := reopened.finalizeNativeEnrollment(context.Background()); err == nil {
+			t.Fatal("history DATA manufactured confirmation")
+		}
+		outcome, _ := json.Marshal(struct {
+			History                   contract.HistoryReceiptWire
+			NativeHistoryRecovered    bool
+			NativeProofStateUnchanged bool
+		}{history, true, true})
+		if err := writeFixtureAtomic(dir, "native-workflow-outcome.json", outcome); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
 	if err != nil {
 		t.Fatal("actual owned native key workflow", err)
 	}

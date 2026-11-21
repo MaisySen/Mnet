@@ -1,5 +1,7 @@
 # Actual sole native State finalization, inactive development
 
+Later history DATA recovery is documented in enrollment-native-history-recovery.md. It does not broaden this finalization protocol or solve record5/pending-only recovery.
+
 This follows independently scoped accepted native-key batch 2d78397 and Multies 9bd4ea9. That review does not accept this new delta. No production caller, native startup network trigger, registrar ingress registration, installed-device activation, tunnel, remote desktop or shared-input authority is added.
 
 ## Connected result

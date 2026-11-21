@@ -223,6 +223,10 @@ func TestNativeWorkflowActualDurableKeyTLSChild(t *testing.T) {
 			if err != nil && d.finalizeNativeEnrollment(context.Background()) == nil {
 				t.Fatal("unconfirmed/failed workflow finalized native State")
 			}
+
+			if mode == "lost-submit" {
+				testNativeHistoryOwner(t, d, policyPath, rawPolicy, before, challenge, func(h http.HandlerFunc) { active.Store(h) })
+			}
 			if strings.HasPrefix(mode, "final-") {
 				testActualNativeFinalization(t, d, policyPath, rawPolicy, before, strings.TrimPrefix(mode, "final-"), func(h http.HandlerFunc) { active.Store(h) })
 			}

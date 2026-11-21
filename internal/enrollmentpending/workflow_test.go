@@ -190,6 +190,7 @@ func workflowJournalCases(t *testing.T) {
 	workflowJournalFaults(t, s, &active)
 	workflowKeyJournalCases(t, s, &active)
 	workflowFinalizeJournalCases(t, s, &active)
+	historyJournalCases(t, s, &active)
 
 }
 func TestWorkflowChallengeOwnFieldsIndependent(t *testing.T) {

@@ -48,6 +48,7 @@ type Config struct {
 
 // Daemon is the running node.
 type Daemon struct {
+	nativeHistoryCancel   context.CancelFunc
 	cfg                   Config
 	state                 *State
 	stateOwner            *nativeStateOwner
@@ -609,6 +610,9 @@ func (d *Daemon) Close() {
 	d.closeOnce.Do(func() {
 		d.mu.Lock()
 		d.closed = true
+		if d.nativeHistoryCancel != nil {
+			d.nativeHistoryCancel()
+		}
 		if d.nativeClient != nil {
 			d.nativeClient.Close()
 			d.nativeClient = nil

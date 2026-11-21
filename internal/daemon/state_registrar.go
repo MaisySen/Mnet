@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	contract "fintex.au/mnet/internal/enrollmentcontract"
+	pending "fintex.au/mnet/internal/enrollmentpending"
 	"fintex.au/mnet/internal/stateowner"
 	"io"
 	"os"
@@ -164,6 +165,9 @@ func guardNativeStateHistory(o *nativeStateOwner) error {
 	}
 	var version int
 	json.Unmarshal(fields["version"], &version)
+	if version == 6 && !pending.CheckHistoryStateBoundaryDATA(raw) {
+		return ErrStateStale
+	}
 	if _, exists := fields["finalization_json"]; exists || version == 5 {
 		return ErrStateStale
 	}

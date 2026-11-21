@@ -29,6 +29,9 @@ func (d *Daemon) freezeStateLocked() {
 	d.lastErr = "native state unavailable; Close and reopen required"
 	d.status = "state-unavailable"
 	d.lastMap = nil
+	if d.nativeHistoryCancel != nil {
+		d.nativeHistoryCancel()
+	}
 	d.cc = nil
 	if d.nativeClient != nil {
 		d.nativeClient.Close()
