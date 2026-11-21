@@ -178,3 +178,21 @@ now requires the independently painted native target color in both a known
 content pixel and a substantial region. Waiting panels cannot satisfy it. The
 old screenshot remains evidence of that false-positive fixture, not a received
 first screen. This correction changes no product timeout, transport or consent.
+
+### Installed attended checkpoint
+
+Exact local installed `e7387096fa15fab46050ea5bb28d6791ede893e0` passes
+the full home/chooser/host-view approval/separate pointer approval/native input/
+End/fresh-home journey for both native fixture host sizes. The corrected
+first-screen check observes the actual independent target, not a waiting panel.
+A separate allowed-pointer SIGTERM journey joins all native owners with the
+same exact input counts. Actual pre-control received pixels and returned-home
+pixels were inspected. The prefix was removed through guarded uninstall.
+
+The preceding source checkpoint `b064f01` passes full uncached race/vet, CLI
+cross-builds, unsupported8/16-bit controls/Desk refusal and expanded installed
+offline file replacement/recovery/removal. Its earlier installed pointer runs
+still used the weak blue predicate and are not first-screen acceptance. The
+later `e738709` change is fixture/documentation-only, not a production viewer
+repair. Neither checkpoint proves physical-device or Multies-authorized remote
+sessions. A local End return is still not a remote-cleanup acknowledgement.
