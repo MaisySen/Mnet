@@ -66,8 +66,10 @@ func validHistoryRecord(r record) bool {
 	if !ok || !token(w.ResponseDigest) {
 		return false
 	}
-	if r.Phase == "history-lookup-may-have-started" {
-		return h.ReceiptJSON == ""
+	// A later lookup marker retains the FIRST durable historical receipt. A
+	// failed/missing response must not erase that immutable anchor on reopen.
+	if r.Phase == "history-lookup-may-have-started" && h.ReceiptJSON == "" {
+		return true
 	}
 	c, err := contract.DecodeChallengeWire([]byte(w.ChallengeJSON))
 	if err != nil {
@@ -82,6 +84,13 @@ func historyMatchesExisting(w workflowData, h contract.HistoryReceiptWire, c con
 	}
 	known, err := contract.DecodeWorkflowReceiptWire([]byte(w.ReceiptJSON), c)
 	return err == nil && known.Receipt == h.Receipt && known.ReceiptDigest == h.ReceiptDigest
+}
+func historyMatchesPinned(h historyData, result contract.HistoryReceiptWire, c contract.Challenge) bool {
+	if h.ReceiptJSON == "" {
+		return true
+	}
+	pinned, err := contract.DecodeHistoryReceiptWire([]byte(h.ReceiptJSON), c)
+	return err == nil && pinned == result
 }
 func historyPolicyCurrent(r record, c SourceConfig, device string) bool {
 	expected, ok := c.Policy.Snapshot()
@@ -155,7 +164,6 @@ func (j *Journal) RecoverHistoryDATA(ctx context.Context, device string, current
 	}
 	h.Attempts++
 	h.StartedMS = start.UnixMilli()
-	h.ReceiptJSON = ""
 	raw, _ := json.Marshal(h)
 	r.Version = 6
 	r.Phase = "history-lookup-may-have-started"
@@ -201,10 +209,14 @@ func (j *Journal) RecoverHistoryDATA(ctx context.Context, device string, current
 		return empty, ErrRemoteUnknown
 	}
 	raw, _ = json.Marshal(result)
-	if _, err := contract.DecodeHistoryReceiptWire(raw, c); err != nil || !historyMatchesExisting(w, result, c) {
+	if _, err := contract.DecodeHistoryReceiptWire(raw, c); err != nil || !historyMatchesExisting(w, result, c) || !historyMatchesPinned(h, result, c) {
 		return empty, ErrRemoteUnknown
 	}
-	h.ReceiptJSON = string(raw)
+	// Keep exact original pinned bytes on a successful repeat, not a replacement
+	// projection. Only the first successful pin can establish this anchor.
+	if h.ReceiptJSON == "" {
+		h.ReceiptJSON = string(raw)
+	}
 	raw, _ = json.Marshal(h)
 	r.HistoryJSON = string(raw)
 	r.Phase = "history-receipt-data"

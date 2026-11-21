@@ -2,6 +2,42 @@
 
 This follows independently scoped accepted sole-State batch c71483c and Multies 3b6e9f3. That review does not accept this new recovery delta. No production registrar route/native trigger, startup networking, installed device, tunnel, remote desktop or input activation is added.
 
+## Independent review blocker and immutable retry correction
+
+Independent review of e9dc4e4 found a DATA immutability defect: after a first
+historical receipt was pinned, the next lookup marker cleared that receipt.
+Comparison covered an earlier workflow receipt but not a first historical-only
+receipt from lost-submit recovery. A later authenticated result with another
+node/receipt and recomputed valid projection/digest could replace the first.
+No native State/readiness was granted by that DATA-only path, but further
+recovered-readiness/finalization work is held pending focused fix review.
+
+The correction keeps the FIRST exact `history_json.receipt_json` bytes in every
+subsequent spent marker. Marker validity permits an absent anchor only when no
+history has yet been pinned; when present it is strictly decoded and checked
+against original challenge and any prior workflow receipt. Every subsequent
+response must equal the entire first HistoryReceiptWire, including receipt and
+digest. Successful exact repeats preserve the original bytes, not a replacement
+serialization. Unknown/missing/lost/conflicting responses and either persistence
+fault retain that same anchor through owning reopen. Attempt counts still spend
+before disclosure and never reset. No new authority, protocol, secret field or
+finalization path is added.
+
+The supplied independent regression reproduces the failure on e9dc4e4 and passes
+with this correction. Additional normal-TLS/race cases inspect the durable retry
+marker before response and exercise all eight marker faults and all eight receipt
+faults AFTER a first successful pin. Each owning reopen checks the exact first
+receipt/context, a further conflicting projection is refused, and only the same
+first receipt can return within the original budget. Node ID, receipt ID and
+commit time conflicts all use valid recomputed digests. Loss/current-policy
+changes and exact repeats are covered too.
+
+This is forward preservation, not a migration promise. An image already written
+by the buggy version after erasing its first anchor cannot reveal what was lost.
+No reconstructed or retrospective immutability guarantee is claimed for those
+images. No production deployment or recovered-authority consumer existed in
+this isolated development scope.
+
 ## Connected result and exact scope
 
 A new opt-in cross-app `history-recovery` case performs real Multies approval/SQLite/own-PKCE, actual retained daemon key proof and actual atomic Store commit for the third device. The unregistered test bridge deliberately drops the response AFTER the real commit. Actual native Journal stays `workflow-submit-may-have-started`, without accepted receipt or confirmation. The daemon closes and reopens its actual existing State and Journal, waits past the explicit fixture challenge/access lifetimes, then performs one separate authenticated immutable-history lookup. The bridge deletes that node before calling the actual Store historical method. The native owner durably pins the exact retained receipt DATA, with unchanged State/key/secret and no current authority.
@@ -28,7 +64,7 @@ Private `recoverNativeHistoryDATA` owns the actual existing native State key/rev
 
 No native lock is held across HTTP. Journal never invokes the native current callback under its own mutex. A single runtime history operation owns the phase; concurrency cannot reset the finite budget. Journal Close cancels/closes the dedicated history client before releasing its file lease.
 
-New strict record6 adds `history_json`: original version/phase, fixed timeout, fixed max attempts, durable attempt count, last start and exact received history payload. Only original record4 submit-may-have-started or workflow-receipt-data is eligible. It requires the pinned challenge and response digest; challenge-only/key-may-have-started/begin-unknown, record5 finalization and completed native State correlation are not silently repurposed. Original workflow/finalization fields are preserved and validated under their original semantics.
+New strict record6 adds `history_json`: original version/phase, fixed timeout, fixed max attempts, durable attempt count, last start and the first exact received history payload, retained in all later lookup markers. Only original record4 submit-may-have-started or workflow-receipt-data is eligible. It requires the pinned challenge and response digest; challenge-only/key-may-have-started/begin-unknown, record5 finalization and completed native State correlation are not silently repurposed. Original workflow/finalization fields are preserved and validated under their original semantics.
 
 Every explicit lookup commits `history-lookup-may-have-started` and increments its count BEFORE any credential disclosure. The initial maximum is explicit, one to four attempts, and timeout is an exact whole-millisecond value up to one minute. Both bounds persist unchanged. Reopen may make another explicit SAME immutable read only within that ORIGINAL budget, never refunding an unknown send or resetting it by changing parameters. There is no automatic retry. Marker rollback-safe failures do not spend a slot; ambiguous marker publication freezes and owning reopen discovers the whole image, conservatively spending it.
 
