@@ -26,14 +26,16 @@ const (
 	deskArrActStarter
 	deskArrActInspect
 	deskArrActEdit
+	deskArrActDelete
 )
 
 type deskArrangementsView struct {
 	pinned  string // base name of an explicitly opened file, "" when none
 	entries []deskStoreEntry
 	sel     int // selected row: pinned first, then store entries
-	focus   int // rows 0..rows-1, then New starter, Inspect, Edit, Close
+	focus   int // rows 0..rows-1, then New starter, Inspect, Edit, Delete, Close
 	notice  string
+	armed   string // store draft awaiting a second explicit Delete confirmation
 }
 
 func (v deskArrangementsView) rows() int {
@@ -44,13 +46,17 @@ func (v deskArrangementsView) rows() int {
 	return n
 }
 
-// focusables counts every Tab stop: rows, then the four buttons.
-func (v deskArrangementsView) focusables() int { return v.rows() + 4 }
+// focusables counts every Tab stop: rows, then the five buttons.
+func (v deskArrangementsView) focusables() int { return v.rows() + 5 }
 
 func (v deskArrangementsView) buttonEnabled(button int) bool {
 	switch button {
 	case deskArrActStarter, deskArrActClose:
 		return true
+	case deskArrActDelete:
+		// Only an app-owned store draft can be deleted, never an explicitly
+		// opened external file.
+		return v.sel >= boolInt(v.pinned != "") && v.sel < v.rows()
 	default:
 		return v.rows() > 0 && v.sel >= 0 && v.sel < v.rows()
 	}
@@ -70,7 +76,7 @@ func (v *deskArrangementsView) clamp() {
 }
 
 func deskArrButtonLabel(button int) string {
-	return []string{"Close", "New starter", "Inspect", "Edit"}[button]
+	return []string{"Close", "New starter", "Inspect", "Edit", "Delete"}[button]
 }
 
 func renderDeskArrangementsSurface(v deskArrangementsView) (*image.RGBA, error) {
@@ -170,7 +176,7 @@ func renderDeskArrangementsSurface(v deskArrangementsView) (*image.RGBA, error) 
 		}
 	}
 
-	buttons := []int{deskArrActStarter, deskArrActInspect, deskArrActEdit, deskArrActClose}
+	buttons := []int{deskArrActStarter, deskArrActInspect, deskArrActEdit, deskArrActDelete, deskArrActClose}
 	for i, b := range buttons {
 		x := 20 + i*150
 		enabled := v.buttonEnabled(b)
@@ -184,7 +190,13 @@ func renderDeskArrangementsSurface(v deskArrangementsView) (*image.RGBA, error) 
 			rect(x, 493, 140, 3, 0x2563c7)
 		}
 	}
-	if v.notice != "" {
+	if v.armed != "" {
+		name := v.armed
+		if len(name) > 40 {
+			name = name[:40]
+		}
+		text(20, 516, 700, 12, true, 0xb3261e, "Press Delete again to remove "+name+". Any other action cancels.")
+	} else if v.notice != "" {
 		text(20, 516, 700, 12, true, 0xb3261e, v.notice)
 	}
 	text(20, 544, 860, 12, false, 0x63758c, "Up/Down chooses a draft. Tab moves between drafts and buttons. Enter opens. Escape returns home.")

@@ -102,3 +102,21 @@ func nextDeskStoreName(entries []deskStoreEntry, extra ...string) string {
 	}
 	return "arrangement-9999.json"
 }
+
+// deleteDeskStoreEntry removes exactly one app-owned draft file inside the
+// store. It never resolves outside the store, never follows a symlink and
+// never removes anything but a regular file; any doubt fails closed.
+func deleteDeskStoreEntry(dir, name string) error {
+	if name == "" || name != filepath.Base(name) || strings.HasPrefix(name, ".") {
+		return errors.New("invalid arrangement draft name")
+	}
+	path := filepath.Join(dir, name)
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return errors.New("refusing to remove anything but a draft file")
+	}
+	return os.Remove(path)
+}

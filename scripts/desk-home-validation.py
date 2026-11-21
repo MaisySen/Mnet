@@ -90,6 +90,17 @@ try:
  action('mousemove','--window',wid,'240','474','click','1');time.sleep(.15)
  poll(lambda:'could not be opened' in title(),'invalid draft refused in-window')
  assert window('^Mnet Shared Desk: arrangements') and server.calls==0,'invalid draft closed the window or consulted a daemon'
+ # Delete requires a second explicit press, selection change cancels it, and only the named draft goes.
+ action('mousemove','--window',wid,'540','474','click','1')
+ poll(lambda:'armedtrue' in title(),'delete armed');capture('arrangements-delete-armed',wid)
+ action('key','Up');poll(lambda:'armedfalse' in title() and 'sel0' in title(),'selection change cancels pending delete')
+ action('key','Down');poll(lambda:'sel1' in title(),'invalid draft reselected')
+ action('mousemove','--window',wid,'540','474','click','1');poll(lambda:'armedtrue' in title(),'delete re-armed')
+ action('mousemove','--window',wid,'540','474','click','1')
+ poll(lambda:'rows1' in title() and 'Deleted broken.json' in title(),'invalid draft deleted after confirm')
+ assert not (store/'broken.json').exists() and (store/'arrangement-1.json').exists(),'delete removed the wrong files'
+ capture('arrangements-deleted',wid)
+ assert server.calls==0,'delete consulted a daemon'
  action('key','Escape');poll(lambda:window('^Mnet: three tools'),'home after invalid refusal')
  client.terminate();assert client.wait(timeout=3)==0;client=None
  print('PASS actual home arrangements journey: always-enabled card, empty-store browsing creates nothing, starter creation saving one private 0600 draft, inspect/edit child windows, clean close writes nothing, invalid draft listed and refused in-window, zero daemon calls. Synthetic same-host geometry only.',flush=True)

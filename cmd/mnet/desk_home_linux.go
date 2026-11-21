@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/jezek/xgb"
 	"github.com/jezek/xgb/xproto"
@@ -112,17 +113,17 @@ func showDeskArrangements(ctx context.Context, v *deskArrangementsView) (int, er
 		if int(y) < 452 || int(y) >= 496 {
 			return -1
 		}
-		for i := 0; i < 4; i++ {
+		for i := 0; i < 5; i++ {
 			bx := 20 + i*150
 			if int(x) >= bx && int(x) < bx+140 {
-				return i // button order: New starter, Inspect, Edit, Close
+				return i // button order: New starter, Inspect, Edit, Delete, Close
 			}
 		}
 		return -1
 	}
-	buttonAction := []int{deskArrActStarter, deskArrActInspect, deskArrActEdit, deskArrActClose}
+	buttonAction := []int{deskArrActStarter, deskArrActInspect, deskArrActEdit, deskArrActDelete, deskArrActClose}
 	state := func() string {
-		return fmt.Sprintf("rows%d sel%d pinned%t focus%d", v.rows(), v.sel, v.pinned != "", v.focus)
+		return fmt.Sprintf("rows%d sel%d pinned%t focus%d armed%t", v.rows(), v.sel, v.pinned != "", v.focus, v.armed != "")
 	}
 	draw := func() error {
 		picture, er := renderDeskArrangementsSurface(*v)
@@ -169,7 +170,7 @@ func showDeskArrangements(ctx context.Context, v *deskArrangementsView) (int, er
 			return deskArrActInspect, true
 		}
 		b := v.focus - v.rows()
-		if b >= 0 && b < 4 && v.buttonEnabled(buttonAction[b]) {
+		if b >= 0 && b < 5 && v.buttonEnabled(buttonAction[b]) {
 			return buttonAction[b], true
 		}
 		return deskArrActClose, false
@@ -199,6 +200,7 @@ func showDeskArrangements(ctx context.Context, v *deskArrangementsView) (int, er
 				if ev.Detail == 1 {
 					if r := rowAt(ev.EventX, ev.EventY); r >= 0 {
 						v.sel, v.focus, pressed = r, r, r
+						v.armed = "" // choosing a row cancels a pending delete
 					} else if b := buttonAt(ev.EventX, ev.EventY); b >= 0 && v.buttonEnabled(buttonAction[b]) {
 						v.focus, pressed = v.rows()+b, 100+b
 					}
@@ -238,11 +240,13 @@ func showDeskArrangements(ctx context.Context, v *deskArrangementsView) (int, er
 							v.sel = v.rows() - 1
 						}
 						v.focus = v.sel
+						v.armed = ""
 					}
 				case 0xff54:
 					if v.rows() > 0 {
 						v.sel = (v.sel + 1) % v.rows()
 						v.focus = v.sel
+						v.armed = ""
 					}
 				case 0xff0d, 0x20:
 					if a, ok := activate(); ok {
@@ -302,6 +306,9 @@ func runDeskHomeJourney(ctx context.Context, deskDir, layoutPath string) error {
 	}
 	notice := ""
 	pinned := ""
+	armed := ""
+	armedAt := time.Time{}
+	selKeep := -1
 	if layoutPath != "" {
 		pinned = filepath.Base(layoutPath)
 	}
@@ -310,12 +317,14 @@ func runDeskHomeJourney(ctx context.Context, deskDir, layoutPath string) error {
 		if err != nil {
 			return err
 		}
-		v := &deskArrangementsView{pinned: pinned, entries: entries, notice: notice}
+		v := &deskArrangementsView{pinned: pinned, entries: entries, sel: selKeep, notice: notice, armed: armed}
 		notice = ""
 		action, err := showDeskArrangements(ctx, v)
 		if err != nil || action == deskArrActClose || ctx.Err() != nil {
 			return err
 		}
+		selKeep = v.sel
+		armed = v.armed // selection changes inside the window cancel a pending delete
 		rowPath := ""
 		if v.sel >= 0 && v.sel < v.rows() {
 			if pinned != "" && v.sel == 0 {
@@ -323,6 +332,9 @@ func runDeskHomeJourney(ctx context.Context, deskDir, layoutPath string) error {
 			} else {
 				rowPath = filepath.Join(deskDir, entries[v.sel-boolInt(pinned != "")].Name)
 			}
+		}
+		if action != deskArrActDelete {
+			armed = ""
 		}
 		switch action {
 		case deskArrActStarter:
@@ -365,6 +377,35 @@ func runDeskHomeJourney(ctx context.Context, deskDir, layoutPath string) error {
 			if _, er = showDeskLayoutEditor(ctx, editor, out); er != nil {
 				return er
 			}
+		case deskArrActDelete:
+			rowName := ""
+			if rowPath != "" && !(pinned != "" && v.sel == 0) {
+				rowName = filepath.Base(rowPath)
+			}
+			if rowName == "" {
+				notice = "Choose a saved draft to delete."
+				continue
+			}
+			if armed != rowName || time.Since(armedAt) > 15*time.Second {
+				armed, armedAt = rowName, time.Now()
+				continue
+			}
+			armed = ""
+			present := false
+			for _, entry := range entries {
+				if entry.Name == rowName {
+					present = true
+				}
+			}
+			if !present {
+				notice = "That draft is already gone."
+				continue
+			}
+			if er := deleteDeskStoreEntry(deskDir, rowName); er != nil {
+				notice = "That draft could not be deleted."
+				continue
+			}
+			notice = "Deleted " + rowName + "."
 		}
 	}
 	return nil
