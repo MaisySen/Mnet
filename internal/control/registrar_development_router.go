@@ -100,6 +100,9 @@ func (s *Store) registrarDevelopmentProtocol(serviceID string) http.Handler {
 			secret := strings.TrimPrefix(r.Header.Get("Authorization"), "Mnet-Node-Credential-V1 ")
 			// Reuse strict historical wire decoder pinned to original stored challenge,
 			// then existing current credential owner. Caller receipt never supplies scope.
+			// RawMessage wrapper remarshal normalizes whitespace/escapes and may expand
+			// near-cap input. Pinned authority is strict decoded shape/equality/digest,
+			// NOT raw wire-byte identity. A normalization expansion may refuse size.
 			var original map[string]json.RawMessage
 			json.Unmarshal(raw, &original)
 			historyRaw, _ := json.Marshal(map[string]json.RawMessage{"version": original["version"], "receipt": original["receipt"], "receipt_digest": original["receipt_digest"]})
@@ -176,8 +179,9 @@ func developmentNodeRequestExact(raw []byte, out any) bool {
 		if !ok {
 			return false
 		}
-		// Receipt bytes stay untouched until the existing pinned strict history
-		// decoder verifies them under the actual stored original challenge.
+		// Preserve nested syntax for the later strict pinned decoder, rather than
+		// round-tripping through ReceiptV2 (which could erase duplicate/unknown keys).
+		// The wrapper remarshal can compact/escape raw bytes; see handler comment.
 		if name == "receipt" {
 			continue
 		}
