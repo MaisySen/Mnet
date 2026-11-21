@@ -18,6 +18,7 @@ type LinkRecord struct {
 	Name, Alias string
 	MTU         uint32
 	Raw         map[uint16][]byte
+	setupOuter  *setupOuterRecord // owned full-profile source evidence only
 }
 type AddressRecord struct {
 	Index                        int

@@ -13,6 +13,10 @@ import (
 func comparableSetupRaw(v RawInventory) (RawInventory, error) {
 	out := cloneRawExact(v)
 	for n := range out.Links {
+		// Wire/PAD layout is validated on each actual owned capture. Expected
+		// transition records are symbolic copies; semantic equality compares all
+		// named attrs, not alias-dependent placement of encoding-only PAD.
+		out.Links[n].setupOuter = nil
 		attrs := out.Links[n].Raw
 		// rtnl_link_stats:24 u32, rtnl_link_stats64:25 u64 in if_link.h.
 		for key, size := range map[uint16]int{7: 96, 23: 200} {

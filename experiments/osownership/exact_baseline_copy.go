@@ -21,6 +21,9 @@ func cloneRawExact(in RawInventory) RawInventory {
 	out.Links = slices.Clone(in.Links)
 	for n := range out.Links {
 		out.Links[n].Raw = cloneRawAttrs(in.Links[n].Raw)
+		if in.Links[n].setupOuter != nil {
+			out.Links[n].setupOuter = &setupOuterRecord{body: slices.Clone(in.Links[n].setupOuter.body)}
+		}
 	}
 	out.Addresses = slices.Clone(in.Addresses)
 	for n := range out.Addresses {

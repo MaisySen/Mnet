@@ -150,9 +150,15 @@ func (a *operation1Adapter) composeSetupOnly(step int, d ownedSourceDiagnostic) 
 	}
 	// Deliberately narrow full shape. Unknown outer attrs are not erased to get
 	// through baseline Compose. Future emitter profiles need their own review.
-	for k := range link.Raw {
-		if k != 3 && k != 4 && k != 18 && k != 20 && k != 26 {
-			return Inventory{}, afShape
+	if link.setupOuter != nil {
+		if e := validateSetupOuter(*link); e != nil {
+			return Inventory{}, e
+		}
+	} else {
+		for k := range link.Raw {
+			if k != 3 && k != 4 && k != 18 && k != 20 && k != 26 {
+				return Inventory{}, afShape
+			}
 		}
 	}
 	name, e := attrText(link.Raw, 3, true)

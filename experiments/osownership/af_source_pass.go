@@ -15,6 +15,7 @@ type afSourcePassOwner struct {
 	sequence, port uint32
 	active         bool
 	last           *afReadPass
+	ownedSetup     *Handle
 }
 type routeAFRecordingWire struct {
 	wire    NetlinkWire
@@ -56,7 +57,13 @@ func collectRouteAFPass(ctx context.Context, o *afSourcePassOwner, wire NetlinkW
 	}
 	p := &afReadPass{request: slices.Clone(recording.request), replies: recording.replies, sequence: o.sequence, sourceOwner: o}
 	for _, body := range bodies {
-		link, e := DecodeLink(body)
+		var link LinkRecord
+		var e error
+		if o.ownedSetup != nil {
+			link, e = decodeSetupLink(body, *o.ownedSetup)
+		} else {
+			link, e = DecodeLink(body)
+		}
 		if e != nil || !safeInterfaceName(link.Name) {
 			return nil, afShape
 		}

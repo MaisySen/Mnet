@@ -23,7 +23,7 @@ func (o *originalHeldPacketResources) collectSetupPostLockedSource(ctx context.C
 	if e != nil {
 		return nil, e
 	}
-	raw, e := ReadStableInventory(ctx, residentNetlink{ns: o.namespace}, o.namespace.checkCurrent)
+	raw, e := ReadStableInventory(ctx, ownedSetupDump{residentNetlink: residentNetlink{ns: o.namespace}, handle: *o.session.canonical}, o.namespace.checkCurrent)
 	if e != nil {
 		return nil, e
 	}

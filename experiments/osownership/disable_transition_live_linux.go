@@ -20,7 +20,7 @@ func (o *originalHeldPacketResources) collectDisableSource(ctx context.Context) 
 	if o == nil || o.namespace == nil || o.session == nil || o.session.canonical == nil {
 		return RawInventory{}, nil, ErrConflict
 	}
-	raw, e := ReadStableInventory(ctx, residentNetlink{ns: o.namespace}, o.namespace.checkCurrent)
+	raw, e := ReadStableInventory(ctx, ownedSetupDump{residentNetlink: residentNetlink{ns: o.namespace}, handle: *o.session.canonical}, o.namespace.checkCurrent)
 	if e != nil {
 		return RawInventory{}, nil, e
 	}

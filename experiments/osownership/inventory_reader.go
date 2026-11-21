@@ -50,6 +50,11 @@ func ReadStableInventory(ctx context.Context, d DumpSource, pinnedCheck func() e
 	}
 	return zero, last
 }
+
+type setupLinkDumpDecoder interface {
+	decodeOwnedSetupLink([]byte) (LinkRecord, error)
+}
+
 func readOne(ctx context.Context, d DumpSource, pinned func() error) (RawInventory, error) {
 	var i RawInventory
 	for _, kind := range []uint16{18, 22, 26, 34} {
@@ -76,7 +81,13 @@ func readOne(ctx context.Context, d DumpSource, pinned func() error) (RawInvento
 		for _, b := range ms {
 			switch kind {
 			case 18:
-				r, e := DecodeLink(b)
+				var r LinkRecord
+				var e error
+				if scoped, ok := d.(setupLinkDumpDecoder); ok {
+					r, e = scoped.decodeOwnedSetupLink(b)
+				} else {
+					r, e = DecodeLink(b)
+				}
 				if e != nil {
 					return i, e
 				}

@@ -83,7 +83,7 @@ func (s *operation1ResidentSource) createOriginal(ctx context.Context, p Plan, a
 		return Handle{}, ErrConflict
 	}
 	created, e := createTUNSource(ctx, s.ns, p, a, func() (Link, error) {
-		raw, e := ReadStableInventory(ctx, residentNetlink{ns: s.ns}, s.ns.checkCurrent)
+		raw, e := ReadStableInventory(ctx, creationSetupDump{residentNetlink: residentNetlink{ns: s.ns}, name: p.Binding.Name}, s.ns.checkCurrent)
 		if e != nil {
 			return Link{}, e
 		}

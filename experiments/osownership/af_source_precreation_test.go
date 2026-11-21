@@ -10,6 +10,9 @@ import (
 )
 
 func afLinkBodyTest(l LinkRecord) []byte {
+	if l.setupOuter != nil {
+		return append([]byte(nil), l.setupOuter.body...)
+	}
 	b := make([]byte, 16)
 	binary.NativeEndian.PutUint16(b[2:], l.Hardware)
 	binary.NativeEndian.PutUint32(b[4:], uint32(l.Index))

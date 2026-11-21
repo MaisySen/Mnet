@@ -14,16 +14,18 @@ import (
 // An independently mutable fake device, not predictor-output readback. Effects
 // change these operands; subsequent captures read this state. No OS claims.
 type setupRunFake struct {
-	c           *operation1Controller
-	l           *heldPacketLedger
-	h           Handle
-	raw         RawInventory
-	sys         SysctlSnapshot
-	events      []string
-	life        *disableResidentLifetime
-	ticket      *setupPhaseTicket
-	observation *setupPhaseObservation
-	mode        string
+	full         bool
+	corruptPhase int
+	c            *operation1Controller
+	l            *heldPacketLedger
+	h            Handle
+	raw          RawInventory
+	sys          SysctlSnapshot
+	events       []string
+	life         *disableResidentLifetime
+	ticket       *setupPhaseTicket
+	observation  *setupPhaseObservation
+	mode         string
 }
 
 func (*setupRunFake) requiresSetupPhaseSnapshots() {}
@@ -86,15 +88,33 @@ func (f *setupRunFake) observeOriginalAbsence(_ context.Context, a *originalAtte
 func (f *setupRunFake) diagnoseOperation1(context.Context) (ownedSourceDiagnostic, error) {
 	return ownedSourceDiagnostic{}, afPhase
 }
-func (f *setupRunFake) observeSetupPhase(_ context.Context, t *setupPhaseTicket) (*setupPhaseObservation, error) {
+func (f *setupRunFake) observeSetupPhase(ctx context.Context, t *setupPhaseTicket) (*setupPhaseObservation, error) {
 	f.events = append(f.events, "snapshot"+strconv.Itoa(t.step))
 	f.ticket = t
 	held, e := heldSourceSnapshot(f.l, f.c.tx, f.c.adapter.session)
 	if e != nil {
 		return nil, e
 	}
-	o := &setupPhaseObservation{ticket: t, diagnostic: ownedSourceDiagnostic{raw: cloneRawExact(f.raw), sys: cloneSysExact(f.sys), held: held, lineageUsable: f.l.matches(held.identity)}}
+	captured, e := f.captureSetupOuter()
+	if e != nil {
+		return nil, e
+	}
+	if f.full {
+		captured, e = f.collectFullSetupPhase(ctx, captured)
+		if e != nil {
+			return nil, e
+		}
+	}
+	o := &setupPhaseObservation{ticket: t, diagnostic: ownedSourceDiagnostic{raw: captured, sys: cloneSysExact(f.sys), held: held, lineageUsable: f.l.matches(held.identity)}}
 	f.observation = o
+	if f.corruptPhase != 0 && t.step != f.corruptPhase {
+		return o, nil
+	}
+	if f.full {
+		if e = f.mutateFullPhaseObservation(o); e != nil {
+			return nil, e
+		}
+	}
 	if t.step == 2 && f.mode == "alias-capture-drift" {
 		o.diagnostic.raw.Links[len(o.diagnostic.raw.Links)-1].Flags |= 1
 	}
@@ -130,7 +150,11 @@ func (f *setupRunFake) applyOperation1(ctx context.Context, p Plan) (*firstStepC
 	if e != nil {
 		return nil, e
 	}
-	d, e := diagnosticForHeldRecords(f.raw, f.sys, held)
+	captured, e := f.captureSetupOuter()
+	if e != nil {
+		return nil, e
+	}
+	d, e := diagnosticForHeldRecords(captured, f.sys, held)
 	if e != nil {
 		return nil, e
 	}
@@ -151,7 +175,10 @@ func (f *setupRunFake) applyOperation1(ctx context.Context, p Plan) (*firstStepC
 		collect: func(context.Context, *packetSetupTransition) (setupReadbackRecord, error) {
 			f.events = append(f.events, "alias-readback")
 			id := f.l.snapshot()
-			raw := cloneRawExact(f.raw)
+			raw, e := f.captureSetupOuter()
+			if e != nil {
+				return setupReadbackRecord{}, e
+			}
 			if f.mode == "alias-effect-drift" {
 				raw.Links[len(raw.Links)-1].MTU++
 			}
@@ -186,7 +213,11 @@ func (f *setupRunFake) applyOwnedDisable(ctx context.Context) (*postDisableResul
 		return nil, e
 	}
 	path := "/proc/sys/net/ipv6/conf/" + f.h.Link.Name + "/disable_ipv6"
-	d := ownedSourceDiagnostic{raw: cloneRawExact(f.raw), sys: SysctlSnapshot{path: f.sys[path]}, held: held, lineageUsable: f.l.matches(held.identity)}
+	captured, e := f.captureSetupOuter()
+	if e != nil {
+		return nil, e
+	}
+	d := ownedSourceDiagnostic{raw: captured, sys: SysctlSnapshot{path: f.sys[path]}, held: held, lineageUsable: f.l.matches(held.identity)}
 	return finishOwnedDisable(ctx, f.life, f.l, d, ownedDisableDependencies{
 		check: func() error { return ctx.Err() },
 		leaf: func() (ownedDisableLeaf, error) {
@@ -195,7 +226,8 @@ func (f *setupRunFake) applyOwnedDisable(ctx context.Context) (*postDisableResul
 		},
 		collect: func(context.Context) (RawInventory, SysctlSnapshot, error) {
 			f.events = append(f.events, "disable-readback")
-			return cloneRawExact(f.raw), SysctlSnapshot{path: f.sys[path]}, nil
+			captured, e := f.captureSetupOuter()
+			return captured, SysctlSnapshot{path: f.sys[path]}, e
 		},
 	})
 }

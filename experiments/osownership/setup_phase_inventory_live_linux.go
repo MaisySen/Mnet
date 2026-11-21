@@ -4,6 +4,7 @@ package osownership
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 )
 
@@ -50,6 +51,8 @@ func (s *operation1ScopedDiagnostic) observeSetupPhase(ctx context.Context, t *s
 		}
 	}()
 	scope.afOwner.port = socket.pid
+	scope.afOwner.ownedSetup = o.session.canonical
+	defer func() { scope.afOwner.ownedSetup = nil }()
 	pass, e := collectRouteAFPass(ctx, scope.afOwner, socket)
 	if e != nil {
 		return nil, e
@@ -60,7 +63,7 @@ func (s *operation1ScopedDiagnostic) observeSetupPhase(ctx context.Context, t *s
 			scope.afOwner.last = nil
 		}
 	}()
-	raw, e := ReadStableInventory(ctx, residentNetlink{ns: scope.ns}, scope.ns.checkCurrent)
+	raw, e := ReadStableInventory(ctx, ownedSetupDump{residentNetlink: residentNetlink{ns: scope.ns}, handle: *o.session.canonical}, scope.ns.checkCurrent)
 	if e != nil {
 		return nil, e
 	}
@@ -100,4 +103,39 @@ func (s *operation1ScopedDiagnostic) observeSetupPhase(ctx context.Context, t *s
 	// Full AF request provenance and original OS identity are checked here. The
 	// pure consumer separately checks phase/baseline/transition-specific operands.
 	return &setupPhaseObservation{ticket: t, diagnostic: ownedSourceDiagnostic{raw: cloneRawExact(raw), sys: cloneSysExact(sys), held: held, lineageUsable: true, afPass: pass}}, nil
+}
+
+type ownedSetupDump struct {
+	residentNetlink
+	handle Handle
+}
+
+func (d ownedSetupDump) decodeOwnedSetupLink(b []byte) (LinkRecord, error) {
+	return decodeSetupLink(b, d.handle)
+}
+
+// Before the creation handle has an ifindex, the exclusive tracked creation
+// reads the only candidate TUN by exact preauthorized name, never adopts it.
+// Original OS verification/ledger retention still follow before phase admission.
+type creationSetupDump struct {
+	residentNetlink
+	name string
+}
+
+func (d creationSetupDump) decodeOwnedSetupLink(b []byte) (LinkRecord, error) {
+	if len(b) < 16 {
+		return LinkRecord{}, afShape
+	}
+	if binary.NativeEndian.Uint16(b[2:]) != 65534 {
+		return DecodeLink(b)
+	}
+	r, e := parseSetupOuter(b)
+	if e != nil {
+		return LinkRecord{}, e
+	}
+	if r.Name != d.name {
+		return LinkRecord{}, afPhase
+	}
+	r.setupOuter = &setupOuterRecord{body: append([]byte(nil), b...)}
+	return r, nil
 }
