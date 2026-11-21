@@ -122,3 +122,14 @@ is development installed-flow evidence, not finished consumer setup or a usable
 connected peer session. Automatic recovery, eventual post-save uncertainty
 reconciliation, real-account configuration, production leases/lifecycle, startup
 handshake compatibility, OS/physical pairing and release stay unresolved.
+
+### Follow-up strict local workflow-limit parsing
+
+Self-review found encoding/json accepts duplicate and case-aliased limit fields,
+including nested Timing duplicates. A failing-first actual adapter test proves
+all three reached browser-launch emission in491f4ac. A later exact-object parser
+now rejects duplicates/case aliases/unknown/missing names before any native State
+or socket creation. The fixed12family refusal suite passes racecount3. This is
+local misconfiguration hardening, not a claim of an external attacker obtaining
+operator authority. The strict affected-entry TS check also failed at1400MiB
+exit134, not only768MiB; type acceptance remains open.

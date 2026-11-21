@@ -91,10 +91,15 @@ func RunDisposableEnrollment(ctx context.Context, root string, emit func(Develop
 	if err != nil {
 		return fail
 	}
+	fields, ok := developmentExactObject(rawLimits, []string{"Timeout", "MaxChallengeLifetime", "MaxReserveLifetime", "Timing"})
+	if !ok {
+		return fail
+	}
+	if _, ok := developmentExactObject(fields["Timing"], []string{"MaxObservationAgeMS", "MaxLeaseMS", "ClockUncertaintyMS"}); !ok {
+		return fail
+	}
 	var limits registrar.WorkflowLimits
-	decoder := json.NewDecoder(bytes.NewReader(rawLimits))
-	decoder.DisallowUnknownFields()
-	if decoder.Decode(&limits) != nil || decoder.Decode(new(any)) != io.EOF || !registrar.ValidWorkflowLimits(limits) || limits.Timeout > 3*time.Second {
+	if json.Unmarshal(rawLimits, &limits) != nil || !registrar.ValidWorkflowLimits(limits) || limits.Timeout > 3*time.Second {
 		return fail
 	}
 	stateDir := filepath.Join(root, "native")
@@ -177,4 +182,39 @@ func RunDisposableEnrollment(ctx context.Context, root string, emit func(Develop
 		return fail
 	}
 	return emit(DevelopmentEnrollmentEvent{Stage: "joined-not-connected", Peers: len(current.Peers), Result: &DevelopmentEnrollmentResult{Receipt: proofResult, NativeOwnedKeyConfirmed: true, NativeProofStateUnchanged: true, NativeStateFinalized: true, NativeCurrentPeers: len(current.Peers)}})
+}
+
+// A local configuration typo must fail before creating identity or a callback.
+// encoding/json alone accepts duplicate and case-aliased field names.
+func developmentExactObject(raw []byte, names []string) (map[string]json.RawMessage, bool) {
+	allowed := map[string]bool{}
+	for _, name := range names {
+		allowed[name] = true
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('{') {
+		return nil, false
+	}
+	result := map[string]json.RawMessage{}
+	for decoder.More() {
+		key, err := decoder.Token()
+		if err != nil {
+			return nil, false
+		}
+		name, ok := key.(string)
+		if !ok || !allowed[name] || result[name] != nil {
+			return nil, false
+		}
+		var value json.RawMessage
+		if decoder.Decode(&value) != nil {
+			return nil, false
+		}
+		result[name] = value
+	}
+	token, err = decoder.Token()
+	if err != nil || token != json.Delim('}') || decoder.Decode(new(any)) != io.EOF || len(result) != len(names) {
+		return nil, false
+	}
+	return result, true
 }

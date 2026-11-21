@@ -5,17 +5,19 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	config "fintex.au/mnet/internal/enrollmentconfig"
 	contract "fintex.au/mnet/internal/enrollmentcontract"
 	registrar "fintex.au/mnet/internal/enrollmentregistrar"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestDisposableEnrollmentRefusesBeforeCreatingNativeState(t *testing.T) {
-	for _, mode := range []string{"no-marker", "remote-source", "remote-registrar", "long-timeout", "unknown-limit", "trailing-limits", "symlink-root", "existing-native", "cancelled"} {
+	for _, mode := range []string{"no-marker", "remote-source", "remote-registrar", "long-timeout", "unknown-limit", "duplicate-limit", "case-alias-limit", "duplicate-timing", "trailing-limits", "symlink-root", "existing-native", "cancelled"} {
 		t.Run(mode, func(t *testing.T) {
 			root := t.TempDir()
 			if err := os.Chmod(root, 0700); err != nil {
@@ -36,6 +38,15 @@ func TestDisposableEnrollmentRefusesBeforeCreatingNativeState(t *testing.T) {
 			limitRaw, _ := json.Marshal(limits)
 			if mode == "unknown-limit" {
 				limitRaw = append([]byte(`{"unknown":1,`), limitRaw[1:]...)
+			}
+			if mode == "duplicate-limit" {
+				limitRaw = append([]byte(`{"Timeout":1000000000,`), limitRaw[1:]...)
+			}
+			if mode == "case-alias-limit" {
+				limitRaw = append([]byte(`{"timeout":1000000000,`), limitRaw[1:]...)
+			}
+			if mode == "duplicate-timing" {
+				limitRaw = []byte(strings.Replace(string(limitRaw), `"Timing":{`, `"Timing":{"MaxLeaseMS":1000,`, 1))
 			}
 			if mode == "trailing-limits" {
 				limitRaw = append(limitRaw, []byte(` {}`)...)
@@ -69,7 +80,10 @@ func TestDisposableEnrollmentRefusesBeforeCreatingNativeState(t *testing.T) {
 				cancel()
 			}
 			calls := 0
-			if err := RunDisposableEnrollment(ctx, actual, func(DevelopmentEnrollmentEvent) error { calls++; return nil }); err == nil {
+			if err := RunDisposableEnrollment(ctx, actual, func(DevelopmentEnrollmentEvent) error {
+				calls++
+				return errors.New("test refuses any actual browser launch")
+			}); err == nil {
 				t.Fatal("invalid development scope accepted")
 			}
 			if calls != 0 {
