@@ -14,9 +14,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"golang.zx2c4.com/wireguard/tun/tuntest"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,6 +35,7 @@ import (
 	registrar "fintex.au/mnet/internal/enrollmentregistrar"
 	source "fintex.au/mnet/internal/enrollmentsource"
 	"fintex.au/mnet/internal/netmap"
+	"fintex.au/mnet/internal/relay"
 )
 
 func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
@@ -52,12 +55,24 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	var preparedFinalize atomic.Bool
 	var preparedHistoryFinalize atomic.Bool
 	var transportMode atomic.Bool
+	var relayMode atomic.Bool
+	var relayIngress atomic.Pointer[http.Handler]
+	relayHub := relay.NewHub()
 	var workflowSubmits atomic.Int32
 	var historyCalls atomic.Int32
 	var bridgeMu sync.Mutex
 	getPeerSecret := func() string { bridgeMu.Lock(); defer bridgeMu.Unlock(); return peerSecret }
 	var ingress atomic.Pointer[registrarIngress]
 	bridge := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == registrarRelayPath {
+			h := relayIngress.Load()
+			if h == nil {
+				w.WriteHeader(503)
+				return
+			}
+			(*h).ServeHTTP(w, r)
+			return
+		}
 		g := ingress.Load()
 		if g == nil {
 			w.WriteHeader(503)
@@ -229,11 +244,16 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gate, err := s.newRegistrarDevelopmentIngress(registrarIngressLimits{MaxRequests: 64, MaxConcurrent: 2, MaxBodyBytes: 16384, MaxStateBytes: 4 << 20, MaxEntries: 8, Timeout: 5 * time.Second}, inner)
+	gate, err := s.newRegistrarDevelopmentIngress(registrarIngressLimits{MaxRequests: 64, MaxConcurrent: 4, MaxBodyBytes: 16384, MaxStateBytes: 4 << 20, MaxEntries: 8, Timeout: 5 * time.Second}, inner)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ingress.Store(gate)
+	rh, relayErr := s.newRegistrarDevelopmentRelayIngress(gate, relayHub, 256)
+	if relayErr != nil {
+		t.Fatal(relayErr)
+	}
+	relayIngress.Store(&rh)
 	private, err := ecdh.X25519().GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -267,7 +287,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		NetworkID       string                `json:"networkId"`
 		RegistrarOrigin string                `json:"registrarOrigin"`
 	}{launch, network.ID, bridge.URL})
-	if err := os.WriteFile(filepath.Join(dir, "launch.json"), public, 0600); err != nil {
+	if err := writeRegistrarFixtureAtomic(dir, "launch.json", public); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(40 * time.Second)
@@ -295,7 +315,8 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	historyFinalize.Store(input.Mode == "history-finalize")
 	preparedFinalize.Store(input.Mode == "prepared-finalize" || input.Mode == "prepared-history-finalize")
 	preparedHistoryFinalize.Store(input.Mode == "prepared-history-finalize")
-	transportMode.Store(input.Mode == "direct-transport")
+	relayMode.Store(input.Mode == "relay-transport")
+	transportMode.Store(input.Mode == "direct-transport" || relayMode.Load())
 	policyRaw, _ := json.Marshal(input.Workflow)
 	_, policy, err := parseRegistrarWorkflow(policyRaw)
 	if err != nil {
@@ -331,7 +352,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		if err == nil || len(s.data.Nodes) != 0 || s.data.Registrar != nil {
 			t.Fatal("denied actual source granted node")
 		}
-		os.WriteFile(filepath.Join(dir, "outcome.json"), []byte(`{"sourceDenied":true,"nodeCreated":false,"inputAuthorized":false}`), 0600)
+		writeRegistrarFixtureAtomic(dir, "outcome.json", []byte(`{"sourceDenied":true,"nodeCreated":false,"inputAuthorized":false}`))
 		return
 	}
 	if err != nil {
@@ -370,11 +391,16 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gate, err = s.newRegistrarDevelopmentIngress(registrarIngressLimits{MaxRequests: 64, MaxConcurrent: 2, MaxBodyBytes: 16384, MaxStateBytes: 4 << 20, MaxEntries: 8, Timeout: 5 * time.Second}, inner)
+	gate, err = s.newRegistrarDevelopmentIngress(registrarIngressLimits{MaxRequests: 64, MaxConcurrent: 4, MaxBodyBytes: 16384, MaxStateBytes: 4 << 20, MaxEntries: 8, Timeout: 5 * time.Second}, inner)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ingress.Store(gate)
+	rh, relayErr = s.newRegistrarDevelopmentRelayIngress(gate, relayHub, 256)
+	if relayErr != nil {
+		t.Fatal(relayErr)
+	}
+	relayIngress.Store(&rh)
 	history, err := s.registrarHistoricalReceipt(c, secret)
 	if err != nil || history != result.History {
 		t.Fatal("whole real commit missing after reopen", err)
@@ -407,7 +433,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	peerPublic, _ := json.Marshal(peerLaunch)
-	if err := os.WriteFile(filepath.Join(dir, "peer-launch.json"), peerPublic, 0600); err != nil {
+	if err := writeRegistrarFixtureAtomic(dir, "peer-launch.json", peerPublic); err != nil {
 		t.Fatal(err)
 	}
 	deadline = time.Now().Add(30 * time.Second)
@@ -500,8 +526,23 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	var transport *registrarTransportFixture
 	if transportMode.Load() {
 		transport = newRegistrarTransportFixture(t, key)
-		if err := s.setRegistrarCredentialEndpoints(ref, secret, []string{transport.endpoint()}); err != nil {
+		endpoints := []string{transport.endpoint()}
+		if relayMode.Load() {
+			endpoints = nil
+			transport.relayMode = true
+		}
+		if err := s.setRegistrarCredentialEndpoints(ref, secret, endpoints); err != nil {
 			t.Fatal(err)
+		}
+		if relayMode.Load() {
+			receipt, err := contract.ReceiptV2ForChallenge(r.Consumption.Challenge, r.NodeID, r.ReceiptID, r.CommittedAtMS)
+			if err != nil {
+				t.Fatal(err)
+			}
+			transport.connectRelay(t, bridge, contract.HistoryReceiptWire{Version: 1, Receipt: receipt, ReceiptDigest: r.ReceiptDigest}, secret)
+			if err := os.WriteFile(filepath.Join(dir, "transport-peer-id"), []byte(r.NodeID), 0600); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	// Third device: separate actual daemon test process owns the retained native
@@ -520,8 +561,9 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		PreparedFinalize        bool
 		PreparedHistoryFinalize bool
 		Transport               bool
-	}{input.Workflow.Policy, limits, recoveryMode.Load(), historyFinalize.Load(), preparedFinalize.Load(), preparedHistoryFinalize.Load(), transportMode.Load()})
-	if err := os.WriteFile(filepath.Join(dir, "native-workflow-config.json"), nativeConfig, 0600); err != nil {
+		RelayTransport          bool
+	}{input.Workflow.Policy, limits, recoveryMode.Load(), historyFinalize.Load(), preparedFinalize.Load(), preparedHistoryFinalize.Load(), transportMode.Load(), relayMode.Load()})
+	if err := writeRegistrarFixtureAtomic(dir, "native-workflow-config.json", nativeConfig); err != nil {
 		t.Fatal(err)
 	}
 	nativeTimeout := "40s"
@@ -559,14 +601,24 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 				}
 			}
 			s.mu.Unlock()
-			if n != nil {
+			_, nativeRelayReady := os.Stat(filepath.Join(dir, "native-relay-socket-ready"))
+			if n != nil && (!relayMode.Load() || nativeRelayReady == nil) {
 				transportNativeID = n.ID
 				if !transport.revoked {
 					firstMap, err := s.registrarCredentialMap(ref, secret)
 					if err != nil {
-						t.Fatal(err)
+						nativeCmd.Process.Kill()
+						nativeCmd.Wait()
+						nativeWaited = true
+
+						t.Fatalf("transport current map %v received=%d sent=%v; native output: %s", err, transport.received, transport.sent, nativeOutput.String())
 					}
 					transport.tick(t, firstMap, *n)
+					if relayMode.Load() && transport.lastKey != "" {
+						if err := writeRegistrarFixtureAtomic(dir, "transport-relay-peer-configured", []byte("exact enrolled native peer configured")); err != nil {
+							t.Fatal(err)
+						}
+					}
 					if _, err := os.Stat(filepath.Join(dir, "native-transport-ready")); err == nil && transport.received > 0 && transport.sent {
 						if err := s.DeleteNode(r.NodeID); err != nil {
 							t.Fatal(err)
@@ -608,8 +660,11 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 							transport.sendRevokedReverse(t, *n)
 						}
 						select {
-						case <-transport.tun.Inbound:
-							t.Fatal("new encrypted payload decrypted after native removed revoked peer")
+						case packet := <-transport.tun.Inbound:
+							original := tuntest.Ping(netip.MustParseAddr(transport.selfIP), netip.MustParseAddr(n.IPv4))
+							if !relayMode.Load() || !bytes.Equal(packet, original) {
+								t.Fatal("new encrypted payload decrypted after native removed revoked peer")
+							}
 						default:
 						}
 						if _, err := os.Stat(filepath.Join(dir, "native-transport-revocation-checked")); err == nil {
@@ -653,13 +708,14 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 		NativeHistoryRecovered    bool
 		History                   contract.HistoryReceiptWire
 		NativeEncryptedDirect     bool
+		NativeEncryptedRelay      bool
 	}
 	if json.Unmarshal(raw, &nativeOutcome) != nil || !nativeOutcome.NativeProofStateUnchanged || (!recoveryMode.Load() && !preparedFinalize.Load() && (!nativeOutcome.NativeOwnedKeyConfirmed || !nativeOutcome.NativeStateFinalized || nativeOutcome.NativeCurrentPeers != 2)) || (preparedFinalize.Load() && (!nativeOutcome.NativeHistoryRecovered || nativeOutcome.NativeOwnedKeyConfirmed || !nativeOutcome.NativeStateFinalized || nativeOutcome.NativeCurrentPeers != 2 || (historyCalls.Load() != 1 && !preparedHistoryFinalize.Load()) || (preparedHistoryFinalize.Load() && historyCalls.Load() != 2))) || (recoveryMode.Load() && (!nativeOutcome.NativeHistoryRecovered || nativeOutcome.NativeOwnedKeyConfirmed || nativeOutcome.NativeStateFinalized != historyFinalize.Load() || historyCalls.Load() != 1 || (historyFinalize.Load() && nativeOutcome.NativeCurrentPeers != 2))) {
 		t.Fatal("missing actual daemon proof result")
 	}
 
 	if transportMode.Load() {
-		if transport == nil || !transport.revoked || transportReceivedAtRevoke == 0 || transport.reverseSent != 5 || !nativeOutcome.NativeEncryptedDirect || !postRemovalVerified || transportNativeID == "" || len(s.data.Nodes) != 2 {
+		if transport == nil || !transport.revoked || transportReceivedAtRevoke == 0 || transport.reverseSent != 5 || !(nativeOutcome.NativeEncryptedDirect || nativeOutcome.NativeEncryptedRelay) || !postRemovalVerified || transportNativeID == "" || len(s.data.Nodes) != 2 {
 			t.Fatal("connected encrypted direct transport/revocation evidence absent")
 		}
 		if _, err := s.registrarCredentialMap(ref, secret); err == nil {
@@ -734,8 +790,8 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	if err := s.DeleteNode(peerRecord.NodeID); err != nil {
 		t.Fatal(err)
 	}
-	out, _ := json.Marshal(map[string]any{"sourceDenied": false, "bidirectionalActualPeers": true, "nativeOwnedKeyConfirmed": !recoveryMode.Load() && !preparedFinalize.Load(), "threeActualPeers": true, "nativeProofStateUnchanged": true, "nativeStateFinalized": !recoveryMode.Load() || historyFinalize.Load(), "nativeCurrentPeers": nativeOutcome.NativeCurrentPeers, "nativeHistoryRecovered": recoveryMode.Load() || preparedFinalize.Load(), "nativeEncryptedDirect": transportMode.Load(), "journalWorkflowReceiptPinned": true, "nodeCreated": true, "nodeDeleted": true, "currentMapBeforeDelete": true, "legacyTokenCreated": false, "inputAuthorized": false, "receiptId": r.ReceiptID, "receiptDigest": r.ReceiptDigest, "reserveId": req.ReserveID, "descriptorDigest": descriptor, "handoffId": own.ID})
-	if err := os.WriteFile(filepath.Join(dir, "outcome.json"), out, 0600); err != nil {
+	out, _ := json.Marshal(map[string]any{"sourceDenied": false, "bidirectionalActualPeers": true, "nativeOwnedKeyConfirmed": !recoveryMode.Load() && !preparedFinalize.Load(), "threeActualPeers": true, "nativeProofStateUnchanged": true, "nativeStateFinalized": !recoveryMode.Load() || historyFinalize.Load(), "nativeCurrentPeers": nativeOutcome.NativeCurrentPeers, "nativeHistoryRecovered": recoveryMode.Load() || preparedFinalize.Load(), "nativeEncryptedDirect": transportMode.Load() && !relayMode.Load(), "nativeEncryptedRelay": relayMode.Load(), "journalWorkflowReceiptPinned": true, "nodeCreated": true, "nodeDeleted": true, "currentMapBeforeDelete": true, "legacyTokenCreated": false, "inputAuthorized": false, "receiptId": r.ReceiptID, "receiptDigest": r.ReceiptDigest, "reserveId": req.ReserveID, "descriptorDigest": descriptor, "handoffId": own.ID})
+	if err := writeRegistrarFixtureAtomic(dir, "outcome.json", out); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -767,4 +823,13 @@ func writeWorkflowFixturePrivate(path string, raw []byte) error {
 	}
 	defer dir.Close()
 	return dir.Sync()
+}
+
+func writeRegistrarFixtureAtomic(dir, name string, raw []byte) error {
+	path := filepath.Join(dir, name)
+	temp := path + ".tmp"
+	if err := os.WriteFile(temp, raw, 0600); err != nil {
+		return err
+	}
+	return os.Rename(temp, path)
 }

@@ -21,14 +21,14 @@ import (
 	"time"
 )
 
-func testActualEnrolledNativeTransport(t *testing.T, d *Daemon, dir string) {
+func testActualEnrolledNativeTransport(t *testing.T, d *Daemon, dir string, relayMode bool) {
 	t.Helper()
 	if d.stateOwner.saved.native == nil || d.cc != nil || d.dev != nil || d.state.NodeToken != "" || d.state.AuthKey != "" {
 		t.Fatal("transport requires exact sole native credential, no legacy path")
 	}
 	before, _ := os.ReadFile(d.stateOwner.path)
 	keyBefore := d.stateOwner.saved.PublicKey
-	limits := controlclient.RegistrarLimits{Timeout: 3 * time.Second, MaxConcurrent: 1, MaxRequests: 16}
+	limits := controlclient.RegistrarLimits{Timeout: 3 * time.Second, MaxConcurrent: 2, MaxRequests: 16}
 	tun := tuntest.NewChannelTUN()
 	// OS TUN writes normally drain independently of applyMap. Continuously
 	// drain this deliberately unbuffered test TUN while a peer is removed;
@@ -63,23 +63,56 @@ func testActualEnrolledNativeTransport(t *testing.T, d *Daemon, dir string) {
 	if d.bind.Port() == 0 {
 		t.Fatal("real WireGuard UDP bind absent")
 	}
-	if err := d.nativeCurrentEndpoints(context.Background(), []string{fmt.Sprintf("127.0.0.1:%d", d.bind.Port())}, limits); err != nil {
+	endpoints := []string{fmt.Sprintf("127.0.0.1:%d", d.bind.Port())}
+	if relayMode {
+		endpoints = nil
+	}
+	if err := d.nativeCurrentEndpoints(context.Background(), endpoints, limits); err != nil {
 		t.Fatal(err)
 	}
 	m, err := d.nativeCurrentMap(context.Background(), limits)
 	if err != nil {
 		t.Fatal(err)
 	}
+	var relaySocket *nativeRegistrarRelay
+	if relayMode {
+		relaySocket, err = d.nativeCurrentRelay(context.Background(), limits, 256)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer relaySocket.Close()
+		d.bind.SetRelaySender(relaySocket.Send)
+		defer d.bind.SetRelaySender(nil)
+		if err := writeFixtureAtomic(dir, "native-relay-socket-ready", []byte("dedicated native relay socket and zero-endpoint map ready")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	targetID, _ := os.ReadFile(filepath.Join(dir, "transport-peer-id"))
 	var peerID, peerIP, peerKey string
 	for _, peer := range m.Peers {
-		if len(peer.Endpoints) == 1 && strings.HasPrefix(peer.Endpoints[0], "127.0.0.1:") {
+		if relayMode && peer.ID == string(targetID) || !relayMode && len(peer.Endpoints) == 1 && strings.HasPrefix(peer.Endpoints[0], "127.0.0.1:") {
 			peerID = peer.ID
 			peerIP = peer.IPv4
 			peerKey = peer.PubKey
 		}
 	}
+	if relayMode && len(m.Self.Endpoints) != 0 {
+		t.Fatal("relay-only native advertises direct endpoint")
+	}
 	if peerID == "" || m.Self.PubKey != keyBefore || !m.Self.Approved {
 		t.Fatal("actual enrolled current map missing transport peer/own durable key")
+	}
+	if relayMode {
+		readyDeadline := time.Now().Add(time.Second)
+		for {
+			if _, err := os.Stat(filepath.Join(dir, "transport-relay-peer-configured")); err == nil {
+				break
+			}
+			if time.Now().After(readyDeadline) {
+				t.Fatal("relay peer configuration readiness timeout")
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
 	}
 	// This calls the real map-to-device authorization/configuration path. No
 	// manually constructed peer or legacy response is inserted into the daemon.
@@ -102,6 +135,7 @@ func testActualEnrolledNativeTransport(t *testing.T, d *Daemon, dir string) {
 		}
 	}
 	if !received {
+
 		t.Fatal("no reverse encrypted UDP packet from actually approved peer")
 	}
 	if err := writeFixtureAtomic(dir, "native-transport-ready", []byte("actual encrypted reverse payload verified")); err != nil {
@@ -114,6 +148,12 @@ func testActualEnrolledNativeTransport(t *testing.T, d *Daemon, dir string) {
 		}
 		if time.Now().After(deadline) {
 			t.Fatal("actual Store revocation timeout")
+		}
+		if relayMode {
+			select {
+			case tun.Outbound <- tuntest.Ping(netip.MustParseAddr(peerIP), netip.MustParseAddr(m.Self.IPv4)):
+			default:
+			}
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -158,14 +198,21 @@ drained:
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
+	postPacket := tuntest.Ping(netip.MustParseAddr(peerIP), netip.MustParseAddr(m.Self.IPv4))
+	if relayMode {
+		postPacket[len(postPacket)-1] ^= 0x5a
+	}
+	deniedInbound := func(packet []byte) bool { return !relayMode || !bytes.Equal(packet, expected) }
 	for i := 0; i < 5; i++ {
 		select {
-		case tun.Outbound <- tuntest.Ping(netip.MustParseAddr(peerIP), netip.MustParseAddr(m.Self.IPv4)):
+		case tun.Outbound <- postPacket:
 		default:
 		}
 		select {
-		case <-packets:
-			t.Fatal("revoked peer encrypted payload reached native after removal")
+		case packet := <-packets:
+			if deniedInbound(packet) {
+				t.Fatal("revoked peer encrypted payload reached native after removal")
+			}
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
@@ -175,14 +222,18 @@ drained:
 	deadline = time.Now().Add(3 * time.Second)
 	for {
 		select {
-		case <-packets:
-			t.Fatal("revoked peer encrypted payload reached native during post-removal observation")
+		case packet := <-packets:
+			if deniedInbound(packet) {
+				t.Fatal("revoked peer encrypted payload reached native during post-removal observation")
+			}
 		default:
 		}
 		if _, err := os.Stat(filepath.Join(dir, "transport-post-removal-verified")); err == nil {
 			select {
-			case <-packets:
-				t.Fatal("revoked peer late encrypted payload reached native")
+			case packet := <-packets:
+				if deniedInbound(packet) {
+					t.Fatal("revoked peer late encrypted payload reached native")
+				}
 			default:
 			}
 			break

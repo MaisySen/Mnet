@@ -141,6 +141,7 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 		PreparedFinalize        bool
 		PreparedHistoryFinalize bool
 		Transport               bool
+		RelayTransport          bool
 	}
 	if json.Unmarshal(raw, &f) != nil || !registrar.ValidWorkflowLimits(f.Limits) {
 		t.Fatal("invalid independent fixture config")
@@ -279,10 +280,15 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 		t.Fatal("actual owning native finalization reopen", err)
 	}
 
-	if err := reopened.nativeCurrentEndpoints(context.Background(), []string{"192.0.2.79:51820"}, controlclient.RegistrarLimits{Timeout: 3 * time.Second, MaxConcurrent: 1, MaxRequests: 8}); err != nil {
+	currentLimits := controlclient.RegistrarLimits{Timeout: 3 * time.Second, MaxConcurrent: 1, MaxRequests: 8}
+	if f.RelayTransport {
+		currentLimits.MaxConcurrent = 2
+		currentLimits.MaxRequests = 16
+	}
+	if err := reopened.nativeCurrentEndpoints(context.Background(), []string{"192.0.2.79:51820"}, currentLimits); err != nil {
 		t.Fatal("sole State actual endpoint publication", err)
 	}
-	current, err := reopened.nativeCurrentMap(context.Background(), controlclient.RegistrarLimits{Timeout: 3 * time.Second, MaxConcurrent: 1, MaxRequests: 8})
+	current, err := reopened.nativeCurrentMap(context.Background(), currentLimits)
 	if err != nil || current.Self.ID != result.Receipt.NodeID || len(current.Peers) != 2 || len(current.Self.Endpoints) != 1 || current.Self.Endpoints[0] != "192.0.2.79:51820" {
 		t.Fatal("sole State dedicated client actual peers", err)
 	}
@@ -290,7 +296,7 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 		t.Fatal("native current map activated legacy/tunnel")
 	}
 	if f.Transport {
-		testActualEnrolledNativeTransport(t, reopened, dir)
+		testActualEnrolledNativeTransport(t, reopened, dir, f.RelayTransport)
 	}
 	afterCurrent, _ := os.ReadFile(reopened.stateOwner.path)
 	if !bytes.Equal(finalized, afterCurrent) {
@@ -303,7 +309,8 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 		NativeStateFinalized      bool
 		NativeCurrentPeers        int
 		NativeEncryptedDirect     bool
-	}{result, true, true, true, len(current.Peers), f.Transport})
+		NativeEncryptedRelay      bool
+	}{result, true, true, true, len(current.Peers), f.Transport && !f.RelayTransport, f.RelayTransport})
 	if err := writeFixtureAtomic(dir, "native-workflow-outcome.json", out); err != nil {
 		t.Fatal(err)
 	}

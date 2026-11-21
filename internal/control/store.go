@@ -961,6 +961,11 @@ func (s *Store) RelayAllowed(sourceID, dstKey string) bool {
 	if err := s.healthLocked(); err != nil {
 		return false
 	}
+	return s.relayAllowedLocked(sourceID, dstKey)
+}
+
+// Requires the SAME owning Store mutex, after lifecycle/credential validation.
+func (s *Store) relayAllowedLocked(sourceID, dstKey string) bool {
 	source := s.data.Nodes[sourceID]
 	if source == nil || s.registrarAccessDeniedLocked(sourceID) || !source.Approved || source.KeyExpired() {
 		return false

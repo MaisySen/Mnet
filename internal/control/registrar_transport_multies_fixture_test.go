@@ -8,13 +8,19 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fintex.au/mnet/internal/bind"
+	contract "fintex.au/mnet/internal/enrollmentcontract"
 	"fintex.au/mnet/internal/netmap"
 	"fmt"
+	"github.com/gorilla/websocket"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun/tuntest"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -29,6 +35,7 @@ type registrarTransportFixture struct {
 	revoked     bool
 	selfIP      string
 	reverseSent int
+	relayMode   bool
 }
 
 func newRegistrarTransportFixture(t *testing.T, key [32]byte) *registrarTransportFixture {
@@ -49,8 +56,11 @@ func (f *registrarTransportFixture) endpoint() string {
 }
 func (f *registrarTransportFixture) tick(t *testing.T, m *netmap.Map, native netmap.Node) {
 	t.Helper()
-	if !native.Approved || native.KeyExpiry == nil || time.Now().After(*native.KeyExpiry) || len(native.Endpoints) != 1 || !strings.HasPrefix(native.Endpoints[0], "127.0.0.1:") {
+	if !native.Approved || native.KeyExpiry == nil || time.Now().After(*native.KeyExpiry) || (!f.relayMode && (len(native.Endpoints) != 1 || !strings.HasPrefix(native.Endpoints[0], "127.0.0.1:"))) {
 		return
+	}
+	if f.relayMode && (len(native.Endpoints) != 0 || len(m.Self.Endpoints) != 0) {
+		t.Fatal("relay-only participants advertised direct endpoints")
 	}
 	// Map must contain the exact approved native key, not public IPC configuration.
 	found := false
@@ -68,7 +78,11 @@ func (f *registrarTransportFixture) tick(t *testing.T, m *netmap.Map, native net
 		if err != nil || len(key) != 32 {
 			t.Fatal("native key grammar")
 		}
-		conf := fmt.Sprintf("public_key=%s\nallowed_ip=%s/32\nendpoint=%s\n", hex.EncodeToString(key), native.IPv4, native.Endpoints[0])
+		endpoint := bind.RelayPrefix + native.PubKey
+		if !f.relayMode {
+			endpoint = native.Endpoints[0]
+		}
+		conf := fmt.Sprintf("public_key=%s\nallowed_ip=%s/32\nendpoint=%s\n", hex.EncodeToString(key), native.IPv4, endpoint)
 		if err := f.dev.IpcSetOperation(strings.NewReader(conf)); err != nil {
 			t.Fatal(err)
 		}
@@ -114,10 +128,65 @@ func (f *registrarTransportFixture) sendRevokedReverse(t *testing.T, native netm
 	if !strings.Contains(ipc, "public_key="+hex.EncodeToString(key)) || !strings.Contains(ipc, "allowed_ip="+native.IPv4+"/32") {
 		t.Fatal("revoked sender no longer retains exact native peer/destination")
 	}
+	postPacket := tuntest.Ping(netip.MustParseAddr(native.IPv4), netip.MustParseAddr(f.selfIP))
+	if f.relayMode {
+		postPacket[len(postPacket)-1] ^= 0x5a
+	}
 	select {
-	case f.tun.Outbound <- tuntest.Ping(netip.MustParseAddr(native.IPv4), netip.MustParseAddr(f.selfIP)):
+	case f.tun.Outbound <- postPacket:
 		f.reverseSent++
 	case <-time.After(time.Second):
 		t.Fatal("revoked peer reverse send not enqueued")
 	}
+}
+
+func (f *registrarTransportFixture) connectRelay(t *testing.T, server *httptest.Server, receipt contract.HistoryReceiptWire, secret string) {
+	t.Helper()
+	raw, err := json.Marshal(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	headers := http.Header{}
+	headers.Set("Authorization", registrarRelayScheme+secret)
+	headers.Set(registrarRelayReferenceHeader, base64.RawURLEncoding.EncodeToString(raw))
+	dialer := websocket.Dialer{TLSClientConfig: server.Client().Transport.(*http.Transport).TLSClientConfig.Clone(), HandshakeTimeout: time.Second}
+	ws, _, err := dialer.Dial("wss"+strings.TrimPrefix(server.URL, "https")+registrarRelayPath, headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ws.Close() })
+	var writeMu sync.Mutex
+	f.bind.SetRelaySender(func(dst string, packet []byte) error {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		// This short finite fixture deliberately has one handshake initiator.
+		// Simultaneous WG initiations overwrite each other's handshake state;
+		// retry is 5s, beyond the explicitly fixed 3s native socket. The test
+		// peer only responds; encrypted data remains bidirectional.
+		if len(packet) > 0 && packet[0] == 1 {
+			return nil
+		}
+		key, err := base64.StdEncoding.Strict().DecodeString(dst)
+		if err != nil {
+			return err
+		}
+		frame := append(key, packet...)
+		ws.SetWriteDeadline(time.Now().Add(time.Second))
+		return ws.WriteMessage(websocket.BinaryMessage, frame)
+	})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ws.SetReadLimit(2080)
+		for {
+			typ, msg, err := ws.ReadMessage()
+			if err != nil {
+				return
+			}
+			if typ == websocket.BinaryMessage && len(msg) > 32 {
+				f.bind.Inject(base64.StdEncoding.EncodeToString(msg[:32]), msg[32:])
+			}
+		}
+	}()
+	t.Cleanup(func() { ws.Close(); <-done })
 }

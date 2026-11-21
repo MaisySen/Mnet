@@ -9,6 +9,7 @@
 package relay
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"strings"
@@ -126,8 +127,42 @@ func (h *Hub) Attach(nodeID, pubkey string, ws *websocket.Conn, onPacket func(sr
 
 // AttachScoped isolates identical public keys and destinations by network.
 func (h *Hub) AttachScoped(nodeID, scope, pubkey string, ws *websocket.Conn, onPacket func(src, dst string, payload []byte)) {
+	h.attachScoped(nil, 0, nodeID, scope, pubkey, ws, onPacket)
+}
+
+// AttachScopedBounded is an explicit finite development transport primitive,
+// not authentication. The owning caller must authorize before attachment and
+// on forwarding AND queued delivery. No existing route selects this method.
+// Every DATA message, including malformed frames, spends a slot. Control frames
+// remain governed by the mandatory deadline. Context cancellation owns socket
+// cleanup; neither reconnect nor a queued frame extends this attachment.
+func (h *Hub) AttachScopedBounded(ctx context.Context, maxFrames int, nodeID, scope, pubkey string, ws *websocket.Conn, onPacket func(src, dst string, payload []byte)) error {
+	if ctx == nil || ws == nil {
+		return errors.New("invalid finite relay attachment")
+	}
+	deadline, ok := ctx.Deadline()
+	if !ok || ctx.Err() != nil || !deadline.After(time.Now()) || time.Until(deadline) > time.Minute || maxFrames < 1 || maxFrames > 4096 || nodeID == "" || scope == "" || onPacket == nil {
+		ws.Close()
+		return errors.New("invalid finite relay attachment")
+	}
+	if raw, err := DecodeKey(pubkey); err != nil || EncodeKey(raw) != pubkey {
+		ws.Close()
+		return errors.New("invalid finite relay identity")
+	}
+	h.attachScoped(ctx, maxFrames, nodeID, scope, pubkey, ws, onPacket)
+	return nil
+}
+func (h *Hub) attachScoped(ctx context.Context, maxFrames int, nodeID, scope, pubkey string, ws *websocket.Conn, onPacket func(src, dst string, payload []byte)) {
 	key := scope + "\x00" + pubkey
 	c := &conn{ws: ws, send: make(chan queuedPacket, 64), done: make(chan struct{}), nodeID: nodeID}
+	if ctx != nil {
+		stop := context.AfterFunc(ctx, c.close)
+		defer stop()
+		if ctx.Err() != nil {
+			c.close()
+			return
+		}
+	}
 	h.mu.Lock()
 	if old := h.conns[key]; old != nil {
 		old.close()
@@ -195,11 +230,16 @@ func (h *Hub) AttachScoped(nodeID, scope, pubkey string, ws *websocket.Conn, onP
 		ws.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
+	frames := 0
 	for {
+		if ctx != nil && (ctx.Err() != nil || frames >= maxFrames) {
+			return
+		}
 		mt, msg, err := ws.ReadMessage()
 		if err != nil {
 			return
 		}
+		frames++
 		if mt != websocket.BinaryMessage || len(msg) < KeyLen+1 {
 			continue
 		}
