@@ -25,31 +25,34 @@ func (i adapterIdentity) valid() bool {
 }
 
 type adapterSession struct {
-	identity            adapterIdentity
-	observationSequence uint64
-	owner               *Transaction
-	lastObservationTime time.Time
-	lastHistoricalTime  time.Time
-	lastOwnerStamp      *Stamp
-	clockDistrusted     bool
-	baseline            *CapturedBaseline
-	createAttempted     bool
-	rejectedHandle      *Handle
-	plan                *Plan
-	forwardStep         int
-	cleanupMode         bool
-	cleanupPending      *Operation
-	cleanupAttempts     map[Operation]int
-	cleanupRetry        *Operation
-	cleanupHistory      []cleanupObservation
-	closeRecorded       bool
-	canonical           *Handle
-	pending             *Operation
-	pendingACK          bool
-	poisoned            bool
-	addressConfirmed    bool
-	closeAttempted      bool
-	closeConfirmed      bool
+	afCreationBound      bool
+	afCreationApplicable bool
+	afCreationAttrs      map[uint16][]byte
+	identity             adapterIdentity
+	observationSequence  uint64
+	owner                *Transaction
+	lastObservationTime  time.Time
+	lastHistoricalTime   time.Time
+	lastOwnerStamp       *Stamp
+	clockDistrusted      bool
+	baseline             *CapturedBaseline
+	createAttempted      bool
+	rejectedHandle       *Handle
+	plan                 *Plan
+	forwardStep          int
+	cleanupMode          bool
+	cleanupPending       *Operation
+	cleanupAttempts      map[Operation]int
+	cleanupRetry         *Operation
+	cleanupHistory       []cleanupObservation
+	closeRecorded        bool
+	canonical            *Handle
+	pending              *Operation
+	pendingACK           bool
+	poisoned             bool
+	addressConfirmed     bool
+	closeAttempted       bool
+	closeConfirmed       bool
 }
 
 func newAdapterSession(b *CapturedBaseline, id adapterIdentity) (*adapterSession, error) {
