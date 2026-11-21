@@ -12,9 +12,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	config "fintex.au/mnet/internal/enrollmentconfig"
 	"io"
 	"os"
 	"reflect"
+	"slices"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -31,6 +33,7 @@ var ErrUncertain = errors.New("enrollment intent publication uncertain; close an
 var ErrPending = errors.New("existing enrollment intent requires explicit recovery")
 
 type record struct {
+	Policy       config.LocalConfigV2     `json:"policy"`
 	Version      int                      `json:"version"`
 	Phase        string                   `json:"phase"`
 	Launch       contract.SourceLaunch    `json:"launch"`
@@ -207,7 +210,7 @@ func (j *Journal) Status() (string, error) {
 // launch DATA. Caller must independently own the listener and existing durable
 // WireGuard key. Passing a key/callback here proves neither fact. No defaults
 // for duration, authority or allowed mappings are supplied.
-func (j *Journal) Begin(publicKey, platform, callback, sourceOrigin, authority string, allowed []contract.SourceMapping, now, expires time.Time) (contract.SourceLaunch, error) {
+func (j *Journal) Begin(publicKey, platform, callback string, policy *config.LocalPolicyV2, now, expires time.Time) (contract.SourceLaunch, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if err := j.health(); err != nil {
@@ -216,7 +219,11 @@ func (j *Journal) Begin(publicKey, platform, callback, sourceOrigin, authority s
 	if j.data != nil {
 		return contract.SourceLaunch{}, ErrPending
 	}
-	r := record{Version: 1, Phase: "prepared", SourceOrigin: sourceOrigin, Authority: authority, Allowed: append([]contract.SourceMapping(nil), allowed...), CreatedMS: now.UnixMilli(), ExpiresMS: expires.UnixMilli()}
+	snapshot, ok := policy.Snapshot()
+	if !ok {
+		return contract.SourceLaunch{}, ErrInvalid
+	}
+	r := record{Version: 2, Policy: snapshot, Phase: "prepared", SourceOrigin: snapshot.SourceOrigin, Authority: snapshot.PrincipalAuthority, Allowed: policy.SourceMappings(), CreatedMS: now.UnixMilli(), ExpiresMS: expires.UnixMilli()}
 	var err error
 	for _, field := range []*string{&r.Credential, &r.Verifier, &r.Launch.AttemptID, &r.Launch.State} {
 		*field, err = opaque()
@@ -277,7 +284,7 @@ func (j *Journal) MarkExchangeStarted(now time.Time) error {
 // RecordExchange stores strictly checked response DATA only after explicit
 // may-have-started publication. It still proves no authenticated source or PKCE
 // HTTP execution; no caller can turn the returned phase into an authority permit.
-func (j *Journal) RecordExchange(raw []byte, currentAllowed []contract.SourceMapping, now time.Time) error {
+func (j *Journal) RecordExchange(raw []byte, current SourceConfig, now time.Time) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if err := j.health(); err != nil {
@@ -287,7 +294,11 @@ func (j *Journal) RecordExchange(raw []byte, currentAllowed []contract.SourceMap
 		return ErrInvalid
 	}
 	r := *j.data
-	if _, err := contract.DecodeSourceExchange(raw, r.Launch, r.Authority, r.Allowed, currentAllowed, now); err != nil {
+	if !configMatches(r, current) {
+		return ErrInvalid
+	}
+	data, err := contract.DecodeSourceExchange(raw, r.Launch, r.Authority, r.Allowed, current.Allowed, now)
+	if err != nil || !policyAllowsExchange(r, current.Policy, data) {
 		return ErrInvalid
 	}
 	r.Phase = "exchanged-data"
@@ -321,7 +332,11 @@ func token(s string) bool {
 	return false
 }
 func validRecord(r record) bool {
-	if r.Version != 1 || r.CreatedMS <= 0 || r.ExpiresMS <= r.CreatedMS || !enrollmentidentity.ValidOrigin(r.SourceOrigin) || !enrollmentidentity.ValidOrigin(r.Authority) || len(r.Allowed) == 0 || len(r.Allowed) > 20 || !token(r.Credential) || !token(r.Verifier) || r.Launch.CredentialDigest != hash(r.Credential) || r.Launch.Challenge != hash(r.Verifier) {
+	if r.Version != 2 || r.CreatedMS <= 0 || r.ExpiresMS <= r.CreatedMS || !enrollmentidentity.ValidOrigin(r.SourceOrigin) || !enrollmentidentity.ValidOrigin(r.Authority) || len(r.Allowed) == 0 || len(r.Allowed) > 20 || !token(r.Credential) || !token(r.Verifier) || r.Launch.CredentialDigest != hash(r.Credential) || r.Launch.Challenge != hash(r.Verifier) {
+		return false
+	}
+	policy, err := config.ValidateLocalV2(r.Policy)
+	if err != nil || r.SourceOrigin != r.Policy.SourceOrigin || r.Authority != r.Policy.PrincipalAuthority || !slices.Equal(r.Allowed, policy.SourceMappings()) {
 		return false
 	}
 	// Reuse DATA-only descriptor grammar for launch/mappings, not a fabricated
@@ -346,8 +361,8 @@ func validRecord(r record) bool {
 		if !token(r.Code) {
 			return false
 		}
-		_, err := contract.DecodeSourceExchange([]byte(r.ExchangeJSON), r.Launch, r.Authority, r.Allowed, r.Allowed, time.UnixMilli(r.CreatedMS))
-		return err == nil
+		data, err := contract.DecodeSourceExchange([]byte(r.ExchangeJSON), r.Launch, r.Authority, r.Allowed, r.Allowed, time.UnixMilli(r.CreatedMS))
+		return err == nil && policyAllowsExchange(r, policy, data)
 	}
 	return false
 }
@@ -484,7 +499,7 @@ func shape(d *json.Decoder, t reflect.Type, depth int) bool {
 		count := 0
 		for d.More() {
 			count++
-			if count > 20 || !shape(d, t.Elem(), depth+1) {
+			if count > 100 || !shape(d, t.Elem(), depth+1) {
 				return false
 			}
 		}

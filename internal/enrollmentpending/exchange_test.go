@@ -23,7 +23,7 @@ func callbackReady(t *testing.T) (*Journal, time.Time, SourceConfig) {
 	if err := j.RecordCallback(l.AttemptID, l.State, code(), now); err != nil {
 		t.Fatal(err)
 	}
-	return j, now, SourceConfig{SourceOrigin: j.data.SourceOrigin, PrincipalAuthority: j.data.Authority, Allowed: append([]contract.SourceMapping(nil), j.data.Allowed...)}
+	return j, now, savedConfig(t, j)
 }
 func sourceLimits() source.Limits { return source.Limits{Timeout: time.Second, MaxConnections: 1} }
 func TestExchangeSavedPublishesBeforeSendAndSavesOnlyCheckedData(t *testing.T) {
@@ -47,7 +47,7 @@ func TestExchangeSavedPublishesBeforeSendAndSavesOnlyCheckedData(t *testing.T) {
 		if r.Credential != saved.Credential || r.Verifier != saved.Verifier || r.Code != saved.Code || cfg.SourceOrigin != saved.SourceOrigin {
 			t.Fatal("sent material not from exact saved own intent")
 		}
-		if err := j.RecordExchange(raw, c.Allowed, now); err == nil {
+		if err := j.RecordExchange(raw, c, now); err == nil {
 			t.Fatal("external DATA setter bypassed active request")
 		}
 		return result, nil
@@ -215,7 +215,7 @@ func TestExchangeSavedDefaultClientThroughActualTLS(t *testing.T) {
 	journal = j
 	now := time.Now()
 	mapping := contract.SourceMapping{WorkspaceID: "org", Issuer: "https://issuer.test", RegistrarOrigin: "https://registrar.test", Audience: "fixture", MappingRevision: "r1", NetworkID: "net"}
-	l, err := j.Begin(code(), "linux", "http://127.0.0.1:34567/mnet/enrollment/callback", server.URL, "https://multies.test", []contract.SourceMapping{mapping}, now, now.Add(time.Minute))
+	l, err := j.Begin(code(), "linux", "http://127.0.0.1:34567/mnet/enrollment/callback", fixturePolicy(t, server.URL, mapping), now, now.Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +223,7 @@ func TestExchangeSavedDefaultClientThroughActualTLS(t *testing.T) {
 		t.Fatal(err)
 	}
 	wire.Store(fixtureWire{exchange(t, j, now), j.data.Code, j.data.Verifier})
-	c := SourceConfig{SourceOrigin: server.URL, PrincipalAuthority: j.data.Authority, Allowed: j.data.Allowed}
+	c := savedConfig(t, j)
 	if _, err := j.ExchangeSaved(context.Background(), func() SourceConfig { return c }, time.Now, sourceLimits()); err != nil {
 		t.Fatal("journal/default-client/TLS integration failed", err)
 	}

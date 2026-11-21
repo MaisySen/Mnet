@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	config "fintex.au/mnet/internal/enrollmentconfig"
+	"slices"
 	"time"
 
 	contract "fintex.au/mnet/internal/enrollmentcontract"
@@ -17,6 +19,7 @@ var ErrRemoteUnknown = errors.New("enrollment exchange result not durably record
 // SourceConfig is caller DATA from the future installed config owner, not an
 // operator grant or a validated native State. Source origin/authority are distinct.
 type SourceConfig struct {
+	Policy                           *config.LocalPolicyV2
 	SourceOrigin, PrincipalAuthority string
 	Allowed                          []contract.SourceMapping
 }
@@ -34,7 +37,34 @@ func copyConfig(c SourceConfig) SourceConfig {
 	c.Allowed = append([]contract.SourceMapping(nil), c.Allowed...)
 	return c
 }
+
+// SourceConfigFor copies a syntax-checked snapshot. It is NOT an installed-policy
+// or current-policy authority token; future owner must supply the real source.
+func SourceConfigFor(policy *config.LocalPolicyV2) (SourceConfig, bool) {
+	c, ok := policy.Snapshot()
+	if !ok {
+		return SourceConfig{}, false
+	}
+	return SourceConfig{Policy: policy, SourceOrigin: c.SourceOrigin, PrincipalAuthority: c.PrincipalAuthority, Allowed: policy.SourceMappings()}, true
+}
+func policyAllowsExchange(r record, current *config.LocalPolicyV2, data contract.SourceExchange) bool {
+	original, err := config.ValidateLocalV2(r.Policy)
+	if err != nil {
+		return false
+	}
+	c, ok := current.Snapshot()
+	if !ok || c.ServiceID != r.Policy.ServiceID || c.PrincipalNamespace != r.Policy.PrincipalNamespace || c.SourceOrigin != r.SourceOrigin || c.PrincipalAuthority != r.Authority {
+		return false
+	}
+	p := data.Provenance
+	return original.AllowsObservedDATA(data.Mapping, p.PrincipalAuthority, p.PrincipalNamespace, p.PrincipalID, r.Policy.ServiceID) && current.AllowsObservedDATA(data.Mapping, p.PrincipalAuthority, p.PrincipalNamespace, p.PrincipalID, r.Policy.ServiceID)
+}
 func configMatches(r record, c SourceConfig) bool {
+	policy, ok := c.Policy.Snapshot()
+	if !ok || policy.SourceOrigin != c.SourceOrigin || policy.PrincipalAuthority != c.PrincipalAuthority || policy.ServiceID != r.Policy.ServiceID || policy.PrincipalNamespace != r.Policy.PrincipalNamespace || !slices.Equal(c.Allowed, c.Policy.SourceMappings()) {
+		return false
+	}
+
 	if c.SourceOrigin != r.SourceOrigin || c.PrincipalAuthority != r.Authority || len(c.Allowed) == 0 || len(c.Allowed) > 20 {
 		return false
 	}
@@ -45,7 +75,16 @@ func configMatches(r record, c SourceConfig) bool {
 		}
 		for _, original := range r.Allowed {
 			if m == original {
-				intersection = true
+				for _, binding := range r.Policy.Bindings {
+					if binding.WorkspaceID != m.WorkspaceID {
+						continue
+					}
+					for _, principal := range binding.PrincipalIDs {
+						if c.Policy.AllowsObservedDATA(m, r.Authority, r.Policy.PrincipalNamespace, principal, r.Policy.ServiceID) {
+							intersection = true
+						}
+					}
+				}
 			}
 		}
 	}
@@ -115,7 +154,7 @@ func (j *Journal) ExchangeSaved(ctx context.Context, current func() SourceConfig
 	if err != nil {
 		return contract.SourceExchange{}, ErrRemoteUnknown
 	}
-	if _, err := contract.DecodeSourceExchange(raw, r.Launch, r.Authority, r.Allowed, afterConfig.Allowed, after); err != nil {
+	if _, err := contract.DecodeSourceExchange(raw, r.Launch, r.Authority, r.Allowed, afterConfig.Allowed, after); err != nil || !policyAllowsExchange(r, afterConfig.Policy, data) {
 		return contract.SourceExchange{}, ErrRemoteUnknown
 	}
 	if j.data == nil || j.data.Phase != "exchange-may-have-started" {
@@ -127,6 +166,7 @@ func (j *Journal) ExchangeSaved(ctx context.Context, current func() SourceConfig
 		return contract.SourceExchange{}, errors.Join(ErrRemoteUnknown, err)
 	}
 	j.mu.Unlock()
+	finalConfig := copyConfig(current())
 	finalNow := clock()
 	j.mu.Lock()
 	if err := j.health(); err != nil {
@@ -139,10 +179,10 @@ func (j *Journal) ExchangeSaved(ctx context.Context, current func() SourceConfig
 	if finalNow.Before(finalBound) {
 		finalNow = finalBound
 	}
-	if !live(r, finalNow) {
+	if !live(r, finalNow) || !configMatches(r, finalConfig) || !policyAllowsExchange(r, finalConfig.Policy, data) {
 		return contract.SourceExchange{}, ErrNoLongerCurrent
 	}
-	if _, err := contract.DecodeSourceExchange(raw, r.Launch, r.Authority, r.Allowed, afterConfig.Allowed, finalNow); err != nil {
+	if _, err := contract.DecodeSourceExchange(raw, r.Launch, r.Authority, r.Allowed, finalConfig.Allowed, finalNow); err != nil {
 		return contract.SourceExchange{}, ErrNoLongerCurrent
 	}
 	return data, nil

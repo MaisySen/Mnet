@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	config "fintex.au/mnet/internal/enrollmentconfig"
 	contract "fintex.au/mnet/internal/enrollmentcontract"
 )
 
@@ -30,7 +31,7 @@ func prepared(t *testing.T) (*Journal, contract.SourceLaunch, time.Time, string)
 	now := time.Unix(1800000000, 0)
 	key := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))
 	mapping := contract.SourceMapping{WorkspaceID: "org_test", Issuer: "https://issuer.test/path", RegistrarOrigin: "https://registrar.test", Audience: "fixture", MappingRevision: "r1", NetworkID: "net_test"}
-	launch, err := j.Begin(key, "linux", "http://127.0.0.1:34567/mnet/enrollment/callback", "https://source.test", "https://multies.test", []contract.SourceMapping{mapping}, now, now.Add(2*time.Minute))
+	launch, err := j.Begin(key, "linux", "http://127.0.0.1:34567/mnet/enrollment/callback", fixturePolicy(t, "https://source.test", mapping), now, now.Add(2*time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +76,7 @@ func TestSavedOwnMaterialAndExplicitRemoteAmbiguitySurviveReopen(t *testing.T) {
 	if phase, err := j.Status(); err != nil || phase != "callback-recorded" {
 		t.Fatal("restart lost recorded callback", err)
 	}
-	if _, err := j.Begin(launch.DevicePublicKey, launch.Platform, launch.RedirectURI, j.data.SourceOrigin, j.data.Authority, j.data.Allowed, now, now.Add(time.Minute)); !errors.Is(err, ErrPending) {
+	if _, err := j.Begin(launch.DevicePublicKey, launch.Platform, launch.RedirectURI, savedPolicy(t, j), now, now.Add(time.Minute)); !errors.Is(err, ErrPending) {
 		t.Fatal("silently replaced intent", err)
 	}
 	if err := j.RecordCallback(launch.AttemptID, launch.State, code(), now); err == nil {
@@ -98,7 +99,7 @@ func TestSavedOwnMaterialAndExplicitRemoteAmbiguitySurviveReopen(t *testing.T) {
 	if err := j.MarkExchangeStarted(now); err == nil {
 		t.Fatal("restart marked remote retry safe")
 	}
-	if err := j.RecordExchange(exchange(t, j, now), j.data.Allowed, now); err != nil {
+	if err := j.RecordExchange(exchange(t, j, now), savedConfig(t, j), now); err != nil {
 		t.Fatal(err)
 	}
 	if err := j.Close(); err != nil {
@@ -126,13 +127,13 @@ func TestCallbackDeadlinesOriginalBindingAndCurrentConfig(t *testing.T) {
 	if err := j.RecordCallback(l.AttemptID, l.State, code(), now); err != nil {
 		t.Fatal(err)
 	}
-	if err := j.RecordExchange(exchange(t, j, now), j.data.Allowed, now); err == nil {
+	if err := j.RecordExchange(exchange(t, j, now), savedConfig(t, j), now); err == nil {
 		t.Fatal("exchange accepted without publishing remote ambiguity")
 	}
 	if err := j.MarkExchangeStarted(now); err != nil {
 		t.Fatal(err)
 	}
-	if err := j.RecordExchange(exchange(t, j, now), nil, now); err == nil {
+	if err := j.RecordExchange(exchange(t, j, now), SourceConfig{}, now); err == nil {
 		t.Fatal("removed config accepted")
 	}
 	if phase, err := j.Status(); err != nil || phase != "exchange-may-have-started" {
@@ -363,7 +364,7 @@ func TestBeginPublicationFailureDoesNotReturnLaunchOrRegenerateExisting(t *testi
 	j.fs.rename = func(string, string) error { return injected }
 	now := time.Unix(1800000000, 0)
 	mapping := contract.SourceMapping{WorkspaceID: "org", Issuer: "https://issuer.test", RegistrarOrigin: "https://registrar.test", Audience: "fixture", MappingRevision: "r1", NetworkID: "net"}
-	launch, err := j.Begin(code(), "linux", "http://127.0.0.1:34567/mnet/enrollment/callback", "https://source.test", "https://multies.test", []contract.SourceMapping{mapping}, now, now.Add(time.Minute))
+	launch, err := j.Begin(code(), "linux", "http://127.0.0.1:34567/mnet/enrollment/callback", fixturePolicy(t, "https://source.test", mapping), now, now.Add(time.Minute))
 	if err == nil || launch != (contract.SourceLaunch{}) || j.data != nil {
 		t.Fatal("failed Begin returned unpublished launch")
 	}
@@ -371,7 +372,7 @@ func TestBeginPublicationFailureDoesNotReturnLaunchOrRegenerateExisting(t *testi
 		t.Fatal("prepublish failed Begin left state")
 	}
 	j.fs = original
-	if _, err := j.Begin(code(), "linux", "http://127.0.0.1:34567/mnet/enrollment/callback", "https://source.test", "https://multies.test", []contract.SourceMapping{mapping}, now, now.Add(time.Minute)); err != nil {
+	if _, err := j.Begin(code(), "linux", "http://127.0.0.1:34567/mnet/enrollment/callback", fixturePolicy(t, "https://source.test", mapping), now, now.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -465,7 +466,8 @@ func TestJournalSubprocessDeathReleasesOwner(t *testing.T) {
 }
 func FuzzSavedIntentStrictDecoder(f *testing.F) {
 	public := code()
-	r := record{Version: 1, Phase: "prepared", SourceOrigin: "https://source.test", Authority: "https://multies.test", Allowed: []contract.SourceMapping{{WorkspaceID: "org", Issuer: "https://issuer.test", RegistrarOrigin: "https://registrar.test", Audience: "fixture", MappingRevision: "r1", NetworkID: "net"}}, Credential: public, Verifier: public, CreatedMS: 1800000000000, ExpiresMS: 1800000060000}
+	r := record{Version: 2, Phase: "prepared", SourceOrigin: "https://source.test", Authority: "https://multies.test", Allowed: []contract.SourceMapping{{WorkspaceID: "org", Issuer: "https://issuer.test", RegistrarOrigin: "https://registrar.test", Audience: "fixture", MappingRevision: "r1", NetworkID: "net"}}, Credential: public, Verifier: public, CreatedMS: 1800000000000, ExpiresMS: 1800000060000}
+	r.Policy = config.LocalConfigV2{Version: 2, Revision: "r1", SourceOrigin: r.SourceOrigin, PrincipalAuthority: r.Authority, PrincipalNamespace: contract.PrincipalNamespace, IssuerLabel: "https://issuer.test", RegistrarOrigin: "https://registrar.test", Audience: "fixture", ServiceID: "fixture-service", Bindings: []config.LocalBindingV2{{WorkspaceID: "org", NetworkID: "net", PrincipalIDs: []string{"fixture-local-user"}}}}
 	r.Launch = contract.SourceLaunch{Version: 1, Purpose: "mnet-enrollment", AttemptID: public, DevicePublicKey: public, CredentialDigest: hash(public), Challenge: hash(public), State: public, RedirectURI: "http://127.0.0.1:34567/mnet/enrollment/callback", Platform: "linux"}
 	if !validRecord(r) {
 		f.Fatal("public fuzz seed invalid")
@@ -528,4 +530,29 @@ func TestCopiedJournalHandleSharesLifecycleAndPendingImage(t *testing.T) {
 	if _, err := j.Status(); !errors.Is(err, ErrClosed) {
 		t.Fatal("copied handle bypassed closed owner", err)
 	}
+}
+
+func fixturePolicy(t *testing.T, origin string, m contract.SourceMapping) *config.LocalPolicyV2 {
+	t.Helper()
+	p, err := config.ValidateLocalV2(config.LocalConfigV2{Version: 2, Revision: m.MappingRevision, SourceOrigin: origin, PrincipalAuthority: "https://multies.test", PrincipalNamespace: contract.PrincipalNamespace, IssuerLabel: m.Issuer, RegistrarOrigin: m.RegistrarOrigin, Audience: m.Audience, ServiceID: "fixture-service", Bindings: []config.LocalBindingV2{{WorkspaceID: m.WorkspaceID, NetworkID: m.NetworkID, PrincipalIDs: []string{"fixture-local-user"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+func savedPolicy(t *testing.T, j *Journal) *config.LocalPolicyV2 {
+	t.Helper()
+	p, err := config.ValidateLocalV2(j.data.Policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+func savedConfig(t *testing.T, j *Journal) SourceConfig {
+	t.Helper()
+	c, ok := SourceConfigFor(savedPolicy(t, j))
+	if !ok {
+		t.Fatal("invalid fixture config")
+	}
+	return c
 }
