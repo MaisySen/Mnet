@@ -21,15 +21,16 @@ import (
 // Copies share the private lifecycle. The socket is never recovered from disk.
 type Callback struct{ *callback }
 type callback struct {
-	journal  *Journal
-	listener net.Listener
-	server   *http.Server
-	launch   contract.SourceLaunch
-	clock    func() time.Time
-	initial  time.Time
-	started  time.Time
-	done     chan struct{}
-	once     sync.Once
+	journal   *Journal
+	listener  net.Listener
+	server    *http.Server
+	launch    contract.SourceLaunch
+	clock     func() time.Time
+	initial   time.Time
+	started   time.Time
+	done      chan struct{}
+	once      sync.Once
+	admission func() error
 }
 
 func (Callback) String() string   { return "[private enrollment callback owner]" }
@@ -40,6 +41,14 @@ func (Callback) GoString() string { return "[private enrollment callback owner]"
 // is never reset, and an intent saved before a later failure stays suspended.
 // Explicit expiry is bounded to 15 minutes; no lifetime default is selected.
 func (j *Journal) PrepareCallback(publicKey, platform string, policy *config.LocalPolicyV2, clock func() time.Time, expires time.Time) (*Callback, contract.SourceLaunch, error) {
+	return j.PrepareCheckedCallback(publicKey, platform, policy, clock, expires, nil)
+}
+
+// PrepareCheckedCallback additionally requires the caller's own admission check
+// before recording callback DATA. This hook is NOT an authority grant. It runs
+// outside the journal mutex; the caller must own its lifecycle/config/key checks.
+func (j *Journal) PrepareCheckedCallback(publicKey, platform string, policy *config.LocalPolicyV2, clock func() time.Time, expires time.Time, admission func() error) (*Callback, contract.SourceLaunch, error) {
+
 	if clock == nil {
 		return nil, contract.SourceLaunch{}, ErrInvalid
 	}
@@ -67,7 +76,7 @@ func (j *Journal) PrepareCallback(publicKey, platform string, policy *config.Loc
 	if err != nil {
 		return nil, contract.SourceLaunch{}, err
 	}
-	c := &Callback{&callback{journal: j, listener: &boundedCallbackListener{Listener: l}, launch: launch, clock: clock, initial: now, started: started, done: make(chan struct{})}}
+	c := &Callback{&callback{journal: j, listener: &boundedCallbackListener{Listener: l}, launch: launch, clock: clock, initial: now, started: started, admission: admission, done: make(chan struct{})}}
 	c.server = &http.Server{Handler: c, ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 3 * time.Second, IdleTimeout: time.Second, MaxHeaderBytes: 8192}
 	c.server.SetKeepAlivesEnabled(false)
 	postNow := clock()
@@ -150,6 +159,10 @@ func (c *Callback) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if query.Get("state") != c.launch.State || query.Get("attemptId") != c.launch.AttemptID {
+		fail()
+		return
+	}
+	if c.admission != nil && c.admission() != nil {
 		fail()
 		return
 	}

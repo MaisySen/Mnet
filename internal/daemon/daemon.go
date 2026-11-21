@@ -48,15 +48,16 @@ type Config struct {
 
 // Daemon is the running node.
 type Daemon struct {
-	cfg               Config
-	state             *State
-	stateOwner        *nativeStateOwner
-	closeOnce         sync.Once
-	stateFaultHandled bool
-	lifecycleMu       sync.Mutex
-	loops             sync.WaitGroup
-	applyMu           sync.Mutex // serialize peer replacement and path refresh
-	deviceMu          sync.RWMutex
+	cfg                   Config
+	state                 *State
+	stateOwner            *nativeStateOwner
+	enrollmentPreparation *nativeEnrollmentPreparation
+	closeOnce             sync.Once
+	stateFaultHandled     bool
+	lifecycleMu           sync.Mutex
+	loops                 sync.WaitGroup
+	applyMu               sync.Mutex // serialize peer replacement and path refresh
+	deviceMu              sync.RWMutex
 
 	mu             sync.Mutex
 	status         string // down, preparing, joining, waiting-approval, up, key-expired
@@ -597,6 +598,9 @@ func (d *Daemon) Close() {
 	d.closeOnce.Do(func() {
 		d.mu.Lock()
 		d.closed = true
+		if d.enrollmentPreparation != nil {
+			d.enrollmentPreparation.journal.Close()
+		}
 		d.mu.Unlock()
 		d.Down()
 		d.mu.Lock()
