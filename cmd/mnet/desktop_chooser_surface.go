@@ -16,6 +16,26 @@ import (
 )
 
 // Pure rendering. Hit targets and selection/mode authority remain in the owner.
+// chooserSetupGuidance names the honest current state in the no-selection
+// details panel. It never implies an enrollment, sign-in or connection flow
+// this preview does not have.
+func chooserSetupGuidance(message, phase string, peers int) (string, string) {
+	switch {
+	case message == errLocalDaemon.Error():
+		return "Mnet is not running", "Start the local background service, then refresh. This preview only reads local evidence."
+	case message == errLocalNetworkDown.Error():
+		return "This computer is not connected", "Joining a private network is a separate explicit setup. This preview cannot enroll or connect it."
+	case message == errLocalSetup.Error():
+		return "Local setup is incomplete", "This preview reads the same local state directory as the background service."
+	case message == errLocalAccess.Error():
+		return "Local access was refused", "This preview can only read the local evidence it is allowed to read."
+	case phase == "ready" && peers == 0:
+		return "No devices yet", "Devices appear after they join your private network. Each host still approves viewing separately."
+	default:
+		return "Local setup details", "This preview does not connect Multies sign-in to network enrollment."
+	}
+}
+
 func renderDesktopChooser(selection desktopPeerSelection, page, focus int, phase, message string, details bool, enabled []bool, now time.Time) (*image.RGBA, error) {
 	regular, err := opentype.Parse(goregular.TTF)
 	if err != nil {
@@ -128,8 +148,9 @@ func renderDesktopChooser(selection desktopPeerSelection, page, focus int, phase
 			text(30, 423, 840, 13, true, 0x172b4d, "Exact device key: "+p.PublicKey)
 			text(30, 442, 840, 12, false, 0x63758c, "Address: "+deviceText(p.IPv4, 40)+". Device labels are not verified Multies identities.")
 		} else {
-			text(30, 423, 840, 13, true, 0x172b4d, "Local setup details")
-			text(30, 442, 840, 12, false, 0x63758c, "This preview does not connect Multies sign-in to network enrollment.")
+			title, line := chooserSetupGuidance(message, phase, len(selection.snapshot.Peers))
+			text(30, 423, 840, 13, true, 0x172b4d, title)
+			text(30, 442, 840, 12, false, 0x63758c, line)
 		}
 		text(30, 460, 840, 11, false, 0x63758c, message)
 		text(30, 476, 840, 11, false, 0x63758c, "30-second snapshot. Manual reads only. Files, recording and keyboard are not offered.")

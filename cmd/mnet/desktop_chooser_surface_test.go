@@ -56,3 +56,35 @@ func TestDesktopChooserDetailsAreSecondaryAndNeverStale(t *testing.T) {
 		t.Fatal("expired details retained key or disclosure")
 	}
 }
+
+func TestChooserSetupGuidanceStates(t *testing.T) {
+	cases := []struct {
+		message, phase string
+		peers          int
+		wantTitle      string
+	}{
+		{errLocalDaemon.Error(), "unavailable", 0, "Mnet is not running"},
+		{errLocalNetworkDown.Error(), "unavailable", 0, "This computer is not connected"},
+		{errLocalSetup.Error(), "unavailable", 0, "Local setup is incomplete"},
+		{errLocalAccess.Error(), "unavailable", 0, "Local access was refused"},
+		{"", "ready", 0, "No devices yet"},
+		{"", "ready", 3, "Local setup details"},
+		{"local evidence unavailable", "unavailable", 0, "Local setup details"},
+	}
+	for _, c := range cases {
+		title, line := chooserSetupGuidance(c.message, c.phase, c.peers)
+		if title != c.wantTitle {
+			t.Fatalf("guidance(%q, %q, %d) title = %q, want %q", c.message, c.phase, c.peers, title, c.wantTitle)
+		}
+		if line == "" || len(line) > 120 {
+			t.Fatalf("guidance(%q) line missing or unbounded: %q", c.wantTitle, line)
+		}
+	}
+	// Every line must fit the presentation bound so rendering never fails.
+	for _, c := range cases {
+		_, line := chooserSetupGuidance(c.message, c.phase, c.peers)
+		if len(line) > 110 {
+			t.Fatalf("line too long for the panel: %q", line)
+		}
+	}
+}

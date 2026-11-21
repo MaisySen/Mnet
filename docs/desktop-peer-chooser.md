@@ -155,6 +155,12 @@ details remains available for fixed local recovery guidance, without enabling a
 viewing choice. It contains no raw response or transport error. No key is
 truncated in details, and the execution pin is unchanged.
 
+The no-selection Setup details panel now names the honest current state instead
+of one static line: daemon not reached, device not connected, setup incomplete,
+access refused, or simply no devices yet on the private network. Each state
+says what this preview can and cannot do (manual reads only, no enrollment,
+no sign-in link, per-host viewing approval).
+
 Native acceptance checks opening/closing with mouse and keyboard, an outside
 press followed by a details release, unrelated key release, selection change,
 refresh and real 30-second expiry. It also checks that disclosure does not add

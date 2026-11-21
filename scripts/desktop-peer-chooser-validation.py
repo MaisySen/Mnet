@@ -142,6 +142,10 @@ try:
  action('mousemove','--window',wid,'620','510','click','1');time.sleep(.05);assert client.poll() is None and len(server.calls)==4,'refresh retained selected peer'
  # Blank/malformed responses cannot keep prior rows or input actions.
  server.peers=[];action('key','r');phase('ready',3);capture('empty')
+ before_empty=len(server.calls)
+ action('mousemove','--window',wid,'800','385','click','1');poll(lambda:'detailstrue' in title(),'empty setup details');capture('empty-setup-details')
+ assert len(server.calls)==before_empty and client.poll() is None,'empty setup details read or connected'
+ action('key','space');poll(lambda:'detailsfalse' in title(),'empty setup details close')
  server.malformed=True;action('key','r');phase('unavailable',4);capture('unavailable');before_details=len(server.calls)
  action('mousemove','--window',wid,'800','385','click','1');poll(lambda:'detailstrue' in title(),'failure setup details');capture('unavailable-setup-details')
  assert len(server.calls)==before_details and client.poll() is None,'setup details read or connected'
