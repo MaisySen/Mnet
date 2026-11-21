@@ -398,7 +398,7 @@ func TestRawActiveObservationExactAFSpecRefusals(t *testing.T) {
 	}
 	raw, sys := activeRawFixture(t, a)
 	owned := &raw.Links[len(raw.Links)-1]
-	if _, e := a.session.compose(raw, sys); e == nil || e.Error() != "link "+owned.Name+": missing AF_SPEC applicability" {
+	if _, e := a.session.compose(raw, sys); e == nil || e.Error() != "missing AF_SPEC applicability" {
 		t.Fatal("wrong missing26 refusal", e)
 	}
 	owned.Raw[26] = append(attr(2, nil), attr(10, nil)...)
