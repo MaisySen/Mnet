@@ -79,19 +79,19 @@ func TestDeskArrangementsViewClampAndButtons(t *testing.T) {
 	if v.rows() != 2 || v.sel != 1 || v.focus != -1 {
 		t.Fatalf("clamp = %+v", v)
 	}
-	if v.focusables() != 7 {
-		t.Fatalf("focusables = %d, want 2 rows + 5 buttons", v.focusables())
+	if v.focusables() != 8 {
+		t.Fatalf("focusables = %d, want 2 rows + 6 buttons", v.focusables())
 	}
 	if !v.buttonEnabled(deskArrActInspect) {
 		t.Fatal("a selected row enables inspect")
 	}
 	v.sel = 0
-	if v.buttonEnabled(deskArrActDelete) {
-		t.Fatal("the pinned opened file can never be deleted from the store window")
+	if v.buttonEnabled(deskArrActDelete) || v.buttonEnabled(deskArrActDuplicate) {
+		t.Fatal("the pinned opened file can never be deleted or duplicated from the store window")
 	}
 	v.sel = 1
-	if !v.buttonEnabled(deskArrActDelete) {
-		t.Fatal("a selected store draft enables delete")
+	if !v.buttonEnabled(deskArrActDelete) || !v.buttonEnabled(deskArrActDuplicate) {
+		t.Fatal("a selected store draft enables delete and duplicate")
 	}
 }
 

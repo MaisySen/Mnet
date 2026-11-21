@@ -29,7 +29,13 @@ def action(*args):subprocess.run(['xdotool',*args],env=env,check=True)
 def window(pattern):
  r=subprocess.run(['xdotool','search','--onlyvisible','--name',pattern],env=env,capture_output=True,text=True)
  return r.stdout.strip().splitlines()[-1] if r.returncode==0 and r.stdout.strip() else None
-def title():return subprocess.check_output(['xdotool','getwindowname',wid],env=env,text=True).strip()
+def arr():return window('^Mnet Shared Desk: arrangements')
+def arrfresh():return poll(arr,'arrangements window re-created by its owner')
+def title(w=None):
+ if w is None:w=arr() # default: the arrangements window, re-resolved because its owner recreates it per action
+ if not w:return ''
+ r=subprocess.run(['xdotool','getwindowname',w],env=env,capture_output=True,text=True)
+ return r.stdout.strip() if r.returncode==0 else ''
 def capture(name,w):
  path=out/(name+'.png');subprocess.run(['import','-display',env['DISPLAY'],'-window',w,str(path)],check=True)
  return Image.open(path).convert('RGB')
@@ -47,10 +53,10 @@ try:
  assert not store.exists(),'browsing created the store directory'
  assert server.calls==0,'arrangements consulted a daemon'
  # New starter opens the seeded editor; saving creates one private store file.
- action('mousemove','--window',wid,'90','474','click','1')
+ action('mousemove','--window',wid,'85','474','click','1')
  wid=poll(lambda:window('^Mnet Shared Desk: offline layout editor'),'starter editor');action('windowfocus',wid)
- poll(lambda:'dirtytrue validtrue' in title() and 'startertrue' in title(),'starter seeded from home')
- action('key','Down');poll(lambda:'y1' in title(),'starter edit')
+ poll(lambda:'dirtytrue validtrue' in title(wid) and 'startertrue' in title(wid),'starter seeded from home')
+ action('key','Down');poll(lambda:'y1' in title(wid),'starter edit')
  action('mousemove','--window',wid,'730','615','click','1')
  wid=poll(lambda:window('^Mnet Shared Desk: arrangements'),'arrangements after save');action('windowfocus',wid)
  poll(lambda:'rows1 sel0' in title(),'saved draft listed');capture('arrangements-saved',wid)
@@ -60,7 +66,7 @@ try:
  data=json.loads(saved.read_bytes());assert [d['id'] for d in data['displays']]==['this-display','next-display'] and data['displays'][0]['y']==1,'saved starter geometry wrong'
  assert server.calls==0,'save consulted a daemon'
  # Inspect opens the read-only inspector on the selected draft.
- action('mousemove','--window',wid,'240','474','click','1')
+ action('mousemove','--window',wid,'230','474','click','1')
  preview=poll(lambda:window('^Mnet Shared Desk: offline layout'),'inspect child')
  ptitle=lambda:subprocess.check_output(['xdotool','getwindowname',preview],env=env,text=True).strip()
  poll(lambda:'placeholdertrue' in ptitle(),'inspector marks starter placeholder labels')
@@ -68,9 +74,9 @@ try:
  action('windowfocus',preview,'key','Escape')
  wid=poll(lambda:window('^Mnet Shared Desk: arrangements'),'arrangements after inspect');action('windowfocus',wid)
  # Edit opens the file-backed editor; a clean close saves nothing new.
- action('mousemove','--window',wid,'390','474','click','1')
+ action('mousemove','--window',wid,'375','474','click','1')
  wid=poll(lambda:window('^Mnet Shared Desk: offline layout editor'),'edit child');action('windowfocus',wid)
- poll(lambda:'dirtyfalse' in title() and 'starterfalse' in title(),'file-backed edit from home')
+ poll(lambda:'dirtyfalse' in title(wid) and 'starterfalse' in title(wid),'file-backed edit from home')
  action('key','Escape')
  wid=poll(lambda:window('^Mnet Shared Desk: arrangements'),'arrangements after clean edit');action('windowfocus',wid)
  assert len(list(store.glob('*.json')))==1,'clean close wrote a file'
@@ -86,29 +92,37 @@ try:
  wid=poll(lambda:window('^Mnet Shared Desk: arrangements'),'arrangements with invalid draft');action('windowfocus',wid)
  poll(lambda:'rows2' in title(),'invalid draft listed')
  action('key','Down')  # select broken.json (sorted after arrangement-1.json)
- poll(lambda:'sel1' in title(),'invalid draft selected');capture('arrangements-invalid',wid)
- action('mousemove','--window',wid,'240','474','click','1');time.sleep(.15)
+ poll(lambda:'sel1' in title(),'invalid draft selected');capture('arrangements-invalid',arrfresh())
+ action('mousemove','--window',arrfresh(),'230','474','click','1');time.sleep(.15)
  poll(lambda:'could not be opened' in title(),'invalid draft refused in-window')
- assert window('^Mnet Shared Desk: arrangements') and server.calls==0,'invalid draft closed the window or consulted a daemon'
+ assert arr() and server.calls==0,'invalid draft closed the window or consulted a daemon'
  # Delete requires a second explicit press, selection change cancels it, and only the named draft goes.
- action('mousemove','--window',wid,'540','474','click','1')
- poll(lambda:'armedtrue' in title(),'delete armed');capture('arrangements-delete-armed',wid)
+ action('mousemove','--window',arrfresh(),'665','474','click','1')
+ poll(lambda:'armedtrue' in title(),'delete armed');capture('arrangements-delete-armed',arrfresh())
  action('key','Up');poll(lambda:'armedfalse' in title() and 'sel0' in title(),'selection change cancels pending delete')
  action('key','Down');poll(lambda:'sel1' in title(),'invalid draft reselected')
- action('mousemove','--window',wid,'540','474','click','1');poll(lambda:'armedtrue' in title(),'delete re-armed')
+ action('mousemove','--window',arrfresh(),'665','474','click','1');poll(lambda:'armedtrue' in title(),'delete re-armed')
  # A same-name replacement after arming cancels the confirm and removes nothing.
  (store/'broken.json').write_text('{still not json, replaced')
- action('mousemove','--window',wid,'540','474','click','1')
- poll(lambda:'nothing was removed' in title(),'replacement cancels confirm');capture('arrangements-delete-cancelled',wid);assert (store/'broken.json').exists(),'replacement was removed'
- action('mousemove','--window',wid,'540','474','click','1');poll(lambda:'armedtrue' in title(),'delete armed after replacement')
- action('mousemove','--window',wid,'540','474','click','1')
+ action('mousemove','--window',arrfresh(),'665','474','click','1')
+ poll(lambda:'nothing was removed' in title(),'replacement cancels confirm');capture('arrangements-delete-cancelled',arrfresh());assert (store/'broken.json').exists(),'replacement was removed'
+ action('mousemove','--window',arrfresh(),'665','474','click','1');poll(lambda:'armedtrue' in title(),'delete armed after replacement')
+ action('mousemove','--window',arrfresh(),'665','474','click','1')
  poll(lambda:'rows1' in title() and 'Deleted broken.json' in title(),'invalid draft deleted after confirm')
  assert not (store/'broken.json').exists() and (store/'arrangement-1.json').exists(),'delete removed the wrong files'
- capture('arrangements-deleted',wid)
+ capture('arrangements-deleted',arrfresh())
  assert server.calls==0,'delete consulted a daemon'
+ # Duplicate copies the selected draft into one new private file, never replacing.
+ action('mousemove','--window',arrfresh(),'520','474','click','1')
+ poll(lambda:'rows2' in title() and 'Duplicated arrangement-1.json as arrangement-2.json' in title(),'draft duplicated')
+ copy=store/'arrangement-2.json'
+ assert copy.exists() and stat.S_IMODE(copy.stat().st_mode)==0o600,'duplicate missing or not owner-only'
+ assert copy.read_bytes()==(store/'arrangement-1.json').read_bytes(),'duplicate content differs'
+ capture('arrangements-duplicated',arrfresh())
+ assert server.calls==0,'duplicate consulted a daemon'
  action('key','Escape');poll(lambda:window('^Mnet: three tools'),'home after invalid refusal')
  client.terminate();assert client.wait(timeout=3)==0;client=None
- print('PASS actual home arrangements journey: always-enabled card, empty-store browsing creates nothing, starter creation saving one private 0600 draft, inspect/edit child windows, clean close writes nothing, invalid draft listed and refused in-window, zero daemon calls. Synthetic same-host geometry only.',flush=True)
+ print('PASS actual home arrangements journey: always-enabled card, empty-store browsing creates nothing, starter creation saving one private 0600 draft, inspect/edit child windows, clean close writes nothing, invalid draft listed and refused in-window, two-press identity-pinned delete with replacement cancellation, exclusive duplicate, zero daemon calls. Synthetic same-host geometry only.',flush=True)
 finally:
  if client is not None and client.poll() is None:client.terminate();client.wait(timeout=3)
  if x is not None:x.terminate();x.wait(timeout=3)

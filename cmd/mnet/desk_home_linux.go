@@ -113,15 +113,15 @@ func showDeskArrangements(ctx context.Context, v *deskArrangementsView) (int, er
 		if int(y) < 452 || int(y) >= 496 {
 			return -1
 		}
-		for i := 0; i < 5; i++ {
-			bx := 20 + i*150
-			if int(x) >= bx && int(x) < bx+140 {
-				return i // button order: New starter, Inspect, Edit, Delete, Close
+		for i := 0; i < 6; i++ {
+			bx := 20 + i*145
+			if int(x) >= bx && int(x) < bx+130 {
+				return i // button order: New starter, Inspect, Edit, Duplicate, Delete, Close
 			}
 		}
 		return -1
 	}
-	buttonAction := []int{deskArrActStarter, deskArrActInspect, deskArrActEdit, deskArrActDelete, deskArrActClose}
+	buttonAction := []int{deskArrActStarter, deskArrActInspect, deskArrActEdit, deskArrActDuplicate, deskArrActDelete, deskArrActClose}
 	state := func() string {
 		return fmt.Sprintf("rows%d sel%d pinned%t focus%d armed%t", v.rows(), v.sel, v.pinned != "", v.focus, v.armed != "")
 	}
@@ -170,7 +170,7 @@ func showDeskArrangements(ctx context.Context, v *deskArrangementsView) (int, er
 			return deskArrActInspect, true
 		}
 		b := v.focus - v.rows()
-		if b >= 0 && b < 5 && v.buttonEnabled(buttonAction[b]) {
+		if b >= 0 && b < 6 && v.buttonEnabled(buttonAction[b]) {
 			return buttonAction[b], true
 		}
 		return deskArrActClose, false
@@ -290,7 +290,7 @@ func showDeskArrangements(ctx context.Context, v *deskArrangementsView) (int, er
 		}
 		if expose || fmt.Sprintf("%s notice[%s]", state(), v.notice) != before {
 			if err = draw(); err != nil {
-				return deskArrActClose, err
+					return deskArrActClose, err
 			}
 		}
 	}
@@ -378,6 +378,31 @@ func runDeskHomeJourney(ctx context.Context, deskDir, layoutPath string) error {
 			if _, er = showDeskLayoutEditor(ctx, editor, out); er != nil {
 				return er
 			}
+		case deskArrActDuplicate:
+			rowName := ""
+			if rowPath != "" && !(pinned != "" && v.sel == 0) {
+				rowName = filepath.Base(rowPath)
+			}
+			if rowName == "" {
+				notice = "Choose a saved draft to duplicate."
+				continue
+			}
+			id, er := statDeskDraft(deskDir, rowName)
+			if er != nil {
+				notice = "That draft could not be duplicated."
+				continue
+			}
+			out, er := deskStoreOutPath(deskDir, entries, pinned)
+			if er != nil {
+				notice = er.Error()
+				continue
+			}
+			newName := filepath.Base(out)
+			if er := duplicateDeskStoreEntry(deskDir, rowName, newName, id); er != nil {
+				notice = "That draft could not be duplicated. Nothing was written."
+				continue
+			}
+			notice = "Duplicated " + rowName + " as " + newName + "."
 		case deskArrActDelete:
 			rowName := ""
 			if rowPath != "" && !(pinned != "" && v.sel == 0) {

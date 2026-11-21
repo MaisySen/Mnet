@@ -146,3 +146,43 @@ func TestDeleteDeskStoreEntry(t *testing.T) {
 		t.Fatal("unrelated symlink was touched")
 	}
 }
+
+func TestDuplicateDeskStoreEntry(t *testing.T) {
+	dir := t.TempDir()
+	body := []byte(`{"version":1,"displays":[]}`)
+	if err := os.WriteFile(filepath.Join(dir, "arrangement-1.json"), body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	id, err := statDeskDraft(dir, "arrangement-1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"", "../copy.json", ".hidden", "arrangement-1.json"} {
+		if err := duplicateDeskStoreEntry(dir, "arrangement-1.json", bad, id); err == nil {
+			t.Fatalf("duplicate destination %q must fail closed", bad)
+		}
+	}
+	if err := duplicateDeskStoreEntry(dir, "arrangement-1.json", "arrangement-2.json", deskDraftID{}); !errors.Is(err, errDeskDraftChanged) {
+		t.Fatalf("stale identity must cancel a duplicate, got %v", err)
+	}
+	if err := duplicateDeskStoreEntry(dir, "missing.json", "arrangement-2.json", id); err == nil {
+		t.Fatal("duplicating a missing draft must fail")
+	}
+	if err := duplicateDeskStoreEntry(dir, "arrangement-1.json", "arrangement-2.json", id); err != nil {
+		t.Fatalf("duplicate failed: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "arrangement-2.json"))
+	if err != nil || string(got) != string(body) {
+		t.Fatalf("duplicate content wrong: %v %q", err, got)
+	}
+	info, err := os.Lstat(filepath.Join(dir, "arrangement-2.json"))
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("duplicate not owner-only: %v", err)
+	}
+	if err := duplicateDeskStoreEntry(dir, "arrangement-1.json", "arrangement-2.json", id); err == nil {
+		t.Fatal("an existing destination must never be replaced")
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "arrangement-1.json")); err != nil {
+		t.Fatal("source draft was touched")
+	}
+}

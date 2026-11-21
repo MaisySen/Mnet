@@ -4,6 +4,7 @@ package main
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,4 +101,55 @@ func deleteDeskStoreEntry(dir, name string, want deskDraftID) error {
 		return errDeskDraftChanged
 	}
 	return os.Remove(filepath.Join(dir, name))
+}
+
+// duplicateDeskStoreEntry copies one pinned store draft into a new
+// exclusively-created owner-only file. The source must keep its pinned
+// identity through the read; the destination must not exist and is never
+// followed or replaced. Nothing outside the store is read or written.
+func duplicateDeskStoreEntry(dir, name, out string, want deskDraftID) error {
+	if out == "" || out != filepath.Base(out) || out == name || strings.HasPrefix(out, ".") {
+		return errors.New("invalid arrangement draft name")
+	}
+	if _, err := statDeskDraft(dir, out); err == nil {
+		return errors.New("arrangement draft destination already exists")
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	got, err := statDeskDraft(dir, name)
+	if err != nil {
+		return err
+	}
+	if got != want {
+		return errDeskDraftChanged
+	}
+	fd, err := unix.Open(filepath.Join(dir, name), unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	// The os.File owns the descriptor; a manual unix.Close would leave its
+	// finalizer to close a reused descriptor (an X connection) later.
+	src := os.NewFile(uintptr(fd), name)
+	data, err := io.ReadAll(io.LimitReader(src, (1<<20)+1))
+	src.Close()
+	if err != nil || len(data) > 1<<20 {
+		return errors.New("arrangement draft unreadable")
+	}
+	if again, err := statDeskDraft(dir, name); err != nil {
+		return err
+	} else if again != want {
+		return errDeskDraftChanged
+	}
+	wfd, err := unix.Open(filepath.Join(dir, out), unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0o600)
+	if err != nil {
+		return errors.New("arrangement draft destination already exists")
+	}
+	file := os.NewFile(uintptr(wfd), out)
+	_, werr := file.Write(data)
+	cerr := file.Close()
+	if werr != nil || cerr != nil {
+		os.Remove(filepath.Join(dir, out))
+		return errors.New("arrangement draft copy incomplete")
+	}
+	return nil
 }

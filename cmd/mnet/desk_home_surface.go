@@ -27,13 +27,14 @@ const (
 	deskArrActInspect
 	deskArrActEdit
 	deskArrActDelete
+	deskArrActDuplicate
 )
 
 type deskArrangementsView struct {
 	pinned  string // base name of an explicitly opened file, "" when none
 	entries []deskStoreEntry
 	sel     int // selected row: pinned first, then store entries
-	focus   int // rows 0..rows-1, then New starter, Inspect, Edit, Delete, Close
+	focus   int // rows 0..rows-1, then New starter, Inspect, Edit, Duplicate, Delete, Close
 	notice  string
 	armed   string // store draft awaiting a second explicit Delete confirmation
 }
@@ -46,16 +47,16 @@ func (v deskArrangementsView) rows() int {
 	return n
 }
 
-// focusables counts every Tab stop: rows, then the five buttons.
-func (v deskArrangementsView) focusables() int { return v.rows() + 5 }
+// focusables counts every Tab stop: rows, then the six buttons.
+func (v deskArrangementsView) focusables() int { return v.rows() + 6 }
 
 func (v deskArrangementsView) buttonEnabled(button int) bool {
 	switch button {
 	case deskArrActStarter, deskArrActClose:
 		return true
-	case deskArrActDelete:
-		// Only an app-owned store draft can be deleted, never an explicitly
-		// opened external file.
+	case deskArrActDelete, deskArrActDuplicate:
+		// Only an app-owned store draft can be deleted or duplicated, never
+		// an explicitly opened external file.
 		return v.sel >= boolInt(v.pinned != "") && v.sel < v.rows()
 	default:
 		return v.rows() > 0 && v.sel >= 0 && v.sel < v.rows()
@@ -76,7 +77,7 @@ func (v *deskArrangementsView) clamp() {
 }
 
 func deskArrButtonLabel(button int) string {
-	return []string{"Close", "New starter", "Inspect", "Edit", "Delete"}[button]
+	return []string{"Close", "New starter", "Inspect", "Edit", "Delete", "Duplicate"}[button]
 }
 
 func renderDeskArrangementsSurface(v deskArrangementsView) (*image.RGBA, error) {
@@ -176,18 +177,18 @@ func renderDeskArrangementsSurface(v deskArrangementsView) (*image.RGBA, error) 
 		}
 	}
 
-	buttons := []int{deskArrActStarter, deskArrActInspect, deskArrActEdit, deskArrActDelete, deskArrActClose}
+	buttons := []int{deskArrActStarter, deskArrActInspect, deskArrActEdit, deskArrActDuplicate, deskArrActDelete, deskArrActClose}
 	for i, b := range buttons {
-		x := 20 + i*150
+		x := 20 + i*145
 		enabled := v.buttonEnabled(b)
 		bg, fg := uint32(0xffffff), uint32(0x214f90)
 		if !enabled {
 			bg, fg = 0xecf0f6, 0x758299
 		}
-		rect(x, 452, 140, 44, bg)
-		text(x+12, 480, 120, 14, true, fg, deskArrButtonLabel(b))
+		rect(x, 452, 130, 44, bg)
+		text(x+10, 480, 112, 14, true, fg, deskArrButtonLabel(b))
 		if v.focus == rows+i && enabled {
-			rect(x, 493, 140, 3, 0x2563c7)
+			rect(x, 493, 130, 3, 0x2563c7)
 		}
 	}
 	if v.armed != "" {
