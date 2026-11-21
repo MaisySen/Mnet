@@ -28,7 +28,7 @@ func TestWorkflowJournalFreshTLSChild(t *testing.T) {
 		workflowJournalCases(t)
 		return
 	}
-	cmd := exec.Command(os.Args[0], "-test.run=^TestWorkflowJournalFreshTLSChild$", "-test.v", "-test.timeout=40s")
+	cmd := exec.Command(os.Args[0], "-test.run=^TestWorkflowJournalFreshTLSChild$", "-test.v", "-test.timeout=90s")
 	cmd.Env = append(os.Environ(), "MNET_WORKFLOW_JOURNAL_CHILD=1")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -189,6 +189,7 @@ func workflowJournalCases(t *testing.T) {
 	}
 	workflowJournalFaults(t, s, &active)
 	workflowKeyJournalCases(t, s, &active)
+	workflowFinalizeJournalCases(t, s, &active)
 
 }
 func TestWorkflowChallengeOwnFieldsIndependent(t *testing.T) {

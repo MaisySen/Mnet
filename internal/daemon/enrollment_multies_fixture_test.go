@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"fintex.au/mnet/internal/controlclient"
 	config "fintex.au/mnet/internal/enrollmentconfig"
 	contract "fintex.au/mnet/internal/enrollmentcontract"
 	pending "fintex.au/mnet/internal/enrollmentpending"
@@ -195,11 +196,57 @@ func TestActualMultiesNativeWorkflowFixture(t *testing.T) {
 	if err != nil || !bytes.Equal(before, after) || d.state.NodeID != "" || d.state.NodeToken != "" || d.cc != nil || d.dev != nil {
 		t.Fatal("proof DATA installed native State")
 	}
+
+	// Actual private sole-State finalization from SAME confirmed runtime, not
+	// a returned-document installer. Then owner Close/reopen and dedicated map.
+	if err := d.finalizeNativeEnrollment(context.Background()); err != nil {
+		t.Fatal("actual native finalization", err)
+	}
+	phase, err = d.enrollmentPreparation.journal.Status()
+	if err != nil || phase != "native-finalization-completed" {
+		t.Fatal("native finalization correlation", err)
+	}
+	actualDir := d.stateOwner.lease.Parent()
+	finalized, err := os.ReadFile(d.stateOwner.path)
+	if err != nil || bytes.Equal(before, finalized) {
+		t.Fatal("sole State not published")
+	}
+	snapshot := d.State()
+	snapshotRaw, _ := json.Marshal(snapshot)
+	if snapshot.native != nil || bytes.Contains(snapshotRaw, []byte(d.stateOwner.saved.native.Document.Secret)) {
+		t.Fatal("snapshot leaked registrar credential")
+	}
+	d.Close()
+	reopened, err := New(Config{StateDir: actualDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if err := reopened.reconcileNativeFinalization(); err != nil {
+		t.Fatal("actual owning native finalization reopen", err)
+	}
+
+	if err := reopened.nativeCurrentEndpoints(context.Background(), []string{"192.0.2.79:51820"}, controlclient.RegistrarLimits{Timeout: 3 * time.Second, MaxConcurrent: 1, MaxRequests: 8}); err != nil {
+		t.Fatal("sole State actual endpoint publication", err)
+	}
+	current, err := reopened.nativeCurrentMap(context.Background(), controlclient.RegistrarLimits{Timeout: 3 * time.Second, MaxConcurrent: 1, MaxRequests: 8})
+	if err != nil || current.Self.ID != result.Receipt.NodeID || len(current.Peers) != 2 || len(current.Self.Endpoints) != 1 || current.Self.Endpoints[0] != "192.0.2.79:51820" {
+		t.Fatal("sole State dedicated client actual peers", err)
+	}
+	if reopened.cc != nil || reopened.dev != nil {
+		t.Fatal("native current map activated legacy/tunnel")
+	}
+	afterCurrent, _ := os.ReadFile(reopened.stateOwner.path)
+	if !bytes.Equal(finalized, afterCurrent) {
+		t.Fatal("native current map rewrote sole State")
+	}
 	out, _ := json.Marshal(struct {
-		Receipt                 contract.WorkflowReceiptWire
-		NativeOwnedKeyConfirmed bool
-		NativeStateUnchanged    bool
-	}{result, true, true})
+		Receipt                   contract.WorkflowReceiptWire
+		NativeOwnedKeyConfirmed   bool
+		NativeProofStateUnchanged bool
+		NativeStateFinalized      bool
+		NativeCurrentPeers        int
+	}{result, true, true, true, len(current.Peers)})
 	if err := writeFixtureAtomic(dir, "native-workflow-outcome.json", out); err != nil {
 		t.Fatal(err)
 	}

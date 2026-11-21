@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -41,7 +42,7 @@ func TestNativeWorkflowActualDurableKeyTLSChild(t *testing.T) {
 	os.WriteFile(root, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: s.Certificate().Raw}), 0600)
 	t.Setenv("SSL_CERT_FILE", root)
 	t.Setenv("SSL_CERT_DIR", t.TempDir())
-	for _, mode := range []string{"success", "wrong-principal", "wrong-key", "wrong-session", "wrong-descriptor", "wrong-confirmation", "policy-before", "state-before", "legacy-before", "legacy-saved", "routes-saved", "policy-after-begin", "state-after-begin", "close-after-begin", "policy-on-submit", "lost-submit"} {
+	for _, mode := range []string{"success", "final-success", "final-create", "final-write", "final-short", "final-sync", "final-close", "final-rename", "final-after-rename", "final-dirsync", "final-policy-before", "final-policy-during", "final-policy-after", "final-expired-during", "final-expired-after", "wrong-principal", "wrong-key", "wrong-session", "wrong-descriptor", "wrong-confirmation", "policy-before", "state-before", "legacy-before", "legacy-saved", "routes-saved", "policy-after-begin", "state-after-begin", "close-after-begin", "policy-on-submit", "lost-submit"} {
 		t.Run(mode, func(t *testing.T) {
 			d, policyPath, rawPolicy := enrollmentContextFixture(t)
 			var cfg config.LocalConfigV2
@@ -191,7 +192,7 @@ func TestNativeWorkflowActualDurableKeyTLSChild(t *testing.T) {
 			if server != nil {
 				server.Close()
 			}
-			if mode == "success" {
+			if mode == "success" || strings.HasPrefix(mode, "final-") {
 				if err != nil || result.Receipt.NodeID != "actual-key-fixture-node" || submits.Load() != 1 {
 					t.Fatal("real native proof failed", err, begins.Load(), submits.Load())
 				}
@@ -199,7 +200,7 @@ func TestNativeWorkflowActualDurableKeyTLSChild(t *testing.T) {
 				t.Fatal("negative returned receipt", err)
 			}
 			expectedSubmit := int32(0)
-			if mode == "success" || mode == "wrong-confirmation" || mode == "policy-on-submit" || mode == "lost-submit" {
+			if mode == "success" || strings.HasPrefix(mode, "final-") || mode == "wrong-confirmation" || mode == "policy-on-submit" || mode == "lost-submit" {
 				expectedSubmit = 1
 			}
 			if submits.Load() != expectedSubmit {
@@ -218,6 +219,14 @@ func TestNativeWorkflowActualDurableKeyTLSChild(t *testing.T) {
 			if !bytes.Equal(before, after) || d.state.NodeID != "" || d.state.NodeToken != "" || d.cc != nil || d.dev != nil {
 				t.Fatal("proof DATA installed native state or tunnel")
 			}
+
+			if err != nil && d.finalizeNativeEnrollment(context.Background()) == nil {
+				t.Fatal("unconfirmed/failed workflow finalized native State")
+			}
+			if strings.HasPrefix(mode, "final-") {
+				testActualNativeFinalization(t, d, policyPath, rawPolicy, before, strings.TrimPrefix(mode, "final-"), func(h http.HandlerFunc) { active.Store(h) })
+			}
+
 		})
 	}
 }

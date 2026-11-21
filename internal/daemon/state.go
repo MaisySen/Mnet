@@ -14,6 +14,8 @@ import (
 
 // State is everything the daemon persists between runs.
 type State struct {
+	native         *nativeSavedCredential
+	nativeDetached bool
 	revision       [32]byte
 	revisionPath   string
 	revisionExists bool
@@ -44,7 +46,7 @@ func LoadState(dir string) (*State, error) {
 		return nil, err
 	}
 	defer owner.lease.Close()
-	s := owner.saved
+	s := publicState(owner.saved)
 	return &s, nil
 }
 
@@ -52,6 +54,9 @@ func LoadState(dir string) (*State, error) {
 // A fresh State can create an absent file only. It never replaces an existing
 // identity without a matching loaded byte revision. Uncertain instances refuse.
 func (s *State) Save(dir string) error {
+	if s.native != nil || s.nativeDetached {
+		return ErrStateStale
+	}
 	if s.uncertain {
 		return ErrStateUncertain
 	}
@@ -131,6 +136,9 @@ func (s *State) ensureKey(save func() error) error {
 // fresh install. Metadata-only legacy state is allowed when no credential or
 // half-key pair exists; this never repairs or rotates an existing identity.
 func (s *State) validateIdentity() error {
+	if err := s.validateNativeCredential(); err != nil {
+		return err
+	}
 	if s.NodeID != "" || s.NodeToken != "" {
 		if strings.TrimSpace(s.NodeID) == "" || strings.TrimSpace(s.NodeToken) == "" || strings.TrimSpace(s.Server) == "" || strings.TrimSpace(s.Network) == "" {
 			return fmt.Errorf("incomplete saved enrollment; identity file was not changed")
@@ -161,6 +169,9 @@ func (s *State) validateIdentity() error {
 // startup flags must not disclose it to a different server or silently move a
 // device between networks. A separate state directory is a separate identity.
 func (s *State) validateJoinTarget(server, network string) error {
+	if s.native != nil || s.nativeDetached {
+		return ErrStateStale
+	}
 	if s.NodeID == "" && s.NodeToken == "" {
 		return nil
 	}

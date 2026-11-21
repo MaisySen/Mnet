@@ -34,7 +34,7 @@ func TestBootstrapJournalFreshTLSProcess(t *testing.T) {
 		t.Fatalf("fresh verifiedTLS fixture failed: %v\n%s", err, output)
 	}
 }
-func bootstrapReady(t *testing.T, origin string) (*Journal, contract.Binding, SourceConfig) {
+func bootstrapReady(t *testing.T, origin string, keys ...string) (*Journal, contract.Binding, SourceConfig) {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "pending")
 	j, err := Open(dir)
@@ -45,7 +45,11 @@ func bootstrapReady(t *testing.T, origin string) (*Journal, contract.Binding, So
 	now := time.Now()
 	mapping := contract.SourceMapping{WorkspaceID: "org_test", Issuer: "https://issuer.test/path", RegistrarOrigin: origin, Audience: "fixture", MappingRevision: "r1", NetworkID: "net_test"}
 	policy := fixturePolicy(t, "https://source.test", mapping)
-	launch, err := j.Begin(code(), "linux", "http://127.0.0.1:34567/mnet/enrollment/callback", policy, now, now.Add(time.Minute))
+	key := code()
+	if len(keys) > 0 {
+		key = keys[0]
+	}
+	launch, err := j.Begin(key, "linux", "http://127.0.0.1:34567/mnet/enrollment/callback", policy, now, now.Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}

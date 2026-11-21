@@ -30,6 +30,10 @@ func (d *Daemon) freezeStateLocked() {
 	d.status = "state-unavailable"
 	d.lastMap = nil
 	d.cc = nil
+	if d.nativeClient != nil {
+		d.nativeClient.Close()
+		d.nativeClient = nil
+	}
 	if d.cancel != nil {
 		d.cancel()
 	}

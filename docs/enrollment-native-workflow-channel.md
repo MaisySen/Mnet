@@ -1,5 +1,7 @@
 # Journal-owned experimental workflow-v1 native channel
 
+This is an earlier boundary checkpoint. The later actual sole-State continuation and current remaining gaps are documented in enrollment-native-sole-state.md.
+
 Connected development continuation after fbb268a/Multies52d5655, whose independent review was still pending when this work began. This batch does NOT broaden readiness or production approval. No actual daemon durable-key caller, sole-native-State credential writer, deployment or screen/input authority is added.
 
 ## Separate wire, independent context

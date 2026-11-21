@@ -1,7 +1,8 @@
 package controlclient
 
 // INACTIVE dedicated registrar-node transport. It has no legacy Join/rejoin,
-// relay, installer, daemon caller or registered server endpoint. Constructor
+// relay, installer, production daemon entrypoint or registered server endpoint.
+// Private native sole-State callers independently enforce owner/policy/pending. Constructor
 // document is caller DATA, not authenticated receipt provenance or authority.
 import (
 	"bytes"
@@ -55,7 +56,7 @@ const registrarNodePath = "/api/mnet-node-experimental-v1/"
 const registrarNodeScheme = "Mnet-Node-Credential-V1 "
 
 // Explicit immutable document copy. No file/journal read or current installed
-// policy check. Native owner must eventually provide those before invocation.
+// policy check. Actual private native owner supplies those before invocation.
 func NewRegistrarClient(origin string, document contract.NativeCredentialDocument, limits RegistrarLimits) (*RegistrarClient, error) {
 	if contract.CheckNativeCredentialDocument(document) != nil || origin != document.Receipt.RegistrarOrigin || limits.Timeout <= 0 || limits.Timeout > time.Minute || limits.MaxConcurrent < 1 || limits.MaxConcurrent > 4 || limits.MaxRequests < limits.MaxConcurrent || limits.MaxRequests > 256 {
 		return nil, ErrRegistrarInvalid

@@ -1,5 +1,7 @@
 # Same-journal native-owned key admission, inactive development
 
+This is an earlier boundary checkpoint. The later actual sole-State continuation and current remaining gaps are documented in enrollment-native-sole-state.md.
+
 This follows the local workflow-v1 channel batch 4b67ab1 and actual source/atomic Store batch fbb268a. Independent review of those connected batches was still pending when this continuation began. Subsequent independent review reported no confirmed defects and scoped acceptance of those exact connected batches and both Multies companions. Timing-past-limits and retry-after-rollback-marker cases were not independently rerun; owner tests cover those cases. That does not imply production acceptance. No production caller, route, startup trigger, native State credential installer, physical WireGuard or desktop/input activation is added.
 
 ## Actual ownership boundary

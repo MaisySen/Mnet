@@ -67,17 +67,19 @@ type Daemon struct {
 	// joinMu serializes join and rejoin: the control-plane identity
 	// (node id, token, auth key, control client) swaps as one step,
 	// never concurrently from two loops.
-	joinMu   sync.Mutex
-	dev      *device.Device
-	tun      tun.Device
-	bind     *bind.Bind
-	cc       *controlclient.Client
-	relay    *controlclient.Relay
-	localDNS *dns.Tunnel
-	dns      *dns.Server
-	subnets  *ifacectl.SubnetRoutes
-	serving  *ifacectl.Serving
-	cancel   context.CancelFunc
+	joinMu               sync.Mutex
+	dev                  *device.Device
+	tun                  tun.Device
+	bind                 *bind.Bind
+	nativeClient         *controlclient.RegistrarClient
+	nativeClientRevision [32]byte
+	cc                   *controlclient.Client
+	relay                *controlclient.Relay
+	localDNS             *dns.Tunnel
+	dns                  *dns.Server
+	subnets              *ifacectl.SubnetRoutes
+	serving              *ifacectl.Serving
+	cancel               context.CancelFunc
 
 	mapChanged  chan struct{} // wake local authorization-expiry guard
 	lastMap     *netmap.Map
@@ -129,7 +131,7 @@ func (d *Daemon) State() State {
 	if d.stateOwner != nil && d.stateOwner.fault {
 		return State{}
 	}
-	snapshot := *d.state
+	snapshot := publicState(*d.state)
 	snapshot.AdvertiseRoutes = append([]string(nil), d.state.AdvertiseRoutes...)
 	return snapshot
 }
@@ -146,6 +148,9 @@ func (d *Daemon) SetRouting(advertiseExit bool, routes []string, useExit string)
 	}
 	if d.status != "down" {
 		return fmt.Errorf("routing changes apply while down; node is %s", d.status)
+	}
+	if d.state.native != nil {
+		return ErrStateStale
 	}
 	previousExit, previousRoutes, previousUse := d.state.ExitNode, d.state.AdvertiseRoutes, d.state.UseExitNode
 	d.state.ExitNode = advertiseExit
@@ -395,6 +400,12 @@ func (d *Daemon) join(ctx context.Context, authKey string) error {
 
 // joinLocked joins with joinMu already held (rejoin's path).
 func (d *Daemon) joinLocked(ctx context.Context, authKey string) error {
+	d.mu.Lock()
+	native := d.state.native != nil
+	d.mu.Unlock()
+	if native {
+		return ErrStateStale
+	}
 	resp, err := d.postJoin(ctx, authKey)
 	if err != nil && authKey != "" && d.state.NodeID != "" {
 		// One-time auth keys are consumed by the first join (Prepare on
@@ -598,6 +609,10 @@ func (d *Daemon) Close() {
 	d.closeOnce.Do(func() {
 		d.mu.Lock()
 		d.closed = true
+		if d.nativeClient != nil {
+			d.nativeClient.Close()
+			d.nativeClient = nil
+		}
 		if d.enrollmentPreparation != nil {
 			d.enrollmentPreparation.journal.Close()
 		}

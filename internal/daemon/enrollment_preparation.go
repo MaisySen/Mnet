@@ -14,10 +14,11 @@ import (
 // Context and journal/socket belong to this daemon's retained native owner.
 // Pending DATA never authorizes node credential installation or a tunnel.
 type nativeEnrollmentPreparation struct {
-	context  *nativeEnrollmentContext
-	journal  *pending.Journal
-	callback *pending.Callback
-	launch   contract.SourceLaunch
+	confirmed *contract.WorkflowReceiptWire
+	context   *nativeEnrollmentContext
+	journal   *pending.Journal
+	callback  *pending.Callback
+	launch    contract.SourceLaunch
 }
 
 func (nativeEnrollmentPreparation) String() string   { return "[private native pending preparation]" }

@@ -31,6 +31,7 @@ import (
 	proof "fintex.au/mnet/internal/enrollmentproof"
 	registrar "fintex.au/mnet/internal/enrollmentregistrar"
 	source "fintex.au/mnet/internal/enrollmentsource"
+	"fintex.au/mnet/internal/netmap"
 )
 
 func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
@@ -48,6 +49,58 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	var bridgeMu sync.Mutex
 	getPeerSecret := func() string { bridgeMu.Lock(); defer bridgeMu.Unlock(); return peerSecret }
 	bridge := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		if r.URL.Path == "/api/mnet-node-experimental-v1/map" || r.URL.Path == "/api/mnet-node-experimental-v1/endpoints" {
+			nativeSecret := strings.TrimPrefix(r.Header.Get("Authorization"), "Mnet-Node-Credential-V1 ")
+			var req struct {
+				Version       int                `json:"version"`
+				Receipt       contract.ReceiptV2 `json:"receipt"`
+				ReceiptDigest string             `json:"receipt_digest"`
+				Endpoints     []string           `json:"endpoints"`
+			}
+			raw, err := io.ReadAll(io.LimitReader(r.Body, contract.ProofWireMaxBytes+1))
+			if err != nil || len(raw) > contract.ProofWireMaxBytes || json.Unmarshal(raw, &req) != nil || req.Version != 1 || nativeSecret == r.Header.Get("Authorization") {
+				w.WriteHeader(400)
+				return
+			}
+			s.mu.Lock()
+			record := s.registrarNodeLocked(req.Receipt.NodeID)
+			if record == nil || record.ReceiptID != req.Receipt.ReceiptID || record.ReceiptDigest != req.ReceiptDigest {
+				s.mu.Unlock()
+				w.WriteHeader(403)
+				return
+			}
+			ref := registrarCredentialReference{NodeID: record.NodeID, NetworkID: record.NetworkID, DevicePublicKey: record.DevicePublicKey, Scope: record.Scope, ReceiptID: record.ReceiptID, ReceiptDigest: record.ReceiptDigest, DescriptorDigest: record.DescriptorDigest, TranscriptDigest: record.Consumption.TranscriptDigest}
+			s.mu.Unlock()
+
+			if r.URL.Path == "/api/mnet-node-experimental-v1/endpoints" {
+				if err := s.setRegistrarCredentialEndpoints(ref, nativeSecret, req.Endpoints); err != nil {
+					w.WriteHeader(403)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Cache-Control", "no-store")
+				json.NewEncoder(w).Encode(struct {
+					Version       int    `json:"version"`
+					ReceiptDigest string `json:"receipt_digest"`
+					Updated       bool   `json:"updated"`
+				}{1, req.ReceiptDigest, true})
+				return
+			}
+			m, err := s.registrarCredentialMap(ref, nativeSecret)
+			if err != nil {
+				w.WriteHeader(403)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "no-store")
+			json.NewEncoder(w).Encode(struct {
+				Version       int         `json:"version"`
+				ReceiptDigest string      `json:"receipt_digest"`
+				Map           *netmap.Map `json:"map"`
+			}{1, req.ReceiptDigest, m})
+			return
+		}
 		secret := strings.TrimPrefix(r.Header.Get("Authorization"), registrar.WorkflowScheme)
 		if secret == r.Header.Get("Authorization") {
 			w.WriteHeader(403)
@@ -410,11 +463,13 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	}
 	nativeWaited = true
 	var nativeOutcome struct {
-		Receipt                 contract.WorkflowReceiptWire
-		NativeOwnedKeyConfirmed bool
-		NativeStateUnchanged    bool
+		Receipt                   contract.WorkflowReceiptWire
+		NativeOwnedKeyConfirmed   bool
+		NativeProofStateUnchanged bool
+		NativeStateFinalized      bool
+		NativeCurrentPeers        int
 	}
-	if json.Unmarshal(raw, &nativeOutcome) != nil || !nativeOutcome.NativeOwnedKeyConfirmed || !nativeOutcome.NativeStateUnchanged {
+	if json.Unmarshal(raw, &nativeOutcome) != nil || !nativeOutcome.NativeOwnedKeyConfirmed || !nativeOutcome.NativeProofStateUnchanged || !nativeOutcome.NativeStateFinalized || nativeOutcome.NativeCurrentPeers != 2 {
 		t.Fatal("missing actual daemon proof result")
 	}
 	nativeRecord := s.registrarNodeLocked(nativeOutcome.Receipt.Receipt.NodeID)
@@ -457,7 +512,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	if err := s.DeleteNode(peerRecord.NodeID); err != nil {
 		t.Fatal(err)
 	}
-	out, _ := json.Marshal(map[string]any{"sourceDenied": false, "bidirectionalActualPeers": true, "nativeOwnedKeyConfirmed": true, "threeActualPeers": true, "nativeStateUnchanged": true, "journalWorkflowReceiptPinned": true, "nodeCreated": true, "nodeDeleted": true, "currentMapBeforeDelete": true, "legacyTokenCreated": false, "inputAuthorized": false, "receiptId": r.ReceiptID, "receiptDigest": r.ReceiptDigest, "reserveId": req.ReserveID, "descriptorDigest": descriptor, "handoffId": own.ID})
+	out, _ := json.Marshal(map[string]any{"sourceDenied": false, "bidirectionalActualPeers": true, "nativeOwnedKeyConfirmed": true, "threeActualPeers": true, "nativeProofStateUnchanged": true, "nativeStateFinalized": true, "nativeCurrentPeers": 2, "journalWorkflowReceiptPinned": true, "nodeCreated": true, "nodeDeleted": true, "currentMapBeforeDelete": true, "legacyTokenCreated": false, "inputAuthorized": false, "receiptId": r.ReceiptID, "receiptDigest": r.ReceiptDigest, "reserveId": req.ReserveID, "descriptorDigest": descriptor, "handoffId": own.ID})
 	if err := os.WriteFile(filepath.Join(dir, "outcome.json"), out, 0600); err != nil {
 		t.Fatal(err)
 	}

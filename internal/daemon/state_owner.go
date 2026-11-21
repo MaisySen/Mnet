@@ -73,6 +73,9 @@ func openStateOwner(dir string) (*nativeStateOwner, error) {
 	o.saved.revisionPath = o.path
 	info, err := os.Lstat(o.path)
 	if os.IsNotExist(err) {
+		if err := guardNativeStateHistory(o); err != nil {
+			return nil, err
+		}
 		ok = true
 		return o, nil
 	}
@@ -94,7 +97,7 @@ func openStateOwner(dir string) (*nativeStateOwner, error) {
 		f.Close()
 		return nil, err
 	}
-	if !validStateJSON(raw) || json.Unmarshal(raw, &o.saved) != nil || o.saved.validateIdentity() != nil {
+	if !validStateJSON(raw) || unmarshalOwnedState(raw, &o.saved) != nil || o.saved.validateIdentity() != nil {
 		f.Close()
 		return nil, errors.New("invalid native identity state; contents were not changed")
 	}
@@ -114,6 +117,9 @@ func openStateOwner(dir string) (*nativeStateOwner, error) {
 	o.saved.revisionPath = o.path
 	o.saved.revision = sha256.Sum256(raw)
 	o.saved.revisionExists = true
+	if err := guardNativeStateHistory(o); err != nil {
+		return nil, err
+	}
 	ok = true
 	return o, nil
 }
@@ -129,11 +135,22 @@ func (o *nativeStateOwner) health() error {
 }
 func cloneState(s State) State {
 	s.AdvertiseRoutes = append([]string(nil), s.AdvertiseRoutes...)
+	if s.native != nil {
+		n := *s.native
+		s.native = &n
+	}
 	return s
 }
-func (o *nativeStateOwner) save(s *State) error {
+func (o *nativeStateOwner) save(s *State) error { return o.saveChecked(s, nil, nil) }
+func (o *nativeStateOwner) saveChecked(s *State, before, after func() error) error {
 	if err := o.health(); err != nil {
 		return err
+	}
+	if s.nativeDetached {
+		return ErrStateStale
+	}
+	if o.saved.native != nil && !reflect.DeepEqual(o.saved.native, s.native) {
+		return ErrStateStale
 	}
 	if err := s.validateIdentity(); err != nil {
 		return err
@@ -141,7 +158,7 @@ func (o *nativeStateOwner) save(s *State) error {
 	if o.saved.PrivateKey != "" && (s.PrivateKey != o.saved.PrivateKey || s.PublicKey != o.saved.PublicKey) {
 		return errors.New("native identity replacement requires separate recovery; state was not changed")
 	}
-	raw, err := json.MarshalIndent(s, "", "  ")
+	raw, err := marshalOwnedState(s)
 	if err != nil || !validStateJSON(raw) {
 		return errors.New("invalid native state size")
 	}
@@ -203,6 +220,11 @@ func (o *nativeStateOwner) save(s *State) error {
 	if oldErr != nil && !os.IsNotExist(oldErr) {
 		return oldErr
 	}
+	if before != nil {
+		if err := before(); err != nil {
+			return err
+		}
+	}
 	if err := o.fs.rename(tmp, o.path); err != nil {
 		target, targetErr := os.Lstat(o.path)
 		left, leftErr := os.Lstat(tmp)
@@ -220,6 +242,12 @@ func (o *nativeStateOwner) save(s *State) error {
 	}
 	if err := o.health(); err != nil {
 		return err
+	}
+	if after != nil {
+		if err := after(); err != nil {
+			o.fault = true
+			return ErrStateUncertain
+		}
 	}
 	s.revisionPath = o.path
 	s.revision = sha256.Sum256(raw)
@@ -255,6 +283,7 @@ func validStateJSON(raw []byte) bool {
 		}
 		fields[name] = f.Type.Kind()
 	}
+	fields["native_enrollment_v1"] = reflect.String
 	seen := map[string]bool{}
 	for d.More() {
 		v, err = d.Token()
@@ -270,8 +299,14 @@ func validStateJSON(raw []byte) bool {
 		}
 		switch kind {
 		case reflect.String:
-			if _, ok := v.(string); !ok {
+			value, ok := v.(string)
+			if !ok {
 				return false
+			}
+			if name == "native_enrollment_v1" {
+				if _, err := decodeSavedCredential([]byte(value)); err != nil {
+					return false
+				}
 			}
 		case reflect.Bool:
 			if _, ok := v.(bool); !ok {

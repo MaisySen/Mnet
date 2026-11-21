@@ -1,4 +1,6 @@
-# Native finalization and recovery, actual remaining contract
+# Native finalization and recovery, historical direction
+
+Historical design checkpoint. Several blockers below now have private development implementations. Current actual behavior and remaining gaps are documented in enrollment-native-sole-state.md; this file does not override those source-grounded results.
 
 Design only after owned preparation/source DATA integration and local RD integration. No finalize API, State schema change, node credential writer, route, bootstrap scheme, lease selection or activation is added. This document is not approval of a protocol or product policy.
 
