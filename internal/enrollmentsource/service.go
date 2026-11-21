@@ -55,6 +55,7 @@ func (s *Service) CloseIdleConnections() {
 // PKCE result and not expected native identity. Config/clock/lifecycle authority
 // of the calling registrar remains a separate unimplemented owner prerequisite.
 func (s *Service) Reserve(ctx context.Context, request contract.SourceReserveRequest, now time.Time) (contract.SourceReserve, error) {
+	started := time.Now() // Include ALL local admission/request preparation, not only HTTP.
 	if s == nil || s.http == nil || ctx == nil || ctx.Err() != nil || now.IsZero() {
 		return contract.SourceReserve{}, ErrInvalid
 	}
@@ -84,7 +85,6 @@ func (s *Service) Reserve(ctx context.Context, request contract.SourceReserveReq
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Cache-Control", "no-store")
 	req.Header.Set("Pragma", "no-cache")
-	started := time.Now()
 	response, err := s.http.Do(req)
 	if err != nil {
 		return contract.SourceReserve{}, ErrUnavailable

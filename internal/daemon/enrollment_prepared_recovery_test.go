@@ -183,6 +183,76 @@ func testPreparedNativeRestart(t *testing.T, d *Daemon, policyPath string, polic
 		owner.Close()
 		t.Fatal("narrow owner released native lease")
 	}
+	if stage == "expired-original-access" {
+		// The exact original prepared receipt expires naturally, not by editing
+		// its projection or supplying a caller-selected current time.
+		wait := time.Until(time.UnixMilli(result.Receipt.AccessExpiresAtMS)) + 10*time.Millisecond
+		if wait > 0 {
+			time.Sleep(wait)
+		}
+		if time.Now().UnixMilli() < result.Receipt.AccessExpiresAtMS {
+			t.Fatal("expiry fixture still live")
+		}
+		stateBefore, _ := os.ReadFile(statePath(dir))
+		if err := recovery.resume(context.Background(), time.Second, 2); err == nil {
+			t.Fatal("expired prepared original access finalized")
+		}
+		stateAfter, _ := os.ReadFile(statePath(dir))
+		if !bytes.Equal(stateBefore, stateAfter) || recovery.daemon.stateOwner.saved.native != nil || recovery.daemon.enrollmentPreparation != nil {
+			t.Fatal("expired history published State/readiness")
+		}
+		if calls.Load() != 1 {
+			t.Fatal("expired recovery did not perform exactly original historical read")
+		}
+		afterPending, _ := os.ReadFile(pendingPath)
+		var root map[string]json.RawMessage
+		json.Unmarshal(afterPending, &root)
+		var finalization string
+		json.Unmarshal(root["finalization_json"], &finalization)
+		if finalization != prepared.FinalizationJSON {
+			t.Fatal("expired recovery changed finalization identity")
+		}
+		var h struct {
+			ReceiptJSON string `json:"receipt_json"`
+			Attempts    int    `json:"attempts"`
+		}
+		var hs string
+		json.Unmarshal(root["history_json"], &hs)
+		json.Unmarshal([]byte(hs), &h)
+		got, err := contract.DecodeHistoryReceiptWire([]byte(h.ReceiptJSON), preparedChallengeForTest(t, pendingPath))
+		if err != nil || got != receipt || got.Receipt.AccessExpiresAtMS != result.Receipt.AccessExpiresAtMS {
+			t.Fatal("expired history renewed original receipt", err)
+		}
+		recovery.Close()
+		if owner, err := New(Config{StateDir: dir}); err == nil {
+			owner.Close()
+			t.Fatal("expired prepared wrapper relaxed normal loader")
+		}
+		if _, err := LoadState(dir); err == nil {
+			t.Fatal("expired prepared wrapper relaxed detached loader")
+		}
+		again, err := openNativeFinalizationRecovery(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer again.Close()
+		// Reopen cannot refund a slot or renew the original expiry.
+		if err := again.resume(context.Background(), time.Second, 2); err == nil {
+			t.Fatal("reopen renewed expired original access")
+		}
+		stateFinal, _ := os.ReadFile(statePath(dir))
+		if !bytes.Equal(stateBefore, stateFinal) || again.daemon.stateOwner.saved.native != nil {
+			t.Fatal("expired reopen changed sole State")
+		}
+		expected := int32(2)
+		if seven {
+			expected = 1
+		}
+		if calls.Load() != expected {
+			t.Fatal("expired reopen changed fixed history budget", calls.Load(), expected)
+		}
+		return
+	}
 	err = recovery.resume(context.Background(), time.Second, 2)
 	if stage != "success" {
 		if err == nil {
@@ -242,4 +312,29 @@ func testPreparedNativeRestart(t *testing.T, d *Daemon, policyPath string, polic
 	if _, err := os.Stat(statePath(dir)); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func preparedChallengeForTest(t *testing.T, path string) contract.Challenge {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root struct {
+		Workflow string `json:"workflow_json"`
+	}
+	if json.Unmarshal(raw, &root) != nil {
+		t.Fatal("pending root")
+	}
+	var workflow struct {
+		Challenge string `json:"challenge_json"`
+	}
+	if json.Unmarshal([]byte(root.Workflow), &workflow) != nil {
+		t.Fatal("pending workflow")
+	}
+	c, err := contract.DecodeChallengeWire([]byte(workflow.Challenge))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
 }

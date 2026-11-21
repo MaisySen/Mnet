@@ -112,6 +112,7 @@ func (p *Pool) Close() {
 // Concurrent/capacity refusal before admission does not spend a new attempt.
 // All output is observed DATA; this method cannot mint a commit/proof permit.
 func (p *Pool) Reserve(ctx context.Context, sourceID string, request contract.SourceReserveRequest, now time.Time) (contract.SourceReserve, error) {
+	started := time.Now() // Preserve observation-clock elapsed time across admission and mutex wait.
 	if p == nil || p.pool == nil || ctx == nil || ctx.Err() != nil || now.IsZero() {
 		return contract.SourceReserve{}, ErrAdmission
 	}
@@ -156,7 +157,7 @@ func (p *Pool) Reserve(ctx context.Context, sourceID string, request contract.So
 	requestCtx, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(p.ctx, cancel)
 	p.mu.Unlock()
-	data, err := selected.client.Reserve(requestCtx, request, now)
+	data, err := selected.client.Reserve(requestCtx, request, now.Add(time.Since(started)))
 	stop()
 	cancel()
 	p.mu.Lock()
