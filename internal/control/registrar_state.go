@@ -1,7 +1,8 @@
 package control
 
 // Persisted registrar groundwork only. There is deliberately no constructor,
-// permit issuer, commit method or credential verifier. These private records
+// permit issuer or commit method. A disconnected private existing-record credential
+// verifier is separate; these private records
 // can only be loaded/validated or revoked by the existing owning lifecycle.
 import (
 	"bytes"

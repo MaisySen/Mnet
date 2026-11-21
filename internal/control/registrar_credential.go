@@ -36,7 +36,7 @@ func (s *Store) authorizeRegistrarCredential(ref registrarCredentialReference, s
 	if err := s.healthLocked(); err != nil {
 		return nil, err
 	}
-	if !registrarDigest(secret) || s.data.Registrar == nil || s.data.Registrar.Version != 2 {
+	if !registrarCredentialSecret(secret) || s.data.Registrar == nil || s.data.Registrar.Version != 2 {
 		return nil, ErrUnauthorized
 	}
 	// Revalidate the actual existing namespace, including mixed account identity,
@@ -78,4 +78,21 @@ func (s *Store) authorizeRegistrarCredential(ref registrarCredentialReference, s
 	}
 	copy := cloneNode(n)
 	return &copy, nil
+}
+
+// Match the actual native journal token grammar, not the looser historical
+// digest grammar. All-zero32-byte values are not generated native credentials.
+func registrarCredentialSecret(secret string) bool {
+	if !registrarDigest(secret) {
+		return false
+	}
+	raw, err := base64.RawURLEncoding.Strict().DecodeString(secret)
+	if err != nil {
+		return false
+	}
+	var combined byte
+	for _, v := range raw {
+		combined |= v
+	}
+	return combined != 0
 }

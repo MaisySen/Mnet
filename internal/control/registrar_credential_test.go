@@ -141,3 +141,102 @@ func TestRegistrarCredentialCurrentAuthorityAndCorruptionRefuse(t *testing.T) {
 		})
 	}
 }
+
+// A successful snapshot concurrent with revocation can linearize before it.
+// Only reads started after actual mutation completion must invariably refuse.
+// There is intentionally no claim that an earlier clone remains authority.
+func TestRegistrarCredentialConcurrentActualLifecycleAndReopen(t *testing.T) {
+	for _, operation := range []string{"expire", "delete", "close"} {
+		t.Run(operation, func(t *testing.T) {
+			s, ref, secret := registrarCredentialFixture(t)
+			start := make(chan struct{})
+			stop := make(chan struct{})
+			results := make(chan error, 8)
+			for i := 0; i < 8; i++ {
+				go func() {
+					<-start
+					for {
+						select {
+						case <-stop:
+							results <- nil
+							return
+						default:
+						}
+						n, err := s.authorizeRegistrarCredential(ref, secret)
+						if err != nil && !errors.Is(err, ErrUnauthorized) && !errors.Is(err, ErrStoreClosed) {
+							results <- err
+							return
+						}
+						if err == nil && (n == nil || n.ID != ref.NodeID) {
+							results <- errors.New("invalid successful concurrent snapshot")
+							return
+						}
+					}
+				}()
+			}
+			close(start)
+			var err error
+			switch operation {
+			case "expire":
+				err = s.ExpireNode(ref.NodeID)
+			case "delete":
+				err = s.DeleteNode(ref.NodeID)
+			case "close":
+				err = s.Close()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < 30; i++ {
+				if n, err := s.authorizeRegistrarCredential(ref, secret); err == nil || n != nil {
+					t.Fatal("post-transition read authorized")
+				}
+			}
+			close(stop)
+			for i := 0; i < 8; i++ {
+				if err := <-results; err != nil {
+					t.Fatal(err)
+				}
+			}
+			path := s.path
+			if operation != "close" {
+				if err := s.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			reopened, err := openTestStore(t, path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			n, err := reopened.authorizeRegistrarCredential(ref, secret)
+			if operation == "close" {
+				if err != nil || n == nil {
+					t.Fatal("close must preserve unrevoked durable history", err)
+				}
+			} else if !errors.Is(err, ErrUnauthorized) || n != nil {
+				t.Fatal("reopen revived revoked history", err)
+			}
+		})
+	}
+}
+
+func TestRegistrarCredentialZeroSecretRefusedEvenWithMatchingOwnedDigest(t *testing.T) {
+	s, ref, _ := registrarCredentialFixture(t)
+	r := registrarFixtureRecord(s)
+	secret := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+	sum := sha256.Sum256([]byte(secret))
+	r.CredentialDigest = base64.RawURLEncoding.EncodeToString(sum[:])
+	r.Consumption.Challenge.Binding.CredentialDigest = r.CredentialDigest
+	r.Consumption.TranscriptDigest = registrarTranscriptDigest(r.Consumption.Challenge)
+	r.ReceiptDigest = registrarReceiptDigest(*r)
+	if err := s.saveLocked(); err != nil {
+		t.Fatal(err)
+	}
+	s = reopenRegistrarFixture(t, s)
+	r = registrarFixtureRecord(s)
+	ref.ReceiptDigest = r.ReceiptDigest
+	ref.TranscriptDigest = r.Consumption.TranscriptDigest
+	if n, err := s.authorizeRegistrarCredential(ref, secret); !errors.Is(err, ErrUnauthorized) || n != nil {
+		t.Fatal("zero native secret accepted despite source grammar", err)
+	}
+}
