@@ -5,6 +5,7 @@ package osownership
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 // Explicit fake protocol, not a real adapter. No production implementation of
@@ -15,8 +16,9 @@ type inertKernelProtocol interface {
 	inertProtocolOnly()
 }
 type inertAdapterProtocol struct {
-	effects inertKernelProtocol
-	session *adapterSession
+	effects      inertKernelProtocol
+	session      *adapterSession
+	ownerContext context.Context
 }
 
 var _ Kernel = (*inertAdapterProtocol)(nil)
@@ -32,6 +34,13 @@ func newInertAdapterProtocol(e inertKernelProtocol, b *CapturedBaseline) (*inert
 	return &inertAdapterProtocol{effects: e, session: s}, nil
 }
 func (a *inertAdapterProtocol) Snapshot(ctx context.Context) (Inventory, error) {
+	if ctx == nil {
+		return Inventory{}, ErrConflict
+	}
+	a.ownerContext = ctx
+	if a.session.rejectedHandle != nil || (a.session.createAttempted && a.session.canonical == nil) {
+		return Inventory{}, errors.New("unvalidated creation custody unresolved")
+	}
 	i, e := a.effects.Snapshot(ctx)
 	if e != nil {
 		if a.session.pending != nil {
@@ -65,8 +74,11 @@ func (a *inertAdapterProtocol) Create(ctx context.Context, p Plan) (Handle, erro
 			return h, errors.Join(e, bind)
 		}
 	}
-	if e != nil {
+	if e != nil || h.Link.Index <= 0 {
 		a.session.poisoned = true
+		if e == nil {
+			e = ErrConflict
+		}
 	}
 	return h, e
 }
@@ -80,7 +92,7 @@ func (a *inertAdapterProtocol) Apply(ctx context.Context, h Handle, op Operation
 		if e = a.session.beginCleanup(h, i, op); e != nil {
 			return e
 		}
-		return a.effects.Apply(ctx, *a.session.canonical, op)
+		return a.session.recordCleanup(a.effects.Apply(ctx, *a.session.canonical, op))
 	}
 	if e := a.session.begin(h, op); e != nil {
 		return e
@@ -88,8 +100,26 @@ func (a *inertAdapterProtocol) Apply(ctx context.Context, h Handle, op Operation
 	return a.session.recordACK(a.effects.Apply(ctx, *a.session.canonical, op))
 }
 func (a *inertAdapterProtocol) CloseOriginalFD(h Handle) error {
-	i, e := a.effects.Snapshot(context.Background())
+	// Kernel.CloseOriginalFD lacks a context argument. Reuse only the still-live
+	// deadline-bearing context from Transaction.Stop's immediately preceding
+	// snapshot. Never replace expired ownership with a Background context.
+	owner := a.ownerContext
+	if owner == nil {
+		return ErrConflict
+	}
+	if _, ok := owner.Deadline(); !ok {
+		return ErrConflict
+	}
+	if e := owner.Err(); e != nil {
+		return e
+	}
+	ctx, cancel := context.WithTimeout(owner, 100*time.Millisecond)
+	defer cancel()
+	i, e := a.effects.Snapshot(ctx)
 	if e != nil {
+		return e
+	}
+	if e = ctx.Err(); e != nil {
 		return e
 	}
 	if e = a.session.beginClose(h, i); e != nil {

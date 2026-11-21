@@ -7,7 +7,6 @@ package osownership
 // promoted Handle values cannot silently widen a future adapter's authority.
 // No namespace, device, FD, sysctl, netlink or process operations here.
 import (
-	"encoding/json"
 	"errors"
 	"maps"
 	"reflect"
@@ -22,6 +21,9 @@ type adapterSession struct {
 	forwardStep      int
 	cleanupMode      bool
 	cleanupPending   *Operation
+	cleanupAttempts  map[Operation]int
+	cleanupRetry     *Operation
+	cleanupHistory   []cleanupObservation
 	closeRecorded    bool
 	canonical        *Handle
 	pending          *Operation
@@ -36,16 +38,8 @@ func newAdapterSession(b *CapturedBaseline) (*adapterSession, error) {
 	if b == nil || !sameNamespace(b.ns, b.ns) {
 		return nil, ErrConflict
 	}
-	data, e := json.Marshal(b.raw)
-	if e != nil {
-		return nil, e
-	}
-	var raw RawInventory
-	if e = json.Unmarshal(data, &raw); e != nil {
-		return nil, e
-	}
 	frozen := *b
-	frozen.raw = raw
+	frozen.raw = cloneRawExact(b.raw)
 	frozen.sys = maps.Clone(b.sys)
 	return &adapterSession{baseline: &frozen}, nil
 }
@@ -171,6 +165,7 @@ func (s *adapterSession) beginClose(h Handle, i Inventory) error {
 	if _, e := s.cleanupChoice(h, i, Operation{Kind: "close-owned-tun-fd"}); e != nil {
 		return e
 	}
+	s.cleanupMode = true
 	s.closeAttempted = true
 	return nil
 }
@@ -205,7 +200,6 @@ func (s *adapterSession) cleanupChoice(h Handle, i Inventory, op Operation) ([]O
 	if s == nil || s.canonical == nil || !sameSessionHandle(h, *s.canonical) || !sameNamespace(i.Namespace, s.baseline.ns) || i.ForeignPolicy || i.Forwarding {
 		return nil, ErrConflict
 	}
-	s.cleanupMode = true
 	ops, e := Rollback(*s.canonical, i)
 	if e != nil {
 		return nil, e
@@ -237,6 +231,18 @@ func (s *adapterSession) beginCleanup(h Handle, i Inventory, op Operation) error
 	if _, e := s.cleanupChoice(h, i, op); e != nil {
 		return e
 	}
+	if s.cleanupAttempts[op] >= 2 {
+		return errors.New("cleanup identical-delete budget exhausted; custody retained")
+	}
+	if s.cleanupAttempts[op] > 0 && (s.cleanupRetry == nil || *s.cleanupRetry != op) {
+		return ErrConflict
+	}
+	if s.cleanupAttempts == nil {
+		s.cleanupAttempts = make(map[Operation]int)
+	}
+	s.cleanupAttempts[op]++
+	s.cleanupMode = true
+	s.cleanupRetry = nil
 	copy := op
 	s.cleanupPending = &copy
 	return nil
@@ -252,8 +258,16 @@ func (s *adapterSession) observeCleanup(i Inventory) error {
 	if e != nil {
 		return e
 	}
-	if operationPresent(*s.cleanupPending, ops) {
-		return errors.New("cleanup remains present; custody retained")
+	present := operationPresent(*s.cleanupPending, ops)
+	s.cleanupHistory = append(s.cleanupHistory, cleanupObservation{Operation: *s.cleanupPending, Attempt: s.cleanupAttempts[*s.cleanupPending], Present: present})
+	if present {
+		// Snapshot itself is an observation, not a retry. The Transaction checks
+		// remaining ops and returns pending. A later Stop may retry only this exact
+		// operation, revalidated by another fresh inventory, within total budget two.
+		copy := *s.cleanupPending
+		s.cleanupRetry = &copy
+		s.cleanupPending = nil
+		return nil
 	}
 	if s.cleanupPending.Kind == "address-del-exact" {
 		s.addressConfirmed = false
@@ -271,6 +285,10 @@ type adapterFinalState struct {
 	CleanupMode       bool
 	PossiblyApplied   *Operation
 	CleanupPending    *Operation
+	CleanupRetry      *Operation
+	CleanupHistory    []cleanupObservation
+	RejectedHandle    *Handle
+	CreateAttempted   bool
 	CloseAttempted    bool
 	CloseRecorded     bool
 	CloseConfirmed    bool
@@ -295,10 +313,36 @@ func (s *adapterSession) reconcile(raw RawInventory, sys SysctlSnapshot) (adapte
 		copy := *s.cleanupPending
 		r.CleanupPending = &copy
 	}
+	r.CreateAttempted = s.createAttempted
+	if s.rejectedHandle != nil {
+		copy := *s.rejectedHandle
+		r.RejectedHandle = &copy
+	}
+	if s.cleanupRetry != nil {
+		copy := *s.cleanupRetry
+		r.CleanupRetry = &copy
+	}
+	r.CleanupHistory = append([]cleanupObservation(nil), s.cleanupHistory...)
 	r.RawBaselineEqual = reflect.DeepEqual(raw, s.baseline.raw) && reflect.DeepEqual(map[string]string(sys), s.baseline.sys)
 	r.CustodyUnresolved = s.rejectedHandle != nil || (s.createAttempted && s.canonical == nil) || (s.canonical != nil && (!s.closeConfirmed || !r.RawBaselineEqual))
 	if !r.RawBaselineEqual {
 		return r, ErrConflict
 	}
 	return r, nil
+}
+
+type cleanupObservation struct {
+	Operation    Operation
+	Attempt      int
+	Present      bool
+	CallRecorded bool
+	CallError    bool
+}
+
+func (s *adapterSession) recordCleanup(err error) error {
+	if s == nil || s.cleanupPending == nil {
+		return ErrConflict
+	}
+	s.cleanupHistory = append(s.cleanupHistory, cleanupObservation{Operation: *s.cleanupPending, Attempt: s.cleanupAttempts[*s.cleanupPending], CallRecorded: true, CallError: err != nil})
+	return err
 }
