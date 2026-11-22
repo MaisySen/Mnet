@@ -9,9 +9,9 @@ import (
 
 // Candidate schema only. Not used by validateOwnedAddress, source dispatch, or
 // Inventory conversion. v6.17 devinet.c inet_fill_ifaddr/put_cacheinfo establish
-// emission semantics. Numeric ABI/layout is corroborated by held x/sys v0.50.0
-// unix/ztypes_linux.go and zerrors_linux.go, NOT a held v6.17 if_addr.h proof.
-// Exact-version UAPI compatibility and the complete route half remain held.
+// emission semantics. Exact v6.17 include/uapi/linux/if_addr.h now grounds
+// numeric ABI/layout (official kernel.org archive, S74 provenance packet).
+// This parser remains non-authorizing until full transition integration.
 const (
 	addressDumpAddress       uint16 = 1
 	addressDumpLocal         uint16 = 2
@@ -45,6 +45,17 @@ func captureOwnedAddressDumpCandidate(h *Handle, body []byte) (*ownedAddressDump
 	a, err := DecodeAddress(body)
 	if err != nil {
 		return nil, err
+	}
+	return captureOwnedAddressRecordCandidate(h, a)
+}
+
+func captureOwnedAddressRecordCandidate(h *Handle, a AddressRecord) (*ownedAddressDumpCandidate, error) {
+	if h == nil || !safeInterfaceName(h.Link.Name) || !h.Address.Prefix.IsValid() || !h.Address.Prefix.Addr().Is4() || h.Address.Prefix.Bits() != 32 || h.Address.Prefix.Addr().IsUnspecified() {
+		return nil, ErrConflict
+	}
+	a.Raw = cloneRawAttrs(a.Raw)
+	if !a.Address.Is4() || !a.Local.Is4() || !bytes.Equal(a.Raw[addressDumpAddress], ipBytes(a.Address)) || !bytes.Equal(a.Raw[addressDumpLocal], ipBytes(a.Local)) {
+		return nil, ErrConflict
 	}
 	if a.Index != h.Link.Index || a.Family != 2 || a.Prefix != 32 || a.Scope != 0 || a.Local != h.Address.Prefix.Addr() || a.Address != a.Local {
 		return nil, ErrConflict
