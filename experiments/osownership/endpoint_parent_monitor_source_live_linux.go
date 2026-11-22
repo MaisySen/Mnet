@@ -16,7 +16,7 @@ import (
 // factory, dev/tun pointers and exclusive config readback issue that owner.
 // Genuine child completion remains blocked by the unfinished policy rows.
 func (p *endpointParentSource) serveSource(ctx context.Context) (ret error) {
-	if p == nil || p.admission == nil || p.bridge == nil || p.policy == nil {
+	if p == nil || p.admission == nil || p.bridge == nil || p.policy == nil || !p.started {
 		return afPhase
 	}
 	defer func() { ret = errors.Join(ret, p.stopSource(ctx)) }()

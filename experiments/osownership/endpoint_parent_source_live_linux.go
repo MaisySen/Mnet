@@ -23,6 +23,7 @@ type endpointParentSource struct {
 	policy                   *endpointPacketPolicy
 	lifetime                 context.Context
 	stopBridge               func() bool
+	started                  bool
 	binding                  Binding
 	start                    endpointStartBody
 	prepared                 *endpointPreparedBody
@@ -281,6 +282,22 @@ func (p *endpointParentSource) admitSource(ctx context.Context) (ret error) {
 		p.wire.closeWriteSource()
 		return e
 	}
+	// ADMISSION is now actually written. Only now can this never-running peer
+	// start, on the exact already-announced port. No automatic recreate/retry.
+	if e = bridge.StartPacketFlow(p.peer); e != nil {
+		return e
+	}
+	flow, e := (endpointFlowBody{BridgeGeneration: b.BridgeGeneration, PairDigest: b.BridgePairDigest}).encode()
+	if e != nil {
+		return e
+	}
+	if e = p.wire.queueSource(endpointFlowStart, flow); e != nil {
+		return e
+	}
+	if e = p.flushSource(ctx); e != nil {
+		return e
+	}
+	p.started = true
 	return nil
 }
 

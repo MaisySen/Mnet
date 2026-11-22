@@ -10,7 +10,7 @@ import (
 // Memory-only codec/state exercise. No timers, contexts, native owners,
 // controllers, descriptors, factories, IPC, source collectors or workers.
 func TestEndpointTimingAndCheckedStartMemory(t *testing.T) {
-	if endpointHandshakeBudget != 30*time.Second || endpointCleanupBudget != 500*time.Millisecond || endpointFinalStatsBudget != 500*time.Millisecond || endpointGraceBudget < endpointCleanupBudget+endpointFinalStatsBudget || endpointIdleSafetyBudget > 50*time.Millisecond {
+	if endpointHandshakeBudget != 45*time.Second || endpointCleanupBudget != 500*time.Millisecond || endpointFinalStatsBudget != 500*time.Millisecond || endpointGraceBudget < endpointCleanupBudget+endpointFinalStatsBudget || endpointIdleSafetyBudget > 50*time.Millisecond {
 		t.Fatal("timing contract")
 	}
 	start := endpointStartBody{Prepared: endpointTestBody(), Name: "mno-test", Alias: "mno-0123456789abcdef0123456789abcdef"}
@@ -71,7 +71,7 @@ func TestEndpointTimingAndCheckedStartMemory(t *testing.T) {
 func TestEndpointBridgeAdmissionDataMemory(t *testing.T) {
 	p := endpointTestAdmission(t)
 	b, e := decodeEndpointAdmission(p)
-	if e != nil || b.BridgeGeneration != 2 || b.BridgeConfig != ([32]byte{5}) || b.Prepared != endpointTestBody() {
+	if e != nil || b.BridgeGeneration != 2 || b.BridgePairDigest != ([32]byte{5}) || b.Prepared != endpointTestBody() {
 		t.Fatal("bridge correlation roundtrip", e)
 	}
 	if len(p) != 264 {

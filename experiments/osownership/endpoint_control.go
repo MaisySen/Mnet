@@ -80,7 +80,7 @@ type endpointAdmissionBody struct {
 	SelfPublication, PeerPublication [32]byte
 	SelfRevision, PeerRevision       uint64
 	BridgeGeneration                 uint64
-	BridgeConfig                     [32]byte
+	BridgePairDigest                 [32]byte
 }
 
 func (b endpointAdmissionBody) encode() ([]byte, error) {
@@ -88,7 +88,7 @@ func (b endpointAdmissionBody) encode() ([]byte, error) {
 	if e != nil {
 		return nil, e
 	}
-	if b.BridgeGeneration < 2 || b.BridgeConfig == ([32]byte{}) {
+	if b.BridgeGeneration < 2 || b.BridgePairDigest == ([32]byte{}) {
 		return nil, errEndpointFrame
 	}
 	if b.SelfPublication == ([32]byte{}) || b.PeerPublication == ([32]byte{}) || b.SelfRevision == 0 || b.PeerRevision == 0 || b.SelfRevision > 1<<63-1 || b.PeerRevision > 1<<63-1 {
@@ -100,7 +100,7 @@ func (b endpointAdmissionBody) encode() ([]byte, error) {
 	binary.BigEndian.PutUint64(p[208:], b.SelfRevision)
 	binary.BigEndian.PutUint64(p[216:], b.PeerRevision)
 	binary.BigEndian.PutUint64(p[224:], b.BridgeGeneration)
-	copy(p[232:], b.BridgeConfig[:])
+	copy(p[232:], b.BridgePairDigest[:])
 	return p, nil
 }
 func decodeEndpointAdmission(p []byte) (b endpointAdmissionBody, e error) {
@@ -116,7 +116,7 @@ func decodeEndpointAdmission(p []byte) (b endpointAdmissionBody, e error) {
 	b.SelfRevision = binary.BigEndian.Uint64(p[208:])
 	b.PeerRevision = binary.BigEndian.Uint64(p[216:])
 	b.BridgeGeneration = binary.BigEndian.Uint64(p[224:])
-	copy(b.BridgeConfig[:], p[232:264])
+	copy(b.BridgePairDigest[:], p[232:264])
 	_, e = b.encode()
 	return b, e
 }
@@ -130,6 +130,9 @@ func validateEndpointControl(f endpointFrame) error {
 		if b.Prepared.Generation != f.generation {
 			return errEndpointFrame
 		}
+	case endpointFlowStart:
+		_, e := decodeEndpointFlow(f.payload)
+		return e
 	case endpointStop:
 		return validateEndpointStop(f.payload)
 	case endpointStopped, endpointStats:

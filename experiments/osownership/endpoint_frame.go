@@ -42,6 +42,8 @@ func endpointFrameLimit(kind byte) int {
 		return endpointStatsBytes
 	case endpointStart:
 		return endpointStartBytes
+	case endpointFlowStart:
+		return endpointFlowBytes
 	}
 	return -1
 }
@@ -142,6 +144,8 @@ type endpointFrameState struct {
 	generation, received, sent   uint64
 	inbound, outbound            byte
 	prepared, admission, stopped bool
+	flowStarted                  bool
+	admissionBody                endpointAdmissionBody
 	policy                       *endpointPacketPolicy
 	preparedBody                 endpointPreparedBody
 	queue                        [][]byte
@@ -196,8 +200,16 @@ func (s *endpointFrameState) receive(f endpointFrame) (admittedEndpointPacket, e
 			return zero, errEndpointFrame
 		}
 		s.admission = true
+		s.admissionBody = b
+	case endpointFlowStart:
+		b, e := decodeEndpointFlow(f.payload)
+		if e != nil || f.direction != 1 || !s.admission || s.flowStarted || !b.matches(s.admissionBody) {
+			s.stopLocked()
+			return zero, errEndpointFrame
+		}
+		s.flowStarted = true
 	case endpointDatagram:
-		if !s.admission {
+		if !s.admission || !s.flowStarted {
 			s.stopLocked()
 			return zero, errEndpointFrame
 		}
@@ -232,7 +244,7 @@ func (s *endpointFrameState) enqueue(kind byte, payload []byte) error {
 		return errEndpointBackpressure
 	}
 	if kind == endpointDatagram {
-		if !s.admission {
+		if !s.admission || !s.flowStarted {
 			return errEndpointFrame
 		}
 		direction := packetToPeer
@@ -258,6 +270,12 @@ func (s *endpointFrameState) enqueue(kind byte, payload []byte) error {
 			return errEndpointFrame
 		}
 	}
+	if kind == endpointFlowStart {
+		b, e := decodeEndpointFlow(payload)
+		if e != nil || s.outbound != 1 || !s.admission || s.flowStarted || !b.matches(s.admissionBody) {
+			return errEndpointFrame
+		}
+	}
 	raw, e := encodeEndpointFrame(endpointFrame{kind: kind, direction: s.outbound, generation: s.generation, sequence: s.sent + 1, payload: payload})
 	if e != nil {
 		return e
@@ -267,7 +285,12 @@ func (s *endpointFrameState) enqueue(kind byte, payload []byte) error {
 	if kind == endpointPrepared {
 		s.prepared = true
 	}
+	if kind == endpointFlowStart {
+		s.flowStarted = true
+	}
 	if kind == endpointAdmission {
+		b, _ := decodeEndpointAdmission(payload)
+		s.admissionBody = b
 		s.admission = true
 	}
 	return nil

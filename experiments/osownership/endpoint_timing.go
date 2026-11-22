@@ -4,7 +4,14 @@ package osownership
 
 import "time"
 
-const endpointHandshakeBudget = 30 * time.Second
+// Three post-PREPARED local requests: capability POST + its map GET, then
+// one explicit peer-map refresh. The client's 16-request lifetime maximum is
+// not a promise that all requests occur after PREPARED or take 48 seconds.
+const endpointRegistrarPhaseRequests = 3
+const endpointRegistrarRequestBudget = 3 * time.Second
+const endpointCoordinationBudget = 30 * time.Second
+const endpointHandshakeSlack = 6 * time.Second
+const endpointHandshakeBudget = endpointRegistrarPhaseRequests*endpointRegistrarRequestBudget + endpointCoordinationBudget + endpointHandshakeSlack
 const endpointCleanupBudget = 500 * time.Millisecond
 const endpointFinalStatsBudget = 500 * time.Millisecond
 const endpointGraceBudget = endpointCleanupBudget + endpointFinalStatsBudget + 250*time.Millisecond
@@ -29,5 +36,5 @@ func (s *endpointFrameState) consumeStart(f endpointFrame) error {
 func (s *endpointFrameState) datagramRoom() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return !s.stopped && s.admission && len(s.queue) < endpointQueue
+	return !s.stopped && s.admission && s.flowStarted && len(s.queue) < endpointQueue
 }

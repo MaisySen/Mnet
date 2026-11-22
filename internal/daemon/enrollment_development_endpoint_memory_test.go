@@ -31,7 +31,7 @@ func TestPrivateEndpointReadbackShapeMemory(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := privateEndpointConfigMatches(c.raw, private, peer, ip); got != c.want {
+			if got := privateEndpointPairMatches(c.raw, private, peer, ip); got != c.want {
 				t.Fatal("config shape decision")
 			}
 		})

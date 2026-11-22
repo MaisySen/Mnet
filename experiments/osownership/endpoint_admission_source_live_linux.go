@@ -80,11 +80,11 @@ func compareEndpointPreparedParentSource(ctx context.Context, c *residentChild, 
 	}
 	copy(out.PeerPublication[:], a)
 	owned, err := bridge.Current(peer)
-	if err != nil || owned.Generation < 2 || owned.ConfigDigest == ([32]byte{}) || owned.OwnKey != self.PublicKey || owned.PeerKey != other.PublicKey || owned.OwnIP != self.IPv4 || owned.PeerIP != other.IPv4 {
+	if err != nil || owned.Generation < 2 || owned.PairDigest == ([32]byte{}) || owned.OwnKey != self.PublicKey || owned.PeerKey != other.PublicKey || owned.OwnIP != self.IPv4 || owned.PeerIP != other.IPv4 {
 		return out, errEndpointFrame
 	}
 	out.BridgeGeneration = owned.Generation
-	out.BridgeConfig = owned.ConfigDigest
+	out.BridgePairDigest = owned.PairDigest
 	if _, err = out.encode(); err != nil {
 		return zero, err
 	}

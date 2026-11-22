@@ -20,7 +20,7 @@ func endpointTestPrepared(t *testing.T) []byte {
 }
 func endpointTestAdmission(t *testing.T) []byte {
 	t.Helper()
-	b := endpointAdmissionBody{Prepared: endpointTestBody(), SelfPublication: [32]byte{3}, PeerPublication: [32]byte{4}, SelfRevision: 5, PeerRevision: 6, BridgeGeneration: 2, BridgeConfig: [32]byte{5}}
+	b := endpointAdmissionBody{Prepared: endpointTestBody(), SelfPublication: [32]byte{3}, PeerPublication: [32]byte{4}, SelfRevision: 5, PeerRevision: 6, BridgeGeneration: 2, BridgePairDigest: [32]byte{5}}
 	p, e := b.encode()
 	if e != nil {
 		t.Fatal(e)
@@ -111,13 +111,39 @@ func TestEndpointRoleQueueAndPacketDrops(t *testing.T) {
 	if e = parent.finishWrite(len(raw), nil); e != nil {
 		t.Fatal(e)
 	}
+	// Typed FLOW_START must precede all data, including in this memory model.
+	bridge, e := decodeEndpointAdmission(admission)
+	if e != nil {
+		t.Fatal(e)
+	}
+	flow, e := (endpointFlowBody{BridgeGeneration: bridge.BridgeGeneration, PairDigest: bridge.BridgePairDigest}).encode()
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = parent.enqueue(endpointFlowStart, flow); e != nil {
+		t.Fatal(e)
+	}
+	raw, e = parent.nextWrite()
+	if e != nil {
+		t.Fatal(e)
+	}
+	f, e = decodeEndpointFrame(raw)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = child.receive(f); e != nil {
+		t.Fatal(e)
+	}
+	if e = parent.finishWrite(len(raw), nil); e != nil {
+		t.Fatal(e)
+	}
 	// Invalid packet consumes its frame sequence but drops only that packet. The
 	// following valid sequence must still work, not become a protocol shutdown.
-	if _, e = child.receive(endpointFrame{kind: endpointDatagram, direction: 1, generation: 7, sequence: 2, payload: []byte{1}}); e == nil {
+	if _, e = child.receive(endpointFrame{kind: endpointDatagram, direction: 1, generation: 7, sequence: 3, payload: []byte{1}}); e == nil {
 		t.Fatal("bad packet accepted")
 	}
 	valid := testIP(17, testUDP(8), true, 0)
-	if _, e = child.receive(endpointFrame{kind: endpointDatagram, direction: 1, generation: 7, sequence: 3, payload: valid}); e != nil {
+	if _, e = child.receive(endpointFrame{kind: endpointDatagram, direction: 1, generation: 7, sequence: 4, payload: valid}); e != nil {
 		t.Fatal("packet drop killed protocol", e)
 	}
 	outbound := testIP(17, testUDP(8), false, 0)

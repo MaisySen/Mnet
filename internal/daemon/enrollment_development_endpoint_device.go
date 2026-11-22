@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"fintex.au/mnet/internal/bind"
 	"fintex.au/mnet/internal/controlclient"
 	"fintex.au/mnet/internal/netmap"
 	"golang.zx2c4.com/wireguard/device"
@@ -47,17 +48,19 @@ func PrivateEndpointNetworkOptions(limits controlclient.RegistrarLimits, run fun
 }
 
 type developmentEndpointDevice struct {
-	session    *DevelopmentNetworkSession
-	tun        *developmentEndpointTun
-	mu         sync.Mutex
-	dev        *device.Device
-	generation uint64
-	bridge     *DevelopmentEndpointBridge
-	closed     bool
+	session       *DevelopmentNetworkSession
+	tun           *developmentEndpointTun
+	mu            sync.Mutex
+	dev           *device.Device
+	generation    uint64
+	bridge        *DevelopmentEndpointBridge
+	closed        bool
+	announcedPort uint16
+	pinnedBind    *bind.Bind
 }
 type DevelopmentEndpointBridgeSnapshot struct {
 	Generation                     uint64
-	ConfigDigest                   [32]byte // non-secret canonical public pair/config correlation
+	PairDigest                     [32]byte // non-secret pair/AllowedIPs correlation only; not full config readback
 	OwnKey, PeerKey, OwnIP, PeerIP string
 }
 type DevelopmentEndpointBridge struct {
@@ -69,11 +72,14 @@ type DevelopmentEndpointBridge struct {
 	snapshot  DevelopmentEndpointBridgeSnapshot
 	closeOnce sync.Once
 	closeErr  error
+	startOnce sync.Once
+	startErr  error
 }
 type DevelopmentEndpointBridgeCounts struct{ QueuedToPeer, QueuedFromPeer, Dropped, Backpressure uint64 }
 type developmentEndpointTun struct {
 	mu       sync.Mutex
 	closed   bool
+	active   bool
 	done     chan struct{}
 	events   chan tun.Event
 	toPeer   chan []byte
@@ -103,7 +109,8 @@ func (f *developmentEndpointFactory) createSource(s *DevelopmentNetworkSession, 
 		return nil, e
 	}
 	t := &developmentEndpointTun{done: make(chan struct{}), events: make(chan tun.Event, 1), toPeer: make(chan []byte, developmentEndpointQueue), notify: notify}
-	t.events <- tun.EventUp
+	// startDevice explicitly calls Up for its initial empty-peer bind. No TUN
+	// EventUp may race the later pre-admission Down or re-open a sealed device.
 	return &developmentEndpointDevice{session: s, tun: t}, nil
 }
 func (s *developmentEndpointDevice) attachSource() error {
@@ -119,6 +126,14 @@ func (s *developmentEndpointDevice) attachSource() error {
 		return errPrivateEndpoint
 	}
 	s.dev = d.dev
+	s.pinnedBind = d.bind
+	if s.pinnedBind == nil {
+		return errPrivateEndpoint
+	}
+	s.announcedPort = s.pinnedBind.Port()
+	if s.announcedPort == 0 {
+		return errPrivateEndpoint
+	}
 	s.generation = 1
 	return nil
 }
@@ -206,6 +221,15 @@ func (p *DevelopmentEndpointPeer) ClaimPrivateEndpointBridge() (*DevelopmentEndp
 	if e != nil {
 		return nil, e
 	}
+	// This device has never had a peer. Stop its initial empty-peer bind
+	// BEFORE installing one, so no authenticated plaintext can exist before
+	// ADMISSION. Stop closes the socket receive generation. Later Up must reuse
+	// the same announced port or fail closed, never republish/retry implicitly.
+	if e = d.dev.Down(); e != nil {
+		s.closed = true
+		_ = s.tun.Close()
+		return nil, e
+	}
 	// Source owns all IPC writers: generic applyMap is excluded by the private
 	// slot, and no dev/tun pointer leaves daemon. replace_peers also removes any
 	// unexpected old configuration before readback; unbound TUN drops all data.
@@ -240,7 +264,7 @@ func (p *DevelopmentEndpointPeer) ClaimPrivateEndpointBridge() (*DevelopmentEndp
 	if e != nil || !bytes.Equal(own.PublicKey().Bytes(), wantOwn) {
 		return nil, errPrivateEndpoint
 	}
-	if !privateEndpointConfigMatches(readback.String(), hex.EncodeToString(private), hex.EncodeToString(key), other.IPv4) {
+	if !privateEndpointPairMatches(readback.String(), hex.EncodeToString(private), hex.EncodeToString(key), other.IPv4) {
 		s.closed = true
 		_ = s.tun.Close()
 		return nil, errPrivateEndpoint
@@ -256,7 +280,7 @@ func (p *DevelopmentEndpointPeer) ClaimPrivateEndpointBridge() (*DevelopmentEndp
 	s.generation++
 	ctx, cancel := context.WithCancel(p.Context())
 	snap := DevelopmentEndpointBridgeSnapshot{Generation: s.generation, OwnKey: self.PublicKey, PeerKey: other.PublicKey, OwnIP: self.IPv4, PeerIP: other.IPv4}
-	snap.ConfigDigest = sha256.Sum256([]byte(fmt.Sprintf("mnet-private-endpoint-v1\n%d\n%s\n%s\n%s\n%s/32\n", snap.Generation, snap.OwnKey, snap.PeerKey, snap.OwnIP, snap.PeerIP)))
+	snap.PairDigest = sha256.Sum256([]byte(fmt.Sprintf("mnet-private-endpoint-v1\n%d\n%s\n%s\n%s\n%s/32\n", snap.Generation, snap.OwnKey, snap.PeerKey, snap.OwnIP, snap.PeerIP)))
 	b := &DevelopmentEndpointBridge{slot: s, peer: p, pin: pin, ctx: ctx, cancel: cancel, snapshot: snap}
 	s.bridge = b
 	s.tun.mu.Lock()
@@ -268,7 +292,7 @@ func (p *DevelopmentEndpointPeer) ClaimPrivateEndpointBridge() (*DevelopmentEndp
 	sealed = true
 	return b, nil
 }
-func privateEndpointConfigMatches(raw, private, peer, ip string) bool {
+func privateEndpointPairMatches(raw, private, peer, ip string) bool {
 	peers, ips, privates := 0, 0, 0
 	for _, line := range strings.Split(raw, "\n") {
 		k, v, ok := strings.Cut(line, "=")
@@ -321,7 +345,7 @@ func (b *DevelopmentEndpointBridge) Current(p *DevelopmentEndpointPeer) (Develop
 	if e != nil {
 		return zero, errPrivateEndpoint
 	}
-	if b.ctx.Err() != nil || !b.pin.current(d.currentMap()) || b.slot.closed || b.slot.bridge != b || b.slot.generation != b.snapshot.Generation || d.endpointDeviceMap != b.slot || d.dev != b.slot.dev || d.tun != b.slot.tun {
+	if b.ctx.Err() != nil || !b.pin.current(d.currentMap()) || b.slot.closed || b.slot.bridge != b || b.slot.generation != b.snapshot.Generation || d.endpointDeviceMap != b.slot || d.dev != b.slot.dev || d.bind != b.slot.pinnedBind || d.tun != b.slot.tun {
 		return zero, errPrivateEndpoint
 	}
 	return b.snapshot, nil
@@ -376,6 +400,12 @@ func (b *DevelopmentEndpointBridge) SendToPeer(p *DevelopmentEndpointPeer, packe
 	if !privateEndpointPacket(packet, b.snapshot.OwnIP, b.snapshot.PeerIP) {
 		return errPrivateEndpoint
 	}
+	t := b.slot.tun
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed || !t.active || b.ctx.Err() != nil {
+		return errPrivateEndpoint
+	}
 	payload := append([]byte(nil), packet...)
 	select {
 	case <-b.ctx.Done():
@@ -395,7 +425,7 @@ func (b *DevelopmentEndpointBridge) TakeFromPeer(p *DevelopmentEndpointPeer) ([]
 	}
 	t := b.slot.tun
 	t.mu.Lock()
-	if t.closed {
+	if t.closed || !t.active {
 		t.mu.Unlock()
 		return nil, false, io.EOF
 	}
@@ -456,7 +486,7 @@ func (t *developmentEndpointTun) Read(bufs [][]byte, sizes []int, offset int) (i
 	case packet := <-t.toPeer:
 		t.mu.Lock()
 		b := t.grant
-		closed := t.closed
+		closed := t.closed || !t.active
 		t.mu.Unlock()
 		if closed || b == nil || b.ctx.Err() != nil {
 			return 0, io.EOF
@@ -487,7 +517,7 @@ func (t *developmentEndpointTun) Write(bufs [][]byte, offset int) (int, error) {
 			t.mu.Unlock()
 			return 0, io.EOF
 		}
-		if b == nil || b.ctx.Err() != nil || offset > len(buf) || !privateEndpointPacket(buf[offset:], b.snapshot.PeerIP, b.snapshot.OwnIP) {
+		if !t.active || b == nil || b.ctx.Err() != nil || offset > len(buf) || !privateEndpointPacket(buf[offset:], b.snapshot.PeerIP, b.snapshot.OwnIP) {
 			privateEndpointCount(&t.counts.Dropped)
 			t.mu.Unlock()
 			continue

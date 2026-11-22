@@ -106,7 +106,7 @@ func (r *originalEndpointReactor) originalIOSource(ctx context.Context, in []byt
 			return afPhase
 		}
 		r.frames.mu.Lock()
-		protocolLive := r.frames.admission && !r.frames.stopped
+		protocolLive := r.frames.admission && r.frames.flowStarted && !r.frames.stopped
 		r.frames.mu.Unlock()
 		if !protocolLive {
 			return afPhase
@@ -147,10 +147,16 @@ func (r *originalEndpointReactor) originalIOSource(ctx context.Context, in []byt
 				callErr = ErrConflict
 				return
 			}
+			if callErr = r.checkInstalledOperandsSource(ctx); callErr != nil {
+				return
+			}
 			if write {
 				n, callErr = unix.Write(int(fd), buffer)
 			} else {
 				n, callErr = unix.Read(int(fd), buffer)
+			}
+			if checked := r.checkInstalledOperandsSource(ctx); checked != nil {
+				callErr = errors.Join(callErr, checked)
 			}
 			after, err := o.inspectOriginalControlSource(ctx, int(fd))
 			if err != nil || after.identity != before.identity {

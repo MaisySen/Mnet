@@ -174,7 +174,7 @@ func endpointResidentBootstrapSource(ctx context.Context) (ret error) {
 						}
 					}
 				}
-				for authority.admitted == nil {
+				for !authority.started {
 					if e = authority.checkMembershipSource(handshake, ns, c.tx.plan.Binding); e != nil {
 						done()
 						return e
@@ -197,7 +197,11 @@ func endpointResidentBootstrapSource(ctx context.Context) (ret error) {
 						done()
 						return errEndpointStopped
 					}
-					if f.kind != endpointAdmission {
+					expected := endpointAdmission
+					if authority.admitted != nil {
+						expected = endpointFlowStart
+					}
+					if f.kind != expected {
 						stats.Reason = endpointReasonProtocol
 						done()
 						return errEndpointFrame
@@ -210,7 +214,12 @@ func endpointResidentBootstrapSource(ctx context.Context) (ret error) {
 						done()
 						return e
 					}
-					if e = authority.acceptSource(f); e != nil {
+					if f.kind == endpointAdmission {
+						e = authority.acceptSource(f)
+					} else {
+						e = authority.acceptFlowSource(f)
+					}
+					if e != nil {
 						done()
 						return e
 					}
@@ -226,7 +235,8 @@ func endpointResidentBootstrapSource(ctx context.Context) (ret error) {
 				return e
 			}
 			// Mandatory genuine local completion, not a native daemon pointer and not
-			// a remote capability promoted to proof. Today the126 rows still refuse.
+			// a remote capability promoted to proof. The source assessment still leaves
+			// required IPv4 rows unsupported, so no genuine completion is available.
 			if e = c.completePreparedEndpoint(operation, prep); e != nil {
 				stats.Reason = endpointReasonPolicyIncomplete
 				return e

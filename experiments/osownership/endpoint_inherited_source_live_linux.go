@@ -20,6 +20,7 @@ type residentEndpointAdmission struct {
 	start       endpointStartBody
 	prepared    *endpointPreparedBody
 	admitted    *endpointAdmissionBody
+	started     bool
 }
 
 func (*residentEndpointAdmission) endpointInheritedChannelOwner() {}
@@ -49,7 +50,7 @@ func (a *residentEndpointAdmission) checkResidentSource(ctx context.Context, ns 
 	if e := a.checkMembershipSource(ctx, ns, b); e != nil {
 		return e
 	}
-	if a.prepared == nil || a.admitted == nil || a.admitted.Prepared != *a.prepared || a.prepared.Generation != generation {
+	if !a.started || a.prepared == nil || a.admitted == nil || a.admitted.Prepared != *a.prepared || a.prepared.Generation != generation {
 		return afPhase
 	}
 	return nil

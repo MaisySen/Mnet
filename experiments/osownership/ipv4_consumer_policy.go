@@ -39,8 +39,10 @@ func assessIPv4ConsumerOperands(l LinkRecord, o *effectiveV4Observation) ([]ipv4
 			r.ConsumerRule = "ALL||LOCAL disable_policy sets IPv4 IPCB NOPOLICY in input/route consumers; xfrm check observes flag"
 		case 25:
 			r.ConsumerRule = "ALL||LOCAL route_localnet permits loopback-source/destination routing branches; does not establish endpoint safety"
-		case 2, 12, 17, 18, 20, 21, 24, 30, 32:
+		case 2, 12, 17, 18, 20, 21, 24, 30:
 			r.ConsumerRule = "ARP-family behavior has specific ALL/LOCAL formula; arp_send_dst and arp_rcv skip NOARP device. No general exemption for all ARP-adjacent/network policy words"
+		case 32:
+			r.ConsumerRule = "ARP_EVICT_NOCARRIER: arp_netdev_event carrier-down eviction is NOT bypassed by arp_send_dst/arp_rcv NOARP gates; requires individual carrier/lifetime proof"
 		case 16, 26, 27:
 			r.ConsumerRule = "IGMP version/timers retain unresolved live state and time-unit dependencies; multicast membership exists while device DOWN"
 		}

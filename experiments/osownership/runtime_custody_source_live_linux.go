@@ -215,23 +215,38 @@ func (e *sourceRuntimeEvidence) validateCompletion(ctx context.Context, t *Trans
 		}
 		f := e.supplier.frames
 		f.mu.Lock()
-		installed := !f.stopped && f.admission && f.generation == r.identity.generation && f.policy != nil && f.policy.mtu == MTU && f.policy.own == own && f.policy.peer == peer
+		installed := !f.stopped && f.admission && f.flowStarted && f.generation == r.identity.generation && f.policy != nil && f.policy.mtu == MTU && f.policy.own == own && f.policy.peer == peer
 		f.mu.Unlock()
 		if !installed {
 			return afPhase
 		}
-		supplierReason = "exclusive retained parent WireGuard/config/AllowedIPs bridge"
+		supplierReason = "concrete original and retained parent WG pair supplier"
 	}
-	// Original custody and framing/features are now source-collected. Complete
-	// named policy consumer decisions and installed supplier byte-gate are
-	// still missing. Peer compatibility is a current native map declaration,
-	// not remote kernel attestation. Original offload-control history is now separately bound
-	// to its actual successful source syscall, never inferred from these reads.
+	// Original custody and framing/features are source-collected. Named policy
+	// decisions below are source-recomputed only for the concrete inherited
+	// supplier. Unsupported rows still forbid genuine completion. Peer
+	// compatibility is a native map declaration, not remote kernel attestation.
+	// Original offload history remains bound to its actual successful source
+	// syscall, never inferred from these reads.
+	if e.admission != nil {
+		if err := e.resolveInstalledRowsSource(ctx); err != nil {
+			return err
+		}
+	}
 	unresolved := e.policy.Unresolved
 	for _, v := range e.consumer {
 		if !v.Resolved {
 			unresolved++
 		}
 	}
-	return fmt.Errorf("runtime evidence collected on original generation %d; %d named policy decisions and %s remain unproven", r.identity.generation, unresolved, supplierReason)
+	if unresolved != 0 {
+		return fmt.Errorf("runtime evidence collected on original generation %d; %d named policy decisions remain unsupported", r.identity.generation, unresolved)
+	}
+	if e.admission == nil {
+		return fmt.Errorf("runtime evidence collected on original generation %d; %s remains unproven", r.identity.generation, supplierReason)
+	}
+	// No count waiver: every named row was recomputed from this private source
+	// pass. Current code still leaves explicit unsupported IPv4 dependencies,
+	// so it cannot reach success merely by receiving ADMISSION/FLOW_START.
+	return nil
 }
