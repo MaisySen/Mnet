@@ -115,6 +115,9 @@ type operationDisableSource interface {
 type operationAddressSource interface {
 	applyOwnedAddress(context.Context, *postDisableResult) (*postAddressDownResult, error)
 }
+type operationUpSource interface {
+	applyOwnedUp(context.Context, *postAddressDownResult) (*postUpResult, error)
+}
 type operation1Adapter struct {
 	phaseCreation    bool
 	phaseSequence    uint64
@@ -125,6 +128,8 @@ type operation1Adapter struct {
 	disabled         *postDisableResult
 	addressAttempted bool
 	addressed        *postAddressDownResult
+	upAttempted      bool
+	upped            *postUpResult
 	controller       *operation1Controller
 	session          *adapterSession
 	source           operation1DiagnosticSource
@@ -232,6 +237,9 @@ func (a *operation1Adapter) CloseOriginalFD(Handle) error { return ErrExecutorUn
 func (a *operation1Adapter) Apply(ctx context.Context, h Handle, op Operation) (err error) {
 	if !a.authorized(ctx) || a.source == nil || a.session == nil || a.session.plan == nil || len(a.session.plan.Operations) != 6 {
 		return ErrConflict
+	}
+	if op.Kind == "link-up-exact" {
+		return a.applyUp(ctx, h, op)
 	}
 	if op.Kind == "address-add-exclusive" {
 		return a.applyAddress(ctx, h, op)
@@ -399,5 +407,47 @@ func (a *operation1Adapter) applyAddress(ctx context.Context, h Handle, op Opera
 	r.consumed = true
 	a.addressed = r
 	s.forwardStep = 4
+	return nil
+}
+
+func (a *operation1Adapter) applyUp(ctx context.Context, h Handle, op Operation) (err error) {
+	s := a.session
+	if !a.authorized(ctx) || a.upAttempted || s == nil || s.plan == nil || len(s.plan.Operations) != 6 || op != s.plan.Operations[4] || s.forwardStep != 4 || s.canonical == nil || !sameSessionHandle(h, *s.canonical) || s.pending != nil || s.poisoned || s.cleanupMode || s.closeAttempted || a.addressed == nil || !a.addressed.current() || !a.addressed.consumed {
+		return afPhase
+	}
+	source, ok := a.source.(operationUpSource)
+	if !ok {
+		return afPhase
+	}
+	if _, ok := a.source.(setupPhaseSource); ok {
+		if !a.setupAdmissionCurrent(4) {
+			return afPhase
+		}
+		a.phaseAdmitted = 0
+	}
+	a.upAttempted = true
+	var r *postUpResult
+	defer func() {
+		if err != nil {
+			s.poisoned = true
+			a.addressed.lifetime.revoke()
+			if r != nil && r.ledger != nil {
+				_ = r.ledger.invalidate("custody-loss")
+			}
+		}
+	}()
+	r, err = source.applyOwnedUp(ctx, a.addressed)
+	if err != nil {
+		return err
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if r == nil || r.consumed || r.ancestry != a.addressed || r.ledger != a.addressed.ledger || !r.current() || !sameSessionHandle(r.identity.handle, *s.canonical) || a.controller.tx.stopStarted || a.controller.tx.fdCloseAttempted || a.controller.tx.deadline.expired(a.controller.tx.clock.Now()) {
+		return afPhase
+	}
+	r.consumed = true
+	a.upped = r
+	s.forwardStep = 5
 	return nil
 }

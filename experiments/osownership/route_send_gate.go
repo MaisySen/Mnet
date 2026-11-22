@@ -15,7 +15,7 @@ func validateReadOnlyRouteRequest(request []byte, localPID uint32) error {
 	}
 	kind := binary.NativeEndian.Uint16(request[4:])
 	switch kind {
-	case 18, 22, 26, 34:
+	case 18, 22, 26, 34, 38:
 	default:
 		return ErrConflict
 	}

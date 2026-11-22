@@ -93,15 +93,21 @@ func (s *routeSocket) Exchange(ctx context.Context, request []byte) (out []Datag
 	return s.exchangeSource(ctx, request, nil)
 }
 func (s *routeSocket) exchangeSource(ctx context.Context, request []byte, permit *firstLinkSendPermit) (out []Datagram, err error) {
-	return s.exchangeTypedSource(ctx, request, permit, nil)
+	return s.exchangeTypedSource(ctx, request, permit, nil, nil)
 }
 func (s *routeSocket) exchangeAddressSource(ctx context.Context, request []byte, permit *addressSendPermit) (out []Datagram, err error) {
 	if permit == nil {
 		return nil, ErrConflict
 	}
-	return s.exchangeTypedSource(ctx, request, nil, permit)
+	return s.exchangeTypedSource(ctx, request, nil, permit, nil)
 }
-func (s *routeSocket) exchangeTypedSource(ctx context.Context, request []byte, permit *firstLinkSendPermit, address *addressSendPermit) (out []Datagram, err error) {
+func (s *routeSocket) exchangeUpSource(ctx context.Context, request []byte, permit *upSendPermit) ([]Datagram, error) {
+	if permit == nil {
+		return nil, ErrConflict
+	}
+	return s.exchangeTypedSource(ctx, request, nil, nil, permit)
+}
+func (s *routeSocket) exchangeTypedSource(ctx context.Context, request []byte, permit *firstLinkSendPermit, address *addressSendPermit, up *upSendPermit) (out []Datagram, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	defer func() {
@@ -122,7 +128,7 @@ func (s *routeSocket) exchangeTypedSource(ctx context.Context, request []byte, p
 	bounded, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
 	defer cancel()
 	gate := func(send func() error) error { return guardReadOnlyRouteSend(request, s.pid, send) }
-	if permit != nil && address != nil {
+	if (permit != nil && address != nil) || (up != nil && (permit != nil || address != nil)) {
 		return nil, ErrConflict
 	}
 	if permit != nil {
@@ -130,6 +136,9 @@ func (s *routeSocket) exchangeTypedSource(ctx context.Context, request []byte, p
 	}
 	if address != nil {
 		gate = func(send func() error) error { return address.send(request, s.pid, send) }
+	}
+	if up != nil {
+		gate = func(send func() error) error { return up.send(request, s.pid, send) }
 	}
 	if e := gate(func() error { return unix.Sendto(s.fd, request, 0, &unix.SockaddrNetlink{Family: unix.AF_NETLINK}) }); e != nil {
 		return nil, e

@@ -25,7 +25,7 @@ func decodeSetupLink(body []byte, h Handle) (LinkRecord, error) {
 	if int(int32(binary.NativeEndian.Uint32(body[4:]))) != h.Link.Index {
 		return DecodeLink(body)
 	}
-	r, e := parseSetupOuter(body)
+	r, e := parseSetupOuterPhase(body, binary.NativeEndian.Uint32(body[8:])&1 != 0)
 	if e != nil {
 		return LinkRecord{}, e
 	}
@@ -35,7 +35,8 @@ func decodeSetupLink(body []byte, h Handle) (LinkRecord, error) {
 	r.setupOuter = &setupOuterRecord{body: slices.Clone(body)}
 	return r, nil
 }
-func parseSetupOuter(body []byte) (LinkRecord, error) {
+func parseSetupOuter(body []byte) (LinkRecord, error) { return parseSetupOuterPhase(body, false) }
+func parseSetupOuterPhase(body []byte, up bool) (LinkRecord, error) {
 	var r LinkRecord
 	if len(body) < 16 || len(body) > 16384 || body[0] != 0 || body[1] != 0 || binary.NativeEndian.Uint32(body[12:]) != 0 {
 		return r, afShape
@@ -43,7 +44,7 @@ func parseSetupOuter(body []byte) (LinkRecord, error) {
 	r.Index = int(int32(binary.NativeEndian.Uint32(body[4:])))
 	r.Hardware = binary.NativeEndian.Uint16(body[2:])
 	r.Flags = binary.NativeEndian.Uint32(body[8:])
-	if r.Index <= 0 || r.Hardware != 65534 || r.Flags != 0x1090 {
+	if r.Index <= 0 || r.Hardware != 65534 || (!up && r.Flags != 0x1090) || (up && r.Flags != 0x110d1) {
 		return r, afPhase
 	}
 	attrs := map[uint16][]byte{}
@@ -203,6 +204,15 @@ func parseSetupOuter(body []byte) (LinkRecord, error) {
 			return r, afShape // topology/program/control unknowns not harmless metadata
 		}
 	}
+	if up {
+		if len(attrs[16]) != 1 || (attrs[16][0] != 0 && attrs[16][0] != 6) || len(attrs[17]) != 1 || attrs[17][0] != 0 {
+			return r, afPhase
+		}
+		q, e := attrText(attrs, 6, true)
+		if e != nil || q != "pfifo_fast" {
+			return r, afPolicy
+		}
+	}
 	if binary.NativeEndian.Uint32(attrs[35]) != binary.NativeEndian.Uint32(attrs[47])+binary.NativeEndian.Uint32(attrs[48]) {
 		return r, afShape
 	}
@@ -223,7 +233,7 @@ func validateSetupOuter(l LinkRecord) error {
 	if l.setupOuter == nil {
 		return afShape
 	}
-	parsed, e := parseSetupOuter(l.setupOuter.body)
+	parsed, e := parseSetupOuterPhase(l.setupOuter.body, l.Flags&1 != 0)
 	if e != nil {
 		return e
 	}

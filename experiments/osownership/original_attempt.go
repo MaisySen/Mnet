@@ -120,6 +120,9 @@ type originalAbsenceSource interface {
 
 func (c *operation1Controller) stopOwnedLocked(ctx context.Context) error {
 	// Stop revokes address and disable lifetime before close/absence work.
+	if c != nil && c.adapter != nil && c.adapter.upped != nil {
+		c.adapter.upped.lifetime.revoke()
+	}
 	if c != nil && c.adapter != nil && c.adapter.addressed != nil {
 		c.adapter.addressed.lifetime.revoke()
 	}

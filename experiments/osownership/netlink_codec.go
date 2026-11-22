@@ -73,7 +73,7 @@ func (c *NetlinkClient) request(ctx context.Context, kind uint16, payload []byte
 			}
 		}
 	}()
-	if !mutation && ((!dump && kind != 16 && kind != 20 && kind != 24) || (dump && kind != 18 && kind != 22 && kind != 26 && kind != 34)) {
+	if !mutation && ((!dump && kind != 16 && kind != 20 && kind != 24) || (dump && kind != 18 && kind != 22 && kind != 26 && kind != 34 && kind != 38)) {
 		return nil, errors.New("unsupported netlink operation kind")
 	}
 	if c == nil || c.wire == nil || len(payload) > 65520 || ctx.Err() != nil {
@@ -145,7 +145,7 @@ func (c *NetlinkClient) request(ctx context.Context, kind uint16, payload []byte
 				}
 				terminal = true
 			default:
-				expected := map[uint16]uint16{18: 16, 22: 20, 26: 24, 34: 32}[kind]
+				expected := map[uint16]uint16{18: 16, 22: 20, 26: 24, 34: 32, 38: 36}[kind]
 				if !dump || fl&2 == 0 || typ != expected {
 					return nil, errors.New("unexpected nonmultipart payload")
 				}
@@ -198,6 +198,8 @@ func DumpRequestHeader(kind uint16) ([]byte, error) {
 		return make([]byte, 16), nil
 	case 22:
 		return make([]byte, 8), nil
+	case 38:
+		return make([]byte, 20), nil
 	case 26, 34:
 		return make([]byte, 12), nil
 	}

@@ -81,6 +81,13 @@ func (s *operation1ScopedDiagnostic) observeSetupPhase(ctx context.Context, t *s
 	if _, e = pass.requestClaim(); e != nil {
 		return nil, e
 	}
+	var qdisc upQdiscObservation
+	if t.step == 5 {
+		qdisc, e = o.collectUpQdiscSource(ctx)
+		if e != nil {
+			return nil, e
+		}
+	}
 	after, e := o.verifyOriginalDeviceLockedSource(ctx)
 	if e != nil {
 		return nil, e
@@ -101,5 +108,5 @@ func (s *operation1ScopedDiagnostic) observeSetupPhase(ctx context.Context, t *s
 	good = true
 	// Full AF request provenance and original OS identity are checked here. The
 	// pure consumer separately checks phase/baseline/transition-specific operands.
-	return &setupPhaseObservation{ticket: t, diagnostic: ownedSourceDiagnostic{raw: cloneRawExact(raw), sys: cloneSysExact(sys), held: held, lineageUsable: true, afPass: pass}}, nil
+	return &setupPhaseObservation{qdisc: qdisc, ticket: t, diagnostic: ownedSourceDiagnostic{raw: cloneRawExact(raw), sys: cloneSysExact(sys), held: held, lineageUsable: true, afPass: pass}}, nil
 }

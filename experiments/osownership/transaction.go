@@ -169,6 +169,11 @@ func (t *Transaction) Start(ctx context.Context) error {
 			return e
 		}
 	}
+	if source, ok := t.k.(*operation1Adapter); ok {
+		if e := source.requireSourceCompletion(); e != nil {
+			return e
+		}
+	}
 	t.Ready = true
 	return nil
 }
