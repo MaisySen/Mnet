@@ -31,7 +31,7 @@ type setupPhaseObservation struct {
 }
 
 func (a *operation1Adapter) setupTicketCurrent(t *setupPhaseTicket) bool {
-	if a == nil || !a.phaseCreation || t == nil || !t.active || t.used || t.adapter != a || t.sequence == 0 || t.sequence != a.phaseSequence || t.step < 1 || t.step > 3 || a.controller == nil || a.controller.tx == nil || a.session == nil || a.session.canonical == nil || a.session.plan == nil || a.controller.attempt == nil || t.attempt != a.controller.attempt || t.attempt.owner != a.controller || t.attempt.custody == nil || t.attempt.handle == nil || !sameSessionHandle(*t.attempt.handle, *a.session.canonical) || t.attempt.closeAttempted || t.attempt.stage != "session-bound" || t.attempt.custody.lineage != t.ledger || a.session.owner != a.controller.tx || a.session.forwardStep != t.step || a.session.pending != nil || a.session.poisoned || a.session.cleanupMode || a.session.closeAttempted || a.controller.tx.stopStarted || a.controller.tx.fdCloseAttempted || a.controller.tx.Ready || t.ledger == nil || !t.ledger.matches(t.identity) || !sameSessionHandle(t.identity.handle, *a.session.canonical) || t.identity.identity != a.session.identity || a.controller.tx.clock == nil || a.controller.tx.deadline.expired(a.controller.tx.clock.Now()) {
+	if a == nil || !a.phaseCreation || t == nil || !t.active || t.used || t.adapter != a || t.sequence == 0 || t.sequence != a.phaseSequence || t.step < 1 || t.step > 4 || a.controller == nil || a.controller.tx == nil || a.session == nil || a.session.canonical == nil || a.session.plan == nil || a.controller.attempt == nil || t.attempt != a.controller.attempt || t.attempt.owner != a.controller || t.attempt.custody == nil || t.attempt.handle == nil || !sameSessionHandle(*t.attempt.handle, *a.session.canonical) || t.attempt.closeAttempted || t.attempt.stage != "session-bound" || t.attempt.custody.lineage != t.ledger || a.session.owner != a.controller.tx || a.session.forwardStep != t.step || a.session.pending != nil || a.session.poisoned || a.session.cleanupMode || a.session.closeAttempted || a.controller.tx.stopStarted || a.controller.tx.fdCloseAttempted || a.controller.tx.Ready || t.ledger == nil || !t.ledger.matches(t.identity) || !sameSessionHandle(t.identity.handle, *a.session.canonical) || t.identity.identity != a.session.identity || a.controller.tx.clock == nil || a.controller.tx.deadline.expired(a.controller.tx.clock.Now()) {
 		return false
 	}
 	if !reflect.DeepEqual(*a.session.plan, t.attempt.plan) || !reflect.DeepEqual(a.controller.tx.plan, t.attempt.plan) {
@@ -49,6 +49,15 @@ func (a *operation1Adapter) setupTicketCurrent(t *setupPhaseTicket) bool {
 		expected.uncertain = false
 		expected.handle.TagConfirmed = true
 		return t.identity == expected && a.session.canonical.TagConfirmed && a.aliasPost != nil && a.aliasPost.consumed && a.aliasPost.token != nil && a.aliasPost.token.done && a.aliasPost.token.owner == a.controller.tx && a.aliasPost.post != nil && !a.disableAttempted && a.disabled == nil
+	case 4:
+		if a.aliasPost == nil || !a.aliasPost.consumed || a.aliasPost.token == nil || !a.aliasPost.token.done || a.aliasPost.token.owner != a.controller.tx {
+			return false
+		}
+		r := a.addressed
+		if !a.addressAttempted || r == nil || !r.consumed || !r.current() || r.disabledAncestry != a.disabled || r.ledger != t.ledger || r.identity != t.identity || a.disabled == nil || a.disabled.owner != a.controller.tx || a.disabled.session != a.session || !a.disabled.consumed {
+			return false
+		}
+		return a.session.canonical.TagConfirmed && sameDisableOriginalIdentity(a.disabled.identity, t.identity)
 	case 3:
 		if a.aliasPost == nil || a.aliasPost.post == nil || a.aliasPost.token == nil || !a.aliasPost.token.done || a.aliasPost.token.owner != a.controller.tx || a.disabled == nil || a.disabled.ledger != t.ledger {
 			return false
@@ -117,14 +126,34 @@ func (a *operation1Adapter) setupAdmissionCurrent(step int) bool {
 	return a.phaseAdmitted == step && a.controller.attempt != nil && a.controller.attempt.custody != nil && a.controller.attempt.custody.lineage != nil && a.controller.attempt.custody.lineage.matches(a.phaseIdentity)
 }
 
-// Only C, post-alias C, and verified D. No address/UP/route/traffic readiness.
+// C, post-alias C, verified D, and addressed-but-DOWN poststate only.
+// No UP/peer-route/traffic readiness.
 // All93 diagnostic words remain unknown as runtime policy; only the bounded
 // no-supplier DOWN graph permits their consumers to be out of scope here.
 func (a *operation1Adapter) composeSetupOnly(step int, d ownedSourceDiagnostic) (Inventory, error) {
 	s := a.session
 	b := s.baseline
 	h := *s.canonical
-	if step < 1 || step > 3 || b == nil || len(d.raw.Addresses) != 0 || len(d.raw.Routes) != 0 {
+	if step < 1 || step > 4 || b == nil {
+		return Inventory{}, afPhase
+	}
+	// Subtract ONLY the complete typed address poststate before the unchanged
+	// baseline path. Never project away arbitrary host addresses/routes.
+	addressedRaw := cloneRawExact(d.raw)
+	if step == 4 {
+		r := a.addressed
+		if r == nil || !r.current() || !r.consumed || !exactSetupPostMatches(d.raw, r.raw) || !reflect.DeepEqual(d.sys, r.sys) || len(d.raw.Addresses) != 1 || len(d.raw.Routes) != 1 {
+			return Inventory{}, afPhase
+		}
+		candidate, e := captureOwnedAddressRecordCandidate(&h, d.raw.Addresses[0])
+		if e != nil || !reflect.DeepEqual(candidate, r.address) || validateAddressLocalRoute(&h, d.raw.Routes[0]) != nil {
+			return Inventory{}, afPhase
+		}
+		d.raw = cloneRawExact(d.raw)
+		d.raw.Addresses = b.raw.Addresses
+		d.raw.Routes = b.raw.Routes
+	}
+	if len(d.raw.Addresses) != 0 || len(d.raw.Routes) != 0 {
 		return Inventory{}, afPhase
 	}
 	want := h.Link
@@ -191,7 +220,7 @@ func (a *operation1Adapter) composeSetupOnly(step int, d ownedSourceDiagnostic) 
 	if disabled > 1 || (disabled == 0 && d.sys[path] != "0") || (disabled == 1 && d.sys[path] != "1") {
 		return Inventory{}, afPolicy
 	}
-	if step == 3 && disabled != 1 {
+	if step >= 3 && disabled != 1 {
 		return Inventory{}, afPhase
 	}
 	// Local observations are never substituted for ALL/default or baseline state.
@@ -208,6 +237,10 @@ func (a *operation1Adapter) composeSetupOnly(step int, d ownedSourceDiagnostic) 
 	switch step {
 	case 2:
 		if a.aliasPost == nil || a.aliasPost.post == nil || !exactSetupPostMatches(d.raw, a.aliasPost.post.raw) || !reflect.DeepEqual(d.sys, a.aliasPost.post.sys) {
+			return Inventory{}, afPhase
+		}
+	case 4:
+		if a.addressed == nil || !exactSetupPostMatches(addressedRaw, a.addressed.raw) || !reflect.DeepEqual(d.sys, a.addressed.sys) {
 			return Inventory{}, afPhase
 		}
 	case 3:
@@ -238,6 +271,10 @@ func (a *operation1Adapter) composeSetupOnly(step int, d ownedSourceDiagnostic) 
 	i.Links = append(i.Links, Link{Index: link.Index, Name: link.Name, Alias: link.Alias, Kind: "tun", MTU: link.MTU})
 	i.LinkUp[link.Index] = false
 	i.IPv6Disabled[link.Index] = disabled == 1
+	if step == 4 {
+		i.Addresses = append(i.Addresses, h.Address)
+		i.Routes = append(i.Routes, Route{Destination: h.Address.Prefix, LinkIndex: h.Link.Index, Protocol: 2, Table: 255, Scope: "host", Type: "local", KernelOrigin: true})
+	}
 	return i, nil
 }
 
