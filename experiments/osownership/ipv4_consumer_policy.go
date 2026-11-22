@@ -6,10 +6,12 @@ package osownership
 // These describe particular consumers, not an approval for an arbitrary host
 // default, link phase, route table, XFRM state or eventual endpoint packet path.
 type ipv4ConsumerAssessment struct {
-	Word                    effectiveV4Word
-	ConsumerRule, PhaseRule string
-	Dependencies            string
-	Resolved                bool
+	Word                                        effectiveV4Word
+	ConsumerRule, PhaseRule                     string
+	Dependencies                                string
+	Resolved                                    bool
+	PrerequisitesChecked                        bool
+	Category, SourceReferences, MissingEvidence string
 }
 
 func assessIPv4ConsumerOperands(l LinkRecord, o *effectiveV4Observation) ([]ipv4ConsumerAssessment, error) {

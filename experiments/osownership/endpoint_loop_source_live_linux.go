@@ -14,6 +14,7 @@ type endpointOriginalLane struct {
 	reactor      *originalEndpointReactor
 	inbox        *endpointBridgeInbox
 	ctx, cleanup context.Context
+	readHint     endpointReadHint
 }
 
 func (l *endpointOriginalLane) checkStop() error {
@@ -29,6 +30,10 @@ func (l *endpointOriginalLane) drainOne() error {
 	if e := l.checkStop(); e != nil {
 		return e
 	}
+	if !l.readHint.take() {
+		return errEndpointNoProgress
+	}
+	// One nonblocking attempt per fresh POLLIN result.
 	return l.reactor.drainOneSource(l.ctx)
 }
 func (l *endpointOriginalLane) receiveOne(f endpointFrame) error {

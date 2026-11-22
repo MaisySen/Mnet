@@ -21,16 +21,19 @@ func (s *operation1ResidentSource) ownerThreadCurrent() bool {
 // to stop. Parent pipe data/HUP wakes immediately, original expiry caps timeout.
 // The original mutex+RawConn.Control keep original FD private and nonclosing.
 // This is an explicit wait contract, NOT removal of any per-I/O custody check.
-func (r *originalEndpointReactor) waitReadySource(ctx context.Context, w *endpointPipeWire) error {
+func (r *originalEndpointReactor) waitReadySource(ctx context.Context, w *endpointPipeWire, wait bool) (ready endpointPollResult, ret error) {
 	if !kernelExecutionReleased {
-		return ErrExecutorUnreleased
+		return ready, ErrExecutorUnreleased
 	}
-	if r == nil || r.owner == nil || r.owner.lane == nil || !r.owner.lane.ownerThreadCurrent() || r.receipt == nil || r.evidence == nil || w == nil {
-		return afPhase
+	if r == nil || r.owner == nil || r.owner.lane == nil || !r.owner.lane.ownerThreadCurrent() || r.receipt == nil || r.frames == nil || r.evidence == nil || r.evidence.resources == nil || w == nil {
+		return ready, afPhase
 	}
-	return r.owner.withOwner(ctx, func(lease context.Context) error {
+	ret = r.owner.withOwner(ctx, func(lease context.Context) error {
 		c := r.owner
 		o := r.evidence.resources
+		if c.tx == nil || o.creation == nil || o.creation.fd == nil || o.namespace == nil {
+			return afPhase
+		}
 		if !c.tx.Ready || c.tx.stopStarted || !r.receipt.ledger.matches(r.receipt.identity) || r.admission == nil {
 			return afPhase
 		}
@@ -40,12 +43,25 @@ func (r *originalEndpointReactor) waitReadySource(ctx context.Context, w *endpoi
 		if e := r.admission.checkResidentSource(lease, o.namespace, c.tx.plan.Binding, r.receipt.identity.generation); e != nil {
 			return e
 		}
-		d := endpointIdleSafetyBudget
-		if end, ok := lease.Deadline(); ok && time.Until(end) < d {
-			d = time.Until(end)
+		pollDelay := func() (time.Duration, error) {
+			d := time.Duration(0)
+			if wait {
+				d = endpointIdleSafetyBudget
+			}
+			if end, ok := lease.Deadline(); ok {
+				left := time.Until(end)
+				if left <= 0 {
+					return 0, context.DeadlineExceeded
+				}
+				if wait && left < d {
+					d = left
+				}
+			}
+			return d, nil
 		}
-		if d <= 0 {
-			return context.DeadlineExceeded
+		d, e := pollDelay()
+		if e != nil {
+			return e
 		}
 		room := r.frames.datagramRoom()
 		o.creation.fd.mu.Lock()
@@ -82,12 +98,9 @@ func (r *originalEndpointReactor) waitReadySource(ctx context.Context, w *endpoi
 					if x := lease.Err(); x != nil {
 						return x
 					}
-					d = endpointIdleSafetyBudget
-					if end, ok := lease.Deadline(); ok && time.Until(end) < d {
-						d = time.Until(end)
-					}
-					if d <= 0 {
-						return context.DeadlineExceeded
+					d, x = pollDelay()
+					if x != nil {
+						return x
 					}
 					timeout := unix.NsecToTimespec(d.Nanoseconds())
 					_, err := unix.Ppoll(fds, &timeout, nil)
@@ -103,6 +116,7 @@ func (r *originalEndpointReactor) waitReadySource(ctx context.Context, w *endpoi
 					if fds[0].Revents&(unix.POLLHUP|unix.POLLERR|unix.POLLNVAL) != 0 || fds[2].Revents&(unix.POLLHUP|unix.POLLERR|unix.POLLNVAL) != 0 {
 						return ErrConflict
 					}
+					ready = endpointPollResult{TUN: fds[0].Revents, Input: fds[1].Revents, Output: fds[2].Revents}
 					return nil
 				})
 			})
@@ -120,4 +134,8 @@ func (r *originalEndpointReactor) waitReadySource(ctx context.Context, w *endpoi
 		}
 		return c.tx.live(lease)
 	})
+	if ret != nil {
+		return endpointPollResult{}, ret
+	}
+	return ready, nil
 }

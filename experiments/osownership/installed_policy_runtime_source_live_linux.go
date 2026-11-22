@@ -6,10 +6,10 @@ import "context"
 
 // Called inside the same original Control/controller/file ownership interval,
 // before and after each packet syscall. This is NOT cached authority or a
-// periodic poll. The current supported rows depend on owned link/AF values,
-// exact addresses/routes/rules and the byte gate, not unchanged global ALL
-// operands. Additional unresolved rows must add their missing hook/XFRM/mark
-// operands before completion can succeed. No throughput result is claimed.
+// periodic poll. It compares common original link/AF/graph prerequisites. It
+// does not prove their full kernel consumer/lifecycle/emission relevance, a
+// supported running-kernel semantic profile or current ALL/hooks/XFRM state.
+// Those missing named operands still refuse completion. No throughput result.
 func (r *originalEndpointReactor) checkInstalledOperandsSource(ctx context.Context) error {
 	if !kernelExecutionReleased {
 		return ErrExecutorUnreleased
@@ -24,6 +24,9 @@ func (r *originalEndpointReactor) checkInstalledOperandsSource(ctx context.Conte
 	raw, e := ReadStableInventory(ctx, ownedSetupDump{residentNetlink: residentNetlink{ns: o.namespace}, handle: *o.session.canonical}, o.namespace.checkCurrent)
 	if e != nil {
 		return e
+	}
+	if !endpointIPv6AddressRouteAbsent(raw) {
+		return afPolicy
 	}
 	if !exactSetupPostMatches(raw, r.evidence.diagnostic.raw) {
 		return ErrConflict

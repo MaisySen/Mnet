@@ -236,7 +236,7 @@ func endpointResidentBootstrapSource(ctx context.Context) (ret error) {
 			}
 			// Mandatory genuine local completion, not a native daemon pointer and not
 			// a remote capability promoted to proof. The source assessment still leaves
-			// required IPv4 rows unsupported, so no genuine completion is available.
+			// all named semantic rows unsupported, so no genuine completion is available.
 			if e = c.completePreparedEndpoint(operation, prep); e != nil {
 				stats.Reason = endpointReasonPolicyIncomplete
 				return e
@@ -282,14 +282,17 @@ func endpointResidentBootstrapSource(ctx context.Context) (ret error) {
 				if e != nil {
 					return loop.end(lane, e)
 				}
-				if !input && !wrote && loop.counts.Read == before.Read && loop.counts.PolicyDrops == before.PolicyDrops && loop.counts.KernelDrops == before.KernelDrops && loop.counts.QueueDrops == before.QueueDrops {
-					// Readiness covers original TUN plus inherited input/output on the
-					// source-enforced original TID. STOP/HUP wakes this bounded Control;
-					// expiry/context fallback is <=50ms plus the unchanged custody checks.
-					if e = r.waitReadySource(operation, wire); e != nil {
-						return loop.end(lane, e)
-					}
+				idle := !input && !wrote && loop.counts.Read == before.Read && loop.counts.PolicyDrops == before.PolicyDrops && loop.counts.KernelDrops == before.KernelDrops && loop.counts.QueueDrops == before.QueueDrops
+				// Every turn polls the original TUN. Busy turns use timeout0 so
+				// continuous inherited input cannot starve the opposite direction.
+				// Idle turns wait<=50ms under unchanged original custody. A timeout
+				// grants no TUN read and therefore triggers no per-I/O netlink dump.
+				// All actual packet I/O still performs fresh before/after policy reads.
+				ready, e := r.waitReadySource(operation, wire, idle)
+				if e != nil {
+					return loop.end(lane, e)
 				}
+				lane.readHint.replace(ready)
 			}
 		})
 		if owned != nil {

@@ -10,14 +10,16 @@ import "encoding/binary"
 // named word remains a release blocker until its effect on this invariant is
 // reviewed. Exact names prevent unlabelled trailing data becoming readiness.
 type ownedTUNWordPolicy struct {
-	Decision  tunWordDecision
-	Satisfied bool
-	Family    int
-	Index     int
-	Name      string
-	Value     uint32
-	Rule      string
-	Resolved  bool
+	Decision                                    tunWordDecision
+	Satisfied                                   bool
+	Family                                      int
+	Index                                       int
+	Name                                        string
+	Value                                       uint32
+	Rule                                        string
+	Resolved                                    bool
+	PrerequisitesChecked                        bool
+	Category, SourceReferences, MissingEvidence string
 }
 type ownedTUNPolicyAssessment struct {
 	Words      []ownedTUNWordPolicy

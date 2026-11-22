@@ -229,7 +229,7 @@ func (e *sourceRuntimeEvidence) validateCompletion(ctx context.Context, t *Trans
 	// Original offload history remains bound to its actual successful source
 	// syscall, never inferred from these reads.
 	if e.admission != nil {
-		if err := e.resolveInstalledRowsSource(ctx); err != nil {
+		if err := e.assessInstalledRowsSource(ctx); err != nil {
 			return err
 		}
 	}
@@ -245,8 +245,9 @@ func (e *sourceRuntimeEvidence) validateCompletion(ctx context.Context, t *Trans
 	if e.admission == nil {
 		return fmt.Errorf("runtime evidence collected on original generation %d; %s remains unproven", r.identity.generation, supplierReason)
 	}
-	// No count waiver: every named row was recomputed from this private source
-	// pass. Current code still leaves explicit unsupported IPv4 dependencies,
-	// so it cannot reach success merely by receiving ADMISSION/FLOW_START.
+	// No count waiver: statuses are source-recomputed, never caller Resolved.
+	// Current common checks are prerequisites only. Every named row retains
+	// explicit missing semantic/profile/environment evidence, so no success
+	// is possible just by ADMISSION/FLOW_START or matching emitter vectors.
 	return nil
 }
