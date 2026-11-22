@@ -138,10 +138,12 @@ func openExclusiveNonpersistentTUN(ns *namespaceCustody, name string, attempt *o
 		if e = unix.IoctlSetInt(fd, unix.TUNSETOFFLOAD, 0); e != nil {
 			return e
 		}
-		attempt.offloadHistory = &originalOffloadHistory{attempt: attempt, custody: custody, namespace: ns.identity, name: name, request: unix.TUNSETOFFLOAD, argument: 0}
 		if e = ns.checkCurrent(); e != nil {
 			return e
 		}
+		// Publish only after the final namespace check succeeded. Any earlier
+		// failure leaves no successful original offload-history record.
+		attempt.offloadHistory = &originalOffloadHistory{attempt: attempt, custody: custody, namespace: ns.identity, name: name, request: unix.TUNSETOFFLOAD, argument: 0}
 		attempt.stage = "ioctl-returned"
 		return nil
 	})

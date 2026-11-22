@@ -15,6 +15,7 @@ import (
 // It produces actionable evidence even while final consumer reasoning and
 // authenticated peer-MTU binding remain incomplete. Those are not bool waivers.
 type sourceRuntimeEvidence struct {
+	offload       *originalOffloadHistory
 	resources     *originalHeldPacketResources
 	routed        *postPeerRouteResult
 	before, after *originalDeviceEvidence
@@ -50,6 +51,10 @@ func (s *operation1ScopedDiagnostic) collectRuntimeCompletion(ctx context.Contex
 	}
 	if before.identity != r.identity {
 		return nil, afPhase
+	}
+	history := o.creation.attempt.offloadHistory
+	if !history.matches(o.creation.attempt, o.creation.fd, o.namespace.identity, o.session.canonical.Link.Name) {
+		return nil, errOriginalOffloadHistory
 	}
 	raw, e := ReadStableInventory(ctx, ownedSetupDump{residentNetlink: residentNetlink{ns: o.namespace}, handle: *o.session.canonical}, o.namespace.checkCurrent)
 	if e != nil {
@@ -123,7 +128,7 @@ func (s *operation1ScopedDiagnostic) collectRuntimeCompletion(ctx context.Contex
 	if e = s.scope.check(ctx, c.attempt); e != nil {
 		return nil, e
 	}
-	return &sourceRuntimeEvidence{resources: o, routed: r, before: before, after: after, diagnostic: d, qdisc: cloneUpQdisc(q), names: names, features: features, policy: policy, consumer: consumers, framing: framing}, nil
+	return &sourceRuntimeEvidence{offload: history, resources: o, routed: r, before: before, after: after, diagnostic: d, qdisc: cloneUpQdisc(q), names: names, features: features, policy: policy, consumer: consumers, framing: framing}, nil
 }
 func (e *sourceRuntimeEvidence) validateCompletion(ctx context.Context, t *Transaction) error {
 	if e == nil || ctx == nil || ctx.Err() != nil || e.resources == nil || e.routed == nil || e.before == nil || e.after == nil {
@@ -132,8 +137,14 @@ func (e *sourceRuntimeEvidence) validateCompletion(ctx context.Context, t *Trans
 	o := e.resources
 	r := e.routed
 	s := o.session
-	if o.owner != t || s == nil || s.owner != t || s.forwardStep != 6 || s.canonical == nil || t.handle == nil || !sameSessionHandle(*t.handle, *s.canonical) || !r.current() || r.identity != e.after.identity || e.before.identity != e.after.identity || e.before.resources != o || e.after.resources != o || o.ledger != r.ledger || o.creation == nil || o.creation.fd == nil || o.creation.fd.closed || o.creation.attempt == nil || o.creation.attempt.closeAttempted || o.creation.attempt.createRequest != 0x9001 || !o.creation.attempt.offloadHistory.matches(o.creation.attempt, o.creation.fd, o.namespace.identity, o.session.canonical.Link.Name) || e.after.deviceNamespace != o.namespace.identity || e.after.tunName != s.canonical.Link.Name || s.poisoned || s.cleanupMode || s.closeAttempted {
+	if o.owner != t || s == nil || s.owner != t || s.forwardStep != 6 || s.canonical == nil || t.handle == nil || !sameSessionHandle(*t.handle, *s.canonical) || !r.current() || r.identity != e.after.identity || e.before.identity != e.after.identity || e.before.resources != o || e.after.resources != o || o.ledger != r.ledger || o.creation == nil || o.creation.fd == nil || o.creation.fd.closed || o.creation.attempt == nil || o.creation.attempt.closeAttempted || o.creation.attempt.createRequest != 0x9001 || e.after.deviceNamespace != o.namespace.identity || e.after.tunName != s.canonical.Link.Name || s.poisoned || s.cleanupMode || s.closeAttempted {
 		return afPhase
+	}
+	if e.offload == nil || e.offload != o.creation.attempt.offloadHistory || !o.creation.attempt.offloadHistory.matches(o.creation.attempt, o.creation.fd, o.namespace.identity, s.canonical.Link.Name) {
+		return errOriginalOffloadHistory
+	}
+	if e.framing != (tunNestedFraming{typ: 1}) {
+		return packetFraming
 	}
 	if !exactSetupPostMatches(e.diagnostic.raw, r.raw) || !reflect.DeepEqual(e.diagnostic.sys, r.sys) || !sameConstructionQdisc(e.qdisc, r.qdisc) || !e.features.observedNamesCompatible(e.names) {
 		return afPhase

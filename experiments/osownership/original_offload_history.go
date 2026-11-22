@@ -2,6 +2,10 @@
 
 package osownership
 
+import "errors"
+
+var errOriginalOffloadHistory = errors.New("original-offload-history-missing-or-mismatched")
+
 // Produced only at the actual original TUNSETOFFLOAD(0) return site, before
 // the created-link observation or any supplier/ledger exists. No mark-success
 // helper, caller boolean, TUNGETIFF alias or feature bitmap can create history.
@@ -16,5 +20,5 @@ type originalOffloadHistory struct {
 }
 
 func (h *originalOffloadHistory) matches(a *originalAttempt, fd *fileCustody, ns Namespace, name string) bool {
-	return h != nil && a != nil && fd != nil && h.attempt == a && h.custody == fd && a.custody == fd && a.offloadHistory == h && !a.closeAttempted && h.namespace == ns && sameNamespace(ns, ns) && h.name == name && h.request == 0x400454d0 && h.argument == 0 && a.createRequest == 0x9001
+	return h != nil && a != nil && fd != nil && h.attempt == a && h.custody == fd && a.custody == fd && a.offloadHistory == h && !a.closeAttempted && a.createErr == nil && h.namespace == ns && sameNamespace(ns, ns) && h.name == name && h.request == 0x400454d0 && h.argument == 0 && a.createRequest == 0x9001
 }
