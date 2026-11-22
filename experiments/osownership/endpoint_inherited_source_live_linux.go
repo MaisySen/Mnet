@@ -135,6 +135,7 @@ func withInheritedEndpointResidentSource(ctx context.Context, ns *namespaceCusto
 		return e
 	}
 	source := &operation1ResidentSource{channel: a, disableLife: &disableResidentLifetime{}, owner: c, ns: ns, baseline: c.adapter.session.baseline, active: true}
+	c.lane = source
 	c.adapter.creation = source
 	c.absence = source
 	defer func() {
@@ -142,7 +143,7 @@ func withInheritedEndpointResidentSource(ctx context.Context, ns *namespaceCusto
 		// Exact still-held namespace/controller/original ownership survives operation
 		// cancellation. This new context permits only original close+absence, not
 		// forward I/O or renewed membership, and source.active ends after cleanup.
-		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 500*time.Millisecond)
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), endpointCleanupBudget)
 		stopErr := c.stop(cleanup)
 		cancel()
 		err = errors.Join(err, stopErr)

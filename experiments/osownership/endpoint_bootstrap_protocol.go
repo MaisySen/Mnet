@@ -22,7 +22,7 @@ func validateEndpointStop(p []byte) error {
 		return errEndpointFrame
 	}
 	r := endpointStopReason(binary.BigEndian.Uint16(p[2:]))
-	if r < endpointReasonRequested || r > endpointReasonCleanup {
+	if r < endpointReasonRequested || r > endpointReasonTimeout {
 		return errEndpointFrame
 	}
 	return nil
@@ -100,6 +100,7 @@ const (
 	endpointReasonCustody
 	endpointReasonPolicyIncomplete
 	endpointReasonCleanup
+	endpointReasonTimeout
 )
 
 type endpointStatsBody struct {
@@ -109,7 +110,7 @@ type endpointStatsBody struct {
 }
 
 func (b endpointStatsBody) encode() ([]byte, error) {
-	if b.Reason < endpointReasonRequested || b.Reason > endpointReasonCleanup {
+	if b.Reason < endpointReasonRequested || b.Reason > endpointReasonTimeout {
 		return nil, errEndpointFrame
 	}
 	p := make([]byte, endpointStatsBytes)

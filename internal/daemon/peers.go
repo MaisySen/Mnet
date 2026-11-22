@@ -68,6 +68,10 @@ func (d *Daemon) refreshPaths() {
 }
 
 func (d *Daemon) applyMapLocked(m *netmap.Map) {
+	if d.endpointDeviceMap != nil {
+		d.endpointDeviceMap.applyEndpointMapLocked(d, m)
+		return
+	}
 	d.mu.Lock()
 	healthErr := d.stateHealthLocked()
 	d.mu.Unlock()

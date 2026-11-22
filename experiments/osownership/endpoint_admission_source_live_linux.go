@@ -23,7 +23,7 @@ type inheritedEndpointAdmission interface {
 // Parent-only comparison. It returns DATA for the future channel writer, never
 // resident admission authority. Original child pidfd/ns/start identity retained
 // by the launcher must still match before and after the native map comparison.
-func compareEndpointPreparedParentSource(ctx context.Context, c *residentChild, peer *daemon.DevelopmentEndpointPeer, b Binding, p endpointPreparedBody) (endpointAdmissionBody, error) {
+func compareEndpointPreparedParentSource(ctx context.Context, c *residentChild, peer *daemon.DevelopmentEndpointPeer, bridge *daemon.DevelopmentEndpointBridge, b Binding, p endpointPreparedBody) (endpointAdmissionBody, error) {
 	var zero endpointAdmissionBody
 	if !kernelExecutionReleased {
 		return zero, ErrExecutorUnreleased
@@ -79,6 +79,12 @@ func compareEndpointPreparedParentSource(ctx context.Context, c *residentChild, 
 		return zero, ErrConflict
 	}
 	copy(out.PeerPublication[:], a)
+	owned, err := bridge.Current(peer)
+	if err != nil || owned.Generation < 2 || owned.ConfigDigest == ([32]byte{}) || owned.OwnKey != self.PublicKey || owned.PeerKey != other.PublicKey || owned.OwnIP != self.IPv4 || owned.PeerIP != other.IPv4 {
+		return out, errEndpointFrame
+	}
+	out.BridgeGeneration = owned.Generation
+	out.BridgeConfig = owned.ConfigDigest
 	if _, err = out.encode(); err != nil {
 		return zero, err
 	}

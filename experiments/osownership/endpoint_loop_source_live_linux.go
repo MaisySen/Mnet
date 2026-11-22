@@ -4,7 +4,6 @@ package osownership
 
 import (
 	"context"
-	"time"
 )
 
 // Source adapter for the bounded resident loop. No worker is allowed to hold
@@ -42,7 +41,7 @@ func (l *endpointOriginalLane) stopOwned() error {
 	if l == nil || l.reactor == nil || l.cleanup == nil {
 		return afPhase
 	}
-	bounded, cancel := context.WithTimeout(l.cleanup, 500*time.Millisecond)
+	bounded, cancel := context.WithTimeout(l.cleanup, endpointCleanupBudget)
 	defer cancel()
 	return l.reactor.stopSource(bounded)
 }

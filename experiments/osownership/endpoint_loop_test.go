@@ -20,7 +20,7 @@ func endpointTestPrepared(t *testing.T) []byte {
 }
 func endpointTestAdmission(t *testing.T) []byte {
 	t.Helper()
-	b := endpointAdmissionBody{Prepared: endpointTestBody(), SelfPublication: [32]byte{3}, PeerPublication: [32]byte{4}, SelfRevision: 5, PeerRevision: 6}
+	b := endpointAdmissionBody{Prepared: endpointTestBody(), SelfPublication: [32]byte{3}, PeerPublication: [32]byte{4}, SelfRevision: 5, PeerRevision: 6, BridgeGeneration: 2, BridgeConfig: [32]byte{5}}
 	p, e := b.encode()
 	if e != nil {
 		t.Fatal(e)

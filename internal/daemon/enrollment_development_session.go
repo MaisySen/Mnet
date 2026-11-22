@@ -19,7 +19,8 @@ import (
 )
 
 type DevelopmentNetworkOptions struct {
-	Limits controlclient.RegistrarLimits
+	endpointFactory *developmentEndpointFactory
+	Limits          controlclient.RegistrarLimits
 	// Device must supply an already configured, disposable in-memory device.
 	// The session owns/ closes the returned device. A nil device is refused.
 	Device func(localIPv4 string) (tun.Device, error)
@@ -32,6 +33,7 @@ type DevelopmentNetworkPeer struct {
 }
 
 type DevelopmentNetworkSession struct {
+	endpointSlot        *developmentEndpointDevice
 	endpointPublication endpointPublicationState // session.mu; explicit publication only
 	d                   *Daemon
 	ctx                 context.Context
@@ -47,7 +49,7 @@ type DevelopmentNetworkSession struct {
 }
 
 func validDevelopmentNetworkOptions(o *DevelopmentNetworkOptions) bool {
-	return o != nil && o.Device != nil && o.Run != nil && o.Limits.Timeout > 0 && o.Limits.Timeout <= 3*time.Second && o.Limits.MaxConcurrent == 1 && o.Limits.MaxRequests >= 4 && o.Limits.MaxRequests <= 16
+	return o != nil && ((o.Device != nil) != (o.endpointFactory != nil)) && o.Run != nil && o.Limits.Timeout > 0 && o.Limits.Timeout <= 3*time.Second && o.Limits.MaxConcurrent == 1 && o.Limits.MaxRequests >= 4 && o.Limits.MaxRequests <= 16
 }
 
 func (d *Daemon) runDevelopmentNetwork(ctx context.Context, m *netmap.Map, o *DevelopmentNetworkOptions) error {
@@ -81,7 +83,20 @@ func (d *Daemon) runDevelopmentNetwork(ctx context.Context, m *netmap.Map, o *De
 		cancel()
 		return errEnrollmentContextStale
 	}
-	injected, err := o.Device(m.Self.IPv4)
+	var injected tun.Device
+	if o.endpointFactory != nil {
+		var slot *developmentEndpointDevice
+		slot, err = o.endpointFactory.createSource(s, m.Self.IPv4)
+		if err == nil {
+			injected = slot.tun
+			s.endpointSlot = slot
+			d.applyMu.Lock()
+			d.endpointDeviceMap = slot
+			d.applyMu.Unlock()
+		}
+	} else {
+		injected, err = o.Device(m.Self.IPv4)
+	}
 	if err != nil || injected == nil {
 		if injected != nil {
 			_ = injected.Close()
@@ -92,6 +107,9 @@ func (d *Daemon) runDevelopmentNetwork(ctx context.Context, m *netmap.Map, o *De
 	}
 	d.cfg.TUN = injected // mandatory injection; startDevice must never create an OS TUN
 	err = d.startDevice()
+	if err == nil && s.endpointSlot != nil {
+		err = s.endpointSlot.attachSource()
+	}
 	if err == nil {
 		d.deviceMu.RLock()
 		port := d.bind.Port()

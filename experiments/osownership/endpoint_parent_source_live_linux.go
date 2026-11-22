@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fintex.au/mnet/internal/daemon"
+	"net/netip"
 	"os"
 	"runtime"
 	"time"
@@ -13,11 +14,15 @@ import (
 
 // Exclusive parent driver lane. Native session stays here, never in child argv,
 // shared memory, an exported descriptor or a serialized authority constructor.
-type endpointParentCounts struct{ ControlRead, ControlWritten, AuthorityRevokes, FramingErrors, Stops, MissingStats, DatagramsDropped uint64 }
+type endpointParentCounts struct{ ControlRead, ControlWritten, AuthorityRevokes, FramingErrors, Stops, MissingStats, DatagramsDropped, DatagramsToPeer, DatagramsToChild uint64 }
 type endpointParentSource struct {
 	child                    *residentChild
 	wire                     *endpointPipeWire
 	peer                     *daemon.DevelopmentEndpointPeer
+	bridge                   *daemon.DevelopmentEndpointBridge
+	policy                   *endpointPacketPolicy
+	lifetime                 context.Context
+	stopBridge               func() bool
 	binding                  Binding
 	start                    endpointStartBody
 	prepared                 *endpointPreparedBody
@@ -101,6 +106,7 @@ func newEndpointParentSource(ctx context.Context, peer *daemon.DevelopmentEndpoi
 	p = &endpointParentSource{child: child, wire: wire, peer: peer, binding: b}
 	lifetime, cancel := context.WithCancel(ctx)
 	p.cancel = cancel
+	p.lifetime = lifetime
 	p.stopNative = context.AfterFunc(peer.Context(), cancel)
 	p.stopLifetime = context.AfterFunc(lifetime, func() { _ = wire.closeWriteSource() })
 	owned := p
@@ -151,7 +157,7 @@ func (p *endpointParentSource) currentSource(ctx context.Context) (ret error) {
 			}
 		}()
 	}
-	if p == nil || p.child == nil || p.wire == nil || ctx == nil || ctx.Err() != nil {
+	if p == nil || p.child == nil || p.wire == nil || p.lifetime == nil || p.lifetime.Err() != nil || ctx == nil || ctx.Err() != nil {
 		return ErrConflict
 	}
 	if e := pidfdAlive(p.child.pidfd); e != nil {
@@ -160,7 +166,7 @@ func (p *endpointParentSource) currentSource(ctx context.Context) (ret error) {
 	if p.admission == nil {
 		return requireEndpointMembershipBinding(p.peer, p.binding)
 	}
-	current, e := compareEndpointPreparedParentSource(ctx, p.child, p.peer, p.binding, *p.prepared)
+	current, e := compareEndpointPreparedParentSource(ctx, p.child, p.peer, p.bridge, p.binding, *p.prepared)
 	if e != nil || current != *p.admission {
 		return errors.Join(e, ErrConflict)
 	}
@@ -227,11 +233,36 @@ func (p *endpointParentSource) preparedSource(ctx context.Context) (endpointPrep
 
 // Call only after explicit native publication/Refresh/BindProfiles in parent.
 // No HTTP request, credential renewal or remote kernel proof is hidden here.
-func (p *endpointParentSource) admitSource(ctx context.Context) error {
+func (p *endpointParentSource) admitSource(ctx context.Context) (ret error) {
+	defer func() {
+		if ret != nil && p != nil && p.bridge != nil {
+			ret = errors.Join(ret, p.wire.closeWriteSource(), p.bridge.Close())
+		}
+	}()
 	if p == nil || p.prepared == nil || p.admission != nil {
 		return ErrConflict
 	}
-	b, e := compareEndpointPreparedParentSource(ctx, p.child, p.peer, p.binding, *p.prepared)
+	if p.bridge != nil || p.policy != nil || p.lifetime == nil || p.lifetime.Err() != nil {
+		return ErrConflict
+	}
+	bridge, e := p.peer.ClaimPrivateEndpointBridge()
+	if e != nil {
+		return e
+	}
+	policy, e := newEndpointPacketPolicy(packetFramingReadback{Own: netip.AddrFrom4(p.prepared.Own), Peer: netip.AddrFrom4(p.prepared.Peer), LocalMTU: int(p.prepared.MTU), PeerMTU: MTU, TUN: true, NoPI: true, NoVNET: true, NoOffload: true})
+	if e != nil {
+		_ = bridge.Close()
+		return e
+	}
+	p.bridge = bridge
+	p.policy = policy
+	// Old lifetime callback never reads the mutable bridge field. Replace it with
+	// closures capturing this exact owner; racing old close is still fail-closed.
+	p.stopLifetime()
+	wire := p.wire
+	p.stopLifetime = context.AfterFunc(p.lifetime, func() { _ = bridge.SignalWake(); _ = wire.closeWriteSource() })
+	p.stopBridge = context.AfterFunc(bridge.Context(), func() { _ = bridge.SignalWake(); _ = wire.closeWriteSource() })
+	b, e := compareEndpointPreparedParentSource(ctx, p.child, p.peer, p.bridge, p.binding, *p.prepared)
 	if e != nil {
 		return e
 	}
@@ -255,17 +286,31 @@ func (p *endpointParentSource) admitSource(ctx context.Context) error {
 
 type endpointParentStopResult struct{ err error }
 
-func (p *endpointParentSource) stopSource(ctx context.Context) error {
+func (p *endpointParentSource) stopSource(ctx context.Context) (ret error) {
 	if p == nil {
 		return nil
 	}
 	if p.stopResult != nil {
 		return p.stopResult.err
 	}
+	defer func() {
+		if p.bridge != nil {
+			ret = errors.Join(ret, p.bridge.Close())
+			if p.stopResult != nil {
+				p.stopResult.err = ret
+			}
+		}
+	}()
 	if ctx == nil {
 		ctx = context.TODO()
 	}
 	endpointCount(&p.counts.Stops)
+	if p.stopBridge != nil {
+		p.stopBridge()
+	}
+	if p.bridge != nil {
+		_ = p.bridge.SignalWake()
+	}
 	if p.stopNative != nil {
 		p.stopNative()
 	}
@@ -277,7 +322,7 @@ func (p *endpointParentSource) stopSource(ctx context.Context) error {
 	if p.cancel != nil {
 		defer p.cancel()
 	}
-	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 750*time.Millisecond)
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), endpointGraceBudget)
 	defer cancel()
 	var result error
 	if p.wire != nil && p.wire.ended == nil {

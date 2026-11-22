@@ -11,7 +11,7 @@ import (
 // Fixed-layout versioned DATA only. Process identity is compared against the
 // actual retained child by the parent, never trusted because it decoded.
 const endpointPreparedBytes = 144
-const endpointAdmissionBytes = 224
+const endpointAdmissionBytes = 264
 
 type endpointPreparedBody struct {
 	PID                      uint32
@@ -79,12 +79,17 @@ type endpointAdmissionBody struct {
 	Prepared                         endpointPreparedBody
 	SelfPublication, PeerPublication [32]byte
 	SelfRevision, PeerRevision       uint64
+	BridgeGeneration                 uint64
+	BridgeConfig                     [32]byte
 }
 
 func (b endpointAdmissionBody) encode() ([]byte, error) {
 	p, e := b.Prepared.encode()
 	if e != nil {
 		return nil, e
+	}
+	if b.BridgeGeneration < 2 || b.BridgeConfig == ([32]byte{}) {
+		return nil, errEndpointFrame
 	}
 	if b.SelfPublication == ([32]byte{}) || b.PeerPublication == ([32]byte{}) || b.SelfRevision == 0 || b.PeerRevision == 0 || b.SelfRevision > 1<<63-1 || b.PeerRevision > 1<<63-1 {
 		return nil, errEndpointFrame
@@ -94,6 +99,8 @@ func (b endpointAdmissionBody) encode() ([]byte, error) {
 	copy(p[176:], b.PeerPublication[:])
 	binary.BigEndian.PutUint64(p[208:], b.SelfRevision)
 	binary.BigEndian.PutUint64(p[216:], b.PeerRevision)
+	binary.BigEndian.PutUint64(p[224:], b.BridgeGeneration)
+	copy(p[232:], b.BridgeConfig[:])
 	return p, nil
 }
 func decodeEndpointAdmission(p []byte) (b endpointAdmissionBody, e error) {
@@ -108,6 +115,8 @@ func decodeEndpointAdmission(p []byte) (b endpointAdmissionBody, e error) {
 	copy(b.PeerPublication[:], p[176:208])
 	b.SelfRevision = binary.BigEndian.Uint64(p[208:])
 	b.PeerRevision = binary.BigEndian.Uint64(p[216:])
+	b.BridgeGeneration = binary.BigEndian.Uint64(p[224:])
+	copy(b.BridgeConfig[:], p[232:264])
 	_, e = b.encode()
 	return b, e
 }

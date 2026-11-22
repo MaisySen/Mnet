@@ -139,7 +139,9 @@ func endpointResidentBootstrapSource(ctx context.Context) (ret error) {
 				return ErrConflict
 			}
 			authority.prepared = &body
-			r.frames.received = 1 // exact already-consumed inherited START, not a bypass
+			if e = r.frames.consumeStart(first); e != nil {
+				return e
+			}
 			payload, e := body.encode()
 			if e != nil {
 				return e
@@ -147,58 +149,82 @@ func endpointResidentBootstrapSource(ctx context.Context) (ret error) {
 			if e = r.frames.enqueue(endpointPrepared, payload); e != nil {
 				return e
 			}
-			handshake, done := context.WithCancel(operation) // original expiry only, never renewed
-			for wire.sent == 0 {
-				progress, e := flushEndpointFramesSource(r.frames, wire)
-				if e != nil {
+			e = func() (ret error) {
+				handshake, done := context.WithTimeout(operation, endpointHandshakeBudget)
+				defer func() {
+					if ret != nil {
+						if operation.Err() != nil {
+							stats.Reason = endpointReasonLifetime
+						} else if errors.Is(handshake.Err(), context.DeadlineExceeded) {
+							stats.Reason = endpointReasonTimeout
+						}
+					}
 					done()
-					return e
+				}()
+				for wire.sent == 0 {
+					progress, e := flushEndpointFramesSource(r.frames, wire)
+					if e != nil {
+						done()
+						return e
+					}
+					if !progress {
+						if e = wire.waitSource(handshake, true); e != nil {
+							done()
+							return e
+						}
+					}
 				}
-				if !progress {
-					if e = wire.waitSource(handshake, true); e != nil {
+				for authority.admitted == nil {
+					if e = authority.checkMembershipSource(handshake, ns, c.tx.plan.Binding); e != nil {
+						done()
+						return e
+					}
+					f, ok, e := wire.readSource()
+					if e != nil {
+						stats.Reason = endpointReasonEOF
+						done()
+						return e
+					}
+					if !ok {
+						if e = wire.waitSource(handshake, false); e != nil {
+							done()
+							return e
+						}
+						continue
+					}
+					if f.kind == endpointStop {
+						stats.Reason = endpointReasonRequested
+						done()
+						return errEndpointStopped
+					}
+					if f.kind != endpointAdmission {
+						stats.Reason = endpointReasonProtocol
+						done()
+						return errEndpointFrame
+					}
+					if _, e = r.frames.receive(f); e != nil {
+						done()
+						return e
+					}
+					if e = handshake.Err(); e != nil {
+						done()
+						return e
+					}
+					if e = authority.acceptSource(f); e != nil {
 						done()
 						return e
 					}
 				}
+				if e = handshake.Err(); e != nil {
+					done()
+					return e
+				}
+				done()
+				return nil
+			}()
+			if e != nil {
+				return e
 			}
-			for authority.admitted == nil {
-				if e = authority.checkMembershipSource(handshake, ns, c.tx.plan.Binding); e != nil {
-					done()
-					return e
-				}
-				f, ok, e := wire.readSource()
-				if e != nil {
-					stats.Reason = endpointReasonEOF
-					done()
-					return e
-				}
-				if !ok {
-					if e = wire.waitSource(handshake, false); e != nil {
-						done()
-						return e
-					}
-					continue
-				}
-				if f.kind == endpointStop {
-					stats.Reason = endpointReasonRequested
-					done()
-					return errEndpointStopped
-				}
-				if f.kind != endpointAdmission {
-					stats.Reason = endpointReasonProtocol
-					done()
-					return errEndpointFrame
-				}
-				if _, e = r.frames.receive(f); e != nil {
-					done()
-					return e
-				}
-				if e = authority.acceptSource(f); e != nil {
-					done()
-					return e
-				}
-			}
-			done()
 			// Mandatory genuine local completion, not a native daemon pointer and not
 			// a remote capability promoted to proof. Today the126 rows still refuse.
 			if e = c.completePreparedEndpoint(operation, prep); e != nil {
@@ -247,10 +273,10 @@ func endpointResidentBootstrapSource(ctx context.Context) (ret error) {
 					return loop.end(lane, e)
 				}
 				if !input && !wrote && loop.counts.Read == before.Read && loop.counts.PolicyDrops == before.PolicyDrops && loop.counts.KernelDrops == before.KernelDrops && loop.counts.QueueDrops == before.QueueDrops {
-					// Wait on inherited input only, outside controller/original mutexes.
-					// TUN is probed nonblocking next turn. Idle wait is <=25ms,
-					// plus unchanged custody inspections and other bounded turn work.
-					if e = wire.waitSource(operation, false); e != nil {
+					// Readiness covers original TUN plus inherited input/output on the
+					// source-enforced original TID. STOP/HUP wakes this bounded Control;
+					// expiry/context fallback is <=50ms plus the unchanged custody checks.
+					if e = r.waitReadySource(operation, wire); e != nil {
 						return loop.end(lane, e)
 					}
 				}
@@ -265,7 +291,7 @@ func endpointResidentBootstrapSource(ctx context.Context) (ret error) {
 		}
 		// Best-effort bounded final counters. No payload/error text/native data.
 		// Missing acknowledgement is never reported as verified remote cleanup.
-		final, finish := context.WithTimeout(context.WithoutCancel(ctx), 500*time.Millisecond)
+		final, finish := context.WithTimeout(context.WithoutCancel(ctx), endpointFinalStatsBudget)
 		defer finish()
 		if wire.ended == nil {
 			wire.pending = nil

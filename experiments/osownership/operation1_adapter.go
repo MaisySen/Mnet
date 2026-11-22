@@ -15,7 +15,9 @@ import (
 // points into the owned transaction/session/clock run while this mutex is held.
 // No transaction/session pointers or mutable clock escape this controller.
 // Existing free-standing inert Transaction API is not made thread-safe by this.
+type ownershipLaneSource interface{ ownerThreadCurrent() bool }
 type operation1Controller struct {
+	lane                  ownershipLaneSource
 	precreationSequence   uint64
 	precreationAdmitted   bool
 	precreationGeneration uint64
@@ -35,6 +37,9 @@ func (c *operation1Controller) withOwner(ctx context.Context, fn func(context.Co
 	if c == nil || ctx == nil || fn == nil {
 		return ErrConflict
 	}
+	if c.lane != nil && !c.lane.ownerThreadCurrent() {
+		return ErrConflict
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if e := ctx.Err(); e != nil {
@@ -46,6 +51,9 @@ func (c *operation1Controller) withOwner(ctx context.Context, fn func(context.Co
 	return fn(context.WithValue(ctx, operation1ContextKey{}, lease))
 }
 func (c *operation1Controller) start(ctx context.Context) error {
+	if c != nil && c.lane != nil && !c.lane.ownerThreadCurrent() {
+		return ErrConflict
+	}
 	e := c.withOwner(ctx, func(ctx context.Context) error { return c.tx.Start(ctx) })
 	if e == nil || c == nil {
 		return e
@@ -62,7 +70,7 @@ func (c *operation1Controller) start(ctx context.Context) error {
 func (c *operation1Controller) stop(ctx context.Context) error {
 	// Cancellation while waiting must not skip original close. Do not call the
 	// withOwner early-context refusal used for forward setup.
-	if c == nil {
+	if c == nil || (c.lane != nil && !c.lane.ownerThreadCurrent()) {
 		return ErrConflict
 	}
 	c.mu.Lock()
@@ -77,6 +85,9 @@ type operation1State struct {
 }
 
 func (c *operation1Controller) state() operation1State {
+	if c == nil || (c.lane != nil && !c.lane.ownerThreadCurrent()) {
+		return operation1State{PendingCleanup: true}
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	s := operation1State{Ready: c.tx.Ready, PendingCleanup: c.tx.PendingCleanup, Stopped: c.tx.stopStarted, Step: c.adapter.session.forwardStep}

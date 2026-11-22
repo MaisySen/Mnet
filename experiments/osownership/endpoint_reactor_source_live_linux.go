@@ -198,9 +198,7 @@ func (r *originalEndpointReactor) drainOneSource(ctx context.Context) error {
 	if r == nil || r.frames == nil {
 		return afPhase
 	}
-	r.frames.mu.Lock()
-	active := r.frames.admission && !r.frames.stopped
-	r.frames.mu.Unlock()
+	active := r.frames.datagramRoom()
 	if !active {
 		return errEndpointNoProgress
 	}

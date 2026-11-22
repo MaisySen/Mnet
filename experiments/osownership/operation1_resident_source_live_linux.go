@@ -54,6 +54,7 @@ func withOperation1ResidentSource(ctx context.Context, ns *namespaceCustody, b *
 		return e
 	}
 	source := &operation1ResidentSource{peer: peer, disableLife: &disableResidentLifetime{}, owner: c, ns: ns, baseline: c.adapter.session.baseline, active: true}
+	c.lane = source
 	c.adapter.creation = source
 	c.absence = source
 	defer func() {

@@ -46,6 +46,11 @@ type Config struct {
 	LocalDNS bool
 }
 
+type endpointDeviceMapOwner interface {
+	applyEndpointMapLocked(*Daemon, *netmap.Map)
+	revokeEndpointDeviceLocked()
+}
+
 // Daemon is the running node.
 type Daemon struct {
 	nativeHistoryCancel   context.CancelFunc
@@ -57,7 +62,8 @@ type Daemon struct {
 	stateFaultHandled     bool
 	lifecycleMu           sync.Mutex
 	loops                 sync.WaitGroup
-	applyMu               sync.Mutex // serialize peer replacement and path refresh
+	applyMu               sync.Mutex             // serialize peer replacement and path refresh
+	endpointDeviceMap     endpointDeviceMapOwner // applyMu; nil for every ordinary/injected device
 	deviceMu              sync.RWMutex
 
 	mu             sync.Mutex
@@ -580,6 +586,10 @@ func (d *Daemon) stopDevice() {
 	defer func() { d.mu.Lock(); d.interfaceName = ""; d.mu.Unlock() }()
 	d.applyMu.Lock()
 	defer d.applyMu.Unlock()
+	if d.endpointDeviceMap != nil {
+		d.endpointDeviceMap.revokeEndpointDeviceLocked()
+		d.endpointDeviceMap = nil
+	}
 	if d.serving != nil {
 		if err := d.serving.Close(); err != nil {
 			d.setErr(fmt.Errorf("serving cleanup: %w", err))
