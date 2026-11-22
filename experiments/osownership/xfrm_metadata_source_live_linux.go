@@ -98,6 +98,12 @@ func collectXfrmMetadataSource(ctx context.Context, ns *namespaceCustody) (out x
 	if ctx == nil || ctx.Err() != nil || ns == nil {
 		return out, afPhase
 	}
+	// Bound all six GETs together, not six independent250ms waits. The
+	// original caller deadline can only shorten this observation. This does
+	// not assert hard real-time completion of kernel/proc/ioctl operations.
+	boundedObservation, cancelObservation := context.WithTimeout(ctx, 250*time.Millisecond)
+	defer cancelObservation()
+	ctx = boundedObservation
 	if e := ns.checkCurrent(); e != nil {
 		return out, e
 	}
