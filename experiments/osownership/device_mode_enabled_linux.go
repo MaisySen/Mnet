@@ -3,5 +3,5 @@
 package osownership
 
 func allowedResidentEvidenceMode(mode string) bool {
-	return mode == "--osownership-resident-no-tun-source" || mode == "--osownership-resident-device-open-preflight"
+	return mode == "--osownership-resident-no-tun-source" || mode == "--osownership-resident-device-open-preflight" || mode == endpointResidentMode
 }

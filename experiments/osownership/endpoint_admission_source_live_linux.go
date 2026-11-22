@@ -11,11 +11,10 @@ import (
 	"time"
 )
 
-// An inherited authority slot, NOT decoded DATA. There is deliberately no
-// constructor yet: only the future fixed-mode inherited-channel bootstrap may
-// implement this interface after binding both original channel ends to the
-// actual child process and parent native owner. No bool, descriptor, callback
-// from a remote packet, or copied native pointer implements it today.
+// Inherited authority, NOT decoded DATA. The concrete implementation is minted
+// by endpointResidentBootstrapSource from fixed inherited pipe provenance,
+// verified parent/process/ns lifetime and one exact parent ADMISSION. Native
+// ownership stays in endpointParentSource. No public bool/data constructor.
 type inheritedEndpointAdmission interface {
 	checkResidentSource(context.Context, *namespaceCustody, Binding, uint64) error
 	endpointInheritedChannelOwner()

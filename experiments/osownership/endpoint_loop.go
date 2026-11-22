@@ -4,6 +4,16 @@ package osownership
 
 import "errors"
 
+func endpointTerminalFirst(frames []endpointFrame) ([]endpointFrame, bool) {
+	for _, f := range frames {
+		if f.kind == endpointStop || f.kind == endpointStopped {
+			return []endpointFrame{f}, true
+		}
+	}
+	return frames, false
+}
+
+var errEndpointCleanupUnverified = errors.New("endpoint-original-close-and-absence-not-acknowledged")
 var errEndpointNoProgress = errors.New("endpoint-nonblocking-no-progress")
 var errEndpointPacketDrop = errors.New("endpoint-kernel-packet-drop")
 var errEndpointStopped = errors.New("endpoint-stop-requested")

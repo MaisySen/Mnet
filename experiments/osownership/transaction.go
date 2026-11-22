@@ -56,6 +56,7 @@ type Evidence struct {
 type Transaction struct {
 	prepared            *preparedTransaction
 	completionAuthority *completionAuthority
+	currentCompletion   *completionReceipt
 	k                   Kernel
 	clock               Clock
 	plan                Plan
@@ -220,6 +221,7 @@ func (t *Transaction) completePrepared(ctx context.Context, p *preparedTransacti
 		return e
 	}
 	t.Ready = true
+	t.currentCompletion = receipt
 	return nil
 }
 func exactHandle(h Handle, p Plan, i Inventory) error {

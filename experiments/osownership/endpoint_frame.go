@@ -36,8 +36,12 @@ func endpointFrameLimit(kind byte) int {
 		return endpointAdmissionBytes
 	case endpointDatagram:
 		return MTU
-	case endpointStop, endpointStopped:
-		return 0
+	case endpointStop:
+		return 4
+	case endpointStopped, endpointStats:
+		return endpointStatsBytes
+	case endpointStart:
+		return endpointStartBytes
 	}
 	return -1
 }

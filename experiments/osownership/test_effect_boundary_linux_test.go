@@ -20,7 +20,10 @@ func TestNoDirectRealEffectsFromUnitTests(t *testing.T) {
 		t.Fatal(e)
 	}
 	denied := map[string]bool{"DevicePreflightExecutableMain": true, "spawnResidentMode": true, "spawnResidentPinnedMode": true, "spawnResidentPinnedSource": true, "startResidentClientSource": true, "runReadOnlyClientAndJoin": true, "execUnprivilegedClientSource": true, "residentBootstrapSource": true, "runDevicePreflightSource": true, "openExclusiveNonpersistentTUN": true, "installEvidenceClientFilter": true, "emitClientBootstrapEvidence": true, "verifyClientSandboxSource": true, "rawCurrentNamespace": true, "numericCurrentNamespace": true, "pidfdAlive": true, "clientFDInventorySource": true, "rawReadBounded": true, "withResidentNamespace": true, "proveChildUserNamespace": true, "readProcessStartTicks": true}
-	forbiddenTypes := map[string]bool{"residentChild": true, "namespaceCustody": true, "residentDevicePreflight": true, "residentNetlink": true}
+	for _, name := range []string{"newEndpointParentSource", "spawnEndpointFilesSource", "spawnResidentPinnedModeFiles", "endpointResidentBootstrapSource", "newEndpointPipeWireSource", "endpointPipeIdentitySource", "newResidentEndpointAdmissionSource", "withInheritedEndpointResidentSource", "compareEndpointPreparedParentSource", "newOriginalEndpointReactor"} {
+		denied[name] = true
+	}
+	forbiddenTypes := map[string]bool{"endpointParentSource": true, "endpointPipeWire": true, "residentEndpointAdmission": true, "originalEndpointReactor": true, "endpointOriginalLane": true, "residentChild": true, "namespaceCustody": true, "residentDevicePreflight": true, "residentNetlink": true}
 	for _, file := range files {
 		b, e := os.ReadFile(file)
 		if e != nil {

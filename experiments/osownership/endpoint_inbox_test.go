@@ -25,7 +25,7 @@ func TestEndpointInboxStopOverflowAndEOF(t *testing.T) {
 	if e := q.push(frame); e != nil {
 		t.Fatal(e)
 	}
-	stop := endpointFrame{kind: endpointStop, direction: 1, sequence: 2, generation: 7}
+	stop := endpointFrame{kind: endpointStop, direction: 1, sequence: 2, generation: 7, payload: endpointStopPayload(endpointReasonRequested)}
 	if e := q.push(stop); e != nil {
 		t.Fatal(e)
 	}

@@ -13,6 +13,8 @@ import (
 // transferred or released by this adapter; resident owns it through cleanup.
 type operation1ResidentSource struct {
 	peer             *daemon.DevelopmentEndpointPeer
+	channel          *residentEndpointAdmission
+	reactor          *originalEndpointReactor
 	disableLife      *disableResidentLifetime
 	disableAttempted bool // controller-lane only; source entry validates authorized lease
 	afOwner          *afSourcePassOwner

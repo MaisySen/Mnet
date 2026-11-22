@@ -21,11 +21,11 @@ type originalEndpointReactor struct {
 	readBuffer [65536]byte
 }
 
-func newOriginalEndpointReactor(c *operation1Controller, p *preparedEndpointObservation) (*originalEndpointReactor, error) {
+func newOriginalEndpointReactor(ctx context.Context, c *operation1Controller, p *preparedEndpointObservation) (*originalEndpointReactor, error) {
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
 	}
-	if c == nil || p == nil || p.local == nil || !p.preparation.current(c.tx) || p.local.resources == nil || p.local.resources.owner != c.tx || p.local.routed == nil || !p.local.routed.current() || p.local.observedMTU != MTU {
+	if c == nil || c.adapter == nil || !c.adapter.authorized(ctx) || p == nil || p.local == nil || !p.preparation.current(c.tx) || p.local.resources == nil || p.local.resources.owner != c.tx || p.local.routed == nil || !p.local.routed.current() || p.local.observedMTU != MTU {
 		return nil, afPhase
 	}
 	e := p.local
@@ -45,7 +45,12 @@ func newOriginalEndpointReactor(c *operation1Controller, p *preparedEndpointObse
 	if err != nil {
 		return nil, err
 	}
-	return &originalEndpointReactor{owner: c, evidence: e, frames: frames}, nil
+	r := &originalEndpointReactor{owner: c, evidence: e, frames: frames}
+	if p.source == nil || p.source.scope == nil || p.source.scope.owner != c || !p.source.scope.active || p.source.scope.reactor != nil {
+		return nil, afPhase
+	}
+	p.source.scope.reactor = r
+	return r, nil
 }
 
 // Arm only after genuine mandatory completion. A dormant gate is not Ready.
@@ -58,10 +63,10 @@ func (r *originalEndpointReactor) armSource(ctx context.Context, e *sourceRuntim
 	}
 	return r.owner.withOwner(ctx, func(ctx context.Context) error {
 		c := r.owner
-		if e == nil || receipt == nil || r.receipt != nil || !receipt.used || receipt.evidence != e || receipt.owner != c.tx || receipt.authority != c.tx.completionAuthority || !c.tx.Ready || c.tx.stopStarted || !receipt.ledger.matches(receipt.identity) || e.resources != r.evidence.resources || receipt.identity.generation != r.frames.generation || e.observedMTU != MTU {
+		if e == nil || receipt == nil || r.receipt != nil || !receipt.used || receipt.evidence != e || receipt.owner != c.tx || receipt.authority != c.tx.completionAuthority || !c.tx.Ready || c.tx.stopStarted || !receipt.ledger.matches(receipt.identity) || e.resources != r.evidence.resources || e.supplier != r || receipt.identity.generation != r.frames.generation || e.observedMTU != MTU {
 			return afPhase
 		}
-		if admission == nil {
+		if admission == nil || e.admission == nil || admission != e.admission {
 			return afPhase
 		}
 		if err := admission.checkResidentSource(ctx, e.resources.namespace, c.tx.plan.Binding, receipt.identity.generation); err != nil {

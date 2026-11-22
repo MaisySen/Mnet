@@ -45,8 +45,11 @@ func spawnResidentMode(ctx context.Context, mode string) (ResidentProcess, error
 func spawnResidentPinnedSource(ctx context.Context) (ResidentProcess, error) {
 	return spawnResidentPinnedMode(ctx, "--osownership-resident-no-tun-source")
 }
-func spawnResidentPinnedMode(ctx context.Context, mode string) (process ResidentProcess, retErr error) {
-	if !allowedResidentEvidenceMode(mode) {
+func spawnResidentPinnedMode(ctx context.Context, mode string) (ResidentProcess, error) {
+	return spawnResidentPinnedModeFiles(ctx, mode, nil)
+}
+func spawnResidentPinnedModeFiles(ctx context.Context, mode string, extra []*os.File) (process ResidentProcess, retErr error) {
+	if !allowedResidentEvidenceMode(mode) || (mode == endpointResidentMode && len(extra) != 2) || (mode != endpointResidentMode && len(extra) != 0) {
 		return nil, ErrExecutorUnreleased
 	}
 	if !kernelExecutionReleased && !readOnlyEvidenceBuild {
@@ -84,6 +87,26 @@ func spawnResidentPinnedMode(ctx context.Context, mode string) (process Resident
 	outerIdentity := Namespace{Device: uint64(outerStat.Dev), Inode: outerStat.Ino}
 	cmd := residentCommand(exe, os.Getuid(), os.Getgid(), w, outerIdentity, os.Getpid(), gateR)
 	cmd.Args[1] = mode
+	if mode == endpointResidentMode {
+		cmd.ExtraFiles = append(cmd.ExtraFiles, extra...)
+		ticks, e := readProcessStartTicks(os.Getpid())
+		if e != nil {
+			r.Close()
+			w.Close()
+			return nil, e
+		}
+		cmd.Env = append(cmd.Env, "MNO_ENDPOINT_PARENT_TICKS="+strconv.FormatUint(ticks, 10))
+		for i, f := range extra {
+			var st unix.Stat_t
+			if e := unix.Fstat(int(f.Fd()), &st); e != nil {
+				r.Close()
+				w.Close()
+				return nil, e
+			}
+			prefix := "MNO_ENDPOINT_" + strconv.Itoa(i)
+			cmd.Env = append(cmd.Env, prefix+"_DEV="+strconv.FormatUint(uint64(st.Dev), 10), prefix+"_INO="+strconv.FormatUint(st.Ino, 10))
+		}
+	}
 	if e = cmd.Start(); e != nil {
 		r.Close()
 		w.Close()

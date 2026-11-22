@@ -165,7 +165,7 @@ func TestEndpointLoopBoundedStopAndErrors(t *testing.T) {
 	if e := l.offer(frame); e != errEndpointBackpressure {
 		t.Fatal("inbound bound")
 	}
-	if e := l.offer(endpointFrame{kind: endpointStop, direction: 1, generation: 7, sequence: 2}); e != nil {
+	if e := l.offer(endpointFrame{kind: endpointStop, direction: 1, generation: 7, sequence: 2, payload: endpointStopPayload(endpointReasonRequested)}); e != nil {
 		t.Fatal(e)
 	}
 	if e := l.turn(f); !errors.Is(e, errEndpointStopped) {

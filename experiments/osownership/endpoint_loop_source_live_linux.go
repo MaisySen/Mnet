@@ -2,7 +2,10 @@
 
 package osownership
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Source adapter for the bounded resident loop. No worker is allowed to hold
 // this object. ctx and cleanup are actual caller-owned contexts; no background
@@ -39,5 +42,7 @@ func (l *endpointOriginalLane) stopOwned() error {
 	if l == nil || l.reactor == nil || l.cleanup == nil {
 		return afPhase
 	}
-	return l.reactor.stopSource(l.cleanup)
+	bounded, cancel := context.WithTimeout(l.cleanup, 500*time.Millisecond)
+	defer cancel()
+	return l.reactor.stopSource(bounded)
 }

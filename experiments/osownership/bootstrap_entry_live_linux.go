@@ -46,6 +46,8 @@ func BootstrapEvidenceMain(args []string) error {
 			result.Error = runErr.Error()
 		}
 		return errors.Join(runErr, json.NewEncoder(os.Stdout).Encode(result))
+	case endpointResidentMode:
+		return endpointResidentBootstrapSource(context.Background())
 	case "--osownership-resident-no-tun-source":
 		return residentBootstrapSource(context.Background(), runReadOnlyBootstrapEvidence)
 	case "--osownership-client-capdrop-bootstrap-source":

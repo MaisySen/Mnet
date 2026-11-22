@@ -18,6 +18,8 @@ import (
 // authenticated peer-MTU binding remain incomplete. Those are not bool waivers.
 type sourceRuntimeEvidence struct {
 	observedMTU              uint32
+	admission                *residentEndpointAdmission
+	supplier                 *originalEndpointReactor
 	peer                     *daemon.DevelopmentEndpointPeer
 	selfProfile, peerProfile netmap.EndpointProfile
 	offload                  *originalOffloadHistory
@@ -37,6 +39,14 @@ func (s *operation1ScopedDiagnostic) collectRuntimeCompletion(ctx context.Contex
 	local, err := s.collectLocalEndpointSource(ctx, r)
 	if err != nil {
 		return nil, err
+	}
+	if s.scope.channel != nil {
+		a := s.scope.channel
+		if err := a.checkResidentSource(ctx, local.resources.namespace, local.resources.owner.plan.Binding, local.routed.identity.generation); err != nil {
+			return nil, err
+		}
+		local.admission = a
+		return local, nil
 	}
 	if err := requireEndpointPeerBinding(s.scope.peer, local.resources.owner.plan.Binding); err != nil {
 		return nil, err
@@ -156,7 +166,7 @@ func (s *operation1ScopedDiagnostic) collectLocalEndpointSource(ctx context.Cont
 	if e = s.scope.check(ctx, c.attempt); e != nil {
 		return nil, e
 	}
-	return &sourceRuntimeEvidence{observedMTU: link.MTU, offload: history, resources: o, routed: r, before: before, after: after, diagnostic: d, qdisc: cloneUpQdisc(q), names: names, features: features, policy: policy, consumer: consumers, framing: framing}, nil
+	return &sourceRuntimeEvidence{supplier: s.scope.reactor, observedMTU: link.MTU, offload: history, resources: o, routed: r, before: before, after: after, diagnostic: d, qdisc: cloneUpQdisc(q), names: names, features: features, policy: policy, consumer: consumers, framing: framing}, nil
 }
 func (e *sourceRuntimeEvidence) validateCompletion(ctx context.Context, t *Transaction) error {
 	if e == nil || ctx == nil || ctx.Err() != nil || e.resources == nil || e.routed == nil || e.before == nil || e.after == nil {
@@ -177,12 +187,40 @@ func (e *sourceRuntimeEvidence) validateCompletion(ctx context.Context, t *Trans
 	if !exactSetupPostMatches(e.diagnostic.raw, r.raw) || !reflect.DeepEqual(e.diagnostic.sys, r.sys) || !sameConstructionQdisc(e.qdisc, r.qdisc) || !e.features.observedNamesCompatible(e.names) {
 		return afPhase
 	}
-	if err := requireEndpointPeerBinding(e.peer, t.plan.Binding); err != nil {
-		return err
+	if e.admission != nil {
+		if err := e.admission.checkResidentSource(ctx, o.namespace, t.plan.Binding, r.identity.generation); err != nil {
+			return err
+		}
+	} else {
+		if err := requireEndpointPeerBinding(e.peer, t.plan.Binding); err != nil {
+			return err
+		}
+		self, peer, err := e.peer.Snapshot()
+		if err != nil || self != e.selfProfile || peer != e.peerProfile {
+			return errEndpointPeerProfile
+		}
 	}
-	self, peer, err := e.peer.Snapshot()
-	if err != nil || self != e.selfProfile || peer != e.peerProfile {
-		return errEndpointPeerProfile
+	supplierReason := "installed per-I/O byte-gated supplier"
+	if e.admission != nil {
+		if e.supplier == nil || e.supplier.owner == nil || e.supplier.owner.tx != t || e.supplier.evidence == nil || e.supplier.evidence.resources != o || e.supplier.frames == nil || e.supplier.receipt != nil {
+			return afPhase
+		}
+		own, err := endpointIPv4(t.plan.Binding.OwnIP)
+		if err != nil {
+			return err
+		}
+		peer, err := endpointIPv4(t.plan.Binding.PeerIP)
+		if err != nil {
+			return err
+		}
+		f := e.supplier.frames
+		f.mu.Lock()
+		installed := !f.stopped && f.admission && f.generation == r.identity.generation && f.policy != nil && f.policy.mtu == MTU && f.policy.own == own && f.policy.peer == peer
+		f.mu.Unlock()
+		if !installed {
+			return afPhase
+		}
+		supplierReason = "exclusive retained parent WireGuard/config/AllowedIPs bridge"
 	}
 	// Original custody and framing/features are now source-collected. Complete
 	// named policy consumer decisions and installed supplier byte-gate are
@@ -195,5 +233,5 @@ func (e *sourceRuntimeEvidence) validateCompletion(ctx context.Context, t *Trans
 			unresolved++
 		}
 	}
-	return fmt.Errorf("runtime evidence collected on original generation %d; %d named policy decisions and installed per-I/O byte-gated supplier remain unproven", r.identity.generation, unresolved)
+	return fmt.Errorf("runtime evidence collected on original generation %d; %d named policy decisions and %s remain unproven", r.identity.generation, unresolved, supplierReason)
 }

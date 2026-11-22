@@ -27,7 +27,7 @@ type endpointPreparedBody struct {
 func (b endpointPreparedBody) valid() bool {
 	own, peer := netip.AddrFrom4(b.Own), netip.AddrFrom4(b.Peer)
 	prefix := netip.MustParsePrefix("100.64.0.0/10")
-	return b.PID > 1 && b.StartTicks > 0 && b.Namespace.Device > 0 && b.Namespace.Inode > 0 && b.Generation > 0 && b.MTU == MTU && own != peer && prefix.Contains(own) && prefix.Contains(peer) && b.OwnKey != ([32]byte{}) && b.PeerKey != ([32]byte{}) && b.OwnKey != b.PeerKey && b.SelfUntilMS > 0 && b.PeerUntilMS > 0
+	return b.PID > 1 && b.StartTicks > 0 && b.Namespace.Isolated && b.Namespace.Device > 0 && b.Namespace.Inode > 0 && b.Generation > 0 && b.MTU == MTU && own != peer && prefix.Contains(own) && prefix.Contains(peer) && b.OwnKey != ([32]byte{}) && b.PeerKey != ([32]byte{}) && b.OwnKey != b.PeerKey && b.SelfUntilMS > 0 && b.PeerUntilMS > 0
 }
 func (b endpointPreparedBody) encode() ([]byte, error) {
 	if !b.valid() {
@@ -113,6 +113,19 @@ func decodeEndpointAdmission(p []byte) (b endpointAdmissionBody, e error) {
 }
 func validateEndpointControl(f endpointFrame) error {
 	switch f.kind {
+	case endpointStart:
+		b, e := decodeEndpointStart(f.payload)
+		if e != nil {
+			return e
+		}
+		if b.Prepared.Generation != f.generation {
+			return errEndpointFrame
+		}
+	case endpointStop:
+		return validateEndpointStop(f.payload)
+	case endpointStopped, endpointStats:
+		_, e := decodeEndpointStats(f.payload)
+		return e
 	case endpointPrepared:
 		b, e := decodeEndpointPrepared(f.payload)
 		if e != nil {
