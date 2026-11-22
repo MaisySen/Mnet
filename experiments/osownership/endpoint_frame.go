@@ -30,8 +30,10 @@ type endpointFrame struct {
 
 func endpointFrameLimit(kind byte) int {
 	switch kind {
-	case endpointPrepared, endpointAdmission:
-		return 384
+	case endpointPrepared:
+		return endpointPreparedBytes
+	case endpointAdmission:
+		return endpointAdmissionBytes
 	case endpointDatagram:
 		return MTU
 	case endpointStop, endpointStopped:
@@ -43,6 +45,9 @@ func encodeEndpointFrame(f endpointFrame) ([]byte, error) {
 	limit := endpointFrameLimit(f.kind)
 	if limit < 0 || len(f.payload) > limit || f.sequence == 0 || f.generation == 0 || (f.direction != 1 && f.direction != 2) {
 		return nil, errEndpointFrame
+	}
+	if err := validateEndpointControl(f); err != nil {
+		return nil, err
 	}
 	out := make([]byte, endpointHeader+len(f.payload))
 	copy(out, "MNE1")
@@ -67,6 +72,9 @@ func decodeEndpointFrame(raw []byte) (endpointFrame, error) {
 		return endpointFrame{}, errEndpointFrame
 	}
 	f.payload = append([]byte(nil), raw[endpointHeader:]...)
+	if err := validateEndpointControl(f); err != nil {
+		return endpointFrame{}, err
+	}
 	return f, nil
 }
 
@@ -131,6 +139,7 @@ type endpointFrameState struct {
 	inbound, outbound            byte
 	prepared, admission, stopped bool
 	policy                       *endpointPacketPolicy
+	preparedBody                 endpointPreparedBody
 	queue                        [][]byte
 	inFlight                     []byte
 }
@@ -165,9 +174,20 @@ func (s *endpointFrameState) receive(f endpointFrame) (admittedEndpointPacket, e
 			s.stopLocked()
 			return zero, errEndpointFrame
 		}
+		b, e := decodeEndpointPrepared(f.payload)
+		if e != nil {
+			s.stopLocked()
+			return zero, e
+		}
+		s.preparedBody = b
 		s.prepared = true
 	case endpointAdmission:
 		if f.direction != 1 || !s.prepared || s.admission {
+			s.stopLocked()
+			return zero, errEndpointFrame
+		}
+		b, e := decodeEndpointAdmission(f.payload)
+		if e != nil || b.Prepared != s.preparedBody {
 			s.stopLocked()
 			return zero, errEndpointFrame
 		}
@@ -220,6 +240,19 @@ func (s *endpointFrameState) enqueue(kind byte, payload []byte) error {
 			return e
 		}
 		payload = v.bytes
+	}
+	if kind == endpointPrepared {
+		b, e := decodeEndpointPrepared(payload)
+		if e != nil {
+			return e
+		}
+		s.preparedBody = b
+	}
+	if kind == endpointAdmission {
+		b, e := decodeEndpointAdmission(payload)
+		if e != nil || b.Prepared != s.preparedBody {
+			return errEndpointFrame
+		}
 	}
 	raw, e := encodeEndpointFrame(endpointFrame{kind: kind, direction: s.outbound, generation: s.generation, sequence: s.sent + 1, payload: payload})
 	if e != nil {

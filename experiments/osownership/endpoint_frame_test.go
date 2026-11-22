@@ -8,7 +8,8 @@ import (
 )
 
 func TestEndpointFrameCodecStateBoundaries(t *testing.T) {
-	raw, err := encodeEndpointFrame(endpointFrame{kind: endpointPrepared, direction: 2, generation: 7, sequence: 1})
+	prepared := endpointTestPrepared(t)
+	raw, err := encodeEndpointFrame(endpointFrame{kind: endpointPrepared, direction: 2, generation: 7, sequence: 1, payload: prepared})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +48,7 @@ func TestEndpointFrameCodecStateBoundaries(t *testing.T) {
 		t.Fatal("EOF lane revived")
 	}
 	writer, _ := newEndpointFrameState(7, 1, packetRig(t))
-	if err = writer.enqueue(endpointPrepared, nil); err != nil {
+	if err = writer.enqueue(endpointPrepared, prepared); err != nil {
 		t.Fatal(err)
 	}
 	b, err := writer.nextWrite()

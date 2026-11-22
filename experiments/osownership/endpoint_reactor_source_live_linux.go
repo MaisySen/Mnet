@@ -9,16 +9,16 @@ import (
 	"net/netip"
 )
 
-var errEndpointNoProgress = errors.New("endpoint-nonblocking-no-progress")
-
 // Source-only resident-thread reactor. No goroutine, pipe, launcher or IPC call.
 // Constructed dormant from actual preparation. Only consumed genuine completion
 // can arm I/O. Current incomplete policy still prevents any such receipt.
 type originalEndpointReactor struct {
-	owner    *operation1Controller
-	evidence *sourceRuntimeEvidence
-	receipt  *completionReceipt
-	frames   *endpointFrameState
+	owner      *operation1Controller
+	evidence   *sourceRuntimeEvidence
+	receipt    *completionReceipt
+	frames     *endpointFrameState
+	admission  inheritedEndpointAdmission
+	readBuffer [65536]byte
 }
 
 func newOriginalEndpointReactor(c *operation1Controller, p *preparedEndpointObservation) (*originalEndpointReactor, error) {
@@ -49,11 +49,11 @@ func newOriginalEndpointReactor(c *operation1Controller, p *preparedEndpointObse
 }
 
 // Arm only after genuine mandatory completion. A dormant gate is not Ready.
-func (r *originalEndpointReactor) armSource(ctx context.Context, e *sourceRuntimeEvidence, receipt *completionReceipt) error {
+func (r *originalEndpointReactor) armSource(ctx context.Context, e *sourceRuntimeEvidence, receipt *completionReceipt, admission inheritedEndpointAdmission) error {
 	if !kernelExecutionReleased {
 		return ErrExecutorUnreleased
 	}
-	if r == nil || r.owner == nil {
+	if r == nil || r.owner == nil || r.evidence == nil || r.frames == nil {
 		return afPhase
 	}
 	return r.owner.withOwner(ctx, func(ctx context.Context) error {
@@ -61,7 +61,10 @@ func (r *originalEndpointReactor) armSource(ctx context.Context, e *sourceRuntim
 		if e == nil || receipt == nil || r.receipt != nil || !receipt.used || receipt.evidence != e || receipt.owner != c.tx || receipt.authority != c.tx.completionAuthority || !c.tx.Ready || c.tx.stopStarted || !receipt.ledger.matches(receipt.identity) || e.resources != r.evidence.resources || receipt.identity.generation != r.frames.generation || e.observedMTU != MTU {
 			return afPhase
 		}
-		if err := requireEndpointPeerBinding(e.peer, c.tx.plan.Binding); err != nil {
+		if admission == nil {
+			return afPhase
+		}
+		if err := admission.checkResidentSource(ctx, e.resources.namespace, c.tx.plan.Binding, receipt.identity.generation); err != nil {
 			return err
 		}
 		if err := c.tx.live(ctx); err != nil {
@@ -69,6 +72,7 @@ func (r *originalEndpointReactor) armSource(ctx context.Context, e *sourceRuntim
 		}
 		r.evidence = e
 		r.receipt = receipt
+		r.admission = admission
 		return nil
 	})
 }
@@ -93,7 +97,16 @@ func (r *originalEndpointReactor) originalIOSource(ctx context.Context, in []byt
 		if err := c.tx.live(ctx); err != nil {
 			return err
 		}
-		if err := requireEndpointPeerBinding(e.peer, c.tx.plan.Binding); err != nil {
+		if r.admission == nil {
+			return afPhase
+		}
+		r.frames.mu.Lock()
+		protocolLive := r.frames.admission && !r.frames.stopped
+		r.frames.mu.Unlock()
+		if !protocolLive {
+			return afPhase
+		}
+		if err := r.admission.checkResidentSource(ctx, o.namespace, c.tx.plan.Binding, r.receipt.identity.generation); err != nil {
 			return err
 		}
 		o.creation.fd.mu.Lock()
@@ -108,7 +121,7 @@ func (r *originalEndpointReactor) originalIOSource(ctx context.Context, in []byt
 		if err != nil {
 			return err
 		}
-		buffer := make([]byte, 65536)
+		buffer := r.readBuffer[:]
 		if write {
 			v, err := r.frames.policy.admit(in, packetToKernel)
 			if err != nil {
@@ -146,10 +159,19 @@ func (r *originalEndpointReactor) originalIOSource(ctx context.Context, in []byt
 		if err != nil {
 			callErr = errors.Join(callErr, err)
 		}
-		if callErr == unix.EAGAIN && n <= 0 {
-			return errEndpointNoProgress
+		if lifeErr := c.tx.live(ctx); lifeErr != nil {
+			callErr = errors.Join(callErr, lifeErr)
 		}
-		if callErr != nil || (write && n != len(buffer)) || (!write && (n <= 0 || n > len(buffer))) {
+		if lifeErr := r.admission.checkResidentSource(ctx, o.namespace, c.tx.plan.Binding, r.receipt.identity.generation); lifeErr != nil {
+			callErr = errors.Join(callErr, lifeErr)
+		}
+		if disposition := classifyEndpointIO(write, n, len(buffer), callErr); disposition != endpointIOComplete {
+			if disposition == endpointIOYield {
+				return errEndpointNoProgress
+			}
+			if disposition == endpointIODrop {
+				return errEndpointPacketDrop
+			}
 			c.tx.Ready = false
 			r.frames.stop()
 			_ = o.ledger.invalidate("custody-loss")
@@ -168,6 +190,15 @@ func (r *originalEndpointReactor) originalIOSource(ctx context.Context, in []byt
 	return out, err
 }
 func (r *originalEndpointReactor) drainOneSource(ctx context.Context) error {
+	if r == nil || r.frames == nil {
+		return afPhase
+	}
+	r.frames.mu.Lock()
+	active := r.frames.admission && !r.frames.stopped
+	r.frames.mu.Unlock()
+	if !active {
+		return errEndpointNoProgress
+	}
 	b, err := r.originalIOSource(ctx, nil, false)
 	if err != nil {
 		return err
