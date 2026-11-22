@@ -33,6 +33,26 @@ type sourceRuntimeEvidence struct {
 }
 
 func (s *operation1ScopedDiagnostic) collectRuntimeCompletion(ctx context.Context, r *postPeerRouteResult) (completionEvidence, error) {
+	local, err := s.collectLocalEndpointSource(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireEndpointPeerBinding(s.scope.peer, local.resources.owner.plan.Binding); err != nil {
+		return nil, err
+	}
+	self, peer, err := s.scope.peer.Snapshot()
+	if err != nil {
+		return nil, err
+	}
+	local.peer = s.scope.peer
+	local.selfProfile = self
+	local.peerProfile = peer
+	return local, nil
+}
+
+// Local preparation is independent of the remote declaration. It still reads
+// actual original custody/history/framing/features and the full postsetup graph.
+func (s *operation1ScopedDiagnostic) collectLocalEndpointSource(ctx context.Context, r *postPeerRouteResult) (*sourceRuntimeEvidence, error) {
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
 	}
@@ -46,13 +66,6 @@ func (s *operation1ScopedDiagnostic) collectRuntimeCompletion(ctx context.Contex
 	}
 	if e := s.scope.check(ctx, c.attempt); e != nil {
 		return nil, e
-	}
-	if err := requireEndpointPeerBinding(s.scope.peer, o.owner.plan.Binding); err != nil {
-		return nil, err
-	}
-	selfProfile, peerProfile, err := s.scope.peer.Snapshot()
-	if err != nil {
-		return nil, err
 	}
 	o.creation.fd.mu.Lock()
 	defer o.creation.fd.mu.Unlock()
@@ -98,6 +111,9 @@ func (s *operation1ScopedDiagnostic) collectRuntimeCompletion(ctx context.Contex
 	if e != nil {
 		return nil, e
 	}
+	if framing != (tunNestedFraming{typ: 1}) || link.MTU != MTU {
+		return nil, packetFraming
+	}
 	effective, e := parseEffectiveV4(sys)
 	if e != nil {
 		return nil, e
@@ -139,7 +155,7 @@ func (s *operation1ScopedDiagnostic) collectRuntimeCompletion(ctx context.Contex
 	if e = s.scope.check(ctx, c.attempt); e != nil {
 		return nil, e
 	}
-	return &sourceRuntimeEvidence{peer: s.scope.peer, selfProfile: selfProfile, peerProfile: peerProfile, offload: history, resources: o, routed: r, before: before, after: after, diagnostic: d, qdisc: cloneUpQdisc(q), names: names, features: features, policy: policy, consumer: consumers, framing: framing}, nil
+	return &sourceRuntimeEvidence{offload: history, resources: o, routed: r, before: before, after: after, diagnostic: d, qdisc: cloneUpQdisc(q), names: names, features: features, policy: policy, consumer: consumers, framing: framing}, nil
 }
 func (e *sourceRuntimeEvidence) validateCompletion(ctx context.Context, t *Transaction) error {
 	if e == nil || ctx == nil || ctx.Err() != nil || e.resources == nil || e.routed == nil || e.before == nil || e.after == nil {

@@ -54,6 +54,7 @@ type Evidence struct {
 // Transaction owns step state and its monotonic deadline independent of the
 // caller's Plan value. API never extends it after an ACK or partial success.
 type Transaction struct {
+	prepared            *preparedTransaction
 	completionAuthority *completionAuthority
 	k                   Kernel
 	clock               Clock
@@ -95,31 +96,44 @@ func (t *Transaction) live(ctx context.Context) error {
 	}
 	return nil
 }
+
+// Start remains all-or-nothing for readiness. PREPARED is private and cannot
+// bypass mandatory Kernel.complete/Transaction.consumeCompletion.
 func (t *Transaction) Start(ctx context.Context) error {
+	p, err := t.prepareSetup(ctx)
+	if err != nil {
+		return err
+	}
+	return t.completePrepared(ctx, p)
+}
+func (t *Transaction) prepareSetup(ctx context.Context) (*preparedTransaction, error) {
+	if t == nil || t.k == nil || t.clock == nil || ctx == nil {
+		return nil, ErrConflict
+	}
 	stamp := t.clock.Now()
 	remaining := t.deadline.Wall.Sub(stamp.Wall)
 	if mono := t.deadline.Mono - stamp.Monotonic; mono < remaining {
 		remaining = mono
 	}
 	if remaining <= 0 {
-		return errors.New("owner deadline ended before start")
+		return nil, errors.New("owner deadline ended before start")
 	}
 	bounded, cancel := context.WithTimeout(ctx, remaining)
 	defer cancel()
 	ctx = bounded
 	if len(t.Evidence) != 0 || t.handle != nil {
-		return errors.New("one-shot transaction already attempted")
+		return nil, errors.New("one-shot transaction already attempted")
 	}
 	if e := t.live(ctx); e != nil {
-		return e
+		return nil, e
 	}
 	before, e := t.k.Snapshot(ctx)
 	if e != nil {
-		return e
+		return nil, e
 	}
 	p, e := Prepare(t.plan.Binding, before, t.clock.Now().Wall)
 	if e != nil {
-		return e
+		return nil, e
 	}
 	t.plan = p
 	copyBaseline := cloneInventory(before)
@@ -133,47 +147,71 @@ func (t *Transaction) Start(ctx context.Context) error {
 	}
 	after, readErr := t.k.Snapshot(ctx)
 	if readErr != nil {
-		return errors.Join(createErr, readErr, errors.New("creation readback unavailable; pending custody retained"))
+		return nil, errors.Join(createErr, readErr, errors.New("creation readback unavailable; pending custody retained"))
 	}
 	if t.handle == nil {
-		return errors.Join(createErr, errors.New("no original FD custody; never adopt name-only link"))
+		return nil, errors.Join(createErr, errors.New("no original FD custody; never adopt name-only link"))
 	}
 	if e = exactHandle(h, p, after); e != nil {
-		return errors.Join(createErr, e)
+		return nil, errors.Join(createErr, e)
 	}
 	t.Evidence = append(t.Evidence, Evidence{Step: "create", ACK: createErr == nil, Readback: "exact-link", Error: createErr != nil})
 	if createErr != nil {
-		return createErr
+		return nil, createErr
 	}
 	for _, op := range p.Operations[1:] {
 		if e = t.live(ctx); e != nil {
-			return e
+			return nil, e
 		}
 		t.Evidence = append(t.Evidence, Evidence{Step: op.Kind + "-intent"})
 		callErr := t.k.Apply(ctx, h, op)
 		snapshot, readErr := t.k.Snapshot(ctx)
 		if readErr != nil {
-			return errors.Join(callErr, readErr)
+			return nil, errors.Join(callErr, readErr)
 		}
 		if e = exactHandle(h, p, snapshot); e != nil {
-			return errors.Join(callErr, e)
+			return nil, errors.Join(callErr, e)
 		}
 		verified := stepPresent(op, h, snapshot)
 		t.Evidence = append(t.Evidence, Evidence{Step: op.Kind, ACK: callErr == nil, Readback: fmt.Sprint(verified), Error: callErr != nil})
 		if callErr != nil {
-			return callErr
+			return nil, callErr
 		}
 		if !verified {
-			return errors.New("ACK without exact operation readback")
+			return nil, errors.New("ACK without exact operation readback")
 		}
 		if op.Kind == "set-alias-mtu-exact" {
 			h.TagConfirmed = true
 			t.handle = &h
 		}
 		if e = t.live(ctx); e != nil {
-			return e
+			return nil, e
 		}
 	}
+	pReady := &preparedTransaction{owner: t, handle: *t.handle}
+	t.prepared = pReady
+	return pReady, nil
+}
+func (t *Transaction) completePrepared(ctx context.Context, p *preparedTransaction) error {
+	if !p.current(t) || ctx == nil {
+		return ErrConflict
+	}
+	if err := t.live(ctx); err != nil {
+		return err
+	}
+	p.used = true
+	t.prepared = nil
+	stamp := t.clock.Now()
+	remaining := t.deadline.Wall.Sub(stamp.Wall)
+	if mono := t.deadline.Mono - stamp.Monotonic; mono < remaining {
+		remaining = mono
+	}
+	if remaining <= 0 {
+		return errors.New("original deadline ended before completion")
+	}
+	bounded, cancel := context.WithTimeout(ctx, remaining)
+	defer cancel()
+	ctx = bounded
 	receipt, e := t.k.complete(ctx, t)
 	if e != nil {
 		return e

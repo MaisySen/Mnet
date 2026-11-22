@@ -97,30 +97,100 @@ func (p *DevelopmentEndpointPeer) Close() error {
 	}
 	return p.scope.Close()
 }
-func (s *DevelopmentNetworkSession) BindEndpointPeer(peer SessionPeer) (*DevelopmentEndpointPeer, error) {
+
+// Preparation needs current approved membership, not yet the peer's MTU/profile.
+// This avoids requiring both peers to publish before either can prepare locally.
+func (s *DevelopmentNetworkSession) BindEndpointPreparation(peer SessionPeer) (*DevelopmentEndpointPeer, error) {
 	scope, err := s.BindPeer(peer)
 	if err != nil {
 		return nil, err
 	}
+	return &DevelopmentEndpointPeer{session: s, scope: scope}, nil
+}
+func (s *DevelopmentNetworkSession) BindEndpointPeer(peer SessionPeer) (*DevelopmentEndpointPeer, error) {
+	out, err := s.BindEndpointPreparation(peer)
+	if err != nil {
+		return nil, err
+	}
+	if err = out.BindProfiles(); err != nil {
+		_ = out.Close()
+		return nil, err
+	}
+	return out, nil
+}
+
+// Binding is explicit after the caller's bounded native Refresh observes both
+// published declarations. No HTTP/poll/renewal is hidden in this method.
+func (p *DevelopmentEndpointPeer) BindProfiles() error {
+	if p == nil || p.session == nil || p.scope == nil {
+		return errEnrollmentContextStale
+	}
+	s := p.session
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if p.scope.ctx.Err() != nil {
+		return errEnrollmentContextStale
+	}
 	m := s.d.currentMap()
 	var pin *developmentEndpointPin
 	if m != nil && m.Self.EndpointProfile != nil {
 		for _, n := range m.Peers {
-			if n.Name == peer.Name && n.IPv4 == peer.IPv4 && n.PubKey == peer.PublicKey && n.EndpointProfile != nil {
+			if n.Name == p.scope.peer.Name && n.IPv4 == p.scope.peer.IPv4 && n.PubKey == p.scope.peer.PublicKey && n.EndpointProfile != nil {
 				pin = &developmentEndpointPin{self: *m.Self.EndpointProfile, peer: *n.EndpointProfile}
 			}
 		}
 	}
-	if pin == nil || !pin.current(m) || scope.ctx.Err() != nil {
-		s.mu.Unlock()
-		_ = scope.Close()
-		return nil, errEnrollmentContextStale
+	if pin == nil || !pin.current(m) {
+		return errEnrollmentContextStale
 	}
-	scope.endpointPin = pin
-	out := &DevelopmentEndpointPeer{session: s, scope: scope, pin: pin}
-	s.mu.Unlock()
-	return out, nil
+	if p.pin != nil && *p.pin != *pin {
+		return errEnrollmentContextStale
+	}
+	p.pin = pin
+	p.scope.endpointPin = pin
+	return nil
+}
+
+// This is current membership DATA bound to the actual native owner, not MTU or
+// local kernel proof. Copies do not expose the mutable installed map.
+func (p *DevelopmentEndpointPeer) MembershipSnapshot() (netmap.Node, netmap.Node, error) {
+	var zero netmap.Node
+	if p == nil || p.session == nil || p.scope == nil {
+		return zero, zero, errEnrollmentContextStale
+	}
+	s := p.session
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.d.mu.Lock()
+	err := s.d.checkNativeCurrentAfterLocked(s.ctx, s.revision)
+	s.d.mu.Unlock()
+	m := s.d.currentMap()
+	if err != nil || p.scope.ctx.Err() != nil || m == nil || !validDevelopmentNetworkMap(m) || !developmentExactPeerPresent(s.sessionPeerSnapshot(), p.scope.peer) {
+		return zero, zero, errEnrollmentContextStale
+	}
+	var peer netmap.Node
+	for _, n := range m.Peers {
+		if n.PubKey == p.scope.peer.PublicKey && n.IPv4 == p.scope.peer.IPv4 && n.Name == p.scope.peer.Name {
+			peer = n
+		}
+	}
+	if peer.KeyExpiry == nil || m.Self.KeyExpiry == nil || !time.Now().Before(*peer.KeyExpiry) || !time.Now().Before(*m.Self.KeyExpiry) || !peer.KeyExpiry.Equal(p.scope.peerDeadline) {
+		return zero, zero, errEnrollmentContextStale
+	}
+	copyNode := func(n netmap.Node) netmap.Node {
+		n.Endpoints = append([]string(nil), n.Endpoints...)
+		n.Routes = append([]string(nil), n.Routes...)
+		if n.KeyExpiry != nil {
+			v := *n.KeyExpiry
+			n.KeyExpiry = &v
+		}
+		if n.EndpointProfile != nil {
+			v := *n.EndpointProfile
+			n.EndpointProfile = &v
+		}
+		return n
+	}
+	return copyNode(m.Self), copyNode(peer), nil
 }
 
 // Rechecks the same installed map and native credential revision. It does not
@@ -128,12 +198,15 @@ func (s *DevelopmentNetworkSession) BindEndpointPeer(peer SessionPeer) (*Develop
 // Refresh/expiry/withdrawal of an observed profile cancels the owned scope.
 func (p *DevelopmentEndpointPeer) Snapshot() (netmap.EndpointProfile, netmap.EndpointProfile, error) {
 	var zero netmap.EndpointProfile
-	if p == nil || p.session == nil || p.scope == nil || p.pin == nil {
+	if p == nil || p.session == nil || p.scope == nil {
 		return zero, zero, errEnrollmentContextStale
 	}
 	s := p.session
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if p.pin == nil {
+		return zero, zero, errEnrollmentContextStale
+	}
 	s.d.mu.Lock()
 	err := s.d.checkNativeCurrentAfterLocked(s.ctx, s.revision)
 	s.d.mu.Unlock()

@@ -33,7 +33,7 @@ func withOperation1ResidentSource(ctx context.Context, ns *namespaceCustody, b *
 	if ctx == nil || ctx.Err() != nil {
 		return ErrConflict
 	}
-	if err := requireEndpointPeerBinding(peer, binding); err != nil {
+	if err := requireEndpointMembershipBinding(peer, binding); err != nil {
 		return err
 	}
 	combined, cancel := context.WithCancel(ctx)

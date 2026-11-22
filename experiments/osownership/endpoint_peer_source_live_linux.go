@@ -25,3 +25,16 @@ func requireEndpointPeerBinding(peer *daemon.DevelopmentEndpointPeer, b Binding)
 	}
 	return nil
 }
+
+// Local preparation requires actual current native membership, never a peer
+// compatibility declaration that cannot exist until local preparation finishes.
+func requireEndpointMembershipBinding(peer *daemon.DevelopmentEndpointPeer, b Binding) error {
+	if peer == nil || peer.Context() == nil || peer.Context().Err() != nil {
+		return errEndpointPeerProfile
+	}
+	self, other, err := peer.MembershipSnapshot()
+	if err != nil || self.KeyExpiry == nil || other.KeyExpiry == nil || self.NetworkID != other.NetworkID || self.PubKey != b.OwnKey || self.IPv4 != b.OwnIP || other.PubKey != b.PeerKey || other.IPv4 != b.PeerIP || !self.KeyExpiry.Equal(b.SelfExpiry) || !other.KeyExpiry.Equal(b.PeerExpiry) {
+		return errEndpointPeerProfile
+	}
+	return nil
+}
