@@ -12,6 +12,21 @@ func (*operation1ResidentSource) requiresSetupPhaseSnapshots() {}
 // Execution remains mechanically unreleased. This producer holds the original
 // file mutex across before/after OS identity and independent AF/raw/sys reads.
 func (s *operation1ScopedDiagnostic) observeSetupPhase(ctx context.Context, t *setupPhaseTicket) (result *setupPhaseObservation, err error) {
+	if s == nil || s.scope == nil {
+		return result, afPhase
+	}
+	piece, finish, pieceErr := s.scope.beginForwardPieceSource(ctx)
+	if pieceErr != nil {
+		return result, pieceErr
+	}
+	ctx = piece
+	defer func() {
+		err = finish(err)
+		if err != nil {
+			result = nil
+		}
+	}()
+
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
 	}
@@ -23,7 +38,7 @@ func (s *operation1ScopedDiagnostic) observeSetupPhase(ctx context.Context, t *s
 	if scope.owner == nil || !scope.owner.adapter.authorized(ctx) || !scope.owner.adapter.setupTicketCurrent(t) || o.owner != scope.owner.tx || o.session != scope.owner.adapter.session || o.namespace != scope.ns || o.ledger != t.ledger || o.creation == nil || o.creation.fd != t.attempt.custody {
 		return nil, afPhase
 	}
-	if e := scope.check(ctx, t.attempt); e != nil {
+	if e := scope.checkForwardSource(ctx, t.attempt); e != nil {
 		return nil, e
 	}
 	o.creation.fd.mu.Lock()
@@ -102,7 +117,7 @@ func (s *operation1ScopedDiagnostic) observeSetupPhase(ctx context.Context, t *s
 	if held.identity != t.identity || !scope.owner.adapter.setupTicketCurrent(t) {
 		return nil, afPhase
 	}
-	if e = scope.check(ctx, t.attempt); e != nil {
+	if e = scope.checkForwardSource(ctx, t.attempt); e != nil {
 		return nil, e
 	}
 	good = true

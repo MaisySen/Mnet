@@ -23,7 +23,22 @@ type preparedEndpointDescriptor struct {
 	SelfUntilMS, PeerUntilMS       int64
 }
 
-func (s *operation1ScopedDiagnostic) collectPreparedEndpointSource(ctx context.Context, p *preparedTransaction) (*preparedEndpointObservation, error) {
+func (s *operation1ScopedDiagnostic) collectPreparedEndpointSource(ctx context.Context, p *preparedTransaction) (result *preparedEndpointObservation, err error) {
+	if s == nil || s.scope == nil {
+		return result, afPhase
+	}
+	piece, finish, pieceErr := s.scope.beginForwardPieceSource(ctx)
+	if pieceErr != nil {
+		return result, pieceErr
+	}
+	ctx = piece
+	defer func() {
+		err = finish(err)
+		if err != nil {
+			result = nil
+		}
+	}()
+
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
 	}
@@ -43,7 +58,22 @@ func (s *operation1ScopedDiagnostic) collectPreparedEndpointSource(ctx context.C
 	}
 	return &preparedEndpointObservation{preparation: p, source: s, local: local}, nil
 }
-func (p *preparedEndpointObservation) descriptorSource(ctx context.Context) (preparedEndpointDescriptor, error) {
+func (p *preparedEndpointObservation) descriptorSource(ctx context.Context) (result preparedEndpointDescriptor, err error) {
+	if p == nil || p.source == nil || p.source.scope == nil {
+		return result, afPhase
+	}
+	piece, finish, pieceErr := p.source.scope.beginForwardPieceSource(ctx)
+	if pieceErr != nil {
+		return result, pieceErr
+	}
+	ctx = piece
+	defer func() {
+		err = finish(err)
+		if err != nil {
+			result = preparedEndpointDescriptor{}
+		}
+	}()
+
 	var zero preparedEndpointDescriptor
 	if !kernelExecutionReleased {
 		return zero, ErrExecutorUnreleased
@@ -56,7 +86,7 @@ func (p *preparedEndpointObservation) descriptorSource(ctx context.Context) (pre
 	if !p.preparation.current(c.tx) || !c.adapter.authorized(ctx) || o == nil || o.creation == nil || o.creation.fd == nil || !p.local.routed.current() {
 		return zero, afPhase
 	}
-	if err := p.source.scope.check(ctx, c.attempt); err != nil {
+	if err := p.source.scope.checkForwardSource(ctx, c.attempt); err != nil {
 		return zero, err
 	}
 	if err := c.tx.live(ctx); err != nil {

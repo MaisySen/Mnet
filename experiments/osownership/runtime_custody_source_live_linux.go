@@ -36,7 +36,22 @@ type sourceRuntimeEvidence struct {
 	framing                  tunNestedFraming
 }
 
-func (s *operation1ScopedDiagnostic) collectRuntimeCompletion(ctx context.Context, r *postPeerRouteResult) (completionEvidence, error) {
+func (s *operation1ScopedDiagnostic) collectRuntimeCompletion(ctx context.Context, r *postPeerRouteResult) (result completionEvidence, err error) {
+	if s == nil || s.scope == nil {
+		return result, afPhase
+	}
+	piece, finish, pieceErr := s.scope.beginForwardPieceSource(ctx)
+	if pieceErr != nil {
+		return result, pieceErr
+	}
+	ctx = piece
+	defer func() {
+		err = finish(err)
+		if err != nil {
+			result = nil
+		}
+	}()
+
 	local, err := s.collectLocalEndpointSource(ctx, r)
 	if err != nil {
 		return nil, err
@@ -64,7 +79,22 @@ func (s *operation1ScopedDiagnostic) collectRuntimeCompletion(ctx context.Contex
 
 // Local preparation is independent of the remote declaration. It still reads
 // actual original custody/history/framing/features and the full postsetup graph.
-func (s *operation1ScopedDiagnostic) collectLocalEndpointSource(ctx context.Context, r *postPeerRouteResult) (*sourceRuntimeEvidence, error) {
+func (s *operation1ScopedDiagnostic) collectLocalEndpointSource(ctx context.Context, r *postPeerRouteResult) (result *sourceRuntimeEvidence, err error) {
+	if s == nil || s.scope == nil {
+		return result, afPhase
+	}
+	piece, finish, pieceErr := s.scope.beginForwardPieceSource(ctx)
+	if pieceErr != nil {
+		return result, pieceErr
+	}
+	ctx = piece
+	defer func() {
+		err = finish(err)
+		if err != nil {
+			result = nil
+		}
+	}()
+
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
 	}
@@ -76,7 +106,7 @@ func (s *operation1ScopedDiagnostic) collectLocalEndpointSource(ctx context.Cont
 	if !c.adapter.authorized(ctx) || c.adapter.routed != r || !r.current() || o.owner != c.tx || o.session != c.adapter.session || o.ledger != r.ledger || o.namespace != s.scope.ns || o.creation == nil || o.creation.fd == nil || c.attempt == nil || o.creation.fd != c.attempt.custody || o.creation.attempt != c.attempt {
 		return nil, afPhase
 	}
-	if e := s.scope.check(ctx, c.attempt); e != nil {
+	if e := s.scope.checkForwardSource(ctx, c.attempt); e != nil {
 		return nil, e
 	}
 	o.creation.fd.mu.Lock()
@@ -168,7 +198,7 @@ func (s *operation1ScopedDiagnostic) collectLocalEndpointSource(ctx context.Cont
 	if e != nil {
 		return nil, e
 	}
-	if e = s.scope.check(ctx, c.attempt); e != nil {
+	if e = s.scope.checkForwardSource(ctx, c.attempt); e != nil {
 		return nil, e
 	}
 	return &sourceRuntimeEvidence{xfrm: xfrm, supplier: s.scope.reactor, observedMTU: link.MTU, offload: history, resources: o, routed: r, before: before, after: after, diagnostic: d, qdisc: cloneUpQdisc(q), names: names, features: features, policy: policy, consumer: consumers, framing: framing}, nil

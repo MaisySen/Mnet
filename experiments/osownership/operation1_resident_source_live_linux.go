@@ -81,8 +81,15 @@ func (s *operation1ResidentSource) check(ctx context.Context, a *originalAttempt
 	}
 	return s.ns.checkCurrent()
 }
-func (s *operation1ResidentSource) createOriginal(ctx context.Context, p Plan, a *originalAttempt) (Handle, error) {
-	if e := s.check(ctx, a); e != nil {
+func (s *operation1ResidentSource) createOriginal(ctx context.Context, p Plan, a *originalAttempt) (result Handle, err error) {
+	piece, finish, pieceErr := s.beginForwardPieceSource(ctx)
+	if pieceErr != nil {
+		return result, pieceErr
+	}
+	ctx = piece
+	defer func() { err = finish(err) }()
+
+	if e := s.checkForwardSource(ctx, a); e != nil {
 		return Handle{}, e
 	}
 	// Same source baseline must still exist before any original open. Only the
@@ -131,8 +138,20 @@ func (s *operation1ResidentSource) createOriginal(ctx context.Context, p Plan, a
 	}
 	return *a.handle, e
 }
-func (s *operation1ResidentSource) bindCreatedOriginal(ctx context.Context, a *originalAttempt) (operation1DiagnosticSource, error) {
-	if e := s.check(ctx, a); e != nil {
+func (s *operation1ResidentSource) bindCreatedOriginal(ctx context.Context, a *originalAttempt) (result operation1DiagnosticSource, err error) {
+	piece, finish, pieceErr := s.beginForwardPieceSource(ctx)
+	if pieceErr != nil {
+		return result, pieceErr
+	}
+	ctx = piece
+	defer func() {
+		err = finish(err)
+		if err != nil {
+			result = nil
+		}
+	}()
+
+	if e := s.checkForwardSource(ctx, a); e != nil {
 		return nil, e
 	}
 	if s.created == nil || s.created.fd != a.custody || a.handle == nil {
@@ -161,7 +180,7 @@ type operation1ScopedDiagnostic struct {
 }
 
 func (s *operation1ScopedDiagnostic) diagnoseOperation1(ctx context.Context) (ownedSourceDiagnostic, error) {
-	if e := s.scope.check(ctx, s.scope.owner.attempt); e != nil {
+	if e := s.scope.checkForwardSource(ctx, s.scope.owner.attempt); e != nil {
 		return ownedSourceDiagnostic{}, e
 	}
 	observation, e := s.scope.observeCreatedOriginalAF(ctx, s.source.resources)
@@ -170,8 +189,23 @@ func (s *operation1ScopedDiagnostic) diagnoseOperation1(ctx context.Context) (ow
 	}
 	return observation.diagnostic, nil
 }
-func (s *operation1ScopedDiagnostic) applyOperation1(ctx context.Context, p Plan) (*firstStepCompletion, error) {
-	if e := s.scope.check(ctx, s.scope.owner.attempt); e != nil {
+func (s *operation1ScopedDiagnostic) applyOperation1(ctx context.Context, p Plan) (result *firstStepCompletion, err error) {
+	if s == nil || s.scope == nil {
+		return result, afPhase
+	}
+	piece, finish, pieceErr := s.scope.beginForwardPieceSource(ctx)
+	if pieceErr != nil {
+		return result, pieceErr
+	}
+	ctx = piece
+	defer func() {
+		err = finish(err)
+		if err != nil {
+			result = nil
+		}
+	}()
+
+	if e := s.scope.checkForwardSource(ctx, s.scope.owner.attempt); e != nil {
 		return nil, e
 	}
 	return s.source.applyOperation1(ctx, p)

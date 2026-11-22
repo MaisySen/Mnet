@@ -92,6 +92,13 @@ func newResidentEndpointAdmissionSource(ctx context.Context, ns *namespaceCustod
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
 	}
+	if ctx == nil {
+		return nil, afPhase
+	}
+	membershipLifetime := ctx
+	validation, cancelValidation := context.WithTimeout(ctx, endpointObservationPieceBudget)
+	defer cancelValidation()
+	ctx = validation
 	pid := parseSourceParentPID()
 	ticks, e := endpointEnvUint("MNO_ENDPOINT_PARENT_TICKS")
 	if e != nil || pid <= 1 || os.Getppid() != pid {
@@ -127,7 +134,7 @@ func newResidentEndpointAdmissionSource(ctx context.Context, ns *namespaceCustod
 	if !time.Now().Before(end) {
 		return nil, context.DeadlineExceeded
 	}
-	a := &residentEndpointAdmission{wire: w, ns: ns, ctx: ctx, parentPID: pid, parentTicks: ticks, start: start}
+	a := &residentEndpointAdmission{wire: w, ns: ns, ctx: membershipLifetime, parentPID: pid, parentTicks: ticks, start: start}
 	if e = a.checkMembershipSource(ctx, ns, start.binding()); e != nil {
 		return nil, e
 	}

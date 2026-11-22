@@ -86,14 +86,26 @@ func (o *originalHeldPacketResources) openDisableLeafSource(write bool) (result 
 // Source-only handoff. Controller owns lane; file mutex spans identity, capture,
 // one write attempt and independent AF+address+route readback. Called only through
 // the private adapter source interface; no generic Inventory conversion.
-func (s *operation1ResidentSource) disableFreshDownSource(ctx context.Context, o *originalHeldPacketResources) (*postDisableResult, error) {
+func (s *operation1ResidentSource) disableFreshDownSource(ctx context.Context, o *originalHeldPacketResources) (result *postDisableResult, err error) {
+	piece, finish, pieceErr := s.beginForwardPieceSource(ctx)
+	if pieceErr != nil {
+		return result, pieceErr
+	}
+	ctx = piece
+	defer func() {
+		err = finish(err)
+		if err != nil {
+			result = nil
+		}
+	}()
+
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
 	}
 	if s == nil || o == nil || s.owner == nil || o.owner != s.owner.tx || o.session != s.owner.adapter.session || o.namespace != s.ns || o.creation == nil || o.creation.fd == nil || s.disableLife == nil || !s.disableLife.current() {
 		return nil, afPhase
 	}
-	if e := s.check(ctx, s.owner.attempt); e != nil {
+	if e := s.checkForwardSource(ctx, s.owner.attempt); e != nil {
 		return nil, e
 	}
 	if s.owner.adapter == nil || !s.owner.adapter.authorized(ctx) || o.creation.fd != s.owner.attempt.custody {
@@ -121,7 +133,7 @@ func (s *operation1ResidentSource) disableFreshDownSource(ctx context.Context, o
 	}
 	d := ownedSourceDiagnostic{raw: raw, sys: sys, held: held, lineageUsable: o.ledger.matches(held.identity)}
 	check := func() error {
-		if e := s.check(ctx, s.owner.attempt); e != nil {
+		if e := s.checkForwardSource(ctx, s.owner.attempt); e != nil {
 			return e
 		}
 		after, e := o.verifyOriginalDeviceLockedSource(ctx)

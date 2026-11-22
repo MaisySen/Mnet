@@ -8,6 +8,21 @@ import (
 )
 
 func (s *operation1ScopedDiagnostic) applyOwnedPeerRoute(ctx context.Context, r *postUpResult) (result *postPeerRouteResult, err error) {
+	if s == nil || s.scope == nil {
+		return result, afPhase
+	}
+	piece, finish, pieceErr := s.scope.beginForwardPieceSource(ctx)
+	if pieceErr != nil {
+		return result, pieceErr
+	}
+	ctx = piece
+	defer func() {
+		err = finish(err)
+		if err != nil {
+			result = nil
+		}
+	}()
+
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
 	}
@@ -19,7 +34,7 @@ func (s *operation1ScopedDiagnostic) applyOwnedPeerRoute(ctx context.Context, r 
 	if scope.owner == nil || !scope.owner.adapter.authorized(ctx) || r != scope.owner.adapter.upped || o.owner != scope.owner.tx || o.session != scope.owner.adapter.session || o.namespace != scope.ns || o.ledger != r.ledger || o.creation == nil || o.creation.fd == nil || scope.owner.attempt == nil || o.creation.fd != scope.owner.attempt.custody {
 		return nil, afPhase
 	}
-	if e := scope.check(ctx, scope.owner.attempt); e != nil {
+	if e := scope.checkForwardSource(ctx, scope.owner.attempt); e != nil {
 		return nil, e
 	}
 	o.creation.fd.mu.Lock()
@@ -53,7 +68,7 @@ func (s *operation1ScopedDiagnostic) applyOwnedPeerRoute(ctx context.Context, r 
 		return nil, e
 	}
 	check := func() error {
-		if e := scope.check(ctx, scope.owner.attempt); e != nil {
+		if e := scope.checkForwardSource(ctx, scope.owner.attempt); e != nil {
 			return e
 		}
 		after, e := o.verifyOriginalDeviceLockedSource(ctx)

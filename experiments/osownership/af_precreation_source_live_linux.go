@@ -4,7 +4,19 @@ package osownership
 
 import "context"
 
-func (s *operation1ResidentSource) observePrecreation(ctx context.Context) (*precreationObservation, error) {
+func (s *operation1ResidentSource) observePrecreation(ctx context.Context) (result *precreationObservation, err error) {
+	piece, finish, pieceErr := s.beginForwardPieceSource(ctx)
+	if pieceErr != nil {
+		return result, pieceErr
+	}
+	ctx = piece
+	defer func() {
+		err = finish(err)
+		if err != nil {
+			result = nil
+		}
+	}()
+
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
 	}

@@ -16,7 +16,19 @@ type postcreateAFSourceDiagnostic struct {
 	policy        ownedTUNPolicyAssessment
 }
 
-func (s *operation1ResidentSource) observeCreatedOriginalAF(ctx context.Context, o *originalHeldPacketResources) (*postcreateAFSourceDiagnostic, error) {
+func (s *operation1ResidentSource) observeCreatedOriginalAF(ctx context.Context, o *originalHeldPacketResources) (result *postcreateAFSourceDiagnostic, err error) {
+	piece, finish, pieceErr := s.beginForwardPieceSource(ctx)
+	if pieceErr != nil {
+		return result, pieceErr
+	}
+	ctx = piece
+	defer func() {
+		err = finish(err)
+		if err != nil {
+			result = nil
+		}
+	}()
+
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
 	}
@@ -26,7 +38,7 @@ func (s *operation1ResidentSource) observeCreatedOriginalAF(ctx context.Context,
 	if s.afOwner != nil {
 		s.afOwner.last = nil
 	}
-	if e := s.check(ctx, s.owner.attempt); e != nil {
+	if e := s.checkForwardSource(ctx, s.owner.attempt); e != nil {
 		return nil, e
 	}
 	if o == nil || o.owner != s.owner.tx || o.session != s.owner.adapter.session || o.namespace != s.ns || o.creation == nil || o.creation.fd == nil || o.creation.fd != s.owner.attempt.custody || o.session.forwardStep != 1 || o.session.canonical == nil || o.session.canonical.TagConfirmed || o.session.pending != nil {
@@ -112,7 +124,7 @@ func (s *operation1ResidentSource) observeCreatedOriginalAF(ctx context.Context,
 		return nil, e
 	}
 	diagnostic.afPass = pass
-	if e = s.check(ctx, s.owner.attempt); e != nil {
+	if e = s.checkForwardSource(ctx, s.owner.attempt); e != nil {
 		return nil, e
 	}
 	good = true

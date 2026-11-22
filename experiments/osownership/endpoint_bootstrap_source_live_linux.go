@@ -93,16 +93,24 @@ func endpointResidentBootstrapSource(ctx context.Context) (ret error) {
 		if e != nil {
 			return e
 		}
-		raw, e := ReadStableInventory(operation, residentNetlink{ns: ns}, ns.checkCurrent)
+		var baseline *CapturedBaseline
+		initialPiece, finishInitial, e := authority.beginForwardPieceSource(operation)
 		if e != nil {
 			return e
 		}
-		sys, e := readPolicySysctlsSource(operation, ns, raw)
-		if e != nil {
+		initialErr := func() error {
+			raw, e := ReadStableInventory(initialPiece, residentNetlink{ns: ns}, ns.checkCurrent)
+			if e != nil {
+				return e
+			}
+			sys, e := readPolicySysctlsSource(initialPiece, ns, raw)
+			if e != nil {
+				return e
+			}
+			baseline, e = NewBaselineCandidate(parent, ns.identity, raw, sys)
 			return e
-		}
-		baseline, e := NewBaselineCandidate(parent, ns.identity, raw, sys)
-		if e != nil {
+		}()
+		if e = finishInitial(initialErr); e != nil {
 			return e
 		}
 		id := adapterIdentity{Namespace: ns.identity, TargetID: fmt.Sprint(ns.identity.Device, ":", ns.identity.Inode), SessionID: fmt.Sprint(start.Prepared.PID, ":", start.Prepared.StartTicks), AttemptID: "endpoint-v1-original"}
