@@ -17,6 +17,7 @@ import (
 // It produces actionable evidence even while final consumer reasoning and
 // authenticated peer-MTU binding remain incomplete. Those are not bool waivers.
 type sourceRuntimeEvidence struct {
+	xfrm                     *originalXfrmMetadataEvidence
 	observedMTU              uint32
 	admission                *residentEndpointAdmission
 	supplier                 *originalEndpointReactor
@@ -148,6 +149,10 @@ func (s *operation1ScopedDiagnostic) collectLocalEndpointSource(ctx context.Cont
 	if !features.observedNamesCompatible(names) {
 		return nil, packetFraming
 	}
+	xfrm, e := o.collectOriginalXfrmLockedSource(ctx, before.identity)
+	if e != nil {
+		return nil, e
+	}
 	after, e := o.verifyOriginalDeviceLockedSource(ctx)
 	if e != nil {
 		return nil, e
@@ -166,7 +171,7 @@ func (s *operation1ScopedDiagnostic) collectLocalEndpointSource(ctx context.Cont
 	if e = s.scope.check(ctx, c.attempt); e != nil {
 		return nil, e
 	}
-	return &sourceRuntimeEvidence{supplier: s.scope.reactor, observedMTU: link.MTU, offload: history, resources: o, routed: r, before: before, after: after, diagnostic: d, qdisc: cloneUpQdisc(q), names: names, features: features, policy: policy, consumer: consumers, framing: framing}, nil
+	return &sourceRuntimeEvidence{xfrm: xfrm, supplier: s.scope.reactor, observedMTU: link.MTU, offload: history, resources: o, routed: r, before: before, after: after, diagnostic: d, qdisc: cloneUpQdisc(q), names: names, features: features, policy: policy, consumer: consumers, framing: framing}, nil
 }
 func (e *sourceRuntimeEvidence) validateCompletion(ctx context.Context, t *Transaction) error {
 	if e == nil || ctx == nil || ctx.Err() != nil || e.resources == nil || e.routed == nil || e.before == nil || e.after == nil {
@@ -180,6 +185,9 @@ func (e *sourceRuntimeEvidence) validateCompletion(ctx context.Context, t *Trans
 	}
 	if e.offload == nil || e.offload != o.creation.attempt.offloadHistory || !o.creation.attempt.offloadHistory.matches(o.creation.attempt, o.creation.fd, o.namespace.identity, s.canonical.Link.Name) {
 		return errOriginalOffloadHistory
+	}
+	if !e.xfrm.matches(o, e.after.identity) {
+		return errXfrmEnvironment
 	}
 	if e.framing != (tunNestedFraming{typ: 1}) {
 		return packetFraming

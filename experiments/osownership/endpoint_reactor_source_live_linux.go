@@ -147,7 +147,7 @@ func (r *originalEndpointReactor) originalIOSource(ctx context.Context, in []byt
 				callErr = ErrConflict
 				return
 			}
-			if callErr = r.checkInstalledOperandsSource(ctx); callErr != nil {
+			if callErr = r.checkInstalledOperandsSource(ctx, int(fd)); callErr != nil {
 				return
 			}
 			if write {
@@ -155,7 +155,7 @@ func (r *originalEndpointReactor) originalIOSource(ctx context.Context, in []byt
 			} else {
 				n, callErr = unix.Read(int(fd), buffer)
 			}
-			if checked := r.checkInstalledOperandsSource(ctx); checked != nil {
+			if checked := r.checkInstalledOperandsSource(ctx, int(fd)); checked != nil {
 				callErr = errors.Join(callErr, checked)
 			}
 			after, err := o.inspectOriginalControlSource(ctx, int(fd))

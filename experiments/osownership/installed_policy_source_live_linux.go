@@ -123,12 +123,14 @@ func (e *sourceRuntimeEvidence) installedPolicyPassSource(ctx context.Context) (
 // mark/pkt_type, reverse FIB, route tag/classification and current XFRM state.
 // No candidate below is semantic acceptance, including NOARP/IPv6 categories.
 func (p *installedEndpointPolicyPass) v4Rule(index int) (string, bool) {
-	if p == nil || p.evidence == nil || index < 0 || index >= len(p.v4) {
+	if p == nil || p.evidence == nil || p.evidence.resources == nil || p.evidence.after == nil || index < 0 || index >= len(p.v4) {
 		return "invalid-source-pass", false
 	}
 	switch index {
 	case 2, 12, 17, 18, 20, 21, 24, 30:
 		return "arp.c: arp_send_dst/arp_rcv NOARP gates; same current original NOARP link and direct-route graph; no claim of absent neighbor bookkeeping", p.link.Flags&0x80 != 0
+	case 14, 15:
+		return "original-bound non-key XFRM metadata: two matching zero SAD/six SPD counts and IN/FWD/OUT ACCEPT observations; consumer/profile/lifetime relevance is still not a semantic witness", p.evidence.xfrm.matches(p.evidence.resources, p.evidence.after.identity)
 	case 32:
 		return "arp.c arp_evict_nocarrier is carrier-down neighbor eviction, NOT bypassed by an ARP receive exemption; original carrier present per I/O, cleanup occurs only after lifetime revoke", p.link.Flags == 0x110d1
 	case 10:

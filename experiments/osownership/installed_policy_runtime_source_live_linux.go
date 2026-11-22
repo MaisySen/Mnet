@@ -8,13 +8,14 @@ import "context"
 // before and after each packet syscall. This is NOT cached authority or a
 // periodic poll. It compares common original link/AF/graph prerequisites. It
 // does not prove their full kernel consumer/lifecycle/emission relevance, a
-// supported running-kernel semantic profile or current ALL/hooks/XFRM state.
+// supported running-kernel semantic profile or current ALL/hooks/classifiers.
+// XFRM metadata has its own fresh original-bound evidence check below.
 // Those missing named operands still refuse completion. No throughput result.
-func (r *originalEndpointReactor) checkInstalledOperandsSource(ctx context.Context) error {
+func (r *originalEndpointReactor) checkInstalledOperandsSource(ctx context.Context, fd int) error {
 	if !kernelExecutionReleased {
 		return ErrExecutorUnreleased
 	}
-	if r == nil || r.evidence == nil || r.evidence.resources == nil || r.evidence.routed == nil || r.owner == nil || r.owner.adapter == nil || !r.owner.adapter.authorized(ctx) {
+	if r == nil || r.receipt == nil || r.evidence == nil || r.evidence.resources == nil || r.evidence.routed == nil || r.owner == nil || r.owner.adapter == nil || !r.owner.adapter.authorized(ctx) {
 		return afPhase
 	}
 	o := r.evidence.resources
@@ -30,6 +31,13 @@ func (r *originalEndpointReactor) checkInstalledOperandsSource(ctx context.Conte
 	}
 	if !exactSetupPostMatches(raw, r.evidence.diagnostic.raw) {
 		return ErrConflict
+	}
+	fresh, e := o.collectOriginalXfrmControlSource(ctx, fd, r.receipt.identity)
+	if e != nil {
+		return e
+	}
+	if !r.evidence.xfrm.matches(o, r.receipt.identity) || !fresh.matches(o, r.receipt.identity) || fresh.data != r.evidence.xfrm.data {
+		return errXfrmEnvironment
 	}
 	return ctx.Err()
 }

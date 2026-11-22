@@ -26,7 +26,7 @@ func endpointPolicyMissingEvidence(spec endpointPolicyConsumerSpec) string {
 		case 13:
 			return base + "full arp_fwd_proxy call graph including deferred/proxy paths, actual NOARP ancestry and medium comparison relevance"
 		case 14, 15:
-			return base + "current read-only XFRM default policy and policy/SA absence evidence; use non-key counts, not secret-bearing SA dumps"
+			return base + "source-bound non-key XFRM counts/defaults and their complete consumer/lifetime relevance must be verified; decoder/collector source is not current execution or supported semantics"
 		case 16, 26, 27:
 			return base + "current IGMP/multicast state, timers and time units or rigorous construction proof; byte rejection does not suppress kernel generation"
 		case 22:
