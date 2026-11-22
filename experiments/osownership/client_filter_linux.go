@@ -37,7 +37,9 @@ func evidenceClientFilter(pid int) ([]unix.SockFilter, error) {
 
 const clientSecurebits = 1 | 2 | 4 | 8 | 32
 
-// Version upgrades require fresh source+assembly characterization and review.
+// Exact Go1.26.11 source+amd64 assembly retains all three full-file oracle
+// hashes and unchanged clone mask. No version range or syscall widening.
+// Future upgrades require renewed characterization and review.
 func evidenceRuntimeSupported(goos, arch, version string) bool {
-	return goos == "linux" && arch == "amd64" && version == "go1.26.6"
+	return goos == "linux" && arch == "amd64" && version == "go1.26.11"
 }

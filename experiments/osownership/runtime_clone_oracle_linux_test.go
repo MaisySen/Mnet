@@ -82,10 +82,10 @@ func TestRuntimeVersionPinDecisive(t *testing.T) {
 	if !strings.Contains(sourceFunction(t, "client_filter_linux.go", "evidenceClientFilter"), "!evidenceRuntimeSupported(runtime.GOOS, runtime.GOARCH, runtime.Version())") {
 		t.Fatal("runtime pin not applied")
 	}
-	if !evidenceRuntimeSupported("linux", "amd64", "go1.26.6") {
+	if !evidenceRuntimeSupported("linux", "amd64", "go1.26.11") {
 		t.Fatal("pin rejected")
 	}
-	for _, v := range [][3]string{{"linux", "amd64", "go1.26.7"}, {"linux", "amd64", "go1.26.6-custom"}, {"linux", "arm64", "go1.26.6"}, {"darwin", "amd64", "go1.26.6"}} {
+	for _, v := range [][3]string{{"linux", "amd64", "go1.26.6"}, {"linux", "amd64", "go1.26.12"}, {"linux", "amd64", "go1.26.11-custom"}, {"linux", "arm64", "go1.26.11"}, {"darwin", "amd64", "go1.26.11"}} {
 		if evidenceRuntimeSupported(v[0], v[1], v[2]) {
 			t.Fatal("unreviewed runtime allowed", v)
 		}
