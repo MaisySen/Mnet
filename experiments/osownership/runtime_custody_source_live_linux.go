@@ -17,6 +17,7 @@ import (
 // It produces actionable evidence even while final consumer reasoning and
 // authenticated peer-MTU binding remain incomplete. Those are not bool waivers.
 type sourceRuntimeEvidence struct {
+	observedMTU              uint32
 	peer                     *daemon.DevelopmentEndpointPeer
 	selfProfile, peerProfile netmap.EndpointProfile
 	offload                  *originalOffloadHistory
@@ -155,7 +156,7 @@ func (s *operation1ScopedDiagnostic) collectLocalEndpointSource(ctx context.Cont
 	if e = s.scope.check(ctx, c.attempt); e != nil {
 		return nil, e
 	}
-	return &sourceRuntimeEvidence{offload: history, resources: o, routed: r, before: before, after: after, diagnostic: d, qdisc: cloneUpQdisc(q), names: names, features: features, policy: policy, consumer: consumers, framing: framing}, nil
+	return &sourceRuntimeEvidence{observedMTU: link.MTU, offload: history, resources: o, routed: r, before: before, after: after, diagnostic: d, qdisc: cloneUpQdisc(q), names: names, features: features, policy: policy, consumer: consumers, framing: framing}, nil
 }
 func (e *sourceRuntimeEvidence) validateCompletion(ctx context.Context, t *Transaction) error {
 	if e == nil || ctx == nil || ctx.Err() != nil || e.resources == nil || e.routed == nil || e.before == nil || e.after == nil {

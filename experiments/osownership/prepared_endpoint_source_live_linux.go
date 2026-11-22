@@ -69,11 +69,11 @@ func (p *preparedEndpointObservation) descriptorSource(ctx context.Context) (pre
 		return zero, err
 	}
 	b := c.tx.plan.Binding
-	if now.resources != o || now.identity != p.local.after.identity || now.identity != p.local.routed.identity || p.local.offload != o.creation.attempt.offloadHistory || !p.local.offload.matches(o.creation.attempt, o.creation.fd, o.namespace.identity, b.Name) || p.local.framing != (tunNestedFraming{typ: 1}) || !p.local.features.observedNamesCompatible(p.local.names) {
+	if now.resources != o || now.identity != p.local.after.identity || now.identity != p.local.routed.identity || p.local.offload != o.creation.attempt.offloadHistory || !p.local.offload.matches(o.creation.attempt, o.creation.fd, o.namespace.identity, b.Name) || p.local.observedMTU != MTU || p.local.framing != (tunNestedFraming{typ: 1}) || !p.local.features.observedNamesCompatible(p.local.names) {
 		return zero, afPhase
 	}
 	if err := c.tx.live(ctx); err != nil {
 		return zero, err
 	}
-	return preparedEndpointDescriptor{Namespace: o.namespace.identity, Generation: now.identity.generation, MTU: MTU, OwnIP: b.OwnIP, PeerIP: b.PeerIP, OwnKey: b.OwnKey, PeerKey: b.PeerKey, SelfUntilMS: b.SelfExpiry.UnixMilli(), PeerUntilMS: b.PeerExpiry.UnixMilli()}, nil
+	return preparedEndpointDescriptor{Namespace: o.namespace.identity, Generation: now.identity.generation, MTU: int(p.local.observedMTU), OwnIP: b.OwnIP, PeerIP: b.PeerIP, OwnKey: b.OwnKey, PeerKey: b.PeerKey, SelfUntilMS: b.SelfExpiry.UnixMilli(), PeerUntilMS: b.PeerExpiry.UnixMilli()}, nil
 }
