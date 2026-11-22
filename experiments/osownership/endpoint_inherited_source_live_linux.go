@@ -25,8 +25,17 @@ type residentEndpointAdmission struct {
 
 func (*residentEndpointAdmission) endpointInheritedChannelOwner() {}
 func (a *residentEndpointAdmission) checkMembershipSource(ctx context.Context, ns *namespaceCustody, b Binding) error {
-	if a == nil || a.wire == nil || a.ctx == nil || a.ctx.Err() != nil || ctx == nil || ctx.Err() != nil || a.wire.ended != nil || a.wire.inputStopped || a.ns != ns || os.Getppid() != a.parentPID || a.start.binding() != b {
+	if ctx != nil && ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if a == nil || a.wire == nil || a.ctx == nil || ctx == nil || a.wire.ended != nil || a.ns != ns || os.Getppid() != a.parentPID || a.start.binding() != b {
 		return ErrConflict
+	}
+	if a.ctx.Err() != nil {
+		return a.ctx.Err()
+	}
+	if a.wire.inputStopped {
+		return errEndpointInputClosed
 	}
 	if e := ns.checkCurrent(); e != nil {
 		return e
@@ -40,8 +49,11 @@ func (a *residentEndpointAdmission) checkMembershipSource(ctx context.Context, n
 		if e != nil {
 			return e
 		}
-		if p[0].Revents&(unix.POLLHUP|unix.POLLERR|unix.POLLNVAL) != 0 {
-			return errEndpointStopped
+		if p[0].Revents&(unix.POLLERR|unix.POLLNVAL) != 0 {
+			return ErrConflict
+		}
+		if p[0].Revents&unix.POLLHUP != 0 {
+			return errEndpointInputClosed
 		}
 		return nil
 	})
@@ -136,17 +148,16 @@ func withInheritedEndpointResidentSource(ctx context.Context, ns *namespaceCusto
 		return e
 	}
 	source := &operation1ResidentSource{channel: a, disableLife: &disableResidentLifetime{}, owner: c, ns: ns, baseline: c.adapter.session.baseline, active: true}
+	c.endpointCleanup = &endpointOriginalCleanupResult{owner: c}
 	c.lane = source
 	c.adapter.creation = source
 	c.absence = source
 	defer func() {
 		source.disableLife.revoke()
 		// Exact still-held namespace/controller/original ownership survives operation
-		// cancellation. This new context permits only original close+absence, not
-		// forward I/O or renewed membership, and source.active ends after cleanup.
-		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), endpointCleanupBudget)
-		stopErr := c.stop(cleanup)
-		cancel()
+		// cancellation. The first controller stop creates its sole cleanup interval, not
+		// forward I/O or renewed membership. This defer cannot renew it.
+		stopErr := source.cleanupEndpointSource(ctx)
 		err = errors.Join(err, stopErr)
 		c.mu.Lock()
 		source.active = false

@@ -8,26 +8,26 @@ import (
 	"errors"
 	"fmt"
 	"golang.org/x/sys/unix"
-	"time"
 )
 
 // Only this private source producer binds metadata DATA to an original object,
 // ledger generation and same held namespace/TID/Control interval. It is not a
 // semantic policy witness. No tests construct it or execute this collector.
 type originalXfrmMetadataEvidence struct {
+	boundary  *residentEndpointAdmission
 	resources *originalHeldPacketResources
 	identity  heldPacketIdentity
 	data      xfrmMetadataData
 }
 
-func (e *originalXfrmMetadataEvidence) matches(o *originalHeldPacketResources, id heldPacketIdentity) bool {
-	return e != nil && o != nil && o.ledger != nil && e.resources == o && e.identity == id && o.ledger.matches(id) && e.data.emptyAcceptDefaults()
+func (e *originalXfrmMetadataEvidence) matches(o *originalHeldPacketResources, id heldPacketIdentity, a *residentEndpointAdmission) bool {
+	return e != nil && o != nil && o.ledger != nil && e.resources == o && e.boundary == a && e.identity == id && o.ledger.matches(id) && e.data.emptyAcceptDefaults()
 }
 
 // Caller already holds the original FD mutex. Control retains its reference
 // across the complete observation, with independent original identity on both
 // sides. No descriptor/name-based replacement or caller snapshot is accepted.
-func (o *originalHeldPacketResources) collectOriginalXfrmLockedSource(ctx context.Context, id heldPacketIdentity) (out *originalXfrmMetadataEvidence, ret error) {
+func (o *originalHeldPacketResources) collectOriginalXfrmLockedSource(ctx context.Context, id heldPacketIdentity, a *residentEndpointAdmission) (out *originalXfrmMetadataEvidence, ret error) {
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
 	}
@@ -39,7 +39,7 @@ func (o *originalHeldPacketResources) collectOriginalXfrmLockedSource(ctx contex
 		return nil, e
 	}
 	var call error
-	ret = raw.Control(func(fd uintptr) { out, call = o.collectOriginalXfrmControlSource(ctx, int(fd), id) })
+	ret = raw.Control(func(fd uintptr) { out, call = o.collectOriginalXfrmControlSource(ctx, int(fd), id, a) })
 	ret = errors.Join(ret, call)
 	if ret != nil {
 		return nil, ret
@@ -52,7 +52,7 @@ func (o *originalHeldPacketResources) collectOriginalXfrmLockedSource(ctx contex
 
 // Actual I/O calls this inside its already retained original Control interval;
 // no nested Control, FD handoff or mutex reacquisition is needed.
-func (o *originalHeldPacketResources) collectOriginalXfrmControlSource(ctx context.Context, fd int, id heldPacketIdentity) (*originalXfrmMetadataEvidence, error) {
+func (o *originalHeldPacketResources) collectOriginalXfrmControlSource(ctx context.Context, fd int, id heldPacketIdentity, a *residentEndpointAdmission) (*originalXfrmMetadataEvidence, error) {
 	if !kernelExecutionReleased {
 		return nil, ErrExecutorUnreleased
 	}
@@ -70,7 +70,7 @@ func (o *originalHeldPacketResources) collectOriginalXfrmControlSource(ctx conte
 	if e != nil || flags&unix.O_NONBLOCK == 0 {
 		return nil, ErrConflict
 	}
-	data, call := collectXfrmMetadataSource(ctx, o.namespace)
+	data, call := collectXfrmMetadataSource(ctx, o.namespace, a)
 	after, e := o.inspectOriginalControlSource(ctx, fd)
 	if e != nil || after.identity != before.identity {
 		call = errors.Join(call, ErrConflict)
@@ -86,24 +86,37 @@ func (o *originalHeldPacketResources) collectOriginalXfrmControlSource(ctx conte
 	if call != nil {
 		return nil, call
 	}
-	return &originalXfrmMetadataEvidence{resources: o, identity: id, data: data}, nil
+	return &originalXfrmMetadataEvidence{boundary: a, resources: o, identity: id, data: data}, nil
 }
 
 // Fresh unicast-only NETLINK_XFRM socket for one six-query collection. No
 // multicast membership, SA/policy body, SET, mutation, ACK or dump operation.
-func collectXfrmMetadataSource(ctx context.Context, ns *namespaceCustody) (out xfrmMetadataData, ret error) {
+func collectXfrmMetadataSource(ctx context.Context, ns *namespaceCustody, a *residentEndpointAdmission) (out xfrmMetadataData, ret error) {
 	if !kernelExecutionReleased {
 		return out, ErrExecutorUnreleased
 	}
 	if ctx == nil || ctx.Err() != nil || ns == nil {
 		return out, afPhase
 	}
-	// Bound all six GETs together, not six independent250ms waits. The
+	// Bound all six GETs together to one cooperative observation piece. The
 	// original caller deadline can only shorten this observation. This does
 	// not assert hard real-time completion of kernel/proc/ioctl operations.
-	boundedObservation, cancelObservation := context.WithTimeout(ctx, 250*time.Millisecond)
+	boundedObservation, cancelObservation := context.WithTimeout(ctx, endpointObservationPieceBudget)
 	defer cancelObservation()
 	ctx = boundedObservation
+	// Same owner/TID, no read, goroutine or cached cancellation flag.
+	boundary := func() error {
+		if e := ctx.Err(); e != nil {
+			return e
+		}
+		if a != nil {
+			return a.checkMembershipSource(ctx, ns, a.start.binding())
+		}
+		return ns.checkCurrent()
+	}
+	if e := boundary(); e != nil {
+		return out, e
+	}
 	if e := ns.checkCurrent(); e != nil {
 		return out, e
 	}
@@ -136,10 +149,13 @@ func collectXfrmMetadataSource(ctx context.Context, ns *namespaceCustody) (out x
 		if x != nil {
 			return zero, x
 		}
+		if x = boundary(); x != nil {
+			return zero, x
+		}
 		if x = ns.checkCurrent(); x != nil {
 			return zero, x
 		}
-		bounded, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
+		bounded, cancel := context.WithTimeout(ctx, endpointObservationPieceBudget)
 		defer cancel()
 		if x = bounded.Err(); x != nil {
 			return zero, x
@@ -149,6 +165,9 @@ func collectXfrmMetadataSource(ctx context.Context, ns *namespaceCustody) (out x
 		}
 		for {
 			if x = bounded.Err(); x != nil {
+				return zero, x
+			}
+			if x = boundary(); x != nil {
 				return zero, x
 			}
 			if x = ns.checkCurrent(); x != nil {
@@ -184,6 +203,9 @@ func collectXfrmMetadataSource(ctx context.Context, ns *namespaceCustody) (out x
 				return zero, errXfrmMetadata
 			}
 			if x = bounded.Err(); x != nil {
+				return zero, x
+			}
+			if x = boundary(); x != nil {
 				return zero, x
 			}
 			if x = ns.checkCurrent(); x != nil {
@@ -241,6 +263,9 @@ func collectXfrmMetadataSource(ctx context.Context, ns *namespaceCustody) (out x
 		return out, e
 	}
 	if e = ns.checkCurrent(); e != nil {
+		return out, e
+	}
+	if e = boundary(); e != nil {
 		return out, e
 	}
 	return first, nil

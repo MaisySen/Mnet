@@ -297,11 +297,9 @@ func endpointResidentBootstrapSource(ctx context.Context) (ret error) {
 		})
 		if owned != nil {
 			state := owned.state()
-			stats.CleanupVerified = state.Stopped && !state.Ready && !state.PendingCleanup && owned.tx.fdCloseError == nil
+			stats.CleanupVerified = state.Stopped && !state.Ready && !state.PendingCleanup && owned.tx.fdCloseError == nil && owned.endpointCleanup != nil && owned.endpointCleanup.finished && owned.endpointCleanup.err == nil
 		}
-		if !stats.CleanupVerified {
-			stats.Reason = endpointReasonCleanup
-		}
+		stats.Reason = endpointFinalReasonData(runErr, stats.Reason, stats.CleanupVerified)
 		// Best-effort bounded final counters. No payload/error text/native data.
 		// Missing acknowledgement is never reported as verified remote cleanup.
 		final, finish := context.WithTimeout(context.WithoutCancel(ctx), endpointFinalStatsBudget)

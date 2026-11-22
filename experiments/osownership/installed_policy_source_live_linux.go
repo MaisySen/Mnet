@@ -130,7 +130,7 @@ func (p *installedEndpointPolicyPass) v4Rule(index int) (string, bool) {
 	case 2, 12, 17, 18, 20, 21, 24, 30:
 		return "arp.c: arp_send_dst/arp_rcv NOARP gates; same current original NOARP link and direct-route graph; no claim of absent neighbor bookkeeping", p.link.Flags&0x80 != 0
 	case 14, 15:
-		return "original-bound non-key XFRM metadata: two matching zero SAD/six SPD counts and IN/FWD/OUT ACCEPT observations; consumer/profile/lifetime relevance is still not a semantic witness", p.evidence.xfrm.matches(p.evidence.resources, p.evidence.after.identity)
+		return "original-bound non-key XFRM metadata: two matching zero SAD/six SPD counts and IN/FWD/OUT ACCEPT observations; consumer/profile/lifetime relevance is still not a semantic witness", p.evidence.xfrm.matches(p.evidence.resources, p.evidence.after.identity, p.evidence.admission)
 	case 32:
 		return "arp.c arp_evict_nocarrier is carrier-down neighbor eviction, NOT bypassed by an ARP receive exemption; original carrier present per I/O, cleanup occurs only after lifetime revoke", p.link.Flags == 0x110d1
 	case 10:

@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"golang.org/x/sys/unix"
-	"io"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -93,8 +92,11 @@ func newEndpointPipeWireSource(in, out *os.File, inbound byte) (*endpointPipeWir
 	return &endpointPipeWire{in: in, out: out, readID: a, writeID: b, inbound: inbound, generation: 1}, nil
 }
 func (w *endpointPipeWire) controlSource(f *os.File, id endpointPipeIdentity, fn func(int) error) error {
-	if w == nil || w.ended != nil {
-		return errEndpointStopped
+	if w == nil {
+		return ErrConflict
+	}
+	if w.ended != nil {
+		return w.ended
 	}
 	raw, e := f.SyscallConn()
 	if e != nil {
@@ -132,8 +134,14 @@ func (w *endpointPipeWire) fail(e error) error {
 	return errors.Join(e, w.closeErr)
 }
 func (w *endpointPipeWire) readSource() (endpointFrame, bool, error) {
-	if w == nil || w.ended != nil || w.inputStopped {
-		return endpointFrame{}, false, errEndpointStopped
+	if w == nil {
+		return endpointFrame{}, false, ErrConflict
+	}
+	if w.ended != nil {
+		return endpointFrame{}, false, w.ended
+	}
+	if w.inputStopped {
+		return endpointFrame{}, false, errEndpointInputClosed
 	}
 	if len(w.ready) == 0 {
 		var buf [512]byte
@@ -144,10 +152,17 @@ func (w *endpointPipeWire) readSource() (endpointFrame, bool, error) {
 		if n <= 0 && endpointOnlyErrno(e, unix.EAGAIN, unix.EINTR) {
 			return endpointFrame{}, false, nil
 		}
-		if e != nil || n <= 0 {
-			if e == nil {
-				e = errors.Join(io.EOF, w.decoder.eof())
+		if e == nil && n == 0 {
+			e = w.decoder.eof()
+			if errors.Is(e, errEndpointInputClosed) {
+				// Clean input EOF revokes forward work, but keep output open for
+				// bounded STOPPED/cleanup reporting. It is not a decoded STOP.
+				w.inputStopped = true
+				return endpointFrame{}, false, e
 			}
+			return endpointFrame{}, false, w.fail(e)
+		}
+		if e != nil || n < 0 {
 			return endpointFrame{}, false, w.fail(e)
 		}
 		frames, e := w.decoder.feed(buf[:n])
@@ -188,8 +203,11 @@ func endpointOnlyErrno(e error, allowed ...error) bool {
 	return false
 }
 func (w *endpointPipeWire) queueRawSource(raw []byte) error {
-	if w == nil || w.ended != nil {
-		return errEndpointStopped
+	if w == nil {
+		return ErrConflict
+	}
+	if w.ended != nil {
+		return w.ended
 	}
 	if w.pending != nil {
 		return errEndpointBackpressure
@@ -212,8 +230,11 @@ func (w *endpointPipeWire) queueSource(kind byte, p []byte) error {
 	return w.queueRawSource(raw)
 }
 func (w *endpointPipeWire) flushSource() (bool, error) {
-	if w == nil || w.ended != nil {
-		return false, errEndpointStopped
+	if w == nil {
+		return false, ErrConflict
+	}
+	if w.ended != nil {
+		return false, w.ended
 	}
 	if w.pending == nil {
 		return false, nil
@@ -263,12 +284,21 @@ func (w *endpointPipeWire) waitSource(ctx context.Context, output bool) error {
 		if event == unix.POLLIN && p[0].Revents&unix.POLLIN != 0 {
 			return nil
 		}
-		if p[0].Revents&(unix.POLLERR|unix.POLLHUP|unix.POLLNVAL) != 0 {
-			return io.EOF
+		if p[0].Revents&(unix.POLLERR|unix.POLLNVAL) != 0 {
+			return ErrConflict
+		}
+		if p[0].Revents&unix.POLLHUP != 0 {
+			if !output {
+				return errEndpointInputClosed
+			}
+			return ErrConflict
 		}
 		return nil
 	})
 	if e != nil {
+		if errors.Is(e, errEndpointInputClosed) {
+			return e
+		}
 		return w.fail(e)
 	}
 	return ctx.Err()
@@ -284,6 +314,6 @@ func (w *endpointPipeWire) closeSource() error {
 	if w == nil {
 		return nil
 	}
-	w.fail(errEndpointStopped)
+	w.fail(errEndpointInputClosed)
 	return w.closeErr
 }

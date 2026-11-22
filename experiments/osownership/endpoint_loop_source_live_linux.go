@@ -24,7 +24,7 @@ func (l *endpointOriginalLane) checkStop() error {
 	if e := l.inbox.halted(); e != nil {
 		return e
 	}
-	return l.ctx.Err()
+	return l.reactor.checkParentBoundarySource(l.ctx)
 }
 func (l *endpointOriginalLane) drainOne() error {
 	if e := l.checkStop(); e != nil {
@@ -46,7 +46,5 @@ func (l *endpointOriginalLane) stopOwned() error {
 	if l == nil || l.reactor == nil || l.cleanup == nil {
 		return afPhase
 	}
-	bounded, cancel := context.WithTimeout(l.cleanup, endpointCleanupBudget)
-	defer cancel()
-	return l.reactor.stopSource(bounded)
+	return l.reactor.stopSource(l.cleanup)
 }

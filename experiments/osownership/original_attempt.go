@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"reflect"
-	"time"
 )
 
 // Controller publishes this before opening anything. Every post-open failure
@@ -120,7 +119,63 @@ type originalAbsenceSource interface {
 	observeOriginalAbsence(context.Context, *originalAttempt) (*originalAbsenceEvidence, error)
 }
 
-func (c *operation1Controller) stopOwnedLocked(ctx context.Context) error {
+func (c *operation1Controller) stopOwnedLocked(ctx context.Context) (ret error) {
+	completed := false
+	if c == nil || c.tx == nil {
+		return ErrConflict
+	}
+	if record := c.endpointCleanup; record != nil {
+		if record.owner != c {
+			return errors.Join(errAbsenceUnverified, ErrConflict)
+		}
+		if record.started {
+			if record.attempt != c.attempt || !record.finished {
+				return errors.Join(errAbsenceUnverified, ErrConflict)
+			}
+			return record.err
+		}
+		// Claim before close, PendingCleanup changes, sequence increment or ticket.
+		record.started = true
+		record.attempt = c.attempt
+		record.err = errAbsenceUnverified
+		var initialSequence uint64
+		if c.attempt != nil {
+			initialSequence = c.attempt.absenceSequence
+		}
+		defer func() {
+			if completed {
+				record.err = ret
+			} else {
+				record.err = errors.Join(errAbsenceUnverified, ErrConflict)
+			}
+			record.pendingCleanup = c.tx.PendingCleanup
+			record.closeErr = c.tx.fdCloseError
+			if c.attempt != nil {
+				record.absenceConfirmed = c.attempt.absenceConfirmed
+				record.absenceAttempted = c.attempt.absenceSequence != initialSequence
+			}
+			record.finished = completed
+		}()
+		if ctx != nil {
+			// First-entry cleanup-only interval includes original close and absence.
+			// Operation cancellation never skips close. Later calls, including the
+			// defer, return the result without another deadline or observation.
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), endpointCleanupBudget)
+			record.deadline, _ = ctx.Deadline()
+			defer cancel()
+		}
+		// Nil ctx still closes the original, records not-observed/unverified and
+		// is final. An expiry/refusal within the single interval is also final.
+	}
+
+	ret = c.stopOwnedOnceLocked(ctx)
+	completed = true
+	return ret
+}
+
+// Only stopOwnedLocked calls this body, after the endpoint memo was claimed.
+func (c *operation1Controller) stopOwnedOnceLocked(ctx context.Context) error {
 	// Revoke complete route/UP/address/disable ancestry before close/absence.
 	if c != nil && c.adapter != nil && c.adapter.routed != nil {
 		c.adapter.routed.lifetime.revoke()
@@ -168,7 +223,7 @@ func (c *operation1Controller) stopOwnedLocked(ctx context.Context) error {
 	if attempt.absenceSequence == ^uint64(0) {
 		return errors.Join(closeErr, ErrConflict)
 	}
-	bounded, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	bounded, cancel := context.WithTimeout(ctx, endpointCleanupBudget)
 	defer cancel()
 	ctx = bounded
 	attempt.absenceSequence++

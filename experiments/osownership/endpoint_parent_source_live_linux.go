@@ -14,7 +14,7 @@ import (
 
 // Exclusive parent driver lane. Native session stays here, never in child argv,
 // shared memory, an exported descriptor or a serialized authority constructor.
-type endpointParentCounts struct{ ControlRead, ControlWritten, AuthorityRevokes, FramingErrors, Stops, MissingStats, DatagramsDropped, DatagramsToPeer, DatagramsToChild uint64 }
+type endpointParentCounts struct{ ControlRead, ControlWritten, AuthorityRevokes, FramingErrors, Stops, StopFramesFlushed, StopFramesDecoded, StopHalfCloseAttempts, MissingStats, DatagramsDropped, DatagramsToPeer, DatagramsToChild uint64 }
 type endpointParentSource struct {
 	child                    *residentChild
 	wire                     *endpointPipeWire
@@ -30,6 +30,7 @@ type endpointParentSource struct {
 	admission                *endpointAdmissionBody
 	counts                   endpointParentCounts
 	lastStats                *endpointStatsBody
+	lastStatsKind            byte
 	stopResult               *endpointParentStopResult
 	cancel                   context.CancelFunc
 	stopNative, stopLifetime func() bool
@@ -215,6 +216,10 @@ func (p *endpointParentSource) preparedSource(ctx context.Context) (endpointPrep
 		if f.kind == endpointStopped || f.kind == endpointStats {
 			if stats, e := decodeEndpointStats(f.payload); e == nil {
 				p.lastStats = &stats
+				p.lastStatsKind = f.kind
+				if endpointStopDecodedData(f.kind, stats) {
+					endpointCount(&p.counts.StopFramesDecoded)
+				}
 				endpointCount(&p.counts.ControlRead)
 			}
 			return zero, ownedAFPolicyIncomplete
@@ -346,24 +351,34 @@ func (p *endpointParentSource) stopSource(ctx context.Context) (ret error) {
 		// Only an atomic, still-unwritten frame can be discarded. Ambiguous partial
 		// transport writes already closed this wire and cannot enter this branch.
 		p.wire.pending = nil
+		// Normal ordering: one complete atomic STOP, then prompt half-close.
+		// A blocked send gets only its own cooperative window. If it cannot
+		// flush, discard only that unwritten atomic frame and revoke by HUP;
+		// this is not evidence that a STOP was decoded.
+		sendCtx, sendDone := context.WithTimeout(cleanup, endpointStopFlushBudget)
 		if !p.wire.writeClosed.Load() {
 			if e := p.wire.queueSource(endpointStop, endpointStopPayload(endpointReasonRequested)); e == nil {
-				for p.wire.pending != nil && cleanup.Err() == nil {
+				for p.wire.pending != nil && sendCtx.Err() == nil {
 					ok, e := p.wire.flushSource()
 					if e != nil {
 						break
 					}
 					if ok {
 						endpointCount(&p.counts.ControlWritten)
-					} else {
-						if e = p.wire.waitSource(cleanup, true); e != nil {
-							break
-						}
+						endpointCount(&p.counts.StopFramesFlushed)
+					} else if e = p.wire.waitSource(sendCtx, true); e != nil {
+						break
 					}
 				}
 			}
 		}
-		for p.wire.pending == nil && p.wire.ended == nil && p.lastStats == nil && cleanup.Err() == nil {
+		sendDone()
+		// pending is either the complete, never-written atomic frame, or nil.
+		// Any ambiguous partial write already failed/closed this wire.
+		p.wire.pending = nil
+		result = errors.Join(result, p.wire.closeWriteSource())
+		endpointCount(&p.counts.StopHalfCloseAttempts)
+		for p.wire.pending == nil && p.wire.ended == nil && (p.lastStats == nil || p.lastStatsKind != endpointStopped) && cleanup.Err() == nil {
 			f, ok, e := p.wire.readSource()
 			if e != nil {
 				break
@@ -390,8 +405,15 @@ func (p *endpointParentSource) stopSource(ctx context.Context) (ret error) {
 					break
 				}
 				p.lastStats = &stats
+				p.lastStatsKind = f.kind
+				if endpointStopDecodedData(f.kind, stats) {
+					endpointCount(&p.counts.StopFramesDecoded)
+				}
 				endpointCount(&p.counts.ControlRead)
-				break
+				if f.kind == endpointStopped {
+					break
+				}
+				continue
 			}
 			if e = p.wire.waitSource(cleanup, false); e != nil {
 				break
@@ -401,7 +423,7 @@ func (p *endpointParentSource) stopSource(ctx context.Context) (ret error) {
 	if p.lastStats == nil {
 		endpointCount(&p.counts.MissingStats)
 		result = errors.Join(result, errEndpointCleanupUnverified)
-	} else if !p.lastStats.CleanupVerified {
+	} else if !endpointStopCleanupData(p.lastStatsKind, *p.lastStats) {
 		result = errors.Join(result, errEndpointCleanupUnverified)
 	}
 	if p.wire != nil {

@@ -149,7 +149,7 @@ func (s *operation1ScopedDiagnostic) collectLocalEndpointSource(ctx context.Cont
 	if !features.observedNamesCompatible(names) {
 		return nil, packetFraming
 	}
-	xfrm, e := o.collectOriginalXfrmLockedSource(ctx, before.identity)
+	xfrm, e := o.collectOriginalXfrmLockedSource(ctx, before.identity, s.scope.channel)
 	if e != nil {
 		return nil, e
 	}
@@ -186,7 +186,7 @@ func (e *sourceRuntimeEvidence) validateCompletion(ctx context.Context, t *Trans
 	if e.offload == nil || e.offload != o.creation.attempt.offloadHistory || !o.creation.attempt.offloadHistory.matches(o.creation.attempt, o.creation.fd, o.namespace.identity, s.canonical.Link.Name) {
 		return errOriginalOffloadHistory
 	}
-	if !e.xfrm.matches(o, e.after.identity) {
+	if !e.xfrm.matches(o, e.after.identity, e.admission) {
 		return errXfrmEnvironment
 	}
 	if e.framing != (tunNestedFraming{typ: 1}) {

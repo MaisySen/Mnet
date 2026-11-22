@@ -17,6 +17,12 @@ const endpointFinalStatsBudget = 500 * time.Millisecond
 const endpointGraceBudget = endpointCleanupBudget + endpointFinalStatsBudget + 250*time.Millisecond
 const endpointIdleSafetyBudget = 50 * time.Millisecond
 
+// Cooperative STOP accounting only, not hard bounds on synchronous syscalls.
+// Allow one STOP-send window, one in-flight observation piece, cleanup and
+// final stats, while retaining one idle-safety window of scheduling slack.
+const endpointStopFlushBudget = endpointIdleSafetyBudget
+const endpointObservationPieceBudget = endpointGraceBudget - endpointCleanupBudget - endpointFinalStatsBudget - 2*endpointIdleSafetyBudget
+
 // Checked protocol accounting for the sole START already consumed on the
 // concrete inherited channel. Not a constructor for channel/native authority.
 func (s *endpointFrameState) consumeStart(f endpointFrame) error {

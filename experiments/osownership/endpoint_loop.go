@@ -17,6 +17,7 @@ var errEndpointCleanupUnverified = errors.New("endpoint-original-close-and-absen
 var errEndpointNoProgress = errors.New("endpoint-nonblocking-no-progress")
 var errEndpointPacketDrop = errors.New("endpoint-kernel-packet-drop")
 var errEndpointStopped = errors.New("endpoint-stop-requested")
+var errEndpointInputClosed = errors.New("endpoint-input-closed-without-decoded-stop")
 
 // Resident lane only, no worker accesses these counters or the reactor. Bridge
 // workers may only fill/take bounded queues; they never call turn or TUN I/O.

@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"golang.org/x/sys/unix"
-	"io"
 	"time"
 )
 
@@ -110,8 +109,11 @@ func (r *originalEndpointReactor) waitReadySource(ctx context.Context, w *endpoi
 					if err != nil {
 						return err
 					}
-					if fds[1].Revents&(unix.POLLHUP|unix.POLLERR|unix.POLLNVAL) != 0 {
-						return io.EOF
+					if fds[1].Revents&(unix.POLLERR|unix.POLLNVAL) != 0 {
+						return ErrConflict
+					}
+					if fds[1].Revents&unix.POLLHUP != 0 {
+						return errEndpointInputClosed
 					}
 					if fds[0].Revents&(unix.POLLHUP|unix.POLLERR|unix.POLLNVAL) != 0 || fds[2].Revents&(unix.POLLHUP|unix.POLLERR|unix.POLLNVAL) != 0 {
 						return ErrConflict

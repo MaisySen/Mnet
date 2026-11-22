@@ -17,6 +17,8 @@ import (
 // Existing free-standing inert Transaction API is not made thread-safe by this.
 type ownershipLaneSource interface{ ownerThreadCurrent() bool }
 type operation1Controller struct {
+	// Non-nil only for the actual inherited endpoint controller. No caller flag.
+	endpointCleanup       *endpointOriginalCleanupResult
 	lane                  ownershipLaneSource
 	precreationSequence   uint64
 	precreationAdmitted   bool

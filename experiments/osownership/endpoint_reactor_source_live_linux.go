@@ -150,6 +150,10 @@ func (r *originalEndpointReactor) originalIOSource(ctx context.Context, in []byt
 			if callErr = r.checkInstalledOperandsSource(ctx, int(fd)); callErr != nil {
 				return
 			}
+			// Recheck nonconsuming HUP after all before-I/O observations.
+			if callErr = r.checkParentBoundarySource(ctx); callErr != nil {
+				return
+			}
 			if write {
 				n, callErr = unix.Write(int(fd), buffer)
 			} else {
@@ -237,5 +241,9 @@ func (r *originalEndpointReactor) stopSource(ctx context.Context) error {
 		return afPhase
 	}
 	r.frames.stop()
-	return r.owner.stop(ctx)
+	source, ok := r.owner.lane.(*operation1ResidentSource)
+	if !ok || source.channel == nil {
+		return afPhase
+	}
+	return source.cleanupEndpointSource(ctx)
 }

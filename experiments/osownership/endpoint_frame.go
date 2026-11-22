@@ -133,7 +133,7 @@ func (d *endpointFrameDecoder) eof() error {
 	if bad {
 		return errEndpointFrame
 	}
-	return errors.New("endpoint-channel-eof")
+	return errEndpointInputClosed
 }
 
 // This state machine enforces protocol ordering only. Receiving admission does
