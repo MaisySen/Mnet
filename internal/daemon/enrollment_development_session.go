@@ -32,18 +32,18 @@ type DevelopmentNetworkPeer struct {
 }
 
 type DevelopmentNetworkSession struct {
-	publishedProfile bool // session.mu; no publication without explicit source caller
-	d                *Daemon
-	ctx              context.Context
-	cancel           context.CancelFunc
-	limits           controlclient.RegistrarLimits
-	done             chan struct{}
-	selfIPv4         string
-	revision         [32]byte
-	resourceMu       sync.Mutex
-	resources        []io.Closer
-	peerScopes       []*DevelopmentPeerScope
-	mu               sync.Mutex // serializes explicit map refresh with session teardown
+	endpointPublication endpointPublicationState // session.mu; explicit publication only
+	d                   *Daemon
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	limits              controlclient.RegistrarLimits
+	done                chan struct{}
+	selfIPv4            string
+	revision            [32]byte
+	resourceMu          sync.Mutex
+	resources           []io.Closer
+	peerScopes          []*DevelopmentPeerScope
+	mu                  sync.Mutex // serializes explicit map refresh with session teardown
 }
 
 func validDevelopmentNetworkOptions(o *DevelopmentNetworkOptions) bool {

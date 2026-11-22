@@ -40,10 +40,10 @@ func (s *DevelopmentNetworkSession) PublishEndpointCapability(capability *netmap
 	if s.ctx.Err() != nil || m == nil {
 		err = errEnrollmentContextStale
 	} else {
-		s.publishedProfile = capability != nil // an unknown remote outcome also needs bounded best-effort withdrawal
-		err = s.d.nativeCurrentEndpointProfile(s.ctx, append([]string(nil), m.Self.Endpoints...), s.limits, capability)
+		err = s.endpointPublication.publish(capability, func(c *netmap.EndpointCapability) error {
+			return s.d.nativeCurrentEndpointProfile(s.ctx, append([]string(nil), m.Self.Endpoints...), s.limits, c)
+		})
 		if err == nil {
-			s.publishedProfile = capability != nil
 			err = s.refreshLocked()
 		}
 	}
@@ -61,10 +61,9 @@ func (s *DevelopmentNetworkSession) PublishEndpointCapability(capability *netmap
 func (s *DevelopmentNetworkSession) withdrawEndpointBeforeClose() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.publishedProfile {
+	if !s.endpointPublication.mayBePublished || s.endpointPublication.closeAttempted {
 		return
 	}
-	s.publishedProfile = false
 	if s.ctx.Err() != nil {
 		return
 	}
@@ -72,7 +71,9 @@ func (s *DevelopmentNetworkSession) withdrawEndpointBeforeClose() {
 	if m == nil {
 		return
 	}
-	_ = s.d.nativeCurrentEndpointProfile(s.ctx, append([]string(nil), m.Self.Endpoints...), s.limits, nil)
+	_ = s.endpointPublication.withdrawForClose(func(c *netmap.EndpointCapability) error {
+		return s.d.nativeCurrentEndpointProfile(s.ctx, append([]string(nil), m.Self.Endpoints...), s.limits, c)
+	})
 }
 
 // No public constructor accepts profile DATA. This source owner is minted only
