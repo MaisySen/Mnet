@@ -13,6 +13,7 @@ import (
 // retains the same original custody, even without a validated Handle. Fields
 // are owned by the controller lane, never the packet-generation mutex.
 type originalAttempt struct {
+	offloadHistory   *originalOffloadHistory
 	createRequest    uint16 // source records only after actual successful TUNSETIFF
 	owner            *operation1Controller
 	plan             Plan

@@ -129,6 +129,19 @@ func openExclusiveNonpersistentTUN(ns *namespaceCustody, name string, attempt *o
 			return errors.New("unexpected kernel interface name")
 		}
 		attempt.createRequest = unix.IFF_TUN | unix.IFF_NO_PI | unix.IFF_TUN_EXCL
+		// Initial construction only, before a created observation or ledger.
+		// tun.c consumes the integer arg itself. Pointer-form ioctl is wrong.
+		attempt.stage = "offload-zero-attempted"
+		if e = ns.checkCurrent(); e != nil {
+			return e
+		}
+		if e = unix.IoctlSetInt(fd, unix.TUNSETOFFLOAD, 0); e != nil {
+			return e
+		}
+		attempt.offloadHistory = &originalOffloadHistory{attempt: attempt, custody: custody, namespace: ns.identity, name: name, request: unix.TUNSETOFFLOAD, argument: 0}
+		if e = ns.checkCurrent(); e != nil {
+			return e
+		}
 		attempt.stage = "ioctl-returned"
 		return nil
 	})

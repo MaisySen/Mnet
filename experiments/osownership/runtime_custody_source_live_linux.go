@@ -132,20 +132,21 @@ func (e *sourceRuntimeEvidence) validateCompletion(ctx context.Context, t *Trans
 	o := e.resources
 	r := e.routed
 	s := o.session
-	if o.owner != t || s == nil || s.owner != t || s.forwardStep != 6 || s.canonical == nil || t.handle == nil || !sameSessionHandle(*t.handle, *s.canonical) || !r.current() || r.identity != e.after.identity || e.before.identity != e.after.identity || e.before.resources != o || e.after.resources != o || o.ledger != r.ledger || o.creation == nil || o.creation.fd == nil || o.creation.fd.closed || o.creation.attempt == nil || o.creation.attempt.closeAttempted || o.creation.attempt.createRequest != 0x9001 || e.after.deviceNamespace != o.namespace.identity || e.after.tunName != s.canonical.Link.Name || s.poisoned || s.cleanupMode || s.closeAttempted {
+	if o.owner != t || s == nil || s.owner != t || s.forwardStep != 6 || s.canonical == nil || t.handle == nil || !sameSessionHandle(*t.handle, *s.canonical) || !r.current() || r.identity != e.after.identity || e.before.identity != e.after.identity || e.before.resources != o || e.after.resources != o || o.ledger != r.ledger || o.creation == nil || o.creation.fd == nil || o.creation.fd.closed || o.creation.attempt == nil || o.creation.attempt.closeAttempted || o.creation.attempt.createRequest != 0x9001 || !o.creation.attempt.offloadHistory.matches(o.creation.attempt, o.creation.fd, o.namespace.identity, o.session.canonical.Link.Name) || e.after.deviceNamespace != o.namespace.identity || e.after.tunName != s.canonical.Link.Name || s.poisoned || s.cleanupMode || s.closeAttempted {
 		return afPhase
 	}
 	if !exactSetupPostMatches(e.diagnostic.raw, r.raw) || !reflect.DeepEqual(e.diagnostic.sys, r.sys) || !sameConstructionQdisc(e.qdisc, r.qdisc) || !e.features.observedNamesCompatible(e.names) {
 		return afPhase
 	}
 	// Original custody and framing/features are now source-collected. Complete
-	// named policy consumer decisions, actual offload-control history, and the
-	// authenticated peer MTU proof are still missing, so do not mint packet use.
+	// named policy consumer decisions and authenticated peer MTU proof are
+	// still missing. Original offload-control history is now separately bound
+	// to its actual successful source syscall, never inferred from these reads.
 	unresolved := e.policy.Unresolved
 	for _, v := range e.consumer {
 		if !v.Resolved {
 			unresolved++
 		}
 	}
-	return fmt.Errorf("runtime evidence collected on original generation %d; %d named policy decisions, original offload-control history and authenticated peer MTU admission remain unproven", r.identity.generation, unresolved)
+	return fmt.Errorf("runtime evidence collected on original generation %d; %d named policy decisions and authenticated peer MTU admission remain unproven", r.identity.generation, unresolved)
 }
