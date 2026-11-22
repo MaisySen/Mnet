@@ -173,7 +173,7 @@ func validateUpDelta(h Handle, before RawInventory, beforeSys SysctlSnapshot, af
 	if e != nil {
 		return e
 	}
-	if !reflect.DeepEqual(q.foreign, qbefore.bodies) {
+	if !sameConstructionQdisc(upQdiscObservation{bodies: q.foreign}, qbefore) {
 		return afPhase
 	}
 	normalized := cloneRawExact(after)

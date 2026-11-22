@@ -5,6 +5,8 @@ package osownership
 import (
 	"bytes"
 	"encoding/binary"
+	"reflect"
+	"sort"
 )
 
 // First supported actual graph profile, not a universal default claim. Exact
@@ -55,9 +57,9 @@ func parseUpQdisc(o upQdiscObservation, index int) (*upQdiscProfile, error) {
 			return nil, afShape
 		}
 		// No supplier/application traffic yet: no queued packet/backlog. Throughput
-		// counters can be observed but do not authorize runtime. No rate estimator,
+		// counters must also be zero in this construction-only profile. No rate estimator,
 		// app stats, 64bit packet overflow, hardware/block/stab extension supported.
-		if binary.NativeEndian.Uint32(stats[3]) != 0 || binary.NativeEndian.Uint32(stats[3][4:]) != 0 || binary.NativeEndian.Uint32(a[3][28:]) != 0 || binary.NativeEndian.Uint32(a[3][32:]) != 0 {
+		if !bytes.Equal(stats[1], make([]byte, 16)) || !bytes.Equal(stats[3], make([]byte, 20)) || !bytes.Equal(a[3], make([]byte, 40)) {
 			return nil, afPhase
 		}
 		for k := range a {
@@ -106,4 +108,47 @@ func tcStatsAttrs(b []byte, pad uint16) (map[uint16][]byte, error) {
 		return nil, afShape
 	}
 	return decodeAttributes(named)
+}
+
+// Construction-only profile: stable graph/options, no traffic, positive refcount.
+// Independent observations may differ in transient positive refcounts. Foreign
+// graph gets exactly the same schema, never an unknown-kind volatility waiver.
+func constructionQdiscKeys(o upQdiscObservation) ([][]byte, error) {
+	var out [][]byte
+	if len(o.bodies) > 4096 {
+		return nil, afShape
+	}
+	for _, b := range o.bodies {
+		if len(b) < 20 {
+			return nil, afShape
+		}
+		idx := int(int32(binary.NativeEndian.Uint32(b[4:])))
+		if _, e := parseUpQdisc(upQdiscObservation{bodies: [][]byte{b}}, idx); e != nil {
+			return nil, e
+		}
+		key := append([]byte(nil), b[:16]...)
+		a, e := tcStatsAttrs(b[20:], 9)
+		if e != nil {
+			return nil, e
+		}
+		key = append(key, a[1]...)
+		key = append(key, a[2]...)
+		key = append(key, a[12]...)
+		out = append(out, key)
+	}
+	sort.Slice(out, func(i, j int) bool { return bytes.Compare(out[i], out[j]) < 0 })
+	for i := 1; i < len(out); i++ {
+		if bytes.Equal(out[i-1], out[i]) {
+			return nil, afShape
+		}
+	}
+	return out, nil
+}
+func sameConstructionQdisc(a, b upQdiscObservation) bool {
+	x, e := constructionQdiscKeys(a)
+	if e != nil {
+		return false
+	}
+	y, e := constructionQdiscKeys(b)
+	return e == nil && reflect.DeepEqual(x, y)
 }

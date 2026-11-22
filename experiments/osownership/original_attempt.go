@@ -13,6 +13,7 @@ import (
 // retains the same original custody, even without a validated Handle. Fields
 // are owned by the controller lane, never the packet-generation mutex.
 type originalAttempt struct {
+	createRequest    uint16 // source records only after actual successful TUNSETIFF
 	owner            *operation1Controller
 	plan             Plan
 	custody          *fileCustody
@@ -119,7 +120,10 @@ type originalAbsenceSource interface {
 }
 
 func (c *operation1Controller) stopOwnedLocked(ctx context.Context) error {
-	// Stop revokes address and disable lifetime before close/absence work.
+	// Revoke complete route/UP/address/disable ancestry before close/absence.
+	if c != nil && c.adapter != nil && c.adapter.routed != nil {
+		c.adapter.routed.lifetime.revoke()
+	}
 	if c != nil && c.adapter != nil && c.adapter.upped != nil {
 		c.adapter.upped.lifetime.revoke()
 	}

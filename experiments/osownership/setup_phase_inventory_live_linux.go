@@ -82,7 +82,7 @@ func (s *operation1ScopedDiagnostic) observeSetupPhase(ctx context.Context, t *s
 		return nil, e
 	}
 	var qdisc upQdiscObservation
-	if t.step == 5 {
+	if t.step >= 5 {
 		qdisc, e = o.collectUpQdiscSource(ctx)
 		if e != nil {
 			return nil, e

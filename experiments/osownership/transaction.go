@@ -15,6 +15,8 @@ import (
 // rules, sysctls, address flags/origins and link IPv6 disable readback. No real
 // implementation is wired. Fake tests do not establish those kernel facts.
 type Kernel interface {
+	stop(context.Context, *Transaction) error
+	complete(context.Context, *Transaction) (*completionReceipt, error)
 	Snapshot(context.Context) (Inventory, error)
 	// Create must return a custody handle for its exclusive nonpersistent FD even
 	// on an error after creation. If no handle can be returned, Create MUST close
@@ -52,18 +54,19 @@ type Evidence struct {
 // Transaction owns step state and its monotonic deadline independent of the
 // caller's Plan value. API never extends it after an ACK or partial success.
 type Transaction struct {
-	k                Kernel
-	clock            Clock
-	plan             Plan
-	deadline         Deadline
-	handle           *Handle
-	Evidence         []Evidence
-	Ready            bool
-	PendingCleanup   bool
-	stopStarted      bool
-	fdCloseAttempted bool
-	fdCloseError     error
-	baseline         *Inventory
+	completionAuthority *completionAuthority
+	k                   Kernel
+	clock               Clock
+	plan                Plan
+	deadline            Deadline
+	handle              *Handle
+	Evidence            []Evidence
+	Ready               bool
+	PendingCleanup      bool
+	stopStarted         bool
+	fdCloseAttempted    bool
+	fdCloseError        error
+	baseline            *Inventory
 }
 
 func NewTransaction(k Kernel, c Clock, b Binding) (*Transaction, error) {
@@ -79,7 +82,9 @@ func NewTransaction(k Kernel, c Clock, b Binding) (*Transaction, error) {
 	if e != nil {
 		return nil, e
 	}
-	return &Transaction{k: k, clock: c, plan: Plan{Binding: b}, deadline: d}, nil
+	t := &Transaction{k: k, clock: c, plan: Plan{Binding: b}, deadline: d}
+	t.completionAuthority = &completionAuthority{owner: t}
+	return t, nil
 }
 func (t *Transaction) live(ctx context.Context) error {
 	if ctx.Err() != nil {
@@ -169,10 +174,12 @@ func (t *Transaction) Start(ctx context.Context) error {
 			return e
 		}
 	}
-	if source, ok := t.k.(*operation1Adapter); ok {
-		if e := source.requireSourceCompletion(); e != nil {
-			return e
-		}
+	receipt, e := t.k.complete(ctx, t)
+	if e != nil {
+		return e
+	}
+	if e = t.consumeCompletion(ctx, receipt); e != nil {
+		return e
 	}
 	t.Ready = true
 	return nil
@@ -270,72 +277,12 @@ func stepPresent(op Operation, h Handle, i Inventory) bool {
 // A private owned adapter instead closes the original before ticketed absence,
 // while retaining the active ownership lane. It never uses generic rollback.
 func (t *Transaction) Stop(ctx context.Context) error {
-	if owned, ok := t.k.(interface{ stopOwnedTransaction(context.Context) error }); ok {
-		return owned.stopOwnedTransaction(ctx)
+	if t == nil || t.k == nil || ctx == nil {
+		return ErrConflict
 	}
-	t.stopStarted = true // invalidate display authority before the first cleanup read
-	bounded, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
-	defer cancel()
-	ctx = bounded
-	t.Ready = false
-	if t.fdCloseAttempted && t.fdCloseError != nil {
-		t.PendingCleanup = true
-		return t.fdCloseError
-	}
-	if t.handle == nil {
-		if t.PendingCleanup {
-			return errors.New("ambiguous creation without FD custody; cleanup pending, never adopt")
-		}
-		return nil
-	}
-	h := *t.handle
-	for steps := 0; steps < 4; steps++ {
-		i, e := t.k.Snapshot(ctx)
-		if e != nil {
-			return e
-		}
-		ops, e := Rollback(h, i)
-		if e != nil {
-			return e
-		}
-		if len(ops) == 0 {
-			e = t.closeFDOnce(h)
-			if e != nil {
-				return e
-			}
-			if e = verifyAbsence(h, i, t.baseline); e != nil {
-				return e
-			}
-			t.PendingCleanup = false
-			return nil
-		}
-		op := ops[0]
-		t.Evidence = append(t.Evidence, Evidence{Step: op.Kind + "-intent"})
-		var applyErr error
-		if op.Kind == "close-owned-tun-fd" {
-			applyErr = t.closeFDOnce(h)
-		} else {
-			applyErr = t.k.Apply(ctx, h, op)
-		}
-		after, readErr := t.k.Snapshot(ctx)
-		if readErr != nil {
-			return errors.Join(applyErr, readErr)
-		}
-		if op.Kind == "close-owned-tun-fd" && applyErr != nil {
-			t.PendingCleanup = true
-			return errors.Join(applyErr, readErr)
-		}
-		remaining, conflict := Rollback(h, after)
-		if conflict != nil {
-			return errors.Join(applyErr, conflict)
-		}
-		if operationPresent(op, remaining) {
-			return errors.Join(applyErr, errors.New("cleanup not confirmed, remains pending"))
-		}
-		t.Evidence = append(t.Evidence, Evidence{Step: op.Kind, ACK: applyErr == nil, Readback: "absent", Error: applyErr != nil})
-	}
-	return errors.New("cleanup step bound reached; pending")
+	return t.k.stop(ctx, t)
 }
+
 func operationPresent(op Operation, remaining []Operation) bool {
 	for _, r := range remaining {
 		if r == op {

@@ -128,6 +128,7 @@ func openExclusiveNonpersistentTUN(ns *namespaceCustody, name string, attempt *o
 		if ifr.Name() != name {
 			return errors.New("unexpected kernel interface name")
 		}
+		attempt.createRequest = unix.IFF_TUN | unix.IFF_NO_PI | unix.IFF_TUN_EXCL
 		attempt.stage = "ioctl-returned"
 		return nil
 	})

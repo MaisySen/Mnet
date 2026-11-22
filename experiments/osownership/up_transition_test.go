@@ -159,7 +159,7 @@ func TestActualRunUPThenPeerRouteRefusal(t *testing.T) {
 	if f.upPermit.send(f.upPermit.request, 77, func() error { calls++; return nil }) == nil || calls != 0 {
 		t.Fatal("UP replay")
 	}
-	if c.adapter.requireSourceCompletion() == nil {
+	if _, e := c.adapter.complete(context.Background(), c.tx); e == nil {
 		t.Fatal("construction became Ready")
 	}
 }

@@ -32,13 +32,16 @@ type setupPhaseObservation struct {
 }
 
 func (a *operation1Adapter) setupTicketCurrent(t *setupPhaseTicket) bool {
-	if a == nil || !a.phaseCreation || t == nil || !t.active || t.used || t.adapter != a || t.sequence == 0 || t.sequence != a.phaseSequence || t.step < 1 || t.step > 5 || a.controller == nil || a.controller.tx == nil || a.session == nil || a.session.canonical == nil || a.session.plan == nil || a.controller.attempt == nil || t.attempt != a.controller.attempt || t.attempt.owner != a.controller || t.attempt.custody == nil || t.attempt.handle == nil || !sameSessionHandle(*t.attempt.handle, *a.session.canonical) || t.attempt.closeAttempted || t.attempt.stage != "session-bound" || t.attempt.custody.lineage != t.ledger || a.session.owner != a.controller.tx || a.session.forwardStep != t.step || a.session.pending != nil || a.session.poisoned || a.session.cleanupMode || a.session.closeAttempted || a.controller.tx.stopStarted || a.controller.tx.fdCloseAttempted || a.controller.tx.Ready || t.ledger == nil || !t.ledger.matches(t.identity) || !sameSessionHandle(t.identity.handle, *a.session.canonical) || t.identity.identity != a.session.identity || a.controller.tx.clock == nil || a.controller.tx.deadline.expired(a.controller.tx.clock.Now()) {
+	if a == nil || !a.phaseCreation || t == nil || !t.active || t.used || t.adapter != a || t.sequence == 0 || t.sequence != a.phaseSequence || t.step < 1 || t.step > 6 || a.controller == nil || a.controller.tx == nil || a.session == nil || a.session.canonical == nil || a.session.plan == nil || a.controller.attempt == nil || t.attempt != a.controller.attempt || t.attempt.owner != a.controller || t.attempt.custody == nil || t.attempt.handle == nil || !sameSessionHandle(*t.attempt.handle, *a.session.canonical) || t.attempt.closeAttempted || t.attempt.stage != "session-bound" || t.attempt.custody.lineage != t.ledger || a.session.owner != a.controller.tx || a.session.forwardStep != t.step || a.session.pending != nil || a.session.poisoned || a.session.cleanupMode || a.session.closeAttempted || a.controller.tx.stopStarted || a.controller.tx.fdCloseAttempted || a.controller.tx.Ready || t.ledger == nil || !t.ledger.matches(t.identity) || !sameSessionHandle(t.identity.handle, *a.session.canonical) || t.identity.identity != a.session.identity || a.controller.tx.clock == nil || a.controller.tx.deadline.expired(a.controller.tx.clock.Now()) {
 		return false
 	}
 	if !reflect.DeepEqual(*a.session.plan, t.attempt.plan) || !reflect.DeepEqual(a.controller.tx.plan, t.attempt.plan) {
 		return false
 	}
 	switch t.step {
+	case 6:
+		r := a.routed
+		return a.peerRouteAttempted && r != nil && r.consumed && r.current() && r.ancestry == a.upped && r.ledger == t.ledger && r.identity == t.identity && a.upped != nil && a.upped.consumed && a.addressed != nil && a.upped.ancestry == a.addressed && a.disabled != nil && a.addressed.disabledAncestry == a.disabled && a.disabled.owner == a.controller.tx && a.disabled.session == a.session
 	case 1:
 		return t.identity.generation == 1 && !a.session.canonical.TagConfirmed && a.aliasPost == nil && !a.disableAttempted && a.disabled == nil
 	case 2:
@@ -112,9 +115,15 @@ func (a *operation1Adapter) consumeSetupPhase(t *setupPhaseTicket, o *setupPhase
 	if h == nil || h.owner != a.controller.tx || h.session != a.session || h.ledger != t.ledger || h.identity != t.identity || !d.lineageUsable {
 		return Inventory{}, afPhase
 	}
-	if t.step == 5 {
+	if t.step >= 5 {
+		expected := upQdiscObservation{}
+		if t.step == 5 && a.upped != nil {
+			expected = a.upped.qdisc
+		} else if t.step == 6 && a.routed != nil {
+			expected = a.routed.qdisc
+		}
 		q, e := parseUpQdisc(o.qdisc, a.session.canonical.Link.Index)
-		if e != nil || q == nil || a.upped == nil || !reflect.DeepEqual(o.qdisc, a.upped.qdisc) {
+		if e != nil || q == nil || !sameConstructionQdisc(o.qdisc, expected) {
 			return Inventory{}, afPhase
 		}
 	}
@@ -144,13 +153,38 @@ func (a *operation1Adapter) composeSetupOnly(step int, d ownedSourceDiagnostic) 
 	s := a.session
 	b := s.baseline
 	h := *s.canonical
-	if step < 1 || step > 5 || b == nil {
+	if step < 1 || step > 6 || b == nil {
 		return Inventory{}, afPhase
+	}
+	routePhase := step == 6
+	if routePhase {
+		r := a.routed
+		if r == nil || !r.current() || !r.consumed || !exactSetupPostMatches(d.raw, r.raw) || !reflect.DeepEqual(d.sys, r.sys) {
+			return Inventory{}, afPhase
+		}
+		d.raw = cloneRawExact(d.raw)
+		local, peer := 0, 0
+		var kept []RouteRecord
+		for _, v := range d.raw.Routes {
+			if validatePeerRoute(&h, v) == nil {
+				peer++
+			} else if validateAddressLocalRoute(&h, v) == nil {
+				local++
+				kept = append(kept, v)
+			} else {
+				return Inventory{}, afPhase
+			}
+		}
+		if local != 1 || peer != 1 {
+			return Inventory{}, afPhase
+		}
+		d.raw.Routes = kept
+		step = 5
 	}
 	upPhase := step == 5
 	if upPhase {
 		r := a.upped
-		if r == nil || !r.current() || !r.consumed || !exactSetupPostMatches(d.raw, r.raw) || !reflect.DeepEqual(d.sys, r.sys) {
+		if r == nil || (!routePhase && !r.current()) || (routePhase && a.routed.ancestry != r) || !r.consumed || !exactSetupPostMatches(d.raw, r.raw) || !reflect.DeepEqual(d.sys, r.sys) {
 			return Inventory{}, afPhase
 		}
 		d.raw = cloneRawExact(d.raw)
@@ -318,13 +352,16 @@ func (a *operation1Adapter) composeSetupOnly(step int, d ownedSourceDiagnostic) 
 		i.Addresses = append(i.Addresses, h.Address)
 		i.Routes = append(i.Routes, Route{Destination: h.Address.Prefix, LinkIndex: h.Link.Index, Protocol: 2, Table: 255, Scope: "host", Type: "local", KernelOrigin: true})
 	}
+	if routePhase {
+		i.Routes = append(i.Routes, h.Route)
+	}
 	return i, nil
 }
 
 // Called only while Transaction.Run retains the active controller lease. No
 // generic rollback can reopen/read a closed original or bypass absence tickets.
-func (a *operation1Adapter) stopOwnedTransaction(ctx context.Context) error {
-	if !a.authorized(ctx) {
+func (a *operation1Adapter) stop(ctx context.Context, t *Transaction) error {
+	if !a.authorized(ctx) || a.controller.tx != t {
 		return ErrConflict
 	}
 	return a.controller.stopOwnedLocked(ctx)

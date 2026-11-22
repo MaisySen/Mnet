@@ -129,3 +129,19 @@ func (a *inertAdapterProtocol) CloseOriginalFD(h Handle) error {
 	// Only original canonical handle. A repeated/failed close is not retried.
 	return a.session.recordClose(a.effects.CloseOriginalFD(*a.session.canonical))
 }
+
+// Only forwards a test-only marker implementation's mandatory proof producer.
+// This adapter cannot issue a receipt or bypass Transaction's receipt checks.
+func (a *inertAdapterProtocol) complete(ctx context.Context, t *Transaction) (*completionReceipt, error) {
+	if a == nil || a.effects == nil || a.session == nil || a.session.forwardStep != 6 || a.session.poisoned || a.session.cleanupMode || a.session.closeAttempted {
+		return nil, ErrConflict
+	}
+	return a.effects.complete(ctx, t)
+}
+
+func (a *inertAdapterProtocol) stop(ctx context.Context, t *Transaction) error {
+	if a == nil || a.effects == nil {
+		return ErrConflict
+	}
+	return a.effects.stop(ctx, t)
+}

@@ -8,9 +8,9 @@ import (
 )
 
 // SOURCE ONLY. Creates bookkeeping, never a namespace/device/FD/helper. The
-// operation1 Kernel has only precreation and three bounded DOWN-phase Snapshot
-// conversions. Create/effects remain execution-unreleased. Address/UP/route and
-// every Ready path are refused; no packet supplier is constructed here.
+// operation1 Kernel connects bounded phase1..6 construction and an original-
+// custody runtime-observation producer. Effects remain execution-unreleased.
+// Final runtime admission is incomplete; no packet supplier is constructed.
 func newOperation1SourceController(b *CapturedBaseline, id adapterIdentity, binding Binding) (*operation1Controller, error) {
 	session, e := newAdapterSession(b, id)
 	if e != nil {

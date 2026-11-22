@@ -118,22 +118,27 @@ type operationAddressSource interface {
 type operationUpSource interface {
 	applyOwnedUp(context.Context, *postAddressDownResult) (*postUpResult, error)
 }
+type operationPeerRouteSource interface {
+	applyOwnedPeerRoute(context.Context, *postUpResult) (*postPeerRouteResult, error)
+}
 type operation1Adapter struct {
-	phaseCreation    bool
-	phaseSequence    uint64
-	phaseAdmitted    int
-	phaseIdentity    heldPacketIdentity
-	aliasPost        *firstStepCompletion
-	disableAttempted bool // controller lane, one attempt even on source error
-	disabled         *postDisableResult
-	addressAttempted bool
-	addressed        *postAddressDownResult
-	upAttempted      bool
-	upped            *postUpResult
-	controller       *operation1Controller
-	session          *adapterSession
-	source           operation1DiagnosticSource
-	creation         operation1CreationSource
+	peerRouteAttempted bool
+	routed             *postPeerRouteResult
+	phaseCreation      bool
+	phaseSequence      uint64
+	phaseAdmitted      int
+	phaseIdentity      heldPacketIdentity
+	aliasPost          *firstStepCompletion
+	disableAttempted   bool // controller lane, one attempt even on source error
+	disabled           *postDisableResult
+	addressAttempted   bool
+	addressed          *postAddressDownResult
+	upAttempted        bool
+	upped              *postUpResult
+	controller         *operation1Controller
+	session            *adapterSession
+	source             operation1DiagnosticSource
+	creation           operation1CreationSource
 }
 
 var _ transactionLedgerAdapter = (*operation1Adapter)(nil)
@@ -238,6 +243,9 @@ func (a *operation1Adapter) Apply(ctx context.Context, h Handle, op Operation) (
 	if !a.authorized(ctx) || a.source == nil || a.session == nil || a.session.plan == nil || len(a.session.plan.Operations) != 6 {
 		return ErrConflict
 	}
+	if op.Kind == "route-add-exclusive" {
+		return a.applyPeerRoute(ctx, h, op)
+	}
 	if op.Kind == "link-up-exact" {
 		return a.applyUp(ctx, h, op)
 	}
@@ -317,7 +325,7 @@ func (s *adapterSession) joinFirstStep(c *firstStepCompletion, owner *Transactio
 }
 
 // No generic mutation dispatch. Index2 is disable; index3 has its separate
-// typed address path. UP(index4), peer-route(index5) remain refused.
+// typed address path. UP(index4) and peer-route(index5) have distinct typed paths.
 func (a *operation1Adapter) applyDisable(ctx context.Context, h Handle, op Operation) (err error) {
 	s := a.session
 	if !a.authorized(ctx) || a.disableAttempted || s == nil || s.plan == nil || len(s.plan.Operations) != 6 || op != s.plan.Operations[2] || s.forwardStep != 2 || s.canonical == nil || !s.canonical.TagConfirmed || !sameSessionHandle(h, *s.canonical) || s.pending != nil || s.poisoned || s.cleanupMode || s.closeAttempted || a.controller.tx.stopStarted || a.controller.tx.fdCloseAttempted {
@@ -366,8 +374,8 @@ func (a *operation1Adapter) applyDisable(ctx context.Context, h Handle, op Opera
 	return nil
 }
 
-// Address advances only the reviewed isolated-target DOWN construction. UP is
-// still unsupported. All failures poison the session and retain owned cleanup.
+// Address advances only the reviewed isolated-target DOWN construction.
+// All failures poison the session and retain owned cleanup.
 func (a *operation1Adapter) applyAddress(ctx context.Context, h Handle, op Operation) (err error) {
 	s := a.session
 	if !a.authorized(ctx) || a.addressAttempted || s == nil || s.plan == nil || len(s.plan.Operations) != 6 || op != s.plan.Operations[3] || s.forwardStep != 3 || s.canonical == nil || !sameSessionHandle(h, *s.canonical) || s.pending != nil || s.poisoned || s.cleanupMode || s.closeAttempted || a.disabled == nil || !a.disabled.current() || !a.disabled.consumed {
@@ -449,5 +457,47 @@ func (a *operation1Adapter) applyUp(ctx context.Context, h Handle, op Operation)
 	r.consumed = true
 	a.upped = r
 	s.forwardStep = 5
+	return nil
+}
+
+func (a *operation1Adapter) applyPeerRoute(ctx context.Context, h Handle, op Operation) (err error) {
+	s := a.session
+	if !a.authorized(ctx) || a.peerRouteAttempted || s == nil || s.plan == nil || len(s.plan.Operations) != 6 || op != s.plan.Operations[5] || s.forwardStep != 5 || s.canonical == nil || !sameSessionHandle(h, *s.canonical) || s.pending != nil || s.poisoned || s.cleanupMode || s.closeAttempted || a.upped == nil || !a.upped.current() || !a.upped.consumed {
+		return afPhase
+	}
+	source, ok := a.source.(operationPeerRouteSource)
+	if !ok {
+		return afPhase
+	}
+	if _, ok := a.source.(setupPhaseSource); ok {
+		if !a.setupAdmissionCurrent(5) {
+			return afPhase
+		}
+		a.phaseAdmitted = 0
+	}
+	a.peerRouteAttempted = true
+	var r *postPeerRouteResult
+	defer func() {
+		if err != nil {
+			s.poisoned = true
+			a.upped.lifetime.revoke()
+			if r != nil && r.ledger != nil {
+				_ = r.ledger.invalidate("custody-loss")
+			}
+		}
+	}()
+	r, err = source.applyOwnedPeerRoute(ctx, a.upped)
+	if err != nil {
+		return err
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if r == nil || r.consumed || r.ancestry != a.upped || r.ledger != a.upped.ledger || !r.current() || !sameSessionHandle(r.identity.handle, *s.canonical) || a.controller.tx.stopStarted || a.controller.tx.fdCloseAttempted || a.controller.tx.deadline.expired(a.controller.tx.clock.Now()) {
+		return afPhase
+	}
+	r.consumed = true
+	a.routed = r
+	s.forwardStep = 6
 	return nil
 }
