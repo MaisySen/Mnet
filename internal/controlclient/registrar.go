@@ -86,10 +86,11 @@ func (c *RegistrarClient) closeLocked(denied bool) {
 }
 
 type registrarNodeRequest struct {
-	Version       int                `json:"version"`
-	Receipt       contract.ReceiptV2 `json:"receipt"`
-	ReceiptDigest string             `json:"receipt_digest"`
-	Endpoints     []string           `json:"endpoints"`
+	Version            int                        `json:"version"`
+	Receipt            contract.ReceiptV2         `json:"receipt"`
+	ReceiptDigest      string                     `json:"receipt_digest"`
+	Endpoints          []string                   `json:"endpoints"`
+	EndpointCapability *netmap.EndpointCapability `json:"endpoint_capability,omitempty"`
 }
 type registrarMapResponse struct {
 	Version       int         `json:"version"`
@@ -116,12 +117,32 @@ func (c *RegistrarClient) CurrentMap(ctx context.Context) (*netmap.Map, error) {
 	if m.RelayURL != "" || m.Version < 0 || m.Network.ID != r.NetworkID || m.Self.ID != r.NodeID || m.Self.NetworkID != r.NetworkID || m.Self.PubKey != r.DevicePublicKey || !m.Self.Approved || m.Self.KeyExpiry == nil || m.Self.KeyExpiry.UnixMilli() != r.AccessExpiresAtMS || m.Self.ExitNode || len(m.Self.Routes) != 0 || m.Self.User != "" || len(m.Peers) > 4096 {
 		return nil, ErrRegistrarUnavailable
 	}
+	for _, n := range append([]netmap.Node{m.Self}, m.Peers...) {
+		if p := n.EndpointProfile; p != nil && (!p.Matches(n, time.Now()) || p.Revision > m.Version) {
+			return nil, ErrRegistrarUnavailable
+		}
+	}
 	if err := c.registrarCurrent(); err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 func (c *RegistrarClient) RegistrarEndpoints(ctx context.Context, endpoints []string) error {
+	return c.RegistrarEndpointProfile(ctx, endpoints, nil)
+}
+
+// An explicit caller declaration, not kernel or membership attestation. Nil
+// uses the existing endpoint flow and withdraws any volatile profile.
+func (c *RegistrarClient) RegistrarEndpointProfile(ctx context.Context, endpoints []string, capability *netmap.EndpointCapability) error {
+	var profile *netmap.EndpointCapability
+	if capability != nil {
+		if !capability.Supported() || len(endpoints) == 0 {
+			return ErrRegistrarInvalid
+		}
+		value := *capability
+		profile = &value
+	}
+
 	if len(endpoints) > 64 {
 		return ErrRegistrarInvalid
 	}
@@ -132,7 +153,7 @@ func (c *RegistrarClient) RegistrarEndpoints(ctx context.Context, endpoints []st
 			return ErrRegistrarInvalid
 		}
 	}
-	body, doc, err := c.registrarRequest(ctx, "endpoints", copy)
+	body, doc, err := c.registrarProfileRequest(ctx, "endpoints", copy, profile)
 	if err != nil {
 		return err
 	}
@@ -157,6 +178,9 @@ func (c *RegistrarClient) registrarCurrent() error {
 	return nil
 }
 func (c *RegistrarClient) registrarRequest(ctx context.Context, path string, eps []string) ([]byte, contract.NativeCredentialDocument, error) {
+	return c.registrarProfileRequest(ctx, path, eps, nil)
+}
+func (c *RegistrarClient) registrarProfileRequest(ctx context.Context, path string, eps []string, capability *netmap.EndpointCapability) ([]byte, contract.NativeCredentialDocument, error) {
 	empty := contract.NativeCredentialDocument{}
 	if c == nil || c.registrarClientOwner == nil || ctx == nil || ctx.Err() != nil {
 		return nil, empty, ErrRegistrarInvalid
@@ -175,7 +199,7 @@ func (c *RegistrarClient) registrarRequest(ctx context.Context, path string, eps
 	doc, origin, life := c.document, c.origin, c.lifetime
 	c.mu.Unlock()
 	defer func() { c.mu.Lock(); c.inflight--; c.mu.Unlock() }()
-	raw, _ := json.Marshal(registrarNodeRequest{Version: 1, Receipt: doc.Receipt, ReceiptDigest: doc.ReceiptDigest, Endpoints: eps})
+	raw, _ := json.Marshal(registrarNodeRequest{Version: 1, Receipt: doc.Receipt, ReceiptDigest: doc.ReceiptDigest, Endpoints: eps, EndpointCapability: capability})
 	requestCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stop := context.AfterFunc(life, cancel)

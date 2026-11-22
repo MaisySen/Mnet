@@ -56,6 +56,7 @@ type storeData struct {
 
 // Store is the whole control-plane state, persisted as one JSON file.
 type Store struct {
+	endpointProfiles map[string]registrarEndpointPublication // volatile, never persisted or restored
 	// Private instance seam for observing real proof allocation in failure tests.
 	// No external selector; nil calls the existing proof.NewServer unchanged.
 	registrarProofFactory func(contract.Binding, time.Time, time.Time, time.Duration) (*proof.Server, contract.Challenge, error)
@@ -683,6 +684,7 @@ func (s *Store) setEndpointsLocked(nodeID string, eps []string) error {
 // cloneNode makes a detached value, including all mutable nested data.
 func cloneNode(n *netmap.Node) netmap.Node {
 	c := *n
+	c.EndpointProfile = nil // only actual native current-map publication may derive this field
 	c.Endpoints = append([]string(nil), n.Endpoints...)
 	c.Routes = append([]string(nil), n.Routes...)
 	if n.KeyExpiry != nil {

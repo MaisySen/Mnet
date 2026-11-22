@@ -20,5 +20,5 @@ type originalOffloadHistory struct {
 }
 
 func (h *originalOffloadHistory) matches(a *originalAttempt, fd *fileCustody, ns Namespace, name string) bool {
-	return h != nil && a != nil && fd != nil && h.attempt == a && h.custody == fd && a.custody == fd && a.offloadHistory == h && !a.closeAttempted && a.createErr == nil && h.namespace == ns && sameNamespace(ns, ns) && h.name == name && h.request == 0x400454d0 && h.argument == 0 && a.createRequest == 0x9001
+	return h != nil && a != nil && fd != nil && h.attempt == a && h.custody == fd && a.custody == fd && a.offloadHistory == h && !a.closeAttempted && a.createErr == nil && sameNamespace(h.namespace, ns) && h.name == name && h.request == 0x400454d0 && h.argument == 0 && a.createRequest == 0x9001
 }

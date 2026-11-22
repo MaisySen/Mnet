@@ -8,6 +8,7 @@ package osownership
 type ipv4ConsumerAssessment struct {
 	Word                    effectiveV4Word
 	ConsumerRule, PhaseRule string
+	Dependencies            string
 	Resolved                bool
 }
 
@@ -18,7 +19,7 @@ func assessIPv4ConsumerOperands(l LinkRecord, o *effectiveV4Observation) ([]ipv4
 	}
 	out := make([]ipv4ConsumerAssessment, len(words))
 	for i, w := range words {
-		r := ipv4ConsumerAssessment{Word: w, ConsumerRule: "formula only; full named consumer/phase impact unresolved", PhaseRule: "creation-DOWN observation never authorizes UP, routes, address changes or packet runtime"}
+		r := ipv4ConsumerAssessment{Dependencies: endpointConsumerDependency(i), Word: w, ConsumerRule: "formula only; full named consumer/phase impact unresolved", PhaseRule: "creation-DOWN observation never authorizes UP, routes, address changes or packet runtime"}
 		switch i {
 		case 0:
 			r.ConsumerRule = "LOCAL.forwarding route-input transit gate; namespace ip_forward/all write propagation separate; NOARP does not disable IP forwarding"
@@ -42,6 +43,9 @@ func assessIPv4ConsumerOperands(l LinkRecord, o *effectiveV4Observation) ([]ipv4
 			r.ConsumerRule = "ARP-family behavior has specific ALL/LOCAL formula; arp_send_dst and arp_rcv skip NOARP device. No general exemption for all ARP-adjacent/network policy words"
 		case 16, 26, 27:
 			r.ConsumerRule = "IGMP version/timers retain unresolved live state and time-unit dependencies; multicast membership exists while device DOWN"
+		}
+		if i == 7 && (w.Value < 0 || w.Value > 2) {
+			return nil, afPolicy
 		}
 		out[i] = r
 	}

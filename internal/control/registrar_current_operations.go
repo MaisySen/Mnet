@@ -13,6 +13,12 @@ func (s *Store) registrarCredentialMap(ref registrarCredentialReference, secret 
 		return nil, err
 	}
 	m, peers, err := s.mapSnapshotLocked(ref.NodeID)
+	if err == nil {
+		s.attachRegistrarEndpointProfileLocked(&m.Self)
+		for i := range peers {
+			s.attachRegistrarEndpointProfileLocked(&peers[i])
+		}
+	}
 	s.mu.Unlock()
 	if err != nil {
 		return nil, err
@@ -24,10 +30,5 @@ func (s *Store) registrarCredentialMap(ref registrarCredentialReference, secret 
 // must remain current through actual endpoint candidate publication. Legacy
 // tokens, a prior verified node clone or public receipt digest cannot call it.
 func (s *Store) setRegistrarCredentialEndpoints(ref registrarCredentialReference, secret string, eps []string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, err := s.authorizeRegistrarCredentialLocked(ref, secret); err != nil {
-		return err
-	}
-	return s.setEndpointsLocked(ref.NodeID, eps)
+	return s.setRegistrarCredentialEndpointProfile(ref, secret, eps, nil)
 }

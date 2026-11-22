@@ -42,7 +42,35 @@ func (s *Store) authorizeRegistrarCredentialLocked(ref registrarCredentialRefere
 	if err := s.healthLocked(); err != nil {
 		return nil, err
 	}
-	if !registrarCredentialSecret(secret) || s.data.Registrar == nil || s.data.Registrar.Version != 2 {
+	if !registrarCredentialSecret(secret) {
+		return nil, ErrUnauthorized
+	}
+	n, err := s.currentRegistrarPublicationOwnerLocked(ref)
+	if err != nil {
+		return nil, err
+	}
+	r := s.registrarNodeLocked(ref.NodeID)
+	expected, err := base64.RawURLEncoding.Strict().DecodeString(r.CredentialDigest)
+	if err != nil || len(expected) != 32 {
+		return nil, ErrUnauthorized
+	}
+	// Matches actual Multies SHA256(TextEncoder canonical43ASCII secret), NOT
+	// decoded secret bytes, digest-keyed HMAC or legacy token equality.
+	actual := sha256.Sum256([]byte(secret))
+	if subtle.ConstantTimeCompare(actual[:], expected) != 1 {
+		return nil, ErrUnauthorized
+	}
+	return n, nil
+}
+
+// Requires Store.mu. This validates an already authenticated, privately retained
+// publication's owner. It is NOT a credential verifier or an externally callable
+// authorization path. Only authorizeRegistrarCredentialLocked checks the secret.
+func (s *Store) currentRegistrarPublicationOwnerLocked(ref registrarCredentialReference) (*netmap.Node, error) {
+	if err := s.healthLocked(); err != nil {
+		return nil, err
+	}
+	if s.data.Registrar == nil || s.data.Registrar.Version != 2 {
 		return nil, ErrUnauthorized
 	}
 	// Revalidate the actual existing namespace, including mixed account identity,
@@ -65,16 +93,6 @@ func (s *Store) authorizeRegistrarCredentialLocked(ref registrarCredentialRefere
 		return nil, ErrUnauthorized
 	}
 	if _, mixed := s.data.NodeTokens[r.NodeID]; mixed {
-		return nil, ErrUnauthorized
-	}
-	expected, err := base64.RawURLEncoding.Strict().DecodeString(r.CredentialDigest)
-	if err != nil || len(expected) != 32 {
-		return nil, ErrUnauthorized
-	}
-	// Matches actual Multies SHA256(TextEncoder canonical43ASCII secret), NOT
-	// decoded secret bytes, digest-keyed HMAC or legacy token equality.
-	actual := sha256.Sum256([]byte(secret))
-	if subtle.ConstantTimeCompare(actual[:], expected) != 1 {
 		return nil, ErrUnauthorized
 	}
 	n := s.data.Nodes[r.NodeID]

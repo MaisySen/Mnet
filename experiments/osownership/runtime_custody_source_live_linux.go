@@ -5,6 +5,8 @@ package osownership
 import (
 	"context"
 	"errors"
+	"fintex.au/mnet/internal/daemon"
+	"fintex.au/mnet/internal/netmap"
 	"fmt"
 	"reflect"
 )
@@ -15,17 +17,19 @@ import (
 // It produces actionable evidence even while final consumer reasoning and
 // authenticated peer-MTU binding remain incomplete. Those are not bool waivers.
 type sourceRuntimeEvidence struct {
-	offload       *originalOffloadHistory
-	resources     *originalHeldPacketResources
-	routed        *postPeerRouteResult
-	before, after *originalDeviceEvidence
-	diagnostic    ownedSourceDiagnostic
-	qdisc         upQdiscObservation
-	names         *verifiedFeatureNames
-	features      ethtoolActiveFeatures
-	policy        ownedTUNPolicyAssessment
-	consumer      []ipv4ConsumerAssessment
-	framing       tunNestedFraming
+	peer                     *daemon.DevelopmentEndpointPeer
+	selfProfile, peerProfile netmap.EndpointProfile
+	offload                  *originalOffloadHistory
+	resources                *originalHeldPacketResources
+	routed                   *postPeerRouteResult
+	before, after            *originalDeviceEvidence
+	diagnostic               ownedSourceDiagnostic
+	qdisc                    upQdiscObservation
+	names                    *verifiedFeatureNames
+	features                 ethtoolActiveFeatures
+	policy                   ownedTUNPolicyAssessment
+	consumer                 []ipv4ConsumerAssessment
+	framing                  tunNestedFraming
 }
 
 func (s *operation1ScopedDiagnostic) collectRuntimeCompletion(ctx context.Context, r *postPeerRouteResult) (completionEvidence, error) {
@@ -42,6 +46,13 @@ func (s *operation1ScopedDiagnostic) collectRuntimeCompletion(ctx context.Contex
 	}
 	if e := s.scope.check(ctx, c.attempt); e != nil {
 		return nil, e
+	}
+	if err := requireEndpointPeerBinding(s.scope.peer, o.owner.plan.Binding); err != nil {
+		return nil, err
+	}
+	selfProfile, peerProfile, err := s.scope.peer.Snapshot()
+	if err != nil {
+		return nil, err
 	}
 	o.creation.fd.mu.Lock()
 	defer o.creation.fd.mu.Unlock()
@@ -128,7 +139,7 @@ func (s *operation1ScopedDiagnostic) collectRuntimeCompletion(ctx context.Contex
 	if e = s.scope.check(ctx, c.attempt); e != nil {
 		return nil, e
 	}
-	return &sourceRuntimeEvidence{offload: history, resources: o, routed: r, before: before, after: after, diagnostic: d, qdisc: cloneUpQdisc(q), names: names, features: features, policy: policy, consumer: consumers, framing: framing}, nil
+	return &sourceRuntimeEvidence{peer: s.scope.peer, selfProfile: selfProfile, peerProfile: peerProfile, offload: history, resources: o, routed: r, before: before, after: after, diagnostic: d, qdisc: cloneUpQdisc(q), names: names, features: features, policy: policy, consumer: consumers, framing: framing}, nil
 }
 func (e *sourceRuntimeEvidence) validateCompletion(ctx context.Context, t *Transaction) error {
 	if e == nil || ctx == nil || ctx.Err() != nil || e.resources == nil || e.routed == nil || e.before == nil || e.after == nil {
@@ -149,9 +160,17 @@ func (e *sourceRuntimeEvidence) validateCompletion(ctx context.Context, t *Trans
 	if !exactSetupPostMatches(e.diagnostic.raw, r.raw) || !reflect.DeepEqual(e.diagnostic.sys, r.sys) || !sameConstructionQdisc(e.qdisc, r.qdisc) || !e.features.observedNamesCompatible(e.names) {
 		return afPhase
 	}
+	if err := requireEndpointPeerBinding(e.peer, t.plan.Binding); err != nil {
+		return err
+	}
+	self, peer, err := e.peer.Snapshot()
+	if err != nil || self != e.selfProfile || peer != e.peerProfile {
+		return errEndpointPeerProfile
+	}
 	// Original custody and framing/features are now source-collected. Complete
-	// named policy consumer decisions and authenticated peer MTU proof are
-	// still missing. Original offload-control history is now separately bound
+	// named policy consumer decisions and installed supplier byte-gate are
+	// still missing. Peer compatibility is a current native map declaration,
+	// not remote kernel attestation. Original offload-control history is now separately bound
 	// to its actual successful source syscall, never inferred from these reads.
 	unresolved := e.policy.Unresolved
 	for _, v := range e.consumer {
@@ -159,5 +178,5 @@ func (e *sourceRuntimeEvidence) validateCompletion(ctx context.Context, t *Trans
 			unresolved++
 		}
 	}
-	return fmt.Errorf("runtime evidence collected on original generation %d; %d named policy decisions and authenticated peer MTU admission remain unproven", r.identity.generation, unresolved)
+	return fmt.Errorf("runtime evidence collected on original generation %d; %d named policy decisions and installed per-I/O byte-gated supplier remain unproven", r.identity.generation, unresolved)
 }

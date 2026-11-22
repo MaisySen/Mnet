@@ -87,10 +87,11 @@ func (s *Store) registrarDevelopmentProtocol(serviceID string) http.Handler {
 			_ = json.NewEncoder(w).Encode(contract.HistoryReceiptWire{Version: 1, Receipt: history.Receipt, ReceiptDigest: history.Digest})
 		default:
 			var input struct {
-				Version       int                `json:"version"`
-				Receipt       contract.ReceiptV2 `json:"receipt"`
-				ReceiptDigest string             `json:"receipt_digest"`
-				Endpoints     []string           `json:"endpoints"`
+				Version            int                        `json:"version"`
+				Receipt            contract.ReceiptV2         `json:"receipt"`
+				ReceiptDigest      string                     `json:"receipt_digest"`
+				Endpoints          []string                   `json:"endpoints"`
+				EndpointCapability *netmap.EndpointCapability `json:"endpoint_capability,omitempty"`
 			}
 			// Existing exact recursive shape walker, not lenient encoding/json parsing.
 			if !developmentNodeRequestExact(raw, &input) {
@@ -112,7 +113,7 @@ func (s *Store) registrarDevelopmentProtocol(serviceID string) http.Handler {
 				return
 			}
 			if path == developmentNodePrefix+"endpoints" {
-				if e := s.setRegistrarCredentialEndpoints(ref, secret, input.Endpoints); e != nil {
+				if e := s.setRegistrarCredentialEndpointProfile(ref, secret, input.Endpoints, input.EndpointCapability); e != nil {
 					fail()
 					return
 				}
@@ -123,7 +124,7 @@ func (s *Store) registrarDevelopmentProtocol(serviceID string) http.Handler {
 				}{1, input.ReceiptDigest, true})
 				return
 			}
-			if input.Endpoints != nil {
+			if input.Endpoints != nil || input.EndpointCapability != nil {
 				w.WriteHeader(400)
 				return
 			}
@@ -170,10 +171,19 @@ func developmentNodeRequestExact(raw []byte, out any) bool {
 	if _, e = d.Token(); e != io.EOF {
 		return false
 	}
-	if len(fields) != 4 {
+	if len(fields) != 4 && len(fields) != 5 {
 		return false
 	}
 	types := map[string]reflect.Type{"version": reflect.TypeFor[int](), "receipt": reflect.TypeFor[contract.ReceiptV2](), "receipt_digest": reflect.TypeFor[string](), "endpoints": reflect.TypeFor[[]string]()}
+	if value, ok := fields["endpoint_capability"]; ok {
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return false
+		}
+		types["endpoint_capability"] = reflect.TypeFor[netmap.EndpointCapability]()
+	}
+	if len(fields) != len(types) {
+		return false
+	}
 	for name, t := range types {
 		value, ok := fields[name]
 		if !ok {

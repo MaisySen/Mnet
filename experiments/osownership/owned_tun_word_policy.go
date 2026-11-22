@@ -61,6 +61,11 @@ func assessOwnedTUNPolicy(l LinkRecord) (ownedTUNPolicyAssessment, error) {
 				decision = ownedV6Decision(index)
 			}
 			word.Decision = decision
+			if family == 2 {
+				word.Rule = endpointConsumerDependency(index)
+			} else {
+				word.Rule = "original idev/disable1 plus no owned IPv6 state and installed supplier IPv6 byte rejection; unresolved until source-bound"
+			}
 			// Static assertions can be checked now; dormant/unchanged decisions need
 			// original creation flags/values and namespace effective policy evidence.
 			word.Satisfied = decision.Decision == "assert" && word.Value == decision.Expected

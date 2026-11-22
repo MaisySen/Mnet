@@ -229,3 +229,23 @@ func (d *Daemon) nativeCurrentEndpoints(ctx context.Context, endpoints []string,
 	defer d.mu.Unlock()
 	return d.checkNativeCurrentAfterLocked(ctx, rev)
 }
+
+// Private native current-credential publication. This is an explicit bounded
+// compatibility declaration, not remote kernel attestation or access renewal.
+func (d *Daemon) nativeCurrentEndpointProfile(ctx context.Context, endpoints []string, limits controlclient.RegistrarLimits, capability *netmap.EndpointCapability) error {
+	if ctx == nil || ctx.Err() != nil {
+		return errEnrollmentContextStale
+	}
+	d.mu.Lock()
+	c, rev, err := d.nativeClientLocked(limits)
+	d.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if err := c.RegistrarEndpointProfile(ctx, endpoints, capability); err != nil {
+		return err
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.checkNativeCurrentAfterLocked(ctx, rev)
+}

@@ -32,17 +32,18 @@ type DevelopmentNetworkPeer struct {
 }
 
 type DevelopmentNetworkSession struct {
-	d          *Daemon
-	ctx        context.Context
-	cancel     context.CancelFunc
-	limits     controlclient.RegistrarLimits
-	done       chan struct{}
-	selfIPv4   string
-	revision   [32]byte
-	resourceMu sync.Mutex
-	resources  []io.Closer
-	peerScopes []*DevelopmentPeerScope
-	mu         sync.Mutex // serializes explicit map refresh with session teardown
+	publishedProfile bool // session.mu; no publication without explicit source caller
+	d                *Daemon
+	ctx              context.Context
+	cancel           context.CancelFunc
+	limits           controlclient.RegistrarLimits
+	done             chan struct{}
+	selfIPv4         string
+	revision         [32]byte
+	resourceMu       sync.Mutex
+	resources        []io.Closer
+	peerScopes       []*DevelopmentPeerScope
+	mu               sync.Mutex // serializes explicit map refresh with session teardown
 }
 
 func validDevelopmentNetworkOptions(o *DevelopmentNetworkOptions) bool {
@@ -146,6 +147,7 @@ func (d *Daemon) runDevelopmentNetwork(ctx context.Context, m *netmap.Map, o *De
 func (s *DevelopmentNetworkSession) Done() <-chan struct{} { return s.done }
 func (s *DevelopmentNetworkSession) Close() {
 	if s != nil {
+		s.withdrawEndpointBeforeClose()
 		s.cancel()
 		<-s.done
 	}
@@ -256,6 +258,7 @@ func (s *DevelopmentNetworkSession) CurrentSessionPeers() ([]SessionPeer, error)
 // peer. A later explicit map check removing/changing that peer cancels the
 // context and closes its registered resources, even if the network stays up.
 type DevelopmentPeerScope struct {
+	endpointPin  *developmentEndpointPin // immutable; assigned and consumed under session.mu
 	ctx          context.Context
 	cancel       context.CancelFunc
 	peer         SessionPeer
@@ -403,7 +406,7 @@ func (s *DevelopmentNetworkSession) retireChangedPeerScopes() {
 				}
 			}
 		}
-		if !developmentExactPeerPresent(peers, scope.peer) || !sameDeadline {
+		if !developmentExactPeerPresent(peers, scope.peer) || !sameDeadline || (scope.endpointPin != nil && !scope.endpointPin.current(s.d.currentMap())) {
 			scope.mu.Lock()
 			if scope.reason == "" {
 				if !time.Now().Before(scope.peerDeadline) {

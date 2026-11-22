@@ -5,12 +5,14 @@ package osownership
 import (
 	"context"
 	"errors"
+	"fintex.au/mnet/internal/daemon"
 )
 
 // Created only for one resident callback. Every source call checks active plus
 // namespaceCustody's live FD/TID/current namespace. No namespace ownership is
 // transferred or released by this adapter; resident owns it through cleanup.
 type operation1ResidentSource struct {
+	peer             *daemon.DevelopmentEndpointPeer
 	disableLife      *disableResidentLifetime
 	disableAttempted bool // controller-lane only; source entry validates authorized lease
 	afOwner          *afSourcePassOwner
@@ -24,10 +26,21 @@ type operation1ResidentSource struct {
 // Intended residentBootstrapSource work body, not installed in a launcher/app.
 // Callback cannot keep using the controller's source after returning. Finalize
 // the original before namespace scope/lifetime ends, even on callback error.
-func withOperation1ResidentSource(ctx context.Context, ns *namespaceCustody, b *CapturedBaseline, id adapterIdentity, binding Binding, work func(*operation1Controller) error) (err error) {
+func withOperation1ResidentSource(ctx context.Context, ns *namespaceCustody, b *CapturedBaseline, id adapterIdentity, binding Binding, peer *daemon.DevelopmentEndpointPeer, work func(*operation1Controller) error) (err error) {
 	if !kernelExecutionReleased {
 		return ErrExecutorUnreleased
 	}
+	if ctx == nil || ctx.Err() != nil {
+		return ErrConflict
+	}
+	if err := requireEndpointPeerBinding(peer, binding); err != nil {
+		return err
+	}
+	combined, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(peer.Context(), cancel)
+	defer stop()
+	defer cancel()
+	ctx = combined
 	if ns == nil || work == nil || b == nil || !sameNamespace(ns.identity, b.ns) || !sameNamespace(id.Namespace, b.ns) {
 		return ErrConflict
 	}
@@ -38,7 +51,7 @@ func withOperation1ResidentSource(ctx context.Context, ns *namespaceCustody, b *
 	if e != nil {
 		return e
 	}
-	source := &operation1ResidentSource{disableLife: &disableResidentLifetime{}, owner: c, ns: ns, baseline: c.adapter.session.baseline, active: true}
+	source := &operation1ResidentSource{peer: peer, disableLife: &disableResidentLifetime{}, owner: c, ns: ns, baseline: c.adapter.session.baseline, active: true}
 	c.adapter.creation = source
 	c.absence = source
 	defer func() {
