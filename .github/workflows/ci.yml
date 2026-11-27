@@ -41,8 +41,8 @@ jobs:
         run: go test -race -count=1 -timeout=5m ./...
       - name: bounded untrusted session and STUN parser fuzzing
         run: |
-          go test -run '^$' -fuzz '^FuzzFrameDecoder$' -fuzztime=10s -parallel=2 ./internal/session
-          go test -run '^$' -fuzz '^FuzzParseResponse$' -fuzztime=10s -parallel=2 ./internal/stun
+          sh scripts/test-fuzz-gates.sh
+          sh scripts/fuzz-gates.sh
       - name: metadata trace and OS TCP race isolation (30 repetitions)
         run: go test -race -count=30 -timeout=3m ./internal/session -run 'TestFrameTraceBoundedMetadataOnly|TestTrace|TestSessionOverTCP'
       - name: userspace mesh file burst regression (100 transfers)
@@ -261,12 +261,12 @@ jobs:
         run: go test -race -count=3 -timeout=5m ./internal/control -run 'TestAccountSession|TestAccountHTTP|TestAccountLoginState|TestAdminMembership|TestAccountLogout|TestAccountNewLogin|TestAccountCallbackSession|TestOIDCProviderReplacementRetires|TestOIDCApprovalRequires|TestOIDCStateBounds'
       - name: native exact local Up request and lifecycle admission
         run: go test -race -count=3 -timeout=3m ./internal/daemon -run '^TestLocalUp|^TestLocalAPI'
-      - name: native forwarded DNS TCP fallback (loopback only)
-        run: go test -race -count=3 -timeout=3m ./internal/dns -run '^TestForwarded|^TestEphemeralSetup'
+      - name: native DNS resolver and fixtures (loopback only)
+        run: go test -race -count=3 -timeout=3m ./internal/dns
       - name: native control-client credential redirect refusal
         run: go test -race -count=3 -timeout=5m ./internal/controlclient
       - name: native control-state private file and shape checks
-        run: go test -race -count=3 -timeout=5m ./internal/control -run 'TestControlState|TestStoreRejectsNullShape|TestOldObjectState|TestACLRequest|TestACLPolicy|TestJoinKeyEncoding|TestRejoinRequiresSavedNodeCredential|TestExpiredRejoinNeedsFreshEnrollmentAuthorization'
+        run: go test -race -count=3 -timeout=5m ./internal/control -run 'TestControlState|TestPersistencePrivateAtomicFile|TestStoreRejectsNullShape|TestOldObjectState|TestACLRequest|TestACLPolicy|TestJoinKeyEncoding|TestRejoinRequiresSavedNodeCredential|TestExpiredRejoinNeedsFreshEnrollmentAuthorization'
       - name: native identity persistence and in-memory WireGuard IPC
         run: go test -race -count=1 -timeout=5m ./internal/daemon -run 'TestPrivateStateAtomicRoundTrip|TestStateRefusesLinkedIdentity|TestStateRejectsBrokenIdentity|TestStateRejectsIncompleteEnrollment|TestStateGeneratedIdentityReload|TestIdentityGenerationFailedSave|TestRoutingFailedSave|TestStartupConfigFailedSave|TestPendingApprovalURLNotLogged|TestJoinIncompleteCredential|TestJoinAcceptedCredential|TestEnrolledJoinTarget|TestFreshJoinTarget|TestStatsReadsActualDeviceIPC|TestParseWireGuardPeerStats|TestEndpointRouteFilter|TestCandidatesCannotRecurseIntoMeshOrAdvertisedRoutes'
       - name: native local key expiry and daemon restart
@@ -275,7 +275,7 @@ jobs:
         run: go test -race -count=10 -timeout=3m ./internal/daemon -run '^TestClosedNode|^TestClose|^TestPendingTunnel|^TestDownReleasesPending'
       - name: native OS TCP session and file transfer
         run: |
-          go test -race -count=3 -timeout=5m ./internal/session -run 'TestImageToRGBA|TestKeepalive|TestViewerControlCallback|TestSessionOverTCP|TestQueuedFileSeesStartupOptions|TestRepeatedFileTransfersReleaseStreams|TestFrameTraceBoundedMetadataOnly|TestTrace|TestOwnedFile|TestSendFileSource'
+          go test -race -count=3 -timeout=5m ./internal/session -run 'TestImageToRGBA|TestKeepalive|TestViewerControlCallback|TestSessionOverTCP|TestQueuedFileSeesStartupOptions|TestRepeatedFileTransfersReleaseStreams|TestFrameTraceBoundedMetadataOnly|TestTrace|TestOwnedFile|TestSendFileSource|TestSafeFileReception|TestFileExportStagingBudgetAndReleaseRealMux|TestPathReceiveTransactionKeepsPrivateNoOverwriteAndAbort|TestRecorderKeyframesAndDeltas'
           go test -race -count=30 -timeout=3m ./internal/session -run '^TestFileReceiverClosed|^TestFileReceiverCloseAt|^TestRecv|^TestMuxClose|^TestHostTerminal|^TestMuxInbound|^TestOpenPreflight'
       - name: native mobile and headless session ownership (loopback only)
         run: |

@@ -3,118 +3,153 @@ package dns
 import (
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net"
+	"strconv"
 	"syscall"
 	"testing"
 )
 
-// Test-only dual-protocol allocation. UDP and TCP ephemeral pools are independent:
-// a port free in one can be occupied or Windows-reserved in the other. Retry
-// only a companion UDP port clash/WSAEACCES after closing its TCP reservation,
-// before either DNS server starts. Fixed-port production bind tests keep startAt.
+const testDNSPortAttempts = 32
+
+// Test-only dual-protocol allocation. TCP and UDP have independent port pools.
+// Sample across the dynamic range because consecutive OS-assigned TCP ports can
+// all fall inside the same Windows UDP exclusion. Own both sockets before use.
+func reserveTestDNSPair(t *testing.T) (net.Listener, net.PacketConn) {
+	t.Helper()
+	tcp, udp, err := reserveTestDNSPairWith(net.Listen, net.ListenPacket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tcp, udp
+}
+
+func reserveTestDNSPairWith(listen func(string, string) (net.Listener, error), packet func(string, string) (net.PacketConn, error)) (net.Listener, net.PacketConn, error) {
+	var last error
+	for attempt := 0; attempt < testDNSPortAttempts; attempt++ {
+		address := net.JoinHostPort("127.0.0.1", strconv.Itoa(49152+rand.IntN(16384)))
+		tcp, err := listen("tcp", address)
+		if err != nil {
+			if !testPairPortUnavailable(err, "tcp") {
+				return nil, nil, err
+			}
+			last = err
+			continue
+		}
+		udp, err := packet("udp", tcp.Addr().String())
+		if err == nil {
+			return tcp, udp, nil
+		}
+		tcp.Close()
+		if !testPairPortUnavailable(err, "udp") {
+			return nil, nil, err
+		}
+		last = err
+	}
+	return nil, nil, fmt.Errorf("test DNS could not reserve both transports: %w", last)
+}
+
+// Retry only loopback fixture bind conflicts or Windows port exclusions.
+func testPairPortUnavailable(err error, transport string) bool {
+	if errors.Is(err, syscall.EADDRINUSE) {
+		return true
+	}
+	var op *net.OpError
+	return errors.As(err, &op) && op.Op == "listen" && op.Net == transport &&
+		(errors.Is(op.Err, syscall.Errno(10013)) || errors.Is(op.Err, syscall.Errno(10048)))
+}
+
 func startTestDNS(t *testing.T, s *Server) {
 	t.Helper()
 	if err := startTestDNSWith(s, net.Listen, net.ListenPacket); err != nil {
 		t.Fatal(err)
 	}
 }
+
 func startTestDNSWith(s *Server, listen func(string, string) (net.Listener, error), packet func(string, string) (net.PacketConn, error)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed || s.done != nil {
 		return fmt.Errorf("test DNS unavailable")
 	}
-	for attempt := 0; attempt < 8; attempt++ {
-		tcp, err := listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			return err
-		}
-		udp, err := packet("udp", tcp.Addr().String())
-		if err != nil {
-			tcp.Close()
-			if errors.Is(err, syscall.EADDRINUSE) || testUDPCompanionPortDenied(err) {
-				continue
+	tcp, udp, err := reserveTestDNSPairWith(listen, packet)
+	if err != nil {
+		return err
+	}
+	return s.startBoundLocked(udp, tcp)
+}
+
+func TestEphemeralSetupRetriesOnlyUnusableCandidates(t *testing.T) {
+	for _, udpError := range []error{syscall.EADDRINUSE, &net.OpError{Op: "listen", Net: "udp", Err: syscall.Errno(10013)}} {
+		t.Run(udpError.Error(), func(t *testing.T) {
+			s, _ := New("127.0.0.1")
+			defer s.Close()
+			first, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
 			}
-			return err
-		}
-		return s.startBoundLocked(udp, tcp)
+			defer first.Close()
+			goodTCP, goodUDP := reserveTestDNSPair(t)
+			defer goodTCP.Close()
+			defer goodUDP.Close()
+
+			var tcpCalls, udpCalls int
+			listen := func(_, _ string) (net.Listener, error) {
+				tcpCalls++
+				switch tcpCalls {
+				case 1:
+					return nil, &net.OpError{Op: "listen", Net: "tcp", Err: syscall.Errno(10013)}
+				case 2:
+					return first, nil
+				default:
+					return goodTCP, nil
+				}
+			}
+			packet := func(_, _ string) (net.PacketConn, error) {
+				udpCalls++
+				if udpCalls == 1 {
+					return nil, udpError
+				}
+				return goodUDP, nil
+			}
+			if err := startTestDNSWith(s, listen, packet); err != nil {
+				t.Fatal(err)
+			}
+			if tcpCalls != 3 || udpCalls != 2 || !s.Ready() {
+				t.Fatal("setup did not recover from unusable fixture ports")
+			}
+			if _, err := first.Accept(); !errors.Is(err, net.ErrClosed) {
+				t.Fatal("failed UDP candidate retained its TCP listener")
+			}
+		})
 	}
-	return fmt.Errorf("test DNS could not reserve both transports")
 }
 
-// WSAEACCES is specific to this test-only companion UDP bind. Do not retry
-// generic permissions, TCP allocation errors, production binds or DNS queries.
-func testUDPCompanionPortDenied(err error) bool {
-	var op *net.OpError
-	return errors.As(err, &op) && op.Op == "listen" && op.Net == "udp" && errors.Is(op.Err, syscall.Errno(10013))
-}
-
-func TestEphemeralSetupClosesPartialListenerAndRetriesOnlyAddressInUse(t *testing.T) {
-	s, _ := New("127.0.0.1")
-	defer s.Close()
-	calls := 0
-	var first net.Listener
-	listen := func(network, address string) (net.Listener, error) {
-		l, e := net.Listen(network, address)
-		if calls == 0 {
-			first = l
-		}
-		return l, e
-	}
-	packet := func(network, address string) (net.PacketConn, error) {
-		calls++
-		if calls == 1 {
-			return nil, syscall.EADDRINUSE
-		}
-		return net.ListenPacket(network, address)
-	}
-	if err := startTestDNSWith(s, listen, packet); err != nil {
-		t.Fatal(err)
-	}
-	if calls != 2 || !s.Ready() {
-		t.Fatal("setup did not recover exact clash")
-	}
-	if _, err := first.Accept(); !errors.Is(err, net.ErrClosed) {
-		t.Fatal("partial listener not closed")
-	}
-}
 func TestEphemeralSetupDoesNotRetryOtherErrors(t *testing.T) {
-	s, _ := New("127.0.0.1")
-	defer s.Close()
-	calls := 0
-	err := startTestDNSWith(s, net.Listen, func(string, string) (net.PacketConn, error) { calls++; return nil, syscall.EACCES })
-	if !errors.Is(err, syscall.EACCES) || calls != 1 || s.Ready() {
-		t.Fatal("unrelated failure hidden")
-	}
-}
-
-func TestEphemeralSetupRetriesWindowsDeniedCompanionPort(t *testing.T) {
-	s, _ := New("127.0.0.1")
-	defer s.Close()
-	calls := 0
-	var first net.Listener
-	listen := func(network, address string) (net.Listener, error) {
-		l, err := net.Listen(network, address)
-		if calls == 0 {
-			first = l
-		}
-		return l, err
-	}
-	packet := func(network, address string) (net.PacketConn, error) {
-		calls++
-		if calls == 1 {
-			return nil, &net.OpError{Op: "listen", Net: "udp", Err: syscall.Errno(10013)}
-		}
-		return net.ListenPacket(network, address)
-	}
-	if err := startTestDNSWith(s, listen, packet); err != nil {
-		t.Fatal("test-only companion transport did not reselect a port", err)
-	}
-	if calls != 2 || !s.Ready() {
-		t.Fatal("unexpected allocation result")
-	}
-	if _, err := first.Accept(); !errors.Is(err, net.ErrClosed) {
-		t.Fatal("denied candidate retained TCP listener")
+	for _, transport := range []string{"tcp", "udp"} {
+		t.Run(transport, func(t *testing.T) {
+			s, _ := New("127.0.0.1")
+			defer s.Close()
+			denied := &net.OpError{Op: "listen", Net: transport, Err: syscall.EACCES}
+			var tcpCalls, udpCalls int
+			err := startTestDNSWith(s, func(network, _ string) (net.Listener, error) {
+				tcpCalls++
+				if transport == "tcp" {
+					return nil, denied
+				}
+				return net.Listen(network, "127.0.0.1:0")
+			}, func(_, _ string) (net.PacketConn, error) {
+				udpCalls++
+				return nil, denied
+			})
+			wantUDP := 0
+			if transport == "udp" {
+				wantUDP = 1
+			}
+			if !errors.Is(err, denied) || tcpCalls != 1 || udpCalls != wantUDP || s.Ready() {
+				t.Fatal("unrelated bind failure was retried or hidden")
+			}
+		})
 	}
 }
 
@@ -122,20 +157,19 @@ func TestEphemeralSetupDeniedCompanionPortExhaustionClosesAll(t *testing.T) {
 	s, _ := New("127.0.0.1")
 	defer s.Close()
 	var allocated []net.Listener
-	listen := func(network, address string) (net.Listener, error) {
-		l, err := net.Listen(network, address)
+	listen := func(network, _ string) (net.Listener, error) {
+		l, err := net.Listen(network, "127.0.0.1:0")
 		if err == nil {
 			allocated = append(allocated, l)
 		}
 		return l, err
 	}
-	calls := 0
-	err := startTestDNSWith(s, listen, func(string, string) (net.PacketConn, error) {
-		calls++
-		return nil, &net.OpError{Op: "listen", Net: "udp", Err: syscall.Errno(10013)}
+	denied := &net.OpError{Op: "listen", Net: "udp", Err: syscall.Errno(10013)}
+	err := startTestDNSWith(s, listen, func(_, _ string) (net.PacketConn, error) {
+		return nil, denied
 	})
-	if err == nil || calls != 8 || s.Ready() {
-		t.Fatal("fixture denial was hidden or unbounded", calls, err)
+	if !errors.Is(err, denied) || len(allocated) != testDNSPortAttempts || s.Ready() {
+		t.Fatal("fixture exhaustion was hidden or unbounded", len(allocated), err)
 	}
 	for _, l := range allocated {
 		if _, err := l.Accept(); !errors.Is(err, net.ErrClosed) {
@@ -151,16 +185,8 @@ func TestEphemeralSetupDenialClassificationIsNarrow(t *testing.T) {
 		&net.OpError{Op: "listen", Net: "tcp", Err: syscall.Errno(10013)},
 		&net.OpError{Op: "listen", Net: "udp", Err: syscall.EACCES},
 	} {
-		if testUDPCompanionPortDenied(err) {
-			t.Fatal("unrelated error classified as denied companion port", err)
+		if testPairPortUnavailable(err, "udp") {
+			t.Fatal("unrelated error classified as unusable UDP port", err)
 		}
-	}
-	s, _ := New("127.0.0.1")
-	defer s.Close()
-	calls := 0
-	denied := &net.OpError{Op: "listen", Net: "tcp", Err: syscall.Errno(10013)}
-	err := startTestDNSWith(s, func(string, string) (net.Listener, error) { calls++; return nil, denied }, net.ListenPacket)
-	if !errors.Is(err, denied) || calls != 1 || s.Ready() {
-		t.Fatal("TCP denial retried or hidden")
 	}
 }

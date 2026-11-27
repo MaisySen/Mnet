@@ -51,9 +51,9 @@ func (n *Node) Prepare(server, network, name, authKey string) (string, error) {
 	return n.d.Prepare(server, network, name, authKey)
 }
 
-// SetUseExitNode routes the device's internet traffic through the named
-// peer (name or mesh IP). Call before Prepare; pass an empty string to
-// clear. The app must also add a default route to its tunnel builder.
+// SetUseExitNode updates the saved exit-node setting. Exit routing is
+// unsupported, so Prepare and Start reject a nonempty setting. Pass an
+// empty string while down to clear it and use mesh-only mode.
 func (n *Node) SetUseExitNode(peer string) error {
 	return n.d.SetRouting(false, nil, peer)
 }

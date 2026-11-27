@@ -410,18 +410,13 @@ func TestFileExportStagingBudgetAndReleaseRealMux(t *testing.T) {
 		t.Fatal("wrong private stage count", entries, err)
 	}
 	for _, e := range entries {
-		info, err := e.Info()
-		if err != nil || info.Mode().Perm() != 0700 {
-			t.Fatal("stage directory not private")
-		}
-		files, err := os.ReadDir(filepath.Join(root, e.Name()))
+		stage := filepath.Join(root, e.Name())
+		assertPrivateOutput(t, stage, 0700)
+		files, err := os.ReadDir(stage)
 		if err != nil || len(files) != 1 {
 			t.Fatal("wrong staging contents")
 		}
-		st, err := files[0].Info()
-		if err != nil || st.Mode().Perm() != 0600 {
-			t.Fatal("stage file not private")
-		}
+		assertPrivateOutput(t, filepath.Join(stage, files[0].Name()), 0600)
 	}
 	for _, s := range streams {
 		if err := client.send(s.ID, msgFin, PriBulk, nil); err != nil {

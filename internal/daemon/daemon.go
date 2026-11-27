@@ -147,6 +147,15 @@ func (d *Daemon) SetRouting(advertiseExit bool, routes []string, useExit string)
 	return nil
 }
 
+// checkStartupRoutingLocked rejects unsupported roles before enrollment or
+// host changes. The caller holds d.mu.
+func (d *Daemon) checkStartupRoutingLocked() error {
+	if d.state.UseExitNode != "" || d.state.ExitNode || (len(d.state.AdvertiseRoutes) > 0 && (!d.cfg.ManagedIface || runtime.GOOS != "linux")) {
+		return fmt.Errorf("exit routing and non-Linux/mobile subnet serving are not supported; use mesh-only mode or managed Linux private IPv4 subnets")
+	}
+	return nil
+}
+
 // Up brings the mesh up. server, network and authKey are only needed on the
 // first join; after that the saved state is enough.
 func (d *Daemon) Up(server, network, nodeName, authKey string) error {
@@ -182,13 +191,12 @@ func (d *Daemon) upLocked(server, network, nodeName, authKey string, generation 
 	d.status = "joining"
 	d.dnsErr = ""
 	d.lastErr = "" // start a new attempt; keep any errors raised during it
+	routingErr := d.checkStartupRoutingLocked()
 	d.mu.Unlock()
 
-	// Unsupported routing must fail before enrollment or host mutations,
-	// rather than report an apparently connected full-tunnel configuration.
-	if d.state.UseExitNode != "" || d.state.ExitNode || (len(d.state.AdvertiseRoutes) > 0 && (!d.cfg.ManagedIface || runtime.GOOS != "linux")) {
+	if routingErr != nil {
 		d.setDown()
-		return fmt.Errorf("exit routing and non-Linux/mobile subnet serving are not supported; use mesh-only mode or managed Linux private IPv4 subnets")
+		return routingErr
 	}
 	// A failed teardown remains owned. Never overwrite its retry handle.
 	if d.serving != nil {

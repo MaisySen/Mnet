@@ -1,5 +1,19 @@
 # Mnet project status
 
+## 0877037 hosted CI and bounded fuzz gate
+
+[The original CI run](https://github.com/MaisySen/Mnet/actions/runs/44811947731) passed the Linux kernel VPN, Linux session-validation, macOS and Windows jobs. The Go job passed build, cross-build, vet, vulnerability scan and the full race suite before frame fuzzing returned `context deadline exceeded` at 10.04 seconds and 257,204 executions. The log reported no failing input or panic. STUN fuzzing and later Go-job checks were skipped. [Pages completed separately](https://github.com/MaisySen/Mnet/actions/runs/44811946493).
+
+CI and `scripts/local-gates.sh` now share `sh scripts/fuzz-gates.sh`. It keeps both targets and two workers, with budgets of 550,000 frame executions and 1,000,000 STUN executions. These are above the 508,798 and 992,601 counts recorded in a prior passing checkpoint. Each command retains a five-minute test timeout for hangs. `sh scripts/test-fuzz-gates.sh` checks the exact invocations and that either command's failure fails the gate. The original timed run remains a failed checkpoint.
+
+Two source defects were reproduced during the audit. Mobile Prepare now shares the daemon's routing preflight and refuses unsupported roles before identity generation, enrollment or device creation. Windows recordings, received files, export staging and viewer snapshots now have protected ACLs from creation. The affected tests inspect actual Windows ACLs and still check Unix modes. See [routing operations](operations.md#exit-nodes-and-subnet-routes) and [session storage](session-layer.md).
+
+The fresh Go vulnerability scan flagged the pinned Gorilla WebSocket version under [GO-2026-6278](https://pkg.go.dev/vuln/GO-2026-6278). The module is pinned to the advisory's fixed revision.
+
+Full Windows testing also exposed a [DNS fixture allocation failure](dns-companion-port-fixture.md) when consecutive TCP ports fell inside a UDP exclusion. The affected tests now reserve both loopback transports from one bounded fixture allocator. The normal Windows/macOS CI job runs the full DNS package.
+
+Consumer-release gates remain open. The [Multies workspace authorization issue](https://github.com/MaisySen/multies/issues/42) tracks the production identity and revocation dependency. The latest completed [Android full fixture that reached a failure](https://github.com/MaisySen/Mnet/actions/runs/44533184107) failed on both API levels. A separate [isolated Android VPN baseline](https://github.com/MaisySen/Mnet/actions/runs/44243610728) passed on both APIs. The [Apple app-visibility preflight](https://github.com/MaisySen/Mnet/actions/runs/44523108393) failed, leaving signed delivery unverified. The [control deployment recipe](https://github.com/MaisySen/mnet-control-deploy/blob/e3af752/Dockerfile) still pins the older 0.8.2 source and uses a temporary state path. It is release-source evidence only.
+
 ## 69cc original hosted checkpoint accounted, installed removal refused
 
 Original69cc5605a454af23d9d645b06183556c336ee224 CI failed only session-validation: https://github.com/MaisySen/Mnet/actions/runs/44801276238 . Its final installed-prefix removal encountered a same-user process whose executable could not be inspected and refused before deleting anything. The exact hosted process/cause is unknown. Diagnostics: https://github.com/MaisySen/Mnet/actions/runs/44801276238/artifacts/14661578012 . The final device-window step was skipped. No rerun or relaxed safety check counts as repair of that original attempt.

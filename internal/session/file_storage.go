@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"fintex.au/mnet/internal/privatefs"
 )
 
 // receiveTransaction owns one private staging write and final publication.
@@ -37,7 +39,7 @@ func beginPathReceive(dir, name string) (receiveTransaction, error) {
 	if _, err := os.Lstat(target); !errors.Is(err, os.ErrNotExist) {
 		return nil, errReceiveDestination
 	}
-	f, err := os.CreateTemp(dir, ".mnet-transfer-*")
+	f, err := privatefs.CreateTemp(dir, ".mnet-transfer-")
 	if err != nil {
 		return nil, err
 	}

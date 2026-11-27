@@ -34,14 +34,14 @@ func TestStartWaitsForBothDNSListeners(t *testing.T) {
 	}
 }
 func TestTCPBindFailureClosesPartialUDPListener(t *testing.T) {
-	occupied, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
+	occupied, reservedUDP := reserveTestDNSPair(t)
+	defer occupied.Close()
+	if err := reservedUDP.Close(); err != nil {
 		t.Fatal(err)
 	}
-	defer occupied.Close()
 	s, _ := New("127.0.0.1")
-	if err := s.startAt(occupied.Addr().String()); err == nil {
-		t.Fatal("occupied TCP listener accepted")
+	if err := s.startAt(occupied.Addr().String()); err == nil || !strings.HasPrefix(err.Error(), "DNS TCP bind:") {
+		t.Fatalf("expected TCP refusal, got %v", err)
 	}
 	if s.Ready() {
 		t.Fatal("partial listener reports ready")
@@ -57,27 +57,11 @@ func TestUDPBindFailureNeverStartsTCP(t *testing.T) {
 	// A UDP ephemeral port does not reserve the same TCP port. Probing an
 	// unowned TCP port after failure can mislabel unrelated traffic as a leak.
 	// Own both reservations and inspect the server's actual failed-start state.
-	var tcp net.Listener
-	var occupied net.PacketConn
-	var err error
-	for attempt := 0; attempt < 32; attempt++ {
-		tcp, err = net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		occupied, err = net.ListenPacket("udp", tcp.Addr().String())
-		if err == nil {
-			break
-		}
-		tcp.Close()
-	}
-	if err != nil {
-		t.Fatalf("could not reserve owned TCP/UDP fixture pair: %v", err)
-	}
+	tcp, occupied := reserveTestDNSPair(t)
 	defer tcp.Close()
 	defer occupied.Close()
 	s, _ := New("127.0.0.1")
-	err = s.startAt(occupied.LocalAddr().String())
+	err := s.startAt(occupied.LocalAddr().String())
 	if err == nil || !strings.HasPrefix(err.Error(), "DNS UDP bind:") {
 		t.Fatalf("expected UDP refusal, got %v", err)
 	}

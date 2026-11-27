@@ -28,7 +28,7 @@ Fresh full-repository race tests and vet pass. Twenty fresh repetitions of file 
 - No staging/adapter effect before approval, invalid-digest refusal before Open, changed request/relative staging refusal, one-use selection and identical sibling isolation.
 - Nil/failed/partial-resource Open, failed/short Write, failed Finish and expected resource-release order, without success acknowledgement/notification on failure.
 - Actual End during blocked Open/Write/Finish. Cooperative calls observe cancellation; a deliberately noncooperative Open returns late and its resource is still released. A blocked successful Finish prevents sender completion until released.
-- Private staging modes, eight-active refusal, declared-byte overflow refusal, exact reservation return and a later successful transfer after capacity recovery.
+- Private staging modes on Unix and protected Windows staging ACLs, eight-active refusal, declared-byte overflow refusal, exact reservation return and a later successful transfer after capacity recovery.
 - Existing filesystem no-overwrite/private-mode/cleanup and sender-reset behavior remain covered.
 
 Baseline1b78155 passed all five normal CI jobs in [run44507446267](https://github.com/MaisySen/Mnet/actions/runs/44507446267). No additional native/emulator/device workflow, new pixels or installed-provider acceptance is claimed.

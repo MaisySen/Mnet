@@ -3,6 +3,7 @@ package daemon
 import (
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"sync/atomic"
 	"testing"
 )
@@ -17,19 +18,31 @@ func TestUnsupportedRoutingFailsBeforeControlOrDevice(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			switch role {
-			case "selected-exit":
-				d.state.UseExitNode = "gateway"
-			case "advertised-exit":
-				d.state.ExitNode = true
-			case "mobile-subnet":
-				d.state.AdvertiseRoutes = []string{"10.9.0.0/24"}
+			defer d.Close()
+			var routes []string
+			if role == "mobile-subnet" {
+				routes = []string{"10.9.0.0/24"}
 			}
+			var exit string
+			if role == "selected-exit" {
+				exit = "gateway"
+			}
+			if err := d.SetRouting(role == "advertised-exit", routes, exit); err != nil {
+				t.Fatal(err)
+			}
+			before := d.State()
 			if err := d.Up(server.URL, "fixture", "node", ""); err == nil {
-				t.Fatal("unsupported routing reported success")
+				t.Fatal("Up accepted unsupported routing")
+			}
+			if address, err := d.Prepare(server.URL, "fixture", "node", ""); err == nil || address != "" {
+				t.Fatal("Prepare accepted unsupported routing")
 			}
 			if calls.Load() != 0 || d.dev != nil || d.Status().Status != "down" {
 				t.Fatal("unsupported routing performed enrollment/device changes")
+			}
+			saved, err := LoadState(d.cfg.StateDir)
+			if err != nil || !reflect.DeepEqual(before, d.State()) || !reflect.DeepEqual(before, *saved) {
+				t.Fatal("unsupported routing changed identity or join settings", err)
 			}
 		})
 	}

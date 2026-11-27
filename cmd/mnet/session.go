@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"fintex.au/mnet/internal/daemon"
+	"fintex.au/mnet/internal/privatefs"
 	"fintex.au/mnet/internal/session"
 )
 
@@ -461,7 +462,7 @@ func sessionConnectSend(peer, path string) {
 // saveSessionFrame replaces the latest snapshot via a private same-directory
 // temporary file, never by opening/truncating the destination or its symlink.
 func saveSessionFrame(path string, data []byte) error {
-	f, err := os.CreateTemp(filepath.Dir(path), ".mnet-frame-*")
+	f, err := privatefs.CreateTemp(filepath.Dir(path), ".mnet-frame-")
 	if err != nil {
 		return err
 	}

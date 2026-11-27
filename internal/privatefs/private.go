@@ -1,4 +1,4 @@
-// Package privatefs protects the daemon's dedicated identity directory.
+// Package privatefs creates private output and protects dedicated state.
 package privatefs
 
 import (

@@ -182,10 +182,7 @@ func TestPathReceiveTransactionKeepsPrivateNoOverwriteAndAbort(t *testing.T) {
 	if err != nil || string(got) != "verified" {
 		t.Fatal("abort removed final output")
 	}
-	st, err := os.Stat(filepath.Join(dir, "fresh.bin"))
-	if err != nil || st.Mode().Perm() != 0600 {
-		t.Fatal("private file mode lost")
-	}
+	assertPrivateOutput(t, filepath.Join(dir, "fresh.bin"), 0600)
 }
 
 func TestFileStorageTransactionCannotPublishAfterFinalizeEndsSession(t *testing.T) {

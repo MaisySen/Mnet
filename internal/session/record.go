@@ -14,6 +14,8 @@ import (
 	"io"
 	"os"
 	"sync"
+
+	"fintex.au/mnet/internal/privatefs"
 )
 
 type Recorder struct {
@@ -24,10 +26,10 @@ type Recorder struct {
 	err    error // first output failure, preserved by repeated Close calls
 }
 
-// NewRecorder creates a new recording (0600: recordings are sensitive).
+// NewRecorder creates a new recording with private filesystem permissions.
 // Existing destinations, including final symlinks, are never overwritten.
 func NewRecorder(path string) (*Recorder, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	f, err := privatefs.CreateFile(path)
 	if err != nil {
 		return nil, err
 	}
