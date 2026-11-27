@@ -11,7 +11,7 @@ import (
 	"unsafe"
 )
 
-func assertPrivateDACL(t *testing.T, path string) {
+func assertPrivateDACL(t *testing.T, path string, reader *windows.SID) {
 	t.Helper()
 	sd, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.OWNER_SECURITY_INFORMATION)
 	if err != nil || sd == nil {
@@ -25,7 +25,11 @@ func assertPrivateDACL(t *testing.T, path string) {
 	if err != nil || owner == nil {
 		t.Fatal("missing owner")
 	}
-	allowed := map[string]bool{owner.String(): true, "S-1-5-18": true, "S-1-5-32-544": true}
+	if reader == nil {
+		reader = owner
+	}
+	allowed := map[string]bool{reader.String(): true, "S-1-5-18": true, "S-1-5-32-544": true}
+	found := make(map[string]bool)
 	acl, _, err := sd.DACL()
 	if err != nil || acl == nil || acl.AceCount == 0 {
 		t.Fatal("empty/null DACL")
@@ -41,6 +45,12 @@ func assertPrivateDACL(t *testing.T, path string) {
 		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart))
 		if !allowed[sid.String()] {
 			t.Fatalf("unexpected granted principal %s", sid.String())
+		}
+		found[sid.String()] = true
+	}
+	for principal := range allowed {
+		if !found[principal] {
+			t.Fatalf("missing expected grant for %s", principal)
 		}
 	}
 }
@@ -65,17 +75,17 @@ func TestWindowsDACLRestrictsIdentityDirectoryAndFile(t *testing.T) {
 	if err = EnsureDir(dir); err != nil {
 		t.Fatal(err)
 	}
-	assertPrivateDACL(t, dir)
+	assertPrivateDACL(t, dir, nil)
 	path := filepath.Join(dir, "identity.json")
 	if err = WriteFile(path, []byte("test identity fixture")); err != nil {
 		t.Fatal(err)
 	}
-	assertPrivateDACL(t, path)
+	assertPrivateDACL(t, path, nil)
 	// Owner may replace and read; no Users/Everyone/authenticated-users grants.
 	if err = WriteFile(path, []byte("updated fixture")); err != nil {
 		t.Fatal(err)
 	}
-	assertPrivateDACL(t, path)
+	assertPrivateDACL(t, path, nil)
 }
 
 func TestWindowsPrivateOutputsDoNotInheritBroadParent(t *testing.T) {
@@ -100,12 +110,18 @@ func TestWindowsPrivateOutputsDoNotInheritBroadParent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// An elevated token can assign Administrators as the object owner while
+	// the ACL deliberately grants access to the creating account's user SID.
+	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	if err != nil {
+		t.Fatal(err)
+	}
 	file, err := CreateFile(filepath.Join(parent, "recording.mjpeg"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer file.Close()
-	assertPrivateDACL(t, `\\?\`+file.Name())
+	assertPrivateDACL(t, `\\?\`+file.Name(), user.User.Sid)
 	if duplicate, err := CreateFile(file.Name()); !os.IsExist(err) {
 		if duplicate != nil {
 			duplicate.Close()
@@ -116,13 +132,13 @@ func TestWindowsPrivateOutputsDoNotInheritBroadParent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertPrivateDACL(t, `\\?\`+stage)
+	assertPrivateDACL(t, `\\?\`+stage, user.User.Sid)
 	temp, err := CreateTemp(parent, ".output-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer temp.Close()
-	assertPrivateDACL(t, `\\?\`+temp.Name())
+	assertPrivateDACL(t, `\\?\`+temp.Name(), user.User.Sid)
 	after, err := windows.GetNamedSecurityInfo(longParent, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
 	if err != nil || before.String() != after.String() {
 		t.Fatal("output creation changed the parent DACL", err)
