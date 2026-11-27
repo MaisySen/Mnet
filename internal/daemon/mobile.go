@@ -54,6 +54,10 @@ func (d *Daemon) Prepare(server, network, nodeName, authKey string) (string, err
 		d.mu.Unlock()
 		return "", fmt.Errorf("already %s", d.status)
 	}
+	if err := d.checkStartupRoutingLocked(); err != nil {
+		d.mu.Unlock()
+		return "", err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	d.cancel = cancel
 	d.status = "preparing"

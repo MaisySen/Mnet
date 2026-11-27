@@ -1,7 +1,6 @@
 package dns
 
 import (
-	"net"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -12,23 +11,7 @@ import (
 
 func useTestUpstream(t *testing.T, handler dns.Handler) {
 	t.Helper()
-	var listener net.Listener
-	var packet net.PacketConn
-	var err error
-	for attempt := 0; attempt < 8; attempt++ {
-		listener, err = net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		packet, err = net.ListenPacket("udp", listener.Addr().String())
-		if err == nil {
-			break
-		}
-		listener.Close()
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
+	listener, packet := reserveTestDNSPair(t)
 	ready := make(chan struct{}, 2)
 	udpServer := &dns.Server{PacketConn: packet, Handler: handler, NotifyStartedFunc: func() { ready <- struct{}{} }}
 	tcpServer := &dns.Server{Listener: listener, Handler: handler, NotifyStartedFunc: func() { ready <- struct{}{} }}

@@ -72,12 +72,12 @@ The headless host requires explicit auto-accept; the optional allowlist narrows 
 
 Enrollment, approval, OIDC admission policy, network maps and pair-level ACLs are implemented. ACLs are not application-port rules. Known expiry timestamps are enforced locally in newer source; unseen offline admin revocations cannot be learned until reconnection. See [status](docs/STATUS.md) for what is actually shipped.
 
-Exit-node and subnet-route fields and WireGuard allowed-IP configuration exist, but complete OS routing is not verified. Newer Linux source has a bounded RFC1918 subnet-route owner under kernel validation; other subnet platforms and exit routing remain incomplete. A desktop exit-selection guard is currently inverted and skips the intended setup. Do not rely on exit-node internet routing or subnet routing; the Linux kernel tests currently cover mesh addresses only. [Operations](docs/operations.md#exit-nodes-and-subnet-routes) tracks the limits.
+The daemon rejects exit-node selection and advertisement before enrollment or interface creation. Managed Linux supports a bounded RFC1918 IPv4 subnet-routing path. Kernel fixtures exercise separate-LAN TCP, route withdrawal and preservation of unrelated routes. Other platforms and full-tunnel internet routing remain unsupported. [Operations](docs/operations.md#exit-nodes-and-subnet-routes) tracks the limits.
 
 ## Validation
 
 ```sh
-sh scripts/local-gates.sh           # uncached race tests, builds, vet, scans and mesh stress
+sh scripts/local-gates.sh           # uncached race tests, builds, vet, scans, fuzzing and mesh stress
 sh scripts/session-validation.sh    # isolated X11 userspace proof, not a physical desktop
 ```
 

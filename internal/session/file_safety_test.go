@@ -98,10 +98,7 @@ func TestSafeFileReception(t *testing.T) {
 				if err != nil || !bytes.Equal(got, tc.payload) {
 					t.Fatalf("published bytes=%q err=%v", got, err)
 				}
-				info, _ := os.Stat(target)
-				if info.Mode().Perm() != 0600 {
-					t.Fatalf("file mode=%v", info.Mode())
-				}
+				assertPrivateOutput(t, target, 0600)
 			default:
 				if !os.IsNotExist(err) {
 					t.Fatalf("partial/rejected target exists: %v", err)

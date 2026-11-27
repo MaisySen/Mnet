@@ -6,6 +6,7 @@ import (
 	"golang.org/x/sys/windows"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"unsafe"
 )
@@ -75,4 +76,55 @@ func TestWindowsDACLRestrictsIdentityDirectoryAndFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertPrivateDACL(t, path)
+}
+
+func TestWindowsPrivateOutputsDoNotInheritBroadParent(t *testing.T) {
+	// Exercise long paths and a parent that explicitly grants inherited access.
+	parent := filepath.Join(t.TempDir(), strings.Repeat("a", 118), strings.Repeat("b", 118))
+	if err := os.MkdirAll(parent, 0700); err != nil {
+		t.Fatal(err)
+	}
+	longParent := `\\?\` + parent
+	broad, err := windows.SecurityDescriptorFromString("D:P(A;OICI;FA;;;WD)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	acl, _, err := broad.DACL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := windows.SetNamedSecurityInfo(longParent, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, acl, nil); err != nil {
+		t.Fatal(err)
+	}
+	before, err := windows.GetNamedSecurityInfo(longParent, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := CreateFile(filepath.Join(parent, "recording.mjpeg"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	assertPrivateDACL(t, `\\?\`+file.Name())
+	if duplicate, err := CreateFile(file.Name()); !os.IsExist(err) {
+		if duplicate != nil {
+			duplicate.Close()
+		}
+		t.Fatalf("exclusive create returned %v", err)
+	}
+	stage, err := MkdirTemp(parent, ".stage-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPrivateDACL(t, `\\?\`+stage)
+	temp, err := CreateTemp(parent, ".output-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer temp.Close()
+	assertPrivateDACL(t, `\\?\`+temp.Name())
+	after, err := windows.GetNamedSecurityInfo(longParent, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
+	if err != nil || before.String() != after.String() {
+		t.Fatal("output creation changed the parent DACL", err)
+	}
 }

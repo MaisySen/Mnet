@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -120,7 +121,8 @@ func TestPersistencePrivateAtomicFileAndFailedRenameCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0600 {
+	// Windows protection is verified by TestControlStateWindowsDACLAfterLoadAndReplacement.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatalf("state permissions %v", info.Mode())
 	}
 	// A stale/symlinked predictable .tmp file must not be followed.
@@ -128,9 +130,11 @@ func TestPersistencePrivateAtomicFileAndFailedRenameCleanup(t *testing.T) {
 	if err = os.WriteFile(sentinel, []byte("unchanged"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err = os.Symlink(sentinel, path+".tmp"); err != nil {
-		t.Skipf("symlink unavailable: %v", err)
-	}
+	t.Run("predictable temporary symlink", func(t *testing.T) {
+		if err := os.Symlink(sentinel, path+".tmp"); err != nil {
+			t.Skipf("symlink unavailable: %v", err)
+		}
+	})
 	if _, err = s.CreateNetwork("second"); err != nil {
 		t.Fatal(err)
 	}

@@ -127,7 +127,7 @@ can set a different limit). A destination that already exists is refused;
 rename the source before resending. Path separators, traversal, invalid
 sizes and malformed supplied hashes are refused. Partial transfers stay
 in private temporary files and are removed on failure. Verified complete
-files publish at mode 0600 without replacing an existing destination.
+files publish without replacing an existing destination. New files use mode 0600 on Unix and a protected Windows DACL scoped to the creating user, LocalSystem and local administrators.
 The receive filesystem must support hard links for atomic publication;
 an unsupported filesystem fails the transfer instead of falling back to
 an unsafe overwrite. This is not a resumable-transfer implementation.
@@ -172,7 +172,7 @@ Local stream release interrupts an in-flight read-loop DATA/reset delivery into 
 
 ## Session recording
 
-Recordings use concatenated JPEG frames. Keyframes are validated; deltas are composited and re-encoded. Broken chains wait for a valid keyframe. NewRecorder exclusively creates a mode-0600 destination. Existing files/final symlinks are refused, never truncated. The daemon's viewer/timestamp paths can collide within one second; recording then reports unavailable while hosting continues. Parent directories must be trusted.
+Recordings use concatenated JPEG frames. Keyframes are validated; deltas are composited and re-encoded. Broken chains wait for a valid keyframe. NewRecorder exclusively creates a destination with private permissions, including a protected DACL at creation on Windows. Existing files and final symlinks are refused. The daemon's viewer/timestamp paths can collide within one second, so recording can report unavailable while hosting continues. Parent directories must be trusted.
 
 The first output error stops recording, closes the writer and releases pixels; completed frames remain counted. Close retains the first write error, or a close error when no earlier write failed, across repeated calls. The daemon logs recording incomplete at session end. It keeps partial bytes and does not retry, repair, fsync or promise durability. A file or nonzero frame count alone does not establish a complete recording. Late callbacks after close/failure are ignored.
 
@@ -185,7 +185,7 @@ At d0afcb6, all five CI jobs passed. Fresh local full gates and four-ABI Android
 
 ## CLI saved-screen snapshots
 
-Source writes latest.jpg through a private same-directory temporary file and rename instead of truncating the destination or following its final symlink. The previous frame remains until a complete new frame is written and closed. New directories request 0700 and temporary files 0600; existing directory permissions are unchanged. Windows uses filesystem ACLs rather than Unix mode-bit privacy, and rename atomicity is not promised on non-Unix filesystems. Trusted parent directories remain required. Errors leave the previous destination alone when replacement fails, remove the temporary file and do not close the viewer. No fsync/durability guarantee or cleanup of older broad-access snapshots elsewhere is provided.
+Source writes latest.jpg through a private same-directory temporary file and rename. The previous frame remains until a complete new frame is written and closed. New folders request mode 0700 on Unix. Temporary files use mode 0600 on Unix and a protected DACL from creation on Windows. The operation preserves the existing folder's permissions and does not promise rename atomicity on non-Unix filesystems. Trusted parent directories remain required. Errors leave the previous destination alone when replacement fails, remove the temporary file and keep the viewer open. This path provides no fsync guarantee and does not migrate earlier snapshots.
 
 
 ## CLI connect option validation

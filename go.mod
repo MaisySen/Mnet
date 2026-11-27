@@ -4,7 +4,7 @@ go 1.26.11
 
 require (
 	github.com/godbus/dbus/v5 v5.1.0
-	github.com/gorilla/websocket v1.5.3
+	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4
 	github.com/jezek/xgb v1.3.1
 	github.com/miekg/dns v1.1.73
 	golang.org/x/crypto v0.59.0

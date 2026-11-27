@@ -7,6 +7,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"fintex.au/mnet/internal/privatefs"
 )
 
 // Internal-only destination seam. No production provider or native entry point
@@ -156,7 +158,7 @@ func beginExportReceive(destination fileReceiveDestination, offer FileOffer, clo
 	if !root.IsDir() || root.Mode()&os.ModeSymlink != 0 {
 		return nil, errors.New("private staging root unavailable")
 	}
-	dir, err := os.MkdirTemp(destination.dir, ".mnet-export-*")
+	dir, err := privatefs.MkdirTemp(destination.dir, ".mnet-export-")
 	if err != nil {
 		return nil, err
 	}

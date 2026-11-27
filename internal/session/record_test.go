@@ -68,10 +68,7 @@ func TestRecorderKeyframesAndDeltas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	info, err := os.Stat(path)
-	if err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("recording must be 0600: %v %v", info.Mode(), err)
-	}
+	assertPrivateOutput(t, path, 0600)
 	parts := splitMJPEG(raw)
 	if len(parts) != 2 {
 		t.Fatalf("expected 2 playable frames, got %d", len(parts))
