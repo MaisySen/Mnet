@@ -19,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"fintex.au/mnet/internal/handoffview"
 )
 
 type BridgeClient struct {
@@ -158,8 +160,11 @@ func (b *BridgeClient) SignIn(ctx context.Context, deviceKey, platform string, o
 			fail()
 			return
 		}
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		_, _ = io.WriteString(w, "Mnet received the sign in response. You can return to Mnet.\n")
+		if denied {
+			handoffview.Write(w, "Mnet sign-in cancelled", "Open Mnet to start a new device-list request.")
+			return
+		}
+		handoffview.Write(w, "Sign-in response received", "Return to Mnet to see the result of your device-list request.")
 	})
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 5 * time.Second, MaxHeaderBytes: 8192}
 	done := make(chan struct{})

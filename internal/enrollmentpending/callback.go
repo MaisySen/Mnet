@@ -13,6 +13,7 @@ import (
 
 	config "fintex.au/mnet/internal/enrollmentconfig"
 	contract "fintex.au/mnet/internal/enrollmentcontract"
+	"fintex.au/mnet/internal/handoffview"
 )
 
 // Callback owns a fresh literal loopback socket for ONE saved intent. It neither
@@ -181,8 +182,7 @@ func (c *Callback) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		c.finish()
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Write([]byte("Approval returned to Mnet. This computer has not joined a network. No screen, keyboard or mouse access was granted. You can close this tab."))
+		handoffview.Write(w, "Approval returned to Mnet.", "Return to Mnet to check whether this computer has joined the network. Screen sharing and remote control require separate consent.")
 		return
 	}
 	if query.Get("error") != "access_denied" || c.journal.recordDecline(c.launch.AttemptID, c.launch.State, now) != nil {
@@ -190,8 +190,7 @@ func (c *Callback) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.finish()
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Write([]byte("Computer not approved. No network, screen, keyboard or mouse access was granted. You can close this tab."))
+	handoffview.Write(w, "Computer not approved.", "You can start a new joining request from Mnet.")
 }
 func (j *Journal) recordDecline(attempt, state string, now time.Time) error {
 	j.mu.Lock()

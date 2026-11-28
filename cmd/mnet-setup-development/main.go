@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"html/template"
 	"io"
 	"os"
 	"os/exec"
@@ -20,6 +19,7 @@ import (
 	"time"
 
 	"fintex.au/mnet/internal/daemon"
+	"fintex.au/mnet/internal/handoffview"
 )
 
 func main() {
@@ -49,8 +49,7 @@ func main() {
 		if err != nil {
 			return err
 		}
-		page := template.Must(template.New("result").Parse(`<!doctype html><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>Mnet development setup result</title><style>body{font:17px system-ui;background:#f4f5f7;color:#202124;margin:0;padding:64px 24px}main{max-width:620px;margin:auto;background:white;border:1px solid #ddd;border-radius:18px;padding:32px}p{line-height:1.6}small{color:#596171}</style><main><small>DISPOSABLE DEVELOPMENT SETUP</small><h1>{{.Title}}</h1><p>{{.Body}}</p><p>You can close this tab.</p></main>`))
-		err = page.Execute(file, struct{ Title, Body string }{title, body})
+		err = handoffview.WriteSetupResult(file, title, body)
 		closeErr := file.Close()
 		if err != nil {
 			return err
