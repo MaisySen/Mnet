@@ -594,7 +594,8 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	// State/key/callback. This process never receives its private key or file
 	// credential; only the real expected registrar request presents the bearer.
 	if networkCase {
-		if err := writeRegistrarFixtureAtomic(dir, "installed-peers-ready", []byte("fresh actual disposable counterpart committed")); err != nil {
+		timing, _ := json.Marshal(map[string]int64{"committedAtMS": r.CommittedAtMS, "accessExpiresAtMS": r.AccessExpiresAtMS, "readyAtMS": time.Now().UnixMilli()})
+		if err := writeRegistrarFixtureAtomic(dir, "installed-peers-ready", timing); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -654,7 +655,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	for {
 		setupCase := os.Getenv("MNET_DEVELOPMENT_SETUP_CASE")
 		if setupCase == "network-tcp-cancel" || setupCase == "network-tcp-expiry" {
-			if _, err := os.Stat(filepath.Join(dir, "native-transport-ready")); err == nil && setupCase == "network-tcp-cancel" {
+			if _, err := os.Stat(filepath.Join(dir, "native-transport-ready")); err == nil && setupCase == "network-tcp-cancel" && os.Getenv("MNET_DEVELOPMENT_DASHBOARD") != "1" {
 				_ = nativeCmd.Process.Signal(os.Interrupt)
 			}
 			if _, err := os.Stat(filepath.Join(dir, "installed-output-ended")); err == nil {
@@ -664,7 +665,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 					t.Fatal("cancelled network proof unexpectedly succeeded")
 				}
 				if _, err := os.Stat(filepath.Join(dir, "native-transport-ready")); err != nil {
-					t.Fatal("network stopped before actual TCP proof")
+					t.Fatalf("network stopped before actual TCP proof: %s", nativeOutput.String())
 				}
 				root := filepath.Join(dir, "installed-setup")
 				state, err := os.ReadFile(filepath.Join(root, "native", "state.json"))
@@ -1182,7 +1183,11 @@ func newInstalledDevelopmentFixtureCmd(t *testing.T, dir, installed string, poli
 	}
 	nativeCmd := exec.Command(installed, "--disposable-root", root)
 	if strings.HasPrefix(os.Getenv("MNET_DEVELOPMENT_SETUP_CASE"), "network-tcp") {
-		nativeCmd.Args = append(nativeCmd.Args, "--disposable-network-tcp")
+		if os.Getenv("MNET_DEVELOPMENT_DASHBOARD") == "1" {
+			nativeCmd.Args = append(nativeCmd.Args, "--disposable-network-dashboard")
+		} else {
+			nativeCmd.Args = append(nativeCmd.Args, "--disposable-network-tcp")
+		}
 	}
 	if os.Getenv("MNET_DEVELOPMENT_SETUP_BROWSER") == "1" {
 		nativeCmd.Args = append(nativeCmd.Args, "--open-browser")

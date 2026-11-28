@@ -25,9 +25,10 @@ import (
 func main() {
 	root := flag.String("disposable-root", "", "existing private disposable root with explicit marker, policy and limits")
 	open := flag.Bool("open-browser", false, "open local joining consent in the system browser")
+	dashboard := flag.Bool("disposable-network-dashboard", false, "explicit finite in-memory network with local capability-protected status and Stop; no screen/input")
 	networkTCP := flag.Bool("disposable-network-tcp", false, "explicit finite in-memory loopback-only network TCP proof after joining; no OS device or screen/input")
 	flag.Parse()
-	if flag.NArg() != 0 || *root == "" {
+	if flag.NArg() != 0 || *root == "" || (*dashboard && *networkTCP) {
 		fmt.Fprintln(os.Stderr, "an explicit disposable setup root is required")
 		os.Exit(2)
 	}
@@ -82,7 +83,11 @@ func main() {
 			}
 			// Browsers may outlive their launcher. Never hand a browser the
 			// setup process output pipe, which would prevent its owner joining.
-			log, err := os.OpenFile(filepath.Join(*root, "browser-launch.log"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+			logName := "browser-launch.log"
+			if event.Stage == "development-network-dashboard" {
+				logName = "dashboard-browser-launch.log"
+			}
+			log, err := os.OpenFile(filepath.Join(*root, logName), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 			if err != nil {
 				return fmt.Errorf("private browser launch log unavailable")
 			}
@@ -95,7 +100,9 @@ func main() {
 		return nil
 	}
 	var err error
-	if *networkTCP {
+	if *dashboard {
+		err = runDisposableNetworkTCPMode(ctx, *root, *open, emit, true)
+	} else if *networkTCP {
 		err = runDisposableNetworkTCP(ctx, *root, *open, emit)
 	} else {
 		err = daemon.RunDisposableEnrollment(ctx, *root, emit)
