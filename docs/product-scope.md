@@ -19,6 +19,8 @@ The consumer journey is:
 5. Request a session, get host view approval, and request control separately. View approval must not silently grant control, file transfer or recording.
 6. Keep a visible stop action. End, revocation or permission loss must stop the affected real resources, not merely change a UI label.
 
+An active connection stops when its next authoritative Multies access check fails. The same rule applies when the service is unavailable. The client clears the live session and keeps the saved enrollment so the user can try again when access can be verified.
+
 These are requirements, not descriptions of the current APK. Store download visibility is a separate distribution decision; Multies-only eligibility does not by itself change who can see a store listing or authorize a wider beta.
 
 ## Current capability and release gates

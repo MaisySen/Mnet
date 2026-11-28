@@ -169,6 +169,13 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 				w.WriteHeader(503)
 				return
 			}
+			if os.Getenv("MNET_DEVELOPMENT_SETUP_CASE") == "network-tcp-registrar-unavailable" {
+				if _, err := os.Stat(filepath.Join(dir, "installed-fail-access-check")); err == nil {
+					mapResponseRefusals.Add(1)
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+			}
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Cache-Control", "no-store")
 			json.NewEncoder(w).Encode(struct {
@@ -654,7 +661,8 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 	var postRemovalVerified bool
 	for {
 		setupCase := os.Getenv("MNET_DEVELOPMENT_SETUP_CASE")
-		if setupCase == "network-tcp-cancel" || setupCase == "network-tcp-expiry" {
+		accessCheckFailure := setupCase == "network-tcp-registrar-unavailable"
+		if setupCase == "network-tcp-cancel" || setupCase == "network-tcp-expiry" || accessCheckFailure {
 			if _, err := os.Stat(filepath.Join(dir, "native-transport-ready")); err == nil && setupCase == "network-tcp-cancel" && os.Getenv("MNET_DEVELOPMENT_DASHBOARD") != "1" {
 				_ = nativeCmd.Process.Signal(os.Interrupt)
 			}
@@ -663,6 +671,17 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 				nativeWaited = true
 				if err == nil && setupCase == "network-tcp-cancel" {
 					t.Fatal("cancelled network proof unexpectedly succeeded")
+				}
+				if accessCheckFailure && (err == nil || mapResponseRefusals.Load() != 1) {
+					t.Fatal("network did not stop on the first unavailable access check")
+				}
+				if setupCase == "network-tcp-expiry" {
+					if err != nil {
+						t.Fatal("installed network stopped without completing the peer-expiry path")
+					}
+					if _, err := os.Stat(filepath.Join(dir, "native-tcp-revocation-checked")); err != nil {
+						t.Fatal("installed network did not report verified peer retirement")
+					}
 				}
 				if _, err := os.Stat(filepath.Join(dir, "native-transport-ready")); err != nil {
 					t.Fatalf("network stopped before actual TCP proof: %s", nativeOutput.String())
@@ -676,7 +695,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 				if json.Unmarshal(state, &image) != nil || image["native_enrollment_v1"] == nil || len(s.data.Nodes) != 3 {
 					t.Fatal("stopped network lost saved credential or rolled back remote nodes")
 				}
-				if setupCase == "network-tcp-cancel" {
+				if setupCase == "network-tcp-cancel" || accessCheckFailure {
 					if _, err := os.Stat(filepath.Join(root, "network-result.html")); !os.IsNotExist(err) {
 						t.Fatal("cancelled network claimed confirmed peer withdrawal")
 					}
@@ -696,7 +715,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				outcome, _ := json.Marshal(map[string]any{"developmentInstalled": true, "networkTCPVerified": true, "networkStopped": true, "nativeSavedBeforeFailure": true, "inputAuthorized": false})
+				outcome, _ := json.Marshal(map[string]any{"developmentInstalled": true, "networkTCPVerified": true, "networkStopped": true, "nativeSavedBeforeFailure": true, "inputAuthorized": false, "accessCheckFailed": accessCheckFailure})
 				if err := writeRegistrarFixtureAtomic(dir, "outcome.json", outcome); err != nil {
 					t.Fatal(err)
 				}
@@ -839,7 +858,7 @@ func TestActualMultiesRegistrarWorkflowFixture(t *testing.T) {
 							t.Fatal(err)
 						}
 					}
-					if _, err := os.Stat(filepath.Join(dir, "native-transport-ready")); err == nil && transport.received > 0 && transport.sent && setupCase != "network-tcp-cancel" && setupCase != "network-tcp-expiry" {
+					if _, err := os.Stat(filepath.Join(dir, "native-transport-ready")); err == nil && transport.received > 0 && transport.sent && setupCase != "network-tcp-cancel" && setupCase != "network-tcp-expiry" && !accessCheckFailure {
 						if err := s.DeleteNode(r.NodeID); err != nil {
 							t.Fatal(err)
 						}

@@ -5,7 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fintex.au/mnet/internal/daemon"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -13,7 +13,31 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"fintex.au/mnet/internal/controlclient"
+	"fintex.au/mnet/internal/daemon"
 )
+
+func TestDashboardNetworkEndMessageDistinguishesExpiryAndFailedChecks(t *testing.T) {
+	for _, tt := range []struct {
+		peerReason string
+		err        error
+		want       string
+	}{
+		{peerReason: "peer-expired", want: "The original approved peer lease ended."},
+		{peerReason: "authorization-changed", want: "The current source removed that peer."},
+		{err: context.Canceled, want: "This finite network run stopped"},
+		{err: context.DeadlineExceeded, want: "reached its time limit"},
+		{err: controlclient.ErrRegistrarDenied, want: "refused the current access check"},
+		{err: controlclient.ErrRegistrarInvalid, want: "could not confirm current access with the registrar"},
+		{err: fmt.Errorf("test-only details: %w", controlclient.ErrRegistrarUnavailable), want: "could not confirm current access with the registrar"},
+	} {
+		message := developmentNetworkEndMessage(tt.peerReason, tt.err)
+		if !strings.Contains(message, tt.want) || strings.Contains(message, "test-only details") {
+			t.Errorf("end message = %q, want outcome %q", message, tt.want)
+		}
+	}
+}
 
 func TestDashboardCapabilityStopAndJoinedTruth(t *testing.T) {
 	done := make(chan struct{})

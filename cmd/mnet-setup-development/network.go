@@ -8,11 +8,8 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"fintex.au/mnet/internal/controlclient"
-	"fintex.au/mnet/internal/daemon"
-	"fintex.au/mnet/internal/proofnet"
+	"errors"
 	"fmt"
-	"golang.zx2c4.com/wireguard/tun"
 	"html/template"
 	"io"
 	"net"
@@ -21,6 +18,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"time"
+
+	"fintex.au/mnet/internal/controlclient"
+	"fintex.au/mnet/internal/daemon"
+	"fintex.au/mnet/internal/proofnet"
+	"golang.zx2c4.com/wireguard/tun"
 )
 
 func runDisposableNetworkTCP(ctx context.Context, root string, open bool, emit func(daemon.DevelopmentEnrollmentEvent) error) error {
@@ -143,13 +145,7 @@ func runDisposableNetworkTCPMode(ctx context.Context, root string, open bool, em
 	}}
 	runErr := daemon.RunDisposableEnrollmentNetwork(ctx, root, emit, options)
 	if display != nil {
-		reason := "This finite network run stopped and its owners joined. Joining remains saved."
-		if retirementReason == "peer-expired" {
-			reason = "The original approved peer lease ended. The network stopped and its owners joined."
-		} else if retirementReason == "authorization-changed" {
-			reason = "The current source removed that peer. The network stopped and its owners joined."
-		}
-		display.Finish(reason)
+		display.Finish(developmentNetworkEndMessage(retirementReason, runErr))
 		// Bounded display grace, no device/service/lease survives it.
 		time.Sleep(3 * time.Second)
 		display.Close()
@@ -184,4 +180,23 @@ func runDisposableNetworkTCPMode(ctx context.Context, root string, open bool, em
 		fmt.Fprintln(os.Stderr, "Verified disposable TCP session ended; optional historical display unavailable.")
 	}
 	return nil
+}
+
+func developmentNetworkEndMessage(peerReason string, err error) string {
+	switch {
+	case peerReason == "peer-expired":
+		return "The original approved peer lease ended. The network stopped and its owners joined."
+	case peerReason == "authorization-changed":
+		return "The current source removed that peer. The network stopped and its owners joined."
+	case errors.Is(err, controlclient.ErrRegistrarDenied):
+		return "The registrar refused the current access check. Mnet stopped the network. Joining remains saved."
+	case errors.Is(err, controlclient.ErrRegistrarUnavailable), errors.Is(err, controlclient.ErrRegistrarInvalid):
+		return "Mnet could not confirm current access with the registrar and stopped the network. Joining remains saved."
+	case errors.Is(err, context.DeadlineExceeded):
+		return "This network run reached its time limit and stopped. Joining remains saved."
+	case err != nil && !errors.Is(err, context.Canceled):
+		return "Mnet could not confirm current network access and stopped the network. Joining remains saved."
+	default:
+		return "This finite network run stopped and its owners joined. Joining remains saved."
+	}
 }
