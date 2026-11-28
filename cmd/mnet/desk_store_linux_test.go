@@ -91,20 +91,22 @@ func TestDeleteDeskStoreEntry(t *testing.T) {
 	if err := os.Remove(filepath.Join(dir, "alias.json")); err != nil {
 		t.Fatal(err)
 	}
-	id, err := statDeskDraft(dir, "arrangement-1.json")
+	id, err := pinDeskDraftDelete(dir, "arrangement-1.json")
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer id.close()
 	// Editing the draft in place changes identity and cancels the delete.
 	write("arrangement-1.json", `{"displays":[],"edited":true}`)
 	if err := deleteDeskStoreEntry(dir, "arrangement-1.json", id); !errors.Is(err, errDeskDraftChanged) {
 		t.Fatalf("edited draft must cancel with errDeskDraftChanged, got %v", err)
 	}
 	// A same-name replacement (new inode) also cancels.
-	id2, err := statDeskDraft(dir, "arrangement-1.json")
+	id2, err := pinDeskDraftDelete(dir, "arrangement-1.json")
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer id2.close()
 	if err := os.Remove(target); err != nil {
 		t.Fatal(err)
 	}
@@ -113,10 +115,11 @@ func TestDeleteDeskStoreEntry(t *testing.T) {
 		t.Fatalf("replaced draft must cancel with errDeskDraftChanged, got %v", err)
 	}
 	// A swapped store directory fails closed.
-	id3, err := statDeskDraft(dir, "arrangement-1.json")
+	id3, err := pinDeskDraftDelete(dir, "arrangement-1.json")
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer id3.close()
 	real := filepath.Join(filepath.Dir(dir), "real-store")
 	if err := os.Rename(dir, real); err != nil {
 		t.Fatal(err)
@@ -134,10 +137,11 @@ func TestDeleteDeskStoreEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Unchanged identity deletes exactly the pinned file.
-	id4, err := statDeskDraft(dir, "arrangement-1.json")
+	id4, err := pinDeskDraftDelete(dir, "arrangement-1.json")
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer id4.close()
 	if err := deleteDeskStoreEntry(dir, "arrangement-1.json", id4); err != nil {
 		t.Fatalf("deleting an unchanged draft failed: %v", err)
 	}
@@ -212,7 +216,12 @@ func TestDuplicateDeskStoreEntrySwappedStore(t *testing.T) {
 	if _, err := os.Lstat(filepath.Join(real, "arrangement-2.json")); !os.IsNotExist(err) {
 		t.Fatal("duplicate wrote through a swapped store path")
 	}
-	if err := deleteDeskStoreEntry(link, "arrangement-1.json", id); err == nil {
+	pin, err := pinDeskDraftDelete(real, "arrangement-1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pin.close()
+	if err := deleteDeskStoreEntry(link, "arrangement-1.json", pin); err == nil {
 		t.Fatal("a symlinked store path must fail closed for delete")
 	}
 	if _, err := os.Lstat(filepath.Join(real, "arrangement-1.json")); err != nil {
@@ -226,10 +235,11 @@ func TestDeleteDeskStoreEntryRestoredMtime(t *testing.T) {
 	if err := os.WriteFile(target, []byte(`{"displays":[]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	id, err := statDeskDraft(dir, "arrangement-1.json")
+	id, err := pinDeskDraftDelete(dir, "arrangement-1.json")
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer id.close()
 	var st unix.Stat_t
 	if err := unix.Lstat(target, &st); err != nil {
 		t.Fatal(err)

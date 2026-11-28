@@ -352,7 +352,12 @@ func runDeskHomeJourney(ctx context.Context, deskDir, layoutPath string) error {
 	pinned := ""
 	armed, armedDetail := "", ""
 	armedRow := -1
-	var armedID deskDraftID
+	var armedPin *deskDeletePin
+	releaseDelete := func() {
+		armedPin.close()
+		armedPin = nil
+	}
+	defer releaseDelete()
 	armedAt := time.Time{}
 	selKeep := -1
 	if layoutPath != "" {
@@ -383,8 +388,9 @@ func runDeskHomeJourney(ctx context.Context, deskDir, layoutPath string) error {
 				rowPath = filepath.Join(deskDir, entries[v.sel-boolInt(pinned != "")].Name)
 			}
 		}
-		if action != deskArrActDelete {
+		if action != deskArrActDelete || armed == "" {
 			armed, armedDetail, armedRow = "", "", -1
+			releaseDelete()
 		}
 		switch action {
 		case deskArrActStarter:
@@ -458,28 +464,34 @@ func runDeskHomeJourney(ctx context.Context, deskDir, layoutPath string) error {
 				rowName = filepath.Base(rowPath)
 			}
 			if rowName == "" {
+				armed, armedDetail, armedRow = "", "", -1
+				releaseDelete()
 				notice = "Choose a saved draft to delete."
 				continue
 			}
 			if armed != rowName || time.Since(armedAt) > 15*time.Second {
-				id, er := statDeskDraft(deskDir, rowName)
+				releaseDelete()
+				pin, er := pinDeskDraftDelete(deskDir, rowName)
 				if er != nil {
+					armed, armedDetail, armedRow = "", "", -1
 					notice = "That draft could not be deleted."
 					continue
 				}
-				armed, armedID, armedAt = rowName, id, time.Now()
+				armed, armedPin, armedAt = rowName, pin, time.Now()
 				armedRow = v.sel
 				armedDetail = "details unavailable"
 				for _, entry := range entries {
 					if entry.Name == rowName {
-						armedDetail = deskEntryIdentity(entry, id.size, time.Unix(id.mtime.Sec, id.mtime.Nsec))
+						armedDetail = deskEntryIdentity(entry, pin.id.size, time.Unix(pin.id.mtime.Sec, pin.id.mtime.Nsec))
 						break
 					}
 				}
 				continue
 			}
 			armed, armedDetail, armedRow = "", "", -1
-			if er := deleteDeskStoreEntry(deskDir, rowName, armedID); errors.Is(er, errDeskDraftChanged) {
+			er := deleteDeskStoreEntry(deskDir, rowName, armedPin)
+			releaseDelete()
+			if errors.Is(er, errDeskDraftChanged) {
 				notice = "That draft changed; nothing was removed."
 				continue
 			} else if er != nil {

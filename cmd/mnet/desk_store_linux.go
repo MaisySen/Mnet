@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"golang.org/x/sys/unix"
@@ -75,14 +76,60 @@ func validDeskDraftName(name string) bool {
 // arming and confirming a delete; the delete cancels and removes nothing.
 var errDeskDraftChanged = errors.New("arrangement draft identity changed")
 
-// deskDraftID pins one store draft's identity across the delete confirmation
-// so a same-name replacement is never removed in its place. Ctime cannot be
-// turned back by utimensat, so an edit with a restored mtime still cancels.
+// deskDraftID records changes to a draft, including edits with a restored mtime.
 type deskDraftID struct {
 	dev, ino uint64
 	size     int64
 	mtime    unix.Timespec
 	ctime    unix.Timespec
+}
+
+// Keep the draft open across confirmation so its inode cannot be recycled.
+type deskDeletePin struct {
+	id   deskDraftID
+	file *os.File
+}
+
+func (p *deskDeletePin) close() {
+	if p != nil && p.file != nil {
+		p.file.Close()
+	}
+}
+
+func deskDraftIdentity(st unix.Stat_t) (deskDraftID, error) {
+	if st.Mode&unix.S_IFMT != unix.S_IFREG {
+		return deskDraftID{}, errors.New("refusing to remove anything but a draft file")
+	}
+	if st.Nlink != 1 {
+		return deskDraftID{}, errors.New("refusing an aliased draft")
+	}
+	return deskDraftID{dev: uint64(st.Dev), ino: st.Ino, size: st.Size, mtime: st.Mtim, ctime: st.Ctim}, nil
+}
+
+func pinDeskDraftDelete(dir, name string) (*deskDeletePin, error) {
+	if !validDeskDraftName(name) {
+		return nil, errors.New("invalid arrangement draft name")
+	}
+	dfd, err := openDeskStoreDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer unix.Close(dfd)
+	fd, err := unix.Openat(dfd, name, unix.O_PATH|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, err
+	}
+	var st unix.Stat_t
+	if err := unix.Fstat(fd, &st); err != nil {
+		unix.Close(fd)
+		return nil, err
+	}
+	id, err := deskDraftIdentity(st)
+	if err != nil {
+		unix.Close(fd)
+		return nil, err
+	}
+	return &deskDeletePin{id: id, file: os.NewFile(uintptr(fd), name)}, nil
 }
 
 // statDeskDraft returns the pinned identity of one app-owned draft. It
@@ -104,38 +151,37 @@ func statDeskDraft(dir, name string) (deskDraftID, error) {
 	if err := unix.Lstat(filepath.Join(dir, name), &st); err != nil {
 		return zero, err
 	}
-	if st.Mode&unix.S_IFMT != unix.S_IFREG {
-		return zero, errors.New("refusing to remove anything but a draft file")
-	}
-	if st.Nlink != 1 {
-		return zero, errors.New("refusing an aliased draft")
-	}
-	return deskDraftID{dev: uint64(st.Dev), ino: st.Ino, size: st.Size, mtime: st.Mtim, ctime: st.Ctim}, nil
+	return deskDraftIdentity(st)
 }
 
 // deleteDeskStoreEntry removes the pinned draft only while its identity
 // still matches exactly; any change cancels with errDeskDraftChanged.
-// The residual race between the final stat and unlink cannot be closed
-// without fd-relative unlink; it is bounded by the private 0700 store under
-// the explicit state directory, which only a same-uid process can reach, and
-// it can never cross outside the store.
-func deleteDeskStoreEntry(dir, name string, want deskDraftID) error {
-	got, err := statDeskDraft(dir, name)
-	if err != nil {
-		return err
-	}
-	if got != want {
-		return errDeskDraftChanged
+func deleteDeskStoreEntry(dir, name string, want *deskDeletePin) error {
+	if !validDeskDraftName(name) {
+		return errors.New("invalid arrangement draft name")
 	}
 	dfd, err := openDeskStoreDir(dir)
 	if err != nil {
 		return err
 	}
 	defer unix.Close(dfd)
+	var st unix.Stat_t
+	if err := unix.Fstatat(dfd, name, &st, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		return err
+	}
+	got, err := deskDraftIdentity(st)
+	if err != nil {
+		return err
+	}
+	if want == nil || want.file == nil || want.file.Fd() == ^uintptr(0) || got != want.id {
+		return errDeskDraftChanged
+	}
 	// The unlink is relative to the pinned private directory; the remaining
 	// boundary is the file-identity race between stat and unlink, same-uid
 	// only, unable to cross outside the store.
-	return unix.Unlinkat(dfd, name, 0)
+	err = unix.Unlinkat(dfd, name, 0)
+	runtime.KeepAlive(want.file)
+	return err
 }
 
 // duplicateDeskStoreEntry copies one pinned store draft into a new
